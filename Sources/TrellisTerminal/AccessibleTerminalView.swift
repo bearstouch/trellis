@@ -14,6 +14,71 @@ final class AccessibleTerminalView: TerminalView {
     /// The configurable Find chord; other ⌘ chords reach the menu bar.
     var searchChord: KeyChord? = ShortcutMap.defaults[.findInPane]
     private var accessibilityUpdateScheduled = false
+    private var scrollbarTrackingArea: NSTrackingArea?
+    private var scrollbarHovered = false
+    private var scrollbarHideTask: Task<Void, Never>?
+    var scrollbarIdleDelay: Duration = .seconds(1)
+    private var terminalScroller: NSScroller? { subviews.compactMap { $0 as? NSScroller }.first }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scrollbarHideTask?.cancel()
+        scrollbarHovered = false
+        terminalScroller?.alphaValue = 0
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area = scrollbarTrackingArea { removeTrackingArea(area) }
+        let width = NSScroller.scrollerWidth(for: .regular, scrollerStyle: scrollerStyle)
+        let area = NSTrackingArea(
+            rect: NSRect(x: bounds.maxX - width, y: bounds.minY, width: width, height: bounds.height),
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .enabledDuringMouseDrag], owner: self)
+        scrollbarTrackingArea = area
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea === scrollbarTrackingArea else { super.mouseEntered(with: event); return }
+        scrollbarHovered = true
+        revealScrollbar()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea === scrollbarTrackingArea else { super.mouseExited(with: event); return }
+        scrollbarHovered = false
+        scheduleScrollbarHide()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        let before = scrollPosition
+        super.scrollWheel(with: event)
+        // Mouse reporting, alternate-screen key events, and gestures against
+        // the scrollback limit do not move the viewport or reveal its scrollbar.
+        if scrollPosition != before { revealScrollbar() }
+    }
+
+    private func revealScrollbar() {
+        scrollbarHideTask?.cancel()
+        guard canScroll else { return }
+        terminalScroller?.alphaValue = 1
+        if !scrollbarHovered { scheduleScrollbarHide() }
+    }
+
+    private func scheduleScrollbarHide() {
+        scrollbarHideTask?.cancel()
+        let delay = scrollbarIdleDelay
+        scrollbarHideTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, !self.scrollbarHovered else { return }
+            // Keep a thumb drag visible even after the pointer leaves its track.
+            guard NSEvent.pressedMouseButtons & 1 == 0 else { self.scheduleScrollbarHide(); return }
+            await NSAnimationContext.runAnimationGroup { context in
+                context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.2
+                self.terminalScroller?.animator().alphaValue = 0
+            }
+        }
+    }
     @objc func showPaneSearch(_ sender: Any?) { onSearchRequested?() }
     var readClipboardText: () -> String? = { NSPasteboard.general.string(forType: .string) }
     var readClipboardPaths: () -> [String] = {

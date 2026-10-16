@@ -45,3 +45,5 @@ Terminal output can be written by anything, so Trellis treats it as hostile:
 - Opening a link needs a user gesture (Cmd-click), and only `http`, `https` and `mailto` are allowed. Custom schemes and automatic opening are disabled.
 - Copy strips terminal control sequences.
 - Nothing in terminal output can change permissions. That includes text that looks like instructions to an agent.
+
+The terminal scrollbar stays hidden while idle. Hovering over its right-edge track reveals it when scrollback is available. Scrolling gestures reveal it only when the viewport moves; it fades out one second after scrolling stops or the pointer leaves the track. Incoming output alone does not reveal it, and visibility changes do not alter the terminal grid width.

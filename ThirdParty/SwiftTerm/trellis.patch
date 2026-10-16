@@ -163,3 +163,11 @@
      /**
       * Returns the active buffer (either the normal buffer or the alternative buffer)
       */
+--- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
++++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+@@ -1527 +1527 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+-    public override func mouseExited(with event: NSEvent) {
++    open override func mouseExited(with event: NSEvent) {
+@@ -3193 +3193 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+-    public override func scrollWheel(with event: NSEvent) {
++    open override func scrollWheel(with event: NSEvent) {
