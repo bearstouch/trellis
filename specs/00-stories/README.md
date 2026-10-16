@@ -32,7 +32,8 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S019 | Implemented/reviewed — 220 tests pass; native fixture demo pending | [S019 evidence](../../docs/evidence/S019-ssh-alias-discovery.md) |
 | S020 | Implemented/reviewed — 226 tests pass; controlled SSH server checks pending | [S020 evidence](../../docs/evidence/S020-ssh-connections.md) |
 | S021 | Implemented/reviewed — 235 tests and native socket checks pass | [S021 evidence](../../docs/evidence/S021-control-socket.md) |
-| S022–S032 | Planned | Stories below |
+| S022 | Implemented/reviewed — 243 tests pass; Keychain/native grant checks pending | [S022 evidence](../../docs/evidence/S022-automation-grants.md) |
+| S023–S032 | Planned | Stories below |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 

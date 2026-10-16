@@ -1,7 +1,7 @@
 # S022 — Authorize scoped script and agent access
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 243 tests pass; Keychain/native grant checks pending  
 Delivery phase: 4  
 Depends on: [S010](010-persistence-and-stopped-restore.md), [S018](018-saved-host-library.md), [S021](021-local-control-socket.md)  
 Requirements: `API-02`, `FR-A03`, `NFR-S01`, `NFR-S02`, `NFR-S06`, `NFR-S08`
@@ -34,7 +34,7 @@ Create/revoke a real Keychain-backed grant; test clients with different scopes a
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S022 automation grant evidence](../../docs/evidence/S022-automation-grants.md) for authentication, capability/scope matrix, expiry/revocation, host-approval tests, review fixes, and pending Keychain checks.
 
 ## Source specifications
 

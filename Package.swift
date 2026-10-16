@@ -19,12 +19,12 @@ let package = Package(
         .target(name: "TrellisPOSIX"),
         .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "SwiftTerm"]),
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),
-        .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal"]),
+        .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
         .executableTarget(name: "TrellisApp", dependencies: ["TrellisUI", "TrellisControl"]),
         .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore"]),
         .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore"]),
         .testTarget(name: "TrellisTerminalTests", dependencies: ["TrellisTerminal"]),
-        .testTarget(name: "TrellisControlTests", dependencies: ["TrellisControl"])
+        .testTarget(name: "TrellisControlTests", dependencies: ["TrellisControl", "TrellisCore"])
     ],
     swiftLanguageModes: [.v6]
 )

@@ -10,6 +10,7 @@ public final class ControlServer: @unchecked Sendable {
     private let lock = NSLock()
     private var listenFD: Int32 = -1
     private var clients = Set<Int32>()
+    private var connectionFDs: [UUID: Int32] = [:]
     private var discovery: ControlDiscovery?
     private var runtimeDirectory: String?
 
@@ -73,6 +74,14 @@ public final class ControlServer: @unchecked Sendable {
         if let published { endpoint.remove(published) }
     }
 
+    /// Ends the given connections (for example after their grant is revoked).
+    /// Their threads observe EOF, close the socket, and notify the handler.
+    public func closeConnections(_ ids: Set<UUID>) {
+        lock.withLock {
+            for id in ids { if let fd = connectionFDs[id] { shutdown(fd, SHUT_RDWR) } }
+        }
+    }
+
     /// Test seam: stops listening but leaves the socket and discovery files,
     /// which is what a crashed instance leaves behind.
     func closeListenerOnly() {
@@ -106,6 +115,7 @@ public final class ControlServer: @unchecked Sendable {
                 continue
             }
             let session = ControlSession(peerUID: peerUID, expectedUID: endpoint.uid, handler: handler)
+            lock.withLock { connectionFDs[session.connectionID] = client }
             let thread = Thread { [weak self] in self?.serve(client, session: session) }
             thread.name = "Trellis control connection"
             thread.start()
@@ -129,7 +139,10 @@ public final class ControlServer: @unchecked Sendable {
             }
             if shouldClose { break }
         }
-        _ = lock.withLock { clients.remove(fd) }
+        lock.withLock {
+            clients.remove(fd)
+            connectionFDs.removeValue(forKey: session.connectionID)
+        }
         shutdown(fd, SHUT_RDWR)
         close(fd)
         Self.wait { await session.connectionClosed() }

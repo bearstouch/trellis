@@ -13,13 +13,20 @@ extension ChromeMode {
 
 public struct AppSettingsView: View {
     @ObservedObject var model: AppWorkspaceModel
-    public init(model: AppWorkspaceModel) { self.model = model }
+    private let grants: GrantListModel?
+    private let hosts: HostListModel?
+    public init(model: AppWorkspaceModel, grants: GrantListModel? = nil, hosts: HostListModel? = nil) {
+        self.model = model; self.grants = grants; self.hosts = hosts
+    }
     public var body: some View {
         TabView {
             AppearanceSettingsView(model: model).disabled(model.previewedTheme != nil).tabItem { Text("Appearance") }
             LaunchSettingsView(model: model).tabItem { Text("Sessions") }
             KeyboardSettingsView(model: model).tabItem { Text("Keyboard") }
             ThemePreviewView(workspace: model).tabItem { Text("Themes") }
+            if let grants, let hosts {
+                AutomationSettingsView(grants: grants, workspace: model, hosts: hosts).tabItem { Text("Automation") }
+            }
         }
         .padding(16)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)

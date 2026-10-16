@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let hosts: HostListModel
     private var hostsWindow: NSWindow?
     private let control: ControlServer
+    private let grants: GrantListModel
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
     private var terminationPending = false
@@ -20,8 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
 
-    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer) {
-        self.model = model; self.hosts = hosts; self.control = control
+    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, grants: GrantListModel) {
+        self.model = model; self.hosts = hosts; self.control = control; self.grants = grants
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -290,7 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 570, height: 490), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             panel.title = "Settings"
             panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(rootView: AppSettingsView(model: model))
+            panel.contentView = NSHostingView(rootView: AppSettingsView(model: model, grants: grants, hosts: hosts))
             settingsCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.model.cancelThemePreview() }
             }
@@ -373,9 +374,17 @@ struct TrellisMain {
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory)))
-            // Grants arrive in S022; until then every domain call is rejected.
-            let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: RejectingControlHandler())
-            let delegate = AppDelegate(model: model, hosts: hosts, control: control)
+            let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
+            let handler = AuthorizingControlHandler(grants: grantStore, domain: AppControlDomain(model: model, hosts: hosts))
+            let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler)
+            Task {
+                await grantStore.load()
+                // Revocation disconnects every client authenticated with that grant.
+                await grantStore.onRevocation { grantID in
+                    Task { control.closeConnections(await handler.connections(for: grantID)) }
+                }
+            }
+            let delegate = AppDelegate(model: model, hosts: hosts, control: control, grants: GrantListModel(store: grantStore))
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}

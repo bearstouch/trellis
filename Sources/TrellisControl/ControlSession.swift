@@ -1,29 +1,40 @@
 import Darwin
 import Foundation
 
-/// Fixed, sanitized protocol errors. Messages never echo client input.
+/// Fixed, sanitized errors (API-06). Standard JSON-RPC failures use their
+/// reserved codes; application failures use -32000 with a stable `data.code`
+/// and a `retryable` hint. Messages never echo client input or secrets.
 public struct ControlError: Error, Equatable, Sendable {
     public let code: Int
     public let message: String
-    /// Stable application code shared with the CLI (`UNAUTHENTICATED`, …).
+    /// Stable application code shared with the CLI (`AUTH_REQUIRED`, …).
     public let appCode: String?
+    public let retryable: Bool
 
-    public init(code: Int, message: String, appCode: String? = nil) {
-        self.code = code; self.message = message; self.appCode = appCode
+    public init(code: Int, message: String, appCode: String? = nil, retryable: Bool = false) {
+        self.code = code; self.message = message; self.appCode = appCode; self.retryable = retryable
+    }
+
+    /// An application error (-32000) from the API-06 code list.
+    public static func application(_ appCode: String, _ message: String, retryable: Bool = false) -> Self {
+        Self(code: -32000, message: message, appCode: appCode, retryable: retryable)
     }
 
     public static let parse = Self(code: -32700, message: "Parse error: send one UTF-8 JSON object per line.")
     public static let invalidRequest = Self(code: -32600, message: "Invalid JSON-RPC 2.0 request.")
-    public static let batch = Self(code: -32600, message: "Batch requests are not supported.", appCode: "BATCH_UNSUPPORTED")
-    public static let notificationMutation = Self(
-        code: -32600, message: "Mutating methods require a request id.", appCode: "ID_REQUIRED")
-    public static let frameTooLarge = Self(code: -32600, message: "Frames are limited to 1 MiB.", appCode: "FRAME_TOO_LARGE")
-    public static let methodNotFound = Self(code: -32601, message: "Method not found.", appCode: "METHOD_NOT_FOUND")
-    public static let invalidParams = Self(code: -32602, message: "Invalid params.", appCode: "INVALID_PARAMS")
-    public static let internalError = Self(code: -32603, message: "Internal error.", appCode: "INTERNAL")
-    public static let responseTooLarge = Self(code: -32603, message: "The response exceeded 1 MiB.", appCode: "RESPONSE_TOO_LARGE")
-    public static let unauthenticated = Self(code: -32001, message: "Authenticate with auth.authenticate first.", appCode: "UNAUTHENTICATED")
-    public static let authenticationFailed = Self(code: -32002, message: "Authentication failed.", appCode: "AUTH_FAILED")
+    public static let batch = Self(code: -32600, message: "Batch requests are not supported.")
+    public static let notificationMutation = Self(code: -32600, message: "Mutating methods require a request id.")
+    public static let methodNotFound = Self(code: -32601, message: "Method not found.")
+    public static let invalidParams = Self(code: -32602, message: "Invalid params.")
+    public static let internalError = Self(code: -32603, message: "Internal error.")
+    public static let frameTooLarge = application("LIMIT_EXCEEDED", "Frames are limited to 1 MiB.")
+    public static let responseTooLarge = application("LIMIT_EXCEEDED", "The response exceeded 1 MiB; request less data.")
+    public static let unauthenticated = application("AUTH_REQUIRED", "Authenticate with auth.authenticate first.")
+    public static let authenticationFailed = application("AUTH_REQUIRED", "Authentication failed.")
+    public static let permissionDenied = application("PERMISSION_DENIED", "This grant does not allow that operation.")
+    public static let notFound = application("NOT_FOUND", "No such resource is available to this grant.")
+    public static let unsupportedVersion = application("UNSUPPORTED_VERSION", "Use protocolVersion 1.")
+    public static let rateLimited = application("LIMIT_EXCEEDED", "Too many failed authentication attempts. Wait and try again.", retryable: true)
 }
 
 public enum ControlRequestID: Equatable, Hashable, Sendable {
@@ -83,7 +94,7 @@ public enum ControlMethods {
     /// Methods that never change state. Anything else is treated as mutating,
     /// so a new method is safe by default.
     public static let readOnly: Set<String> = [
-        "system.info", "window.list", "window.get", "tab.list", "tab.get", "session.get", "session.read",
+        "system.info", "window.list", "window.get", "tab.list", "tab.get", "session.get", "session.readOutput",
         "host.list", "host.get", "theme.list", "theme.get", "layout.export", "layout.plan", "layout.validate"
     ]
     public static func isMutating(_ method: String) -> Bool { !readOnly.contains(method) }
@@ -157,6 +168,8 @@ public actor ControlSession {
             }
         } else if let identity {
             result = await handler.dispatch(request.method, params: request.params, identity: identity)
+            // An expired or revoked grant ends this connection's authentication.
+            if case .failure(let error) = result, error.appCode == "AUTH_REQUIRED" { self.identity = nil }
         } else {
             result = .failure(.unauthenticated)
         }
@@ -216,7 +229,7 @@ public actor ControlSession {
 
     static func encode(error: ControlError, id: ControlRequestID?) -> Data {
         var body: [String: JSONValue] = ["code": .number(Double(error.code)), "message": .string(error.message)]
-        if let appCode = error.appCode { body["data"] = .object(["code": .string(appCode)]) }
+        if let appCode = error.appCode { body["data"] = .object(["code": .string(appCode), "retryable": .bool(error.retryable)]) }
         return line(.object(["jsonrpc": .string("2.0"), "id": id?.json ?? .null, "error": .object(body)]))
     }
 

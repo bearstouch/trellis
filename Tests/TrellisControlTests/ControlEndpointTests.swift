@@ -83,7 +83,7 @@ final class ControlEndpointTests: XCTestCase {
         let client = try SocketClient(path: discovery.socketPath)
         defer { client.close() }
         let unauth = try client.request(#"{"jsonrpc":"2.0","id":1,"method":"window.list"}"#)
-        XCTAssertEqual(appCode(unauth), "UNAUTHENTICATED")
+        XCTAssertEqual(appCode(unauth), "AUTH_REQUIRED")
         _ = try client.request(#"{"jsonrpc":"2.0","id":2,"method":"auth.authenticate","params":{"token":"letmein"}}"#)
         let listed = try client.request(#"{"jsonrpc":"2.0","id":3,"method":"window.list"}"#)
         XCTAssertEqual((listed["result"] as? [String: Any])?["method"] as? String, "window.list")
@@ -94,7 +94,7 @@ final class ControlEndpointTests: XCTestCase {
         defer { flood.close() }
         flood.send(Data(repeating: 0x61, count: ControlFramer.maximumFrame + 10))
         let reply = flood.readUntilClosed()
-        XCTAssertTrue(String(decoding: reply, as: UTF8.self).contains("FRAME_TOO_LARGE"))
+        XCTAssertTrue(String(decoding: reply, as: UTF8.self).contains("LIMIT_EXCEEDED"))
     }
 
     func testStaleInstanceIsReplacedOnlyWhenGone() throws {
@@ -124,7 +124,7 @@ extension ControlServer {
 }
 
 /// Minimal blocking AF_UNIX client for integration tests.
-final class SocketClient {
+final class SocketClient: @unchecked Sendable {
     private let fd: Int32
     private var pending = Data()
 

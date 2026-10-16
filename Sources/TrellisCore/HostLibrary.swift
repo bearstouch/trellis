@@ -109,10 +109,10 @@ public enum HostLibraryCodec {
             Set(document.hosts.map(\.id)).count == document.hosts.count,
             // Host revisions come from the library counter; a higher one would let a later
             // edit reuse a revision and defeat stale-editor conflict checks.
-            document.hosts.allSatisfy({ $0.revision <= document.revision }),
+            document.hosts.allSatisfy({ $0.revision <= document.revision && $0.connectionRevision <= $0.revision }),
             document.hosts.allSatisfy({ host in
                 guard let valid = try? host.draft.validated(isRegularFile: { _ in true }) else { return false }
-                return SavedHost(id: host.id, draft: valid, revision: host.revision) == host
+                return SavedHost(id: host.id, draft: valid, revision: host.revision, connectionRevision: host.connectionRevision) == host
             })
         else { throw HostLibraryError.readOnly }
         return (document.hosts, document.revision)
@@ -181,8 +181,11 @@ public actor HostLibrary {
         guard hosts[index].revision == expectedRevision else { throw .conflict(expected: expectedRevision, actual: hosts[index].revision) }
         let valid = try validate(draft)
         // An unchanged save keeps the revision, so it does not invalidate approvals.
-        guard SavedHost(id: id, draft: valid, revision: hosts[index].revision) != hosts[index] else { return hosts[index] }
-        let host = SavedHost(id: id, draft: valid, revision: revision + 1)
+        let current = hosts[index]
+        guard SavedHost(id: id, draft: valid, revision: current.revision, connectionRevision: current.connectionRevision) != current else { return current }
+        var host = SavedHost(id: id, draft: valid, revision: revision + 1)
+        // Renaming or retagging keeps the connection revision, so approvals survive.
+        if host.sameConnection(as: current) { host.connectionRevision = current.connectionRevision }
         var next = hosts
         next[index] = host
         try commit(next)

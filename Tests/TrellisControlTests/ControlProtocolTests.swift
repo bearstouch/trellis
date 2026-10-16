@@ -59,7 +59,7 @@ final class ControlProtocolTests: XCTestCase {
         let oversized = ControlSession(peerUID: uid, handler: handler)
         let large = await oversized.receive(Data(repeating: 0x61, count: ControlFramer.maximumFrame + 1))
         XCTAssertTrue(large.close)
-        XCTAssertEqual(try responses(large.output).map(appCode), ["FRAME_TOO_LARGE"])
+        XCTAssertEqual(try responses(large.output).map(appCode), ["LIMIT_EXCEEDED"])
         let afterClose = await oversized.receive(Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"system.info\"}\n".utf8))
         XCTAssertTrue(afterClose.close)
         XCTAssertEqual(afterClose.output, Data())
@@ -87,8 +87,8 @@ final class ControlProtocolTests: XCTestCase {
         let replies = try responses(result.output)
         XCTAssertEqual(
             replies.map { ($0["error"] as? [String: Any])?["code"] as? Int },
-            [-32700, -32600, -32600, -32600, -32600, -32600, -32001, -32002, -32001])
-        XCTAssertEqual(replies.map(appCode), [nil, "BATCH_UNSUPPORTED", "ID_REQUIRED", nil, nil, nil, "UNAUTHENTICATED", "AUTH_FAILED", "UNAUTHENTICATED"])
+            [-32700, -32600, -32600, -32600, -32600, -32600, -32000, -32000, -32000])
+        XCTAssertEqual(replies.map(appCode), [nil, nil, nil, nil, nil, nil, "AUTH_REQUIRED", "AUTH_REQUIRED", "AUTH_REQUIRED"])
         XCTAssertEqual(handler.dispatches, [], "Nothing reached the domain")
         XCTAssertFalse(String(decoding: result.output, as: UTF8.self).contains("secret-ish"), "Errors never echo input")
         XCTAssertFalse(String(decoding: result.output, as: UTF8.self).contains("wrong"))

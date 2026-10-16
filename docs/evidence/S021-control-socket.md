@@ -78,3 +78,5 @@ Follow-ups, not applied:
 - Retry the stale probe so a full listen backlog cannot be mistaken for a dead instance.
 - Concurrent starts: the last rename wins.
 - Integer ids above 2^53 lose precision.
+
+> **Note (S022):** application error codes were later aligned with API-06. `UNAUTHENTICATED` and `AUTH_FAILED` became `AUTH_REQUIRED`, and `FRAME_TOO_LARGE` became `LIMIT_EXCEEDED`, all under code -32000. Standard JSON-RPC errors carry no `data.code`. The observations above are as recorded during S021.

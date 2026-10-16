@@ -12,12 +12,34 @@ public struct SavedHost: Identifiable, Equatable, Codable, Sendable {
     public var identityFile: String?
     public var tags: [String]
     public var revision: UInt64
+    /// Advances only when a launch-affecting field (destination, user, port,
+    /// identity file) changes. Automation host approvals bind to it.
+    public var connectionRevision: UInt64
 
-    public init(id: UUID, draft: HostDraft.Valid, revision: UInt64) {
-        self.id = id; self.revision = revision
+    public init(id: UUID, draft: HostDraft.Valid, revision: UInt64, connectionRevision: UInt64? = nil) {
+        self.id = id; self.revision = revision; self.connectionRevision = connectionRevision ?? revision
         name = draft.name; destination = draft.destination; user = draft.user
         port = draft.port; identityFile = draft.identityFile; tags = draft.tags
     }
+
+    private enum CodingKeys: String, CodingKey { case id, name, destination, user, port, identityFile, tags, revision, connectionRevision }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        destination = try values.decode(String.self, forKey: .destination)
+        user = try values.decodeIfPresent(String.self, forKey: .user)
+        port = try values.decodeIfPresent(Int.self, forKey: .port)
+        identityFile = try values.decodeIfPresent(String.self, forKey: .identityFile)
+        tags = try values.decode([String].self, forKey: .tags)
+        revision = try values.decode(UInt64.self, forKey: .revision)
+        // Files written before S022 have no separate connection revision.
+        connectionRevision = try values.decodeIfPresent(UInt64.self, forKey: .connectionRevision) ?? revision
+    }
+
+    /// True when both hosts would spawn the same ssh arguments.
+    public func sameConnection(as other: SavedHost) -> Bool { connectionLaunch == other.connectionLaunch }
 
     public var draft: HostDraft {
         HostDraft(
