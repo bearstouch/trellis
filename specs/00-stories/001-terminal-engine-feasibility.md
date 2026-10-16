@@ -1,7 +1,7 @@
 # S001 — Validate the native terminal engine
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented and reviewed — manual feasibility gate pending
 Delivery phase: 1  
 Depends on: None  
 Requirements: `MAC-01`, `MAC-02`, `MAC-03`, `NFR-U02`, `FR-S02`
@@ -12,9 +12,9 @@ As a developer, I want to prove the terminal adapter can support the required ma
 
 ## Acceptance criteria
 
-- [ ] **S001-AC01:** Embed the candidate engine in a minimal native Swift host and record its pinned version, license, supported architectures, and chosen PTY ownership strategy.
+- [x] **S001-AC01:** Embed the candidate engine in a minimal native Swift host and record its pinned version, license, supported architectures, and chosen PTY ownership strategy.
 - [ ] **S001-AC02:** Demonstrate a shell, resize, alternate screen, Unicode, IME composition, native selection, paste, output access, and VoiceOver terminal reading; document failures with reproducible steps.
-- [ ] **S001-AC03:** Keep engine-specific types behind an adapter; select a supported TERM value based on demonstrated capabilities and available terminfo.
+- [x] **S001-AC03:** Keep engine-specific types behind an adapter; select a supported TERM value based on demonstrated capabilities and available terminfo.
 - [ ] **S001-AC04:** Record a go/no-go decision before dependent terminal work. Accessibility or lifecycle blockers require resolving the issue or choosing another engine, not silently dropping requirements.
 
 ## Unit tests
@@ -33,6 +33,8 @@ These are test specifications to implement with the story, not executed tests. N
 Run the feasibility checklist on the proposed minimum/current macOS and both CPU architectures where available. Record actual devices and outstanding coverage; dependency claims alone are insufficient.
 
 ## Completion evidence
+
+Implementation, review findings, environment, automated evidence, and outstanding interaction checks are recorded in [S001 evidence](../../docs/evidence/S001-terminal-feasibility.md). S001-AC02/AC04 remain open; programmatic accessibility checks do not establish spoken VoiceOver quality.
 
 Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
 

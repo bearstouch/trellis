@@ -1,8 +1,18 @@
 # Implementation stories and delivery plan
 
-Status: planned backlog. Date: 2026-10-16. No application implementation or executable unit tests have been created by this planning task.
+Status: implementation started. Date: 2026-10-16. Story progress and verification gaps are tracked below; planned test cases are not automatically passing tests.
 
 This folder contains **32 P0 stories**, one Markdown file per story, derived from the [specification index](../README.md). Each file defines acceptance criteria, four concrete unit-test cases, integration/manual verification, dependencies, and completion evidence.
+
+## Execution workflow and progress
+
+Implement stories in order. For each story: implement, run the relevant checks, launch a separate review agent, resolve actionable findings, rerun affected checks, record evidence, and commit the reviewed change before beginning the next story. Keep each story's changes isolated in Git history. Never mark unperformed platform checks passed.
+
+| Item | State | Evidence |
+| --- | --- | --- |
+| Specification baseline | Committed | `ee471f6` |
+| S001 | Implemented and reviewed; manual feasibility checks pending | [S001 evidence](../../docs/evidence/S001-terminal-feasibility.md) |
+| S002–S032 | Planned | Stories below |
 
 ## Agreed product direction
 
@@ -16,7 +26,7 @@ This folder contains **32 P0 stories**, one Markdown file per story, derived fro
 
 Work by dependency order within the phases below. Story numbers are stable identifiers, not dates or estimates. Dependencies refer to other story files; later-numbered dependencies are not required. A story may use a fake boundary while another feature is pending, but its final platform verification still needs a working implementation.
 
-All stories start as Planned. During implementation update their status to In progress, Blocked (with a concrete reason), or Done, and link the relevant implementation/check results. Acceptance checkboxes remain unchecked until observed. The specifications remain the behavior contract; resolve any discovered ambiguity in both the specification and affected story rather than inventing a conflicting behavior.
+Stories begin as Planned. During implementation update their status to In progress, Blocked (with a concrete reason), or Done, and link the relevant implementation/check results. Acceptance checkboxes remain unchecked until observed. The specifications remain the behavior contract; resolve any discovered ambiguity in both the specification and affected story rather than inventing a conflicting behavior.
 
 Build the first runnable milestone from S001–S004: native host, domain store, and one real shell. Subsequent phase exit gates are listed below. No dates are assigned because team capacity and terminal-engine results are not known.
 
