@@ -6,6 +6,30 @@ import UTermCore
 
 final class PTYProcessTests: XCTestCase {
     @MainActor
+    func testFallbackReapsWhenProcessExitNotificationIsUnavailable() async throws {
+        let process = PTYProcess(processExitNotifications: false)
+        let exited = expectation(description: "fallback reaps child and closes PTY")
+        var exitCode: Int32?
+        var output = Data()
+        process.onOutput = { output.append($0) }
+        process.onExit = { exitCode = $0; exited.fulfill() }
+        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "sleep 0.1; printf done; exit 7"],
+                                environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+                                size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        let pid = process.pid
+        let descriptor = process.descriptor
+        await fulfillment(of: [exited], timeout: 5)
+        XCTAssertEqual(exitCode, 7)
+        XCTAssertEqual(output, Data("done".utf8))
+        XCTAssertFalse(process.isRunning)
+        XCTAssertEqual(process.descriptor, -1)
+        XCTAssertEqual(fcntl(descriptor, F_GETFD), -1)
+        var status: Int32 = 0
+        XCTAssertEqual(waitpid(pid, &status, WNOHANG), -1)
+        XCTAssertEqual(errno, ECHILD)
+    }
+
+    @MainActor
     func testChildDoesNotInheritApplicationDescriptors() async throws {
         let descriptor = open("/dev/null", O_RDWR)
         XCTAssertGreaterThanOrEqual(descriptor, 3)

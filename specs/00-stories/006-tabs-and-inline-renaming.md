@@ -1,7 +1,7 @@
 # S006 — Manage multiple renameable tabs per window
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented and independently reviewed — 72-test suite and native tab checks passing  
 Delivery phase: 2  
 Depends on: [S002](002-domain-model-and-command-service.md), [S004](004-native-application-shell.md), [S005](005-managed-window-sidebar.md)  
 Requirements: `FR-T01`, `FR-T02`, `FR-T03`, `FR-W03`
@@ -12,10 +12,10 @@ As a developer, I want to create and name several tabs within each window withou
 
 ## Acceptance criteria
 
-- [ ] **S006-AC01:** Each window has its own ordered top tab bar with visible separators, selected state, new-tab button, and discoverable rename action.
-- [ ] **S006-AC02:** Double-click or Rename edits the label inline; Enter commits trimmed nonempty text, Escape cancels, and empty input retains the previous title.
-- [ ] **S006-AC03:** Rename, selection, and reorder preserve pane/session IDs and live processes; switching windows restores the correct tab collection and selection.
-- [ ] **S006-AC04:** Duplicate copies configuration and split layout into fresh IDs and processes without copying terminal output or previously typed commands; close delegates to the common closure workflow.
+- [x] **S006-AC01:** Each window has its own ordered top tab bar with visible separators, selected state, new-tab button, and discoverable rename action.
+- [x] **S006-AC02:** Double-click or Rename edits the label inline; Enter commits trimmed nonempty text, Escape cancels, and empty input retains the previous title.
+- [x] **S006-AC03:** Rename, selection, and reorder preserve pane/session IDs and live processes; switching windows restores the correct tab collection and selection.
+- [x] **S006-AC04:** Duplicate copies configuration and split layout into fresh IDs and processes without copying terminal output or previously typed commands; close delegates to the common closure workflow.
 
 ## Unit tests
 
@@ -34,7 +34,7 @@ Use two windows with three tabs each. Rename by pointer and keyboard, reorder, s
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S006 implementation, review fixes, and native interaction evidence](../../docs/evidence/S006-tabs.md). The full 72-test suite passes. Native inline rename, reorder, and confirmed live-tab closure passed. Saved titles across relaunch are verified with persistence in S010; prior platform qualification gaps remain pending.
 
 ## Source specifications
 

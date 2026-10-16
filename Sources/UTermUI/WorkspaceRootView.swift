@@ -6,6 +6,9 @@ public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
     @State private var windowToRename: ManagedWindow?
     @State private var windowName = ""
+    @State private var editingTabID: UUID?
+    @State private var tabDraft = ""
+    @FocusState private var tabNameFocused: Bool
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +28,20 @@ public struct WorkspaceRootView: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .preferredColorScheme(.light)
+        .onChange(of: model.tabRenameRequest) { _, _ in
+            if let tab = model.presentation.selectedTab { beginTabRename(tab) }
+        }
+        .onChange(of: model.snapshot.activeWindowID) { _, _ in editingTabID = nil }
+        .onChange(of: model.presentation.selectedTab?.id) { _, selectedID in
+            // Beginning a rename selects an inactive tab first. That selection
+            // notification may arrive after the editor state has been installed.
+            if editingTabID != selectedID { editingTabID = nil }
+        }
+        .onChange(of: editingTabID) { _, value in
+            if value == nil, let terminal = model.activeTerminal {
+                DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
+            }
+        }
         .sheet(item: $windowToRename) { window in
             VStack(alignment: .leading, spacing: 16) {
                 Text("Rename Window").font(.headline)
@@ -105,16 +122,16 @@ public struct WorkspaceRootView: View {
         } else {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    ForEach(model.presentation.visibleTabs) { tab in
-                        HStack(spacing: 8) {
-                            Image(systemName: "terminal").font(.system(size: 10))
-                            Text(tab.title).lineLimit(1)
-                        }.font(.system(size: 12)).padding(.horizontal, 16).frame(height: 40)
-                            .background(Color(nsColor: .textBackgroundColor))
-                            .overlay(alignment: .bottom) { Rectangle().fill(Color.accentColor).frame(height: 2) }
-                        Divider().frame(height: 20)
-                    }
-                    Spacer(minLength: 0)
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 0) {
+                            ForEach(model.presentation.visibleTabs) { tab in
+                                tabLabel(tab)
+                                Divider().frame(height: 20)
+                            }
+                        }
+                    }.scrollIndicators(.hidden)
+                    Button { Task { await model.createTab() } } label: { Image(systemName: "plus") }
+                        .buttonStyle(.plain).padding(.horizontal, 14).help("New Tab (⌘T)").accessibilityLabel("New Tab")
                 }.frame(height: 40).background(Color(nsColor: .windowBackgroundColor))
                 Divider()
                 HStack(spacing: 6) {
@@ -127,6 +144,61 @@ public struct WorkspaceRootView: View {
                 terminalCanvas
             }
         }
+    }
+
+    private func tabLabel(_ tab: WorkspaceTab) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "terminal").font(.system(size: 10))
+            if editingTabID == tab.id {
+                TextField("Tab name", text: $tabDraft)
+                    .textFieldStyle(.plain).focused($tabNameFocused)
+                    .onAppear { tabNameFocused = true }
+                    .onSubmit { commitTabRename(tab.id) }
+                    .onExitCommand {
+                        editingTabID = nil
+                        Task { await model.finishTabRename(tab.id, draft: tabDraft, action: .cancel) }
+                    }
+            } else {
+                Text(tab.title).lineLimit(1)
+                    .onTapGesture(count: 2) { beginTabRename(tab) }
+                    .onTapGesture { Task { await model.selectTab(tab.id) } }
+            }
+            Button { Task { await model.closeTab(tab.id) } } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+                .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(tab.title)")
+        }.font(.system(size: 12)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
+            .background(tab.id == model.presentation.selectedTab?.id ? Color(nsColor: .textBackgroundColor) : .clear)
+            .overlay(alignment: .bottom) {
+                if tab.id == model.presentation.selectedTab?.id { Rectangle().fill(Color.accentColor).frame(height: 2) }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { if editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Tab \(tab.title)")
+            .accessibilityAddTraits(tab.id == model.presentation.selectedTab?.id ? [.isSelected] : [])
+            .contextMenu {
+                Button("Rename…") { beginTabRename(tab) }
+                Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
+                Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
+                    .disabled(model.presentation.visibleTabs.first?.id == tab.id)
+                Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }
+                    .disabled(model.presentation.visibleTabs.last?.id == tab.id)
+                Divider()
+                Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
+            }
+    }
+
+    private func beginTabRename(_ tab: WorkspaceTab) {
+        Task {
+            await model.selectTab(tab.id)
+            guard model.presentation.selectedTab?.id == tab.id else { return }
+            tabDraft = tab.title
+            editingTabID = tab.id
+        }
+    }
+    private func commitTabRename(_ id: UUID) {
+        let draft = tabDraft
+        editingTabID = nil
+        Task { await model.finishTabRename(id, draft: draft, action: .commit) }
     }
 
     private var terminalCanvas: some View {

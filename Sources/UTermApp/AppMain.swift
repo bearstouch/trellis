@@ -54,6 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(app)
         let file = NSMenuItem(); file.submenu = NSMenu(title: "File")
         file.submenu?.addItem(withTitle: "New Window", action: #selector(newWindow), keyEquivalent: "n")
+        file.submenu?.addItem(withTitle: "New Tab", action: #selector(newTab), keyEquivalent: "t")
+        file.submenu?.addItem(withTitle: "Rename Tab…", action: #selector(renameTab), keyEquivalent: "")
+        file.submenu?.addItem(withTitle: "Next Tab", action: #selector(nextTab), keyEquivalent: "]").keyEquivalentModifierMask = [.command, .shift]
+        file.submenu?.addItem(withTitle: "Previous Tab", action: #selector(previousTab), keyEquivalent: "[").keyEquivalentModifierMask = [.command, .shift]
         file.submenu?.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(file)
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
@@ -74,6 +78,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window?.deminiaturize(nil)
         window?.makeKeyAndOrderFront(nil)
         Task { await model.createWindow() }
+    }
+    @objc private func newTab() { Task { await model.createTab() } }
+    @objc private func renameTab() { model.tabRenameRequest = UUID() }
+    @objc private func nextTab() { selectRelativeTab(1) }
+    @objc private func previousTab() { selectRelativeTab(-1) }
+    private func selectRelativeTab(_ offset: Int) {
+        let tabs = model.presentation.visibleTabs
+        guard let id = model.presentation.selectedTab?.id, let index = tabs.firstIndex(where: { $0.id == id }), !tabs.isEmpty else { return }
+        let next = tabs[(index + offset + tabs.count) % tabs.count].id
+        Task { await model.selectTab(next) }
     }
     @objc private func settingsAction() { showSettings() }
     private func showSettings() {

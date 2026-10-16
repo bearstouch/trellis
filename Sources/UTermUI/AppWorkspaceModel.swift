@@ -3,6 +3,8 @@ import Combine
 import UTermCore
 import UTermTerminal
 
+public enum TabRenameAction: Sendable { case commit, cancel }
+
 public struct WindowActivity: Equatable, Sendable {
     public var hasOutput = false
     public var hasExit = false
@@ -27,6 +29,8 @@ public final class AppWorkspaceModel: ObservableObject {
         return alert.runModal() == .alertFirstButtonReturn
     }
     private var closingWindowIDs = Set<UUID>()
+    private var closingTabIDs = Set<UUID>()
+    @Published public var tabRenameRequest: UUID?
     public var openSettings: (() -> Void)?
     private let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
@@ -63,10 +67,7 @@ public final class AppWorkspaceModel: ObservableObject {
             guard !shuttingDown, !Task.isCancelled else { return }
             guard let id = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == id }),
                   let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID] else { return }
-            let terminal = NativeTerminal(sessionID: pane.sessionID)
-            terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
-            terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
-            terminals[pane.id] = terminal
+            attachTerminal(pane)
             publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
         } catch { errorMessage = "The window could not be created." }
@@ -84,7 +85,19 @@ public final class AppWorkspaceModel: ObservableObject {
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
-            let result = try await service.execute(.startSession(paneID: paneID))
+            // Freeze the actual local launch configuration before starting. A duplicate
+            // must reuse this session's shell and directory even after Settings change.
+            let resolvedLaunch: SessionLaunch?
+            if let pane = snapshot.panes[paneID], let session = snapshot.sessions[pane.sessionID] {
+                switch session.launch {
+                case .shell(let directory):
+                    resolvedLaunch = .process(executable: defaultShell, arguments: ["-l"], directory: directory ?? defaultDirectory)
+                case .process(let executable, let arguments, let directory):
+                    resolvedLaunch = .process(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
+                case .host: resolvedLaunch = nil
+                }
+            } else { resolvedLaunch = nil }
+            let result = try await service.execute(.startSession(paneID: paneID, resolvedLaunch: resolvedLaunch))
             publish(result.snapshot)
             guard case .start(let request) = result.effects.first else { return }
             guard !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
@@ -110,13 +123,26 @@ public final class AppWorkspaceModel: ObservableObject {
                 self.enqueue(command)
             }
             if fixture { await terminal.startFixture() }
-            else { await terminal.start(configuration: .loginShell(executable: defaultShell, directory: defaultDirectory)) }
+            else {
+                let configuration: LocalLaunchConfiguration
+                switch request.launch {
+                case .shell(let directory):
+                    configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory)
+                case .process(let executable, let arguments, let directory):
+                    configuration = LocalLaunchConfiguration(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
+                case .host:
+                    publish(try await service.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID,
+                        outcome: .failed(message: "Saved host connections require SSH integration."))).snapshot)
+                    return
+                }
+                await terminal.start(configuration: configuration)
+            }
         } catch { errorMessage = "The terminal session could not be started." }
     }
 
     private func isClosing(paneID: UUID) -> Bool {
         guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID] else { return false }
-        return closingWindowIDs.contains(tab.windowID)
+        return closingWindowIDs.contains(tab.windowID) || closingTabIDs.contains(tab.id)
     }
 
     public func recordActivity(paneID: UUID, exited: Bool = false) {
@@ -140,30 +166,95 @@ public final class AppWorkspaceModel: ObservableObject {
         catch { errorMessage = "The window order could not be changed." }
     }
 
+    private func attachTerminal(_ pane: WorkspacePane) {
+        let terminal = NativeTerminal(sessionID: pane.sessionID)
+        terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
+        terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
+        terminals[pane.id] = terminal
+    }
+
+    public func createTab(windowID: UUID? = nil, duplicate id: UUID? = nil, startSessions: Bool = true) async {
+        guard !shuttingDown, !Task.isCancelled,
+              let windowID = windowID ?? presentation.selectedWindow?.id,
+              !closingWindowIDs.contains(windowID) else { return }
+        if let id {
+            guard snapshot.tabs[id]?.windowID == windowID, !closingTabIDs.contains(id) else { return }
+        }
+        pendingOperations += 1
+        defer { pendingOperations -= 1 }
+        do {
+            let result = try await service.execute(id.map { .duplicateTab(id: $0) } ?? .createTab(windowID: windowID))
+            guard !shuttingDown, !Task.isCancelled, !closingWindowIDs.contains(windowID) else { return }
+            guard let tabID = result.createdTabID, let tab = result.snapshot.tabs[tabID] else { return }
+            for paneID in tab.root.paneIDs {
+                if let pane = result.snapshot.panes[paneID] { attachTerminal(pane) }
+            }
+            publish(result.snapshot)
+            if startSessions {
+                for paneID in tab.root.paneIDs { await start(paneID: paneID) }
+            }
+        } catch { errorMessage = "The tab could not be created." }
+    }
+
+    public func selectTab(_ id: UUID) async {
+        do { publish(try await service.execute(.selectTab(id: id)).snapshot) }
+        catch { errorMessage = "The tab could not be selected." }
+    }
+
+    public func finishTabRename(_ id: UUID, draft: String, action: TabRenameAction) async {
+        guard case .commit = action else { return }
+        await renameTab(id, title: draft)
+    }
+
+    public func renameTab(_ id: UUID, title: String) async {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) }
+        catch { errorMessage = "Use a tab name between 1 and 200 characters." }
+    }
+
+    public func moveTab(_ id: UUID, offset: Int) async {
+        guard let tab = snapshot.tabs[id], let window = snapshot.windows.first(where: { $0.id == tab.windowID }) else { return }
+        var order = window.tabIDs
+        guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
+        order.swapAt(index, index + offset)
+        do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) }
+        catch { errorMessage = "The tab order could not be changed." }
+    }
+
     public func deleteWindow(_ id: UUID) async {
         guard !shuttingDown, !closingWindowIDs.contains(id),
               let window = snapshot.windows.first(where: { $0.id == id }) else { return }
-        let panes = Set(window.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] })
-        let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
-        guard live.isEmpty || confirmCloseSessions(live.count) else { return }
         closingWindowIDs.insert(id)
         defer { closingWindowIDs.remove(id) }
-        // A modal confirmation runs a nested event loop: a pending launch may
-        // become live while it is displayed. Stop the current set, not the
-        // earlier set counted for the prompt.
+        let panes = Set(window.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] })
+        await closeResources(panes: panes, command: .deleteWindow(id: id))
+        if !snapshot.windows.contains(where: { $0.id == id }) { activity.removeValue(forKey: id) }
+    }
+
+    public func closeTab(_ id: UUID) async {
+        guard !shuttingDown, let tab = snapshot.tabs[id], !closingTabIDs.contains(id),
+              !closingWindowIDs.contains(tab.windowID) else { return }
+        closingTabIDs.insert(id)
+        defer { closingTabIDs.remove(id) }
+        await closeResources(panes: Set(tab.root.paneIDs), command: .deleteTab(id: id))
+        if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
+    }
+
+    private func closeResources(panes: Set<UUID>, command: WorkspaceCommand) async {
+        let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
+        guard live.isEmpty || confirmCloseSessions(live.count) else { return }
+        // Modal dialogs run a nested event loop, so recheck after confirmation.
         panes.compactMap { terminals[$0] }.filter(\.isRunning).forEach { $0.stop() }
-        // A start command can be awaiting the store before its native PTY exists.
-        // Its post-await gate above completes that attempt before deletion.
         while pendingOperations > 0 || panes.contains(where: { terminals[$0]?.isRunning == true }) {
             try? await Task.sleep(for: .milliseconds(10))
         }
         await waitForUpdates()
         guard !shuttingDown else { return }
         do {
-            publish(try await service.execute(.deleteWindow(id: id)).snapshot)
+            publish(try await service.execute(command).snapshot)
             for pane in panes { terminals.removeValue(forKey: pane) }
-            activity.removeValue(forKey: id)
-        } catch { errorMessage = "The window could not be closed." }
+        } catch { errorMessage = "The sessions could not be closed." }
     }
 
     /// Preserve callback order across async store calls, including fast exits.

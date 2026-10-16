@@ -17,6 +17,7 @@ final class PTYProcess: LocalSessionTransport {
     private(set) var pendingInputCount = 0
     private var io: DispatchIO?
     private var monitor: DispatchSourceProcess?
+    private var reapFallback: DispatchSourceTimer?
     private var reapedStatus: Int32?
     private var readEnded = false
     private var ioClosed = true
@@ -25,6 +26,13 @@ final class PTYProcess: LocalSessionTransport {
     private var finalDrainTimer: Timer?
     private var generation = UUID()
     private let queue = DispatchQueue(label: "dev.uterm.pty", qos: .userInitiated)
+    private let processExitNotifications: Bool
+
+    // The fallback must remain sufficient even when the platform notification
+    // path is unavailable. Tests disable that path to verify independent reaping.
+    init(processExitNotifications: Bool = true) {
+        self.processExitNotifications = processExitNotifications
+    }
 
     func launch(_ configuration: ValidatedLocalLaunch, size: TerminalSize) async throws -> Int32 {
         guard !preparing, !isRunning, ioClosed else { throw LocalLaunchError.alreadyStarted }
@@ -54,10 +62,20 @@ final class PTYProcess: LocalSessionTransport {
         io = channel
         channel.setLimit(lowWater: 1)
         channel.setLimit(highWater: 16_384)
-        let exitSource = DispatchSource.makeProcessSource(identifier: child.pid, eventMask: .exit, queue: .main)
-        exitSource.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.reapChild() } }
-        monitor = exitSource
-        exitSource.activate()
+        if processExitNotifications {
+            let exitSource = DispatchSource.makeProcessSource(identifier: child.pid, eventMask: .exit, queue: .main)
+            exitSource.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.reapChild() } }
+            monitor = exitSource
+            exitSource.activate()
+        }
+        // A process-source notification can precede a successful nonblocking
+        // wait, or be deferred across native modal loops. Never make the only
+        // opportunity to reap our child depend on that one notification.
+        let reaper = DispatchSource.makeTimerSource(queue: .main)
+        reaper.schedule(deadline: .now() + .milliseconds(250), repeating: .milliseconds(250), leeway: .milliseconds(50))
+        reaper.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.reapChild() } }
+        reapFallback = reaper
+        reaper.activate()
         readNext()
         reapChild() // also handles a child that exited before the monitor armed
         return child.pid
@@ -137,13 +155,16 @@ final class PTYProcess: LocalSessionTransport {
     private func reapChild() {
         guard isRunning else { return }
         var status: Int32 = 0
-        let result = waitpid(pid, &status, WNOHANG)
-        if result == 0 || (result < 0 && errno == EINTR) { return }
+        var result: pid_t
+        repeat { result = waitpid(pid, &status, WNOHANG) } while result < 0 && errno == EINTR
+        if result == 0 { return }
         guard result == pid else { return }
         isRunning = false
         reapedStatus = status
         monitor?.cancel()
         monitor = nil
+        reapFallback?.cancel()
+        reapFallback = nil
         // A detached descendant can keep a slave open after the owner exits.
         // Allow final data to drain, then release our I/O instead of waiting forever.
         if !readEnded {
@@ -173,6 +194,7 @@ final class PTYProcess: LocalSessionTransport {
     }
 
     isolated deinit {
+        reapFallback?.cancel()
         finalDrainTimer?.invalidate()
         monitor?.cancel()
         io?.close(flags: .stop)
