@@ -2,7 +2,7 @@ import XCTest
 @testable import TrellisCore
 
 final class KeyboardShortcutTests: XCTestCase {
-    func testS017_UT01_rejectShortcutCollision() throws {
+    func testRejectShortcutCollision() throws {
         let previous = ShortcutMap.defaults
         XCTAssertThrowsError(try previous.binding(.newTab, to: KeyChord("d"))) { error in
             XCTAssertEqual(error as? ShortcutIssue, .conflict(KeyChord("d"), [.newTab, .splitLeftRight]))
@@ -68,7 +68,7 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(KeyboardSettings.self, from: future), KeyboardSettings())
     }
 
-    func testS017_UT04_accessibilityStateReflectsSelection() throws {
+    func testAccessibilityStateReflectsSelection() throws {
         let windowA = UUID(), windowB = UUID(), tab1 = UUID(), tab2 = UUID(), tabB = UUID()
         let paneLeft = UUID(), paneRight = UUID(), paneOther = UUID(), paneB = UUID()
         let sessions = (0..<4).map { _ in UUID() }

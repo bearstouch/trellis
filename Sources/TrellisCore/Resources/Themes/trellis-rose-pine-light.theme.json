@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-rose-pine-light",
+  "name": "Rose Pine Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#FAF4ED",
+    "foreground": "#575279",
+    "cursor": "#7B559C",
+    "cursorText": "#FAF4ED",
+    "selectionBackground": "#D8C9D7",
+    "selectionForeground": "#575279",
+    "ansi": [
+      "#EBE3DC",
+      "#AF365B",
+      "#31748F",
+      "#856019",
+      "#28647C",
+      "#7B559C",
+      "#A4496C",
+      "#575279",
+      "#908BA2",
+      "#952E4D",
+      "#2A637A",
+      "#715215",
+      "#225569",
+      "#694885",
+      "#8B3E5C",
+      "#575279"
+    ]
+  },
+  "ui": {
+    "background": "#FAF4ED",
+    "surface": "#F2E9E1",
+    "sidebarBackground": "#EBE3DC",
+    "foreground": "#575279",
+    "mutedForeground": "#645F75",
+    "accent": "#7B559C",
+    "border": "#7F7984",
+    "activeTabBackground": "#D8C9D7",
+    "activeTabForeground": "#575279",
+    "focusRing": "#7B559C",
+    "success": "#2D6B84",
+    "warning": "#7A5817",
+    "error": "#AF365B"
+  }
+}

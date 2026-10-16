@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-dracula-dark",
+  "name": "Dracula Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#282A36",
+    "foreground": "#F8F8F2",
+    "cursor": "#BD93F9",
+    "cursorText": "#282A36",
+    "selectionBackground": "#50466B",
+    "selectionForeground": "#F8F8F2",
+    "ansi": [
+      "#21222C",
+      "#FF5555",
+      "#50FA7B",
+      "#F1FA8C",
+      "#8BE9FD",
+      "#FF79C6",
+      "#BD93F9",
+      "#F8F8F2",
+      "#AFB0B0",
+      "#FF6E6E",
+      "#6AFB8F",
+      "#F3FB9D",
+      "#9CECFD",
+      "#FF8DCF",
+      "#C7A3FA",
+      "#F8F8F2"
+    ]
+  },
+  "ui": {
+    "background": "#282A36",
+    "surface": "#343746",
+    "sidebarBackground": "#21222C",
+    "foreground": "#F8F8F2",
+    "mutedForeground": "#C4C4C3",
+    "accent": "#BD93F9",
+    "border": "#86878B",
+    "activeTabBackground": "#50466B",
+    "activeTabForeground": "#F8F8F2",
+    "focusRing": "#BD93F9",
+    "success": "#50FA7B",
+    "warning": "#F1FA8C",
+    "error": "#FF7B7B"
+  }
+}

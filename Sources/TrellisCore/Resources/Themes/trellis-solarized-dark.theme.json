@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-solarized-dark",
+  "name": "Solarized Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#002B36",
+    "foreground": "#93A1A1",
+    "cursor": "#3BA9A0",
+    "cursorText": "#002B36",
+    "selectionBackground": "#104D53",
+    "selectionForeground": "#ABB6B6",
+    "ansi": [
+      "#00252F",
+      "#DC322F",
+      "#859900",
+      "#B58900",
+      "#268BD2",
+      "#D33682",
+      "#2AA198",
+      "#93A1A1",
+      "#60787C",
+      "#E1514E",
+      "#97A826",
+      "#C09B26",
+      "#479CD9",
+      "#DA5495",
+      "#4AAFA7",
+      "#93A1A1"
+    ]
+  },
+  "ui": {
+    "background": "#002B36",
+    "surface": "#073642",
+    "sidebarBackground": "#00252F",
+    "foreground": "#93A1A1",
+    "mutedForeground": "#8F9FA1",
+    "accent": "#3BA9A0",
+    "border": "#6C8487",
+    "activeTabBackground": "#104D53",
+    "activeTabForeground": "#ABB6B6",
+    "focusRing": "#3BA9A0",
+    "success": "#8FA114",
+    "warning": "#C09B27",
+    "error": "#E87876"
+  }
+}

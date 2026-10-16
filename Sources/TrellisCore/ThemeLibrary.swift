@@ -152,10 +152,7 @@ public actor ThemeLibrary {
         return current
     }
     public func export(_ id: String, resolved: Bool = false) throws -> Data {
-        for appearance in ThemeAppearance.allCases {
-            let builtIn = ResolvedTheme.builtIn(appearance)
-            if id == builtIn.id { return try builtIn.encoded() }
-        }
+        if let builtIn = BundledThemes.theme(id) { return try builtIn.encoded() }
         guard let document = current.documents[id] else { throw ThemeLibraryError.notFound }
         return try document.encoded(resolved: resolved)
     }

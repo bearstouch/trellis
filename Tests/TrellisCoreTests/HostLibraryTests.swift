@@ -3,7 +3,7 @@ import XCTest
 @testable import TrellisCore
 
 final class HostLibraryTests: XCTestCase {
-    func testS018_UT01_validateHostBoundaries() throws {
+    func testValidateHostBoundaries() throws {
         let keys: Set<String> = ["/Users/me/.ssh/id_ed25519"]
         func check(_ draft: HostDraft) -> [HostField: String] {
             do {
@@ -37,7 +37,7 @@ final class HostLibraryTests: XCTestCase {
         XCTAssertTrue(all[.port]!.contains("1 to 65535"))
     }
 
-    func testS018_UT02_searchAcrossMetadata() async throws {
+    func testSearchAcrossMetadata() async throws {
         let library = HostLibrary(storage: MemoryHostStorage())
         let db = try await library.create(HostDraft(name: "Database", destination: "db.internal", tags: "Prod, sql"))
         let api = try await library.create(HostDraft(name: "API", destination: "api.example.com", user: "Deploy", tags: "prod"))
@@ -57,7 +57,7 @@ final class HostLibraryTests: XCTestCase {
         XCTAssertEqual(ids(SavedHost.search(all.reversed(), query: "prod")), [db.id, api.id], "Search keeps the caller's order")
     }
 
-    func testS018_UT03_editDoesNotMutateLiveLaunch() async throws {
+    func testEditDoesNotMutateLiveLaunch() async throws {
         let library = HostLibrary(storage: MemoryHostStorage())
         let host = try await library.create(HostDraft(name: "Prod", destination: "old.example.com", user: "deploy", port: "2222"))
         let store = try WorkspaceStore()
@@ -88,7 +88,7 @@ final class HostLibraryTests: XCTestCase {
         XCTAssertEqual(unchanged, edited)
     }
 
-    func testS018_UT04_deleteDoesNotTouchSshFiles() async throws {
+    func testDeleteDoesNotTouchSshFiles() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-hosts-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let ssh = root.appendingPathComponent("ssh", isDirectory: true), state = root.appendingPathComponent("state", isDirectory: true)

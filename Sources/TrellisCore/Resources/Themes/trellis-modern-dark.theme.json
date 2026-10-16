@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-modern-dark",
+  "name": "Modern Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#1E1E1E",
+    "foreground": "#D4D4D4",
+    "cursor": "#3794FF",
+    "cursorText": "#1E1E1E",
+    "selectionBackground": "#253E5B",
+    "selectionForeground": "#D4D4D4",
+    "ansi": [
+      "#181818",
+      "#CD3131",
+      "#0DBC79",
+      "#E5C07B",
+      "#569CD6",
+      "#C586C0",
+      "#4EC9B0",
+      "#D4D4D4",
+      "#949494",
+      "#D45050",
+      "#31C68D",
+      "#E9C98F",
+      "#6FABDC",
+      "#CE98C9",
+      "#69D1BC",
+      "#D4D4D4"
+    ]
+  },
+  "ui": {
+    "background": "#1E1E1E",
+    "surface": "#252526",
+    "sidebarBackground": "#181818",
+    "foreground": "#D4D4D4",
+    "mutedForeground": "#A6A6A6",
+    "accent": "#3794FF",
+    "border": "#707070",
+    "activeTabBackground": "#253E5B",
+    "activeTabForeground": "#D4D4D4",
+    "focusRing": "#3794FF",
+    "success": "#0DBC79",
+    "warning": "#E5C07B",
+    "error": "#DB6B6B"
+  }
+}

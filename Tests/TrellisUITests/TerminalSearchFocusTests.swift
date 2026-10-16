@@ -13,7 +13,7 @@ final class TerminalSearchFocusTests: XCTestCase {
             contentRect: NSRect(x: 0, y: 0, width: 700, height: 400),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: SearchableTerminalSurface(terminal: terminal, isFocused: true))
+        window.contentView = NSHostingView(rootView: SearchableTerminalSurface(terminal: terminal, isFocused: true, background: .black))
         window.makeKeyAndOrderFront(nil)
         defer { terminal.adapter.detach(); window.close() }
         try await Task.sleep(for: .milliseconds(100))
@@ -47,8 +47,8 @@ final class TerminalSearchFocusTests: XCTestCase {
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(
             rootView: HStack {
-                SearchableTerminalSurface(terminal: a, isFocused: true)
-                SearchableTerminalSurface(terminal: b, isFocused: false)
+                SearchableTerminalSurface(terminal: a, isFocused: true, background: .black)
+                SearchableTerminalSurface(terminal: b, isFocused: false, background: .black)
             })
         window.makeKeyAndOrderFront(nil)
         defer { a.adapter.detach(); b.adapter.detach(); window.close() }

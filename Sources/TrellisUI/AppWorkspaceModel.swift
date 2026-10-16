@@ -40,7 +40,7 @@ public final class AppWorkspaceModel: ObservableObject {
         return appearance.chromeMode
     }
     public var allThemes: [ResolvedTheme] {
-        ThemeAppearance.allCases.map(ResolvedTheme.builtIn) + themeCatalog.documents.values.map { $0.resolved() }.sorted { $0.id < $1.id }
+        BundledThemes.all + themeCatalog.documents.values.map { $0.resolved() }.sorted { $0.id < $1.id }
     }
     public func availableThemes(for slot: ThemeAppearance) -> [ResolvedTheme] { allThemes.filter { $0.appearance == slot } }
     public func systemAppearanceDidChange(isDark: Bool) {
@@ -51,7 +51,7 @@ public final class AppWorkspaceModel: ObservableObject {
     func refreshEffectiveTheme() {
         let slot: ThemeAppearance = appearance.chromeMode.isDark(systemIsDark: systemIsDark) ? .dark : .light
         let id = appearance.themeID(systemIsDark: systemIsDark)
-        let committed = themeCatalog.documents[id]?.resolved() ?? .builtIn(slot)
+        let committed = BundledThemes.theme(id) ?? themeCatalog.documents[id]?.resolved() ?? .builtIn(slot)
         effectiveTheme = previewedTheme?.resolved() ?? committed
         onChromeModeChanged?(effectiveChromeMode)
         for terminal in terminals.values { terminal.applyPalette(effectiveTheme.terminal) }
@@ -67,7 +67,7 @@ public final class AppWorkspaceModel: ObservableObject {
         for slot in ThemeAppearance.allCases {
             let id = slot == .light ? appearance.lightThemeID : appearance.darkThemeID
             let builtIn = ResolvedTheme.builtIn(slot)
-            if id != builtIn.id, themeCatalog.documents[id]?.appearance != slot {
+            if (BundledThemes.theme(id)?.appearance ?? themeCatalog.documents[id]?.appearance) != slot {
                 if slot == .light { appearance.lightThemeID = builtIn.id } else { appearance.darkThemeID = builtIn.id }
                 notices.append("Theme '\(id)' is unavailable. Using \(builtIn.name).")
             }
@@ -136,6 +136,7 @@ public final class AppWorkspaceModel: ObservableObject {
         } catch { themeNotice = error.localizedDescription }
     }
     public func exportTheme(_ id: String, resolved: Bool) async throws -> Data {
+        if let theme = BundledThemes.theme(id) { return try theme.encoded() }
         guard let themeLibrary else { throw ThemeLibraryError.notFound }
         return try await themeLibrary.export(id, resolved: resolved)
     }
@@ -273,7 +274,7 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var backupAvailable = false
     @Published public private(set) var persistenceReadOnly = false
     @Published public internal(set) var unconfiguredPaneIDs = Set<UUID>()
-    /// Sessions that received API input: their late write failures never raise an alert (S024-AC04).
+    /// Sessions that received API input: their late write failures never raise an alert.
     var automationInputSessionIDs = Set<UUID>()
     public private(set) var restoredWindowFrame: String?
     public var onRestoreWindowFrame: ((String) -> Void)?

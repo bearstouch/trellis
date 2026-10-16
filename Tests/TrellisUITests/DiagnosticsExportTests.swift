@@ -6,7 +6,7 @@ import TrellisCore
 
 final class DiagnosticsExportTests: XCTestCase {
     @MainActor
-    func testS030_UT04_diagnosticCancelCreatesNoExport() async throws {
+    func testDiagnosticCancelCreatesNoExport() async throws {
         let h = try Harness()
         defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
         await h.model.createWindow(name: "SECRET-WINDOW", startSession: false)

@@ -5,7 +5,7 @@ import TrellisCore
 @testable import TrellisUI
 
 final class PaneInteractionTests: XCTestCase {
-    func testS008_UT01_rejectInvalidRatios() async throws {
+    func testRejectInvalidRatios() async throws {
         let store = try WorkspaceStore()
         let initial = try await store.execute(.createWindow(name: "Project")).snapshot
         let first = try XCTUnwrap(initial.panes.keys.first)
@@ -27,7 +27,7 @@ final class PaneInteractionTests: XCTestCase {
         XCTAssertEqual(valid.panes, split.panes)
     }
 
-    func testS008_UT02_directionalFocusUsesGeometry() {
+    func testDirectionalFocusUsesGeometry() {
         let left = UUID(), top = UUID(), bottom = UUID()
         let layout = PaneLayout.split(
             id: UUID(), axis: .x, ratio: 0.35,
@@ -47,7 +47,7 @@ final class PaneInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testS008_UT03_maximizeRoundTrip() async throws {
+    func testMaximizeRoundTrip() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
@@ -71,7 +71,7 @@ final class PaneInteractionTests: XCTestCase {
         await model.shutdown()
     }
 
-    func testS008_UT04_closedFocusChoosesSurvivor() async throws {
+    func testClosedFocusChoosesSurvivor() async throws {
         let store = try WorkspaceStore()
         let initial = try await store.execute(.createWindow(name: "First")).snapshot
         let firstWindow = try XCTUnwrap(initial.activeWindowID)

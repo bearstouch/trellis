@@ -2,17 +2,43 @@ import AppKit
 import XCTest
 import TrellisCore
 import TrellisTerminal
+import SwiftTerm
 @testable import TrellisUI
 
 final class AppShellTests: XCTestCase {
-    func testS004_UT01_emptyStateProjection() {
+    @MainActor
+    func testTerminalGridStaysAgainstBottomAcrossResizeAndFontChanges() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        let terminal = try XCTUnwrap(native.view as? TerminalView)
+        let container = TerminalContainerView()
+        container.display(terminal)
+        for fontSize in [13.0, 19.0] {
+            var settings = AppearanceSettings()
+            settings.fontSize = fontSize
+            native.applyAppearance(settings)
+            for height in [401.0, 417.0, 503.0] {
+                container.frame = NSRect(x: 0, y: 0, width: 800, height: height)
+                terminal.frame = container.bounds
+                let rows = terminal.getTerminal().rows
+                container.layout()
+                XCTAssertEqual(terminal.frame.minY, container.bounds.minY)
+                XCTAssertEqual(terminal.frame.height, terminal.getOptimalFrameSize().height, accuracy: 0.002)
+                XCTAssertEqual(terminal.getTerminal().rows, rows)
+                container.layout()
+                XCTAssertEqual(terminal.getTerminal().rows, rows)
+            }
+        }
+    }
+
+    func testEmptyStateProjection() {
         let projection = WorkspacePresentation(snapshot: WorkspaceSnapshot())
         XCTAssertTrue(projection.isEmpty)
         XCTAssertTrue(projection.visibleTabs.isEmpty)
         XCTAssertNil(projection.activePane)
     }
 
-    func testS004_UT02_selectedWindowOwnsTabBar() async throws {
+    func testSelectedWindowOwnsTabBar() async throws {
         let store = try WorkspaceStore()
         let first = try await store.execute(.createWindow(name: "Project"))
         let second = try await store.execute(.createWindow(name: "Operations"))
@@ -24,7 +50,7 @@ final class AppShellTests: XCTestCase {
         XCTAssertFalse(projection.visibleTabs.contains { $0.windowID == second.createdWindowID })
     }
 
-    func testS004_UT03_constrainOffscreenGeometry() {
+    func testConstrainOffscreenGeometry() {
         let display = WindowRectangle(x: 0, y: 0, width: 1440, height: 900)
         let rect = WindowRectangle(x: -3000, y: 4000, width: 1800, height: 1200).constrained(to: [display])
         XCTAssertGreaterThanOrEqual(rect.x, display.x)
@@ -35,7 +61,7 @@ final class AppShellTests: XCTestCase {
         XCTAssertTrue([invalid.x, invalid.y, invalid.width, invalid.height].allSatisfy(\.isFinite))
     }
 
-    func testS004_UT04_smallCanvasRetainsLayout() {
+    func testSmallCanvasRetainsLayout() {
         let a = UUID(), b = UUID(), c = UUID()
         let tree = PaneLayout.split(
             id: UUID(), axis: .x, ratio: 0.25,

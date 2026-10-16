@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-dracula-light",
+  "name": "Dracula Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#F8F7FC",
+    "foreground": "#302D41",
+    "cursor": "#7042B4",
+    "cursorText": "#F8F7FC",
+    "selectionBackground": "#D3C6E9",
+    "selectionForeground": "#302D41",
+    "ansi": [
+      "#E7E4F0",
+      "#BE303B",
+      "#227C45",
+      "#7B6800",
+      "#12768B",
+      "#A52D75",
+      "#7042B4",
+      "#302D41",
+      "#767482",
+      "#A22932",
+      "#1D693B",
+      "#695800",
+      "#0F6476",
+      "#8C2663",
+      "#5F3899",
+      "#302D41"
+    ]
+  },
+  "ui": {
+    "background": "#F8F7FC",
+    "surface": "#EEECF5",
+    "sidebarBackground": "#E7E4F0",
+    "foreground": "#302D41",
+    "mutedForeground": "#626070",
+    "accent": "#7042B4",
+    "border": "#7A7984",
+    "activeTabBackground": "#D3C6E9",
+    "activeTabForeground": "#302D41",
+    "focusRing": "#7042B4",
+    "success": "#1F723F",
+    "warning": "#716000",
+    "error": "#BE303B"
+  }
+}

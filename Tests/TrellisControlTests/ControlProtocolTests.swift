@@ -28,7 +28,7 @@ func appCode(_ response: [String: Any]) -> String? {
 }
 
 final class ControlProtocolTests: XCTestCase {
-    func testS021_UT01_frameAcrossReads() throws {
+    func testFrameAcrossReads() throws {
         let first = #"{"jsonrpc":"2.0","id":1,"method":"session.input","params":{"text":"line one\nline two"}}"#
         let second = #"{"jsonrpc":"2.0","id":"b","method":"system.info"}"#
         let stream = Data((first + "\n" + second + "\r\n" + "{\"partial\":").utf8)
@@ -52,7 +52,7 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(try exact.append(limit).first?.count, ControlFramer.maximumFrame)
     }
 
-    func testS021_UT02_rejectOversizedAndMalformedFrames() async throws {
+    func testRejectOversizedAndMalformedFrames() async throws {
         let handler = CountingHandler()
         let uid = geteuid()
 

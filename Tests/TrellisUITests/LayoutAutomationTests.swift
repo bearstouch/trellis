@@ -30,7 +30,7 @@ final class LayoutAutomationTests: XCTestCase {
 
     private func example() throws -> Any {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        return try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("specs/05-api/example-layout.json")))
+        return try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("docs/api/example-layout.json")))
     }
 
     private func single(_ key: String, launch: [String: Any] = ["kind": "shell"]) -> [String: Any] {
@@ -52,7 +52,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT01_exampleApplyTwiceIsStable() async throws {
+    func testExampleApplyTwiceIsStable() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {
@@ -103,7 +103,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT02_schemaAndSemanticFailuresAreAtomic() async throws {
+    func testSchemaAndSemanticFailuresAreAtomic() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {
@@ -170,7 +170,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT03_stalePlanAndLiveChangesConflict() async throws {
+    func testStalePlanAndLiveChangesConflict() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {
@@ -253,7 +253,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT04_partialLaunchFailureIsReported() async throws {
+    func testPartialLaunchFailureIsReported() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {

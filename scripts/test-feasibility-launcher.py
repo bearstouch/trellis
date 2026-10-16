@@ -85,7 +85,7 @@ def main():
         run("--fixture", "argument with spaces")
         verify()
         assert executable.stat().st_ino != first_inode, "running executable was overwritten in place"
-        assert log.read_text().splitlines() == ["-n", str(destination), "--args", "--fixture", "argument with spaces"]
+        assert log.read_text().splitlines() == [str(destination), "--args", "--fixture", "argument with spaces"]
 
         # A packaging failure must not replace a working, signed installation.
         before = (digest(executable), digest(seal), log.read_bytes())

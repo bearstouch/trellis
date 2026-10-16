@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-gruvbox-light",
+  "name": "Gruvbox Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#FBF1C7",
+    "foreground": "#3C3836",
+    "cursor": "#7C5200",
+    "cursorText": "#FBF1C7",
+    "selectionBackground": "#D9C691",
+    "selectionForeground": "#3C3836",
+    "ansi": [
+      "#EBDBB2",
+      "#B02B22",
+      "#627000",
+      "#875900",
+      "#356F73",
+      "#9C3865",
+      "#427344",
+      "#3C3836",
+      "#7F7969",
+      "#96251D",
+      "#535F00",
+      "#734C00",
+      "#2D5E62",
+      "#853056",
+      "#38623A",
+      "#3C3836"
+    ]
+  },
+  "ui": {
+    "background": "#FBF1C7",
+    "surface": "#F2E5BC",
+    "sidebarBackground": "#EBDBB2",
+    "foreground": "#3C3836",
+    "mutedForeground": "#635E53",
+    "accent": "#7C5200",
+    "border": "#817A68",
+    "activeTabBackground": "#D9C691",
+    "activeTabForeground": "#3C3836",
+    "focusRing": "#7C5200",
+    "success": "#5A6700",
+    "warning": "#7C5200",
+    "error": "#B02B22"
+  }
+}

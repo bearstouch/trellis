@@ -4,7 +4,7 @@ import TrellisCore
 @testable import TrellisUI
 
 final class WindowManagementTests: XCTestCase {
-    func testS005_UT01_createInitialHierarchy() async throws {
+    func testCreateInitialHierarchy() async throws {
         let store = try WorkspaceStore()
         let result = try await store.execute(.createWindow(name: "Project"))
         let state = result.snapshot
@@ -17,7 +17,7 @@ final class WindowManagementTests: XCTestCase {
         try state.validate()
     }
 
-    func testS005_UT02_switchRestoresSelection() async throws {
+    func testSwitchRestoresSelection() async throws {
         let store = try WorkspaceStore()
         let first = try await store.execute(.createWindow(name: "One"))
         let second = try await store.execute(.createWindow(name: "Two"))
@@ -55,7 +55,7 @@ final class WindowManagementTests: XCTestCase {
         XCTAssertEqual(WorkspacePresentation(snapshot: back).activePane?.id, expectedTab.activePaneID)
     }
 
-    func testS005_UT03_reorderIsPermutation() async throws {
+    func testReorderIsPermutation() async throws {
         let store = try WorkspaceStore()
         _ = try await store.execute(.createWindow(name: "One"))
         let before = try await store.execute(.createWindow(name: "Two")).snapshot
@@ -71,7 +71,7 @@ final class WindowManagementTests: XCTestCase {
     }
 
     @MainActor
-    func testS005_UT04_inactiveOutputDoesNotSelect() async throws {
+    func testInactiveOutputDoesNotSelect() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.

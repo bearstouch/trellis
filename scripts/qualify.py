@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release-build qualification for S031 (NFR-P01..P07, NFR-R01).
+"""Release-build qualification: launch, latency, capacity, memory, flood, and cleanup targets.
 
 Runs the release app on isolated temporary state directories, drives it over
 the real control socket with a seeded test grant, and writes a Markdown report.
@@ -164,7 +164,7 @@ def first_pane(client, window_id):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="shorter runs for smoke testing (not a qualification)")
-    parser.add_argument("--report", default=os.path.join(ROOT, "docs/evidence/S031-qualification-results.md"))
+    parser.add_argument("--report", default=os.path.join(ROOT, ".build/qualification-results.md"))
     args = parser.parse_args()
     launches, idle_seconds, flood_seconds = (5, 10, 10) if args.quick else (20, 60, 60)
 
@@ -172,7 +172,7 @@ def main():
     binary = os.path.join(sh("swift", "build", "-c", "release", "--show-bin-path"), "Trellis")
     results, notes = {}, []
 
-    # NFR-P01: cold launch to a responding app (the window is ordered front before the socket starts).
+    # cold launch to a responding app (the window is ordered front before the socket starts).
     samples = []
     for _ in range(launches):
         app = App(binary)
@@ -195,7 +195,7 @@ def main():
         for window in c.result("window.list")["windows"]:
             c.result("window.close", {"id": window["id"], "allowRunning": True})
 
-        # NFR-P06: 10 idle panes (cat waiting for input, no output, no blinking).
+        # 10 idle panes (cat waiting for input, no output, no blinking).
         windows = []
         for index in range(10):
             created = c.result("window.create", {"name": f"Q{index}"})
@@ -208,7 +208,7 @@ def main():
         results["idle_rss_mib"] = round(app.rss_mib(), 1)
         results["idle_children_rss_mib"] = round(app.children_rss_mib(), 1)
 
-        # NFR-P04: 10 windows, 50 tabs, 100 sessions.
+        # 10 windows, 50 tabs, 100 sessions.
         for window in windows:
             for _ in range(4):
                 tab = c.result("tab.create", {"windowId": window})
@@ -235,7 +235,7 @@ def main():
         results["capacity_rss_mib"] = round(app.rss_mib(), 1)
         results["capacity_children_rss_mib"] = round(app.children_rss_mib(), 1)
 
-        # NFR-P03 proxy: focus round trips across 50 tabs with 100 live panes.
+        # Proxy: focus round trips across 50 tabs with 100 live panes.
         switch = []
         for index in range(200):
             begin = time.perf_counter()
@@ -243,7 +243,7 @@ def main():
             switch.append((time.perf_counter() - begin) * 1000)
         results["switch_proxy_ms"] = p95(switch)
 
-        # NFR-P02 proxy: one byte to a cat pane until the PTY echo reaches the app.
+        # Proxy: one byte to a cat pane until the PTY echo reaches the app.
         echo_pane = panes[0]
         echo_session = c.result("session.get", {"id": c.result("tab.get", {"id": tabs[0]["id"]})["layout"]["children"][0]["sessionId"]})["id"]
         cursor = c.result("session.readOutput", {"id": echo_session, "view": "stream"})["nextCursor"]
@@ -262,7 +262,7 @@ def main():
             echo.append((time.perf_counter() - begin) * 1000)
         results["echo_proxy_ms"] = p95(echo)
 
-        # NFR-P07 / NFR-P05: 10 MiB/s for the flood period in one pane, navigation sampled meanwhile.
+        # 10 MiB/s for the flood period in one pane, navigation sampled meanwhile.
         # Free one window (10 panes) for the flood; 90 live panes remain.
         c.result("window.close", {"id": windows[-1], "allowRunning": True})
         tabs = [t for t in tabs if t["windowId"] != windows[-1]]
@@ -304,7 +304,7 @@ def main():
             "achieved_mib_per_s": rate,
         }
 
-        # NFR-R01: 100 create/close cycles leave no descriptors or children behind.
+        # 100 create/close cycles leave no descriptors or children behind.
         for window in [w["id"] for w in c.result("window.list")["windows"]]:
             c.call("window.close", {"id": window, "allowRunning": True})
         time.sleep(3)
@@ -357,7 +357,7 @@ def write_report(args, results, notes):
     flood_rate = ("not measured" if rate is None else
                   f"{rate} MiB/s over {r['flood']['seconds']} s — {'meets' if rate >= 9.9 else 'MISSES'} 10 MiB/s")
     lines = [
-        "# S031 qualification results", "",
+        "# Qualification results", "",
         f"Generated {datetime.datetime.now().isoformat(timespec='seconds')} by `scripts/qualify.py{' --quick' if args.quick else ''}` on commit `{commit}`.",
         "Release build, launched directly (no debugger) on isolated temporary state directories with a seeded test grant.", "",
         "## Environment", "",
@@ -366,20 +366,20 @@ def write_report(args, results, notes):
         "- Conditions: an interactive desktop session with other applications open; warm OS file cache after the first launch.", "",
         "## Results", "",
         "| Requirement | Measurement | Result |", "| --- | --- | --- |",
-        f"| NFR-P01 cold launch ≤2 s p95 | exec → control API answering with the startup workspace window created (no frame-presentation timestamp) | {verdict(r['launch_ms'], 2000)} |",
-        f"| NFR-P02 typing echo ≤50 ms p95 | **proxy**: API sendInput → PTY echo received by the app (excludes frame rendering) | {verdict(r['echo_proxy_ms'], 50)} |",
-        f"| NFR-P03 switch ≤100 ms p95 @ 50 live panes | **proxy**: `tab.focus` round trip with 100 live panes (excludes frame rendering) | {verdict(r['switch_proxy_ms'], 100)} |",
-        f"| NFR-P04 10 windows / 50 tabs / 100 sessions | API-built workspace | {r['capacity']} |",
-        f"| NFR-P06 memory ≤300 MiB, 10 idle panes | app RSS (children separate) | {r['idle_rss_mib']} MiB app; children {r['idle_children_rss_mib']} MiB — {'meets' if r['idle_rss_mib'] <= 300 else 'MISSES'} |",
-        f"| NFR-P06 idle CPU <2% of a core | CPU time over the idle window | {r['idle_cpu_percent']}% — {'meets' if r['idle_cpu_percent'] < 2 else 'MISSES'} |",
-        f"| NFR-P04 memory at capacity | app RSS / children with 100 sessions | {r['capacity_rss_mib']} MiB / {r['capacity_children_rss_mib']} MiB |",
-        f"| NFR-P07 flood 10 MiB/s | achieved rate (bytes the app consumed from the PTY) | {flood_rate} |",
-        f"| NFR-P07 navigation during flood | **proxy**: `tab.focus` round trip, alternating into the flooding tab | {verdict(r['flood']['switch_proxy_ms'], 100)}; max RSS {r['flood']['rss_mib_max']} MiB; journal eviction reported: {r['flood']['journal_gap_reported']} |",
-        f"| NFR-R01 100 create/close cycles | app descriptors (numeric fds) and children before → after; spawned PIDs still alive | fds {r['cleanup']['descriptors_before']} → {r['cleanup']['descriptors_after']}; children {r['cleanup']['children_before']} → {r['cleanup']['children_after']}; {r['cleanup']['live_children_spawned']} live children spawned, {r['cleanup']['spawned_still_alive']} still alive |",
+        f"| cold launch ≤2 s p95 | exec → control API answering with the startup workspace window created (no frame-presentation timestamp) | {verdict(r['launch_ms'], 2000)} |",
+        f"| typing echo ≤50 ms p95 | **proxy**: API sendInput → PTY echo received by the app (excludes frame rendering) | {verdict(r['echo_proxy_ms'], 50)} |",
+        f"| switch ≤100 ms p95 @ 50 live panes | **proxy**: `tab.focus` round trip with 100 live panes (excludes frame rendering) | {verdict(r['switch_proxy_ms'], 100)} |",
+        f"| 10 windows / 50 tabs / 100 sessions | API-built workspace | {r['capacity']} |",
+        f"| memory ≤300 MiB, 10 idle panes | app RSS (children separate) | {r['idle_rss_mib']} MiB app; children {r['idle_children_rss_mib']} MiB — {'meets' if r['idle_rss_mib'] <= 300 else 'MISSES'} |",
+        f"| idle CPU <2% of a core | CPU time over the idle window | {r['idle_cpu_percent']}% — {'meets' if r['idle_cpu_percent'] < 2 else 'MISSES'} |",
+        f"| memory at capacity | app RSS / children with 100 sessions | {r['capacity_rss_mib']} MiB / {r['capacity_children_rss_mib']} MiB |",
+        f"| flood 10 MiB/s | achieved rate (bytes the app consumed from the PTY) | {flood_rate} |",
+        f"| navigation during flood | **proxy**: `tab.focus` round trip, alternating into the flooding tab | {verdict(r['flood']['switch_proxy_ms'], 100)}; max RSS {r['flood']['rss_mib_max']} MiB; journal eviction reported: {r['flood']['journal_gap_reported']} |",
+        f"| 100 create/close cycles | app descriptors (numeric fds) and children before → after; spawned PIDs still alive | fds {r['cleanup']['descriptors_before']} → {r['cleanup']['descriptors_after']}; children {r['cleanup']['children_before']} → {r['cleanup']['children_after']}; {r['cleanup']['live_children_spawned']} live children spawned, {r['cleanup']['spawned_still_alive']} still alive |",
         "",
         "## Limitations", "",
-        "- Echo and switching are measured through the control API. They include PTY, parsing, model, and IPC time but not window-server frame presentation; NFR-P02/P03 UI targets still need an instrumented UI run.",
-        "- One machine only. The reference matrix (older macOS, Intel, displays) remains open in S001/S032.",
+        "- Echo and switching are measured through the control API. They include PTY, parsing, model, and IPC time but not window-server frame presentation; the typing and switching UI targets still need an instrumented UI run.",
+        "- One machine only. The reference matrix (older macOS, Intel, displays) remains open.",
     ]
     if args.quick:
         lines.append("- `--quick` run: shortened windows and sample counts. Not a qualification result.")

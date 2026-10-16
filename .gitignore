@@ -5,3 +5,5 @@ DerivedData/
 dist/
 *.xcuserstate
 xcuserdata/
+site/
+.venv-docs/

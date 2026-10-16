@@ -1524,7 +1524,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         super.flagsChanged(with: event)
     }
     
-    public override func mouseExited(with event: NSEvent) {
+    open override func mouseExited(with event: NSEvent) {
         turnOffUrlPreview()
         if linkHighlightMode == .hover || linkHighlightMode == .hoverWithModifier {
             let oldRange = linkHighlightRange
@@ -3190,7 +3190,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         didSet { scrollSensitivity = max(0.05, scrollSensitivity) }
     }
 
-    public override func scrollWheel(with event: NSEvent) {
+    open override func scrollWheel(with event: NSEvent) {
         // Preserves the previous `deltaY == 0` early exit, restated against the
         // delta this method now reads. Without it a zero delta would fall into
         // the non-precise branch below and be turned into a spurious -1 line.

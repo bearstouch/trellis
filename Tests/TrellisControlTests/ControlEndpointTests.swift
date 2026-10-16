@@ -24,7 +24,7 @@ final class ControlEndpointTests: XCTestCase {
         return info.st_mode & 0o777
     }
 
-    func testS021_UT03_rejectUnsafeEndpoint() async throws {
+    func testRejectUnsafeEndpoint() async throws {
         let uid = geteuid()
         let server = ControlServer(endpoint: ControlEndpoint(stateDirectory: state, runtimeRoot: runtime), handler: CountingHandler())
         let discovery = try server.start()
@@ -58,7 +58,7 @@ final class ControlEndpointTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: link), discovery.socketPath)
     }
 
-    func testS021_UT04_discoveryContainsNoSecret() throws {
+    func testDiscoveryContainsNoSecret() throws {
         let endpoint = ControlEndpoint(stateDirectory: state, runtimeRoot: runtime)
         let server = ControlServer(endpoint: endpoint, handler: CountingHandler())
         let discovery = try server.start()

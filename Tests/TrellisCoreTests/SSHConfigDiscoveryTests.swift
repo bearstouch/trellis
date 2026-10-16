@@ -2,7 +2,7 @@ import XCTest
 @testable import TrellisCore
 
 final class SSHConfigDiscoveryTests: XCTestCase {
-    func testS019_UT01_discoverLiteralAliases() {
+    func testDiscoverLiteralAliases() {
         let config = """
             # Personal hosts
               Host prod-api  prod-db   # two aliases
@@ -20,7 +20,7 @@ final class SSHConfigDiscoveryTests: XCTestCase {
         XCTAssertEqual(result.warnings, [])
     }
 
-    func testS019_UT02_skipPatternsAndMatch() throws {
+    func testSkipPatternsAndMatch() throws {
         let marker = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-match-exec-\(UUID().uuidString)")
         let config = """
             Host *
@@ -42,7 +42,7 @@ final class SSHConfigDiscoveryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
     }
 
-    func testS019_UT03_includeHasExplicitLimitation() {
+    func testIncludeHasExplicitLimitation() {
         let result = SSHConfigDiscovery.parse("Include ~/.ssh/config.d/*\nHost local-only\n")
         XCTAssertEqual(result.aliases.map(\.name), ["local-only"])
         XCTAssertEqual(result.warnings, [.include(line: 1, pattern: "~/.ssh/config.d/*")])
@@ -50,7 +50,7 @@ final class SSHConfigDiscoveryTests: XCTestCase {
         XCTAssertTrue(result.warnings[0].description.contains("manually"))
     }
 
-    func testS019_UT04_unreadableConfigIsNonDestructive() async throws {
+    func testUnreadableConfigIsNonDestructive() async throws {
         let storage = MemoryHostStorage()
         let library = HostLibrary(storage: storage)
         let existing = try await library.create(HostDraft(name: "Prod", destination: "prod"))

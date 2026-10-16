@@ -54,7 +54,7 @@ if [ -e "$destination" ]; then
 fi
 mv "$bundle" "$destination"
 if [ "$launch" = true ]; then
-    open -n "$destination" --args "$@"
+    open "$destination" --args "$@"
 else
     printf 'Built and verified: %s\n' "$destination"
 fi

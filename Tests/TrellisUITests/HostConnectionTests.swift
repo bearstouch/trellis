@@ -45,7 +45,7 @@ final class HostConnectionTests: XCTestCase {
     }
 
     @MainActor
-    func testS020_UT03_connectCreatesIndependentSession() async throws {
+    func testConnectCreatesIndependentSession() async throws {
         let fake = try fakeSSH(exitCode: nil)
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod", user: "deploy", port: "2222").validated { _ in false }, revision: 3)
         let model = try await makeModel(host: host, ssh: fake.path)
@@ -89,7 +89,7 @@ final class HostConnectionTests: XCTestCase {
     }
 
     @MainActor
-    func testS020_UT04_failedConnectionDoesNotRetry() async throws {
+    func testFailedConnectionDoesNotRetry() async throws {
         let fake = try fakeSSH(exitCode: 255)
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Down", destination: "down").validated { _ in false }, revision: 1)
         let model = try await makeModel(host: host, ssh: fake.path)

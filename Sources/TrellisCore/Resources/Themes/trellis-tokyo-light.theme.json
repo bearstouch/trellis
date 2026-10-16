@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-tokyo-light",
+  "name": "Tokyo Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#F3F4FA",
+    "foreground": "#343B58",
+    "cursor": "#3458AD",
+    "cursorText": "#F3F4FA",
+    "selectionBackground": "#BFCAE5",
+    "selectionForeground": "#343B58",
+    "ansi": [
+      "#E0E4F0",
+      "#B32B50",
+      "#466D20",
+      "#866013",
+      "#3458AD",
+      "#784AB4",
+      "#007D94",
+      "#343B58",
+      "#777C91",
+      "#982544",
+      "#3C5D1B",
+      "#725210",
+      "#2C4B93",
+      "#663F99",
+      "#006A7E",
+      "#343B58"
+    ]
+  },
+  "ui": {
+    "background": "#F3F4FA",
+    "surface": "#E9ECF5",
+    "sidebarBackground": "#E0E4F0",
+    "foreground": "#343B58",
+    "mutedForeground": "#5C6176",
+    "accent": "#3458AD",
+    "border": "#797D8A",
+    "activeTabBackground": "#BFCAE5",
+    "activeTabForeground": "#343B58",
+    "focusRing": "#3458AD",
+    "success": "#466D20",
+    "warning": "#7B5811",
+    "error": "#B32B50"
+  }
+}

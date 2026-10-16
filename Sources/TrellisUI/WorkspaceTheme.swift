@@ -9,8 +9,8 @@ extension Color {
     }
 }
 extension AppWorkspaceModel {
-    // Built-in themes retain the native chrome. Imported/previewed JSON themes
-    // own their entire palette, even when their colors resemble a built-in.
+    // The original Trellis defaults retain native chrome. Bundled editor palettes
+    // and imported/previewed JSON themes own their entire palette.
     var usesNativeChrome: Bool {
         previewedTheme == nil && effectiveTheme == .builtIn(effectiveTheme.appearance)
     }

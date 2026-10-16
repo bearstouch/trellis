@@ -92,7 +92,7 @@ final class GrantAuthorizationTests: XCTestCase {
 
     private func code(_ response: [String: Any]) -> String? { response["result"] != nil ? "OK" : appCode(response) ?? "\((response["error"] as? [String: Any])?["code"] ?? "")" }
 
-    func testS022_UT01_denyBeforeAuthentication() async throws {
+    func testDenyBeforeAuthentication() async throws {
         let (_, token) = try await store.create(name: "CI", capabilities: Set(Capability.allCases), windowScope: .all, hostScope: .all, lifetime: 3600)
         let session = ControlSession(peerUID: geteuid(), handler: handler)
         let probes: [(String, [String: JSONValue])] = [
@@ -123,7 +123,7 @@ final class GrantAuthorizationTests: XCTestCase {
         XCTAssertEqual(domain.executed, ["window.list"])
     }
 
-    func testS022_UT02_scopeAndCapabilityMatrix() async throws {
+    func testScopeAndCapabilityMatrix() async throws {
         let d = domain
         let (layoutGrant, layoutToken) = try await store.create(
             name: "Layout", capabilities: [.metadataRead, .layoutWrite], windowScope: .windows([d.windowA]), hostScope: .approved([]), lifetime: 3600)
@@ -237,7 +237,7 @@ final class GrantAuthorizationTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), text, "The unreadable file is left untouched")
     }
 
-    func testS022_UT03_expiryAndRevocationStopAccess() async throws {
+    func testExpiryAndRevocationStopAccess() async throws {
         let (expiring, expiringToken) = try await store.create(name: "Short", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 120)
         let session = ControlSession(peerUID: geteuid(), handler: handler)
         _ = try await authenticate(session, token: expiringToken)
@@ -285,7 +285,7 @@ final class GrantAuthorizationTests: XCTestCase {
         XCTAssertEqual(remainder, Data(), "The connection was closed by the server")
     }
 
-    func testS022_UT04_hostRevisionInvalidatesApproval() async throws {
+    func testHostRevisionInvalidatesApproval() async throws {
         let valid = try HostDraft(name: "Prod", destination: "prod").validated { _ in false }
         var host = SavedHost(id: UUID(), draft: valid, revision: 3)
         let other = SavedHost(id: UUID(), draft: try HostDraft(name: "Other", destination: "other").validated { _ in false }, revision: 1)

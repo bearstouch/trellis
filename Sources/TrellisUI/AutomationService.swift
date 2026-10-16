@@ -236,7 +236,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         }
     }
 
-    // MARK: - Sessions (S024)
+    // MARK: - Sessions
 
     /// Exact decoded bytes accepted per input or execute call.
     static let inputLimit = 65_536
@@ -434,7 +434,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         return launchResult(paneID, access)
     }
 
-    // MARK: - Output (S025)
+    // MARK: - Output
 
     static let defaultReadBytes = 65_536, maximumReadBytes = 262_144
 
@@ -495,7 +495,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
     private static let invalidCursor = ControlError.application(
         "INVALID_CURSOR", "This cursor belongs to another session, a restarted session, or another app instance. Read again without a cursor.")
 
-    // MARK: - Declarative layouts (S026)
+    // MARK: - Declarative layouts
 
     @MainActor private func parsedLayout(_ p: Params) throws -> LayoutDocument {
         switch LayoutJSON.parse(p.object["document"]) {
@@ -648,7 +648,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         return .object(["document": document, "redacted": .bool(redacted), "importable": .bool(!redacted)])
     }
 
-    // MARK: - Themes (S029)
+    // MARK: - Themes
 
     @MainActor private func themeSummary(_ theme: ResolvedTheme) -> JSONValue {
         var slots: [JSONValue] = []

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-tokyo-dark",
+  "name": "Tokyo Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#1A1B26",
+    "foreground": "#C0CAF5",
+    "cursor": "#7AA2F7",
+    "cursorText": "#1A1B26",
+    "selectionBackground": "#343F5E",
+    "selectionForeground": "#C0CAF5",
+    "ansi": [
+      "#16161E",
+      "#F7768E",
+      "#9ECE6A",
+      "#E0AF68",
+      "#7AA2F7",
+      "#BB9AF7",
+      "#7DCFFF",
+      "#C0CAF5",
+      "#868DAD",
+      "#F88B9F",
+      "#ADD580",
+      "#E5BB7F",
+      "#8EB0F8",
+      "#C5A9F8",
+      "#90D6FF",
+      "#C0CAF5"
+    ]
+  },
+  "ui": {
+    "background": "#1A1B26",
+    "surface": "#24283B",
+    "sidebarBackground": "#16161E",
+    "foreground": "#C0CAF5",
+    "mutedForeground": "#969EC1",
+    "accent": "#7AA2F7",
+    "border": "#71768D",
+    "activeTabBackground": "#343F5E",
+    "activeTabForeground": "#C0CAF5",
+    "focusRing": "#7AA2F7",
+    "success": "#9ECE6A",
+    "warning": "#E0AF68",
+    "error": "#F7768E"
+  }
+}

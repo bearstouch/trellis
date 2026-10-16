@@ -155,11 +155,9 @@ public struct ReleaseChecklist: Equatable, Sendable {
     public var gatekeeperOnCleanMachine = false
     public var licensesRecorded = false
     public var cliInstallVerified = false
-    /// Story IDs whose acceptance evidence is complete.
-    public var completedStories: Set<String> = []
+    public var acceptanceChecksComplete = false
+    public var qualificationPassed = false
     public init() {}
-
-    public static let requiredStories: [String] = (1...31).map { String(format: "S%03d", $0) }
 
     /// Each missing item, in a stable order; empty means ready.
     public func missing(requiredArchitectures: [String], minimumMacOS: String) -> [String] {
@@ -174,11 +172,11 @@ public struct ReleaseChecklist: Equatable, Sendable {
         }
         for (done, item) in [
             (signatureVerified, "Signature verification"), (hardenedRuntime, "Hardened runtime"), (notarized, "Notarization"), (stapled, "Stapled ticket"),
-            (gatekeeperOnCleanMachine, "Gatekeeper check on a clean machine"), (licensesRecorded, "Dependency licenses"), (cliInstallVerified, "CLI link install/remove")
+            (gatekeeperOnCleanMachine, "Gatekeeper check on a clean machine"), (licensesRecorded, "Dependency licenses"), (cliInstallVerified, "CLI link install/remove"),
+            (acceptanceChecksComplete, "Acceptance checks"), (qualificationPassed, "Performance and reliability qualification")
         ] where !done {
             missing.append("\(item) is not evidenced.")
         }
-        for story in Self.requiredStories where !completedStories.contains(story) { missing.append("\(story) acceptance evidence is incomplete.") }
         return missing
     }
 }

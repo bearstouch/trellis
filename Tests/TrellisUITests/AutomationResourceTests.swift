@@ -114,7 +114,7 @@ func errorCode(_ response: [String: Any]) -> String? {
 
 final class AutomationResourceTests: XCTestCase {
     @MainActor
-    func testS023_UT01_apiCreatesStoppedHierarchy() async throws {
+    func testApiCreatesStoppedHierarchy() async throws {
         let h = try Harness()
         try await h.grant("full")
         let window = try result(try await h.call("window.create", ["name": "Project"]))
@@ -147,7 +147,7 @@ final class AutomationResourceTests: XCTestCase {
     }
 
     @MainActor
-    func testS023_UT02_staleMutationHasNoEffects() async throws {
+    func testStaleMutationHasNoEffects() async throws {
         let h = try Harness()
         try await h.grant("full")
         let created = try result(try await h.call("window.create", ["name": "One"]))
@@ -173,7 +173,7 @@ final class AutomationResourceTests: XCTestCase {
     }
 
     @MainActor
-    func testS023_UT03_idempotencyKeyScopeAndExpiry() async throws {
+    func testIdempotencyKeyScopeAndExpiry() async throws {
         let h = try Harness()
         try await h.grant("full")
         try await h.grant("other")
@@ -206,7 +206,7 @@ final class AutomationResourceTests: XCTestCase {
     }
 
     @MainActor
-    func testS023_UT04_apiUiDomainEquivalence() async throws {
+    func testApiUiDomainEquivalence() async throws {
         // UI path.
         let ui = try Harness()
         await ui.model.createWindow(name: "Project", startSession: false)

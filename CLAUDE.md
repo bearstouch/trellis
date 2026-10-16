@@ -6,14 +6,15 @@ Guidance for Claude Code working in this repository.
 
 **Trellis** (formerly uTerm) is a native Swift terminal for macOS: light "Native calm" chrome,
 dark terminal panes, Monaco font, managed windows in a left sidebar, per-window renameable tabs,
-and nested splits. Saved SSH hosts and a local CLI/automation API are planned.
+and nested splits, plus saved SSH hosts and a local CLI/automation API. The MVP is implemented;
+remaining qualification work is tracked in `docs/overview/status.md`.
 
-- Behavior contract: `specs/` (overview, architecture, functional/non-functional requirements,
-  API, integrations, macOS support). The specs win over assumptions; if a spec is ambiguous,
-  resolve it in both the spec and the affected story — never invent conflicting behavior.
-- Delivery plan: `specs/00-stories/NNN-*.md` (32 P0 stories) and the progress table in
-  `specs/00-stories/README.md`.
-- Per-story evidence: `docs/evidence/SNNN-*.md`.
+- Behavior contract: `docs/` (MkDocs site, nav in `mkdocs.yml`): overview, architecture,
+  features, automation API/CLI, integrations, macOS support, development rules. The docs win over
+  assumptions; if a page is ambiguous, resolve it in the page — never invent conflicting behavior.
+  Requirement IDs (`FR-`, `API-`, `INT-`, `MAC-`) are stable. Backlog: `docs/project/roadmap.md`.
+- Contract fixtures read by tests:
+  `docs/api/example-layout.json`, `docs/themes/*.json` (must match bundled theme copies).
 
 ## Toolchain and commands
 
@@ -23,7 +24,6 @@ Requires Xcode 26 / Swift 6.2 (Swift 6 language mode, strict concurrency), macOS
 swift build                                    # build (must be warning-free)
 swift test                                     # full XCTest suite (~190 tests, ~20s)
 swift test --filter TrellisUITests.TabManagementTests   # one test class
-swift test --filter 'S017_UT'                  # one story's named tests
 swift format -i -r Sources Tests               # format (config: .swift-format)
 swift format lint --strict -r Sources Tests    # lint: must print nothing
 swift run Trellis                              # run the app
@@ -31,7 +31,7 @@ swift run Trellis --fixture                    # isolated fixed-shell demo works
 swift run Trellis --state-directory /abs/path  # separate dev workspace + theme library
 scripts/run-feasibility.sh [--build-only]      # assemble, ad-hoc sign, verify (and open) .app
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"
-python3 scripts/qualify.py [--quick]        # S031 release qualification (~5 min, opens isolated app windows)
+python3 scripts/qualify.py [--quick]        # release qualification (~5 min, opens isolated app windows; report in .build/)
 scripts/package-release.sh                  # Universal 2 DMG; ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE
 ```
 
@@ -81,31 +81,30 @@ change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `Tre
   `;`-joined trivial statements are normal here. Comments are sparse and explain *why*.
 - `public` APIs across module boundaries; `Sendable`/`Equatable` value types in Core.
 - `@MainActor` for UI and terminal-facing classes; actors for stores/persistence/library.
-- Error codes are SCREAMING_SNAKE strings (e.g. `CONFIRMATION_REQUIRED`) shared with the API spec.
+- Error codes are SCREAMING_SNAKE strings (e.g. `CONFIRMATION_REQUIRED`) shared with the API docs (`docs/api/errors.md`).
 - Keep accessibility in mind for every view: labels, roles, selected state, text not color-only.
 
 ## Tests
 
-- XCTest, one class per area. Story test names follow `testSNNN_UTnn_camelCaseName`
-  (e.g. `testS015_UT01_minimalThemeInheritsDefaults`); the four named unit tests from each story
-  file must exist with those IDs. Review-driven extras go in `*ReviewTests.swift`.
+- XCTest, one class per area. Use descriptive test names; keep existing names stable.
+  Review-driven extras go in `*ReviewTests.swift`.
 - Assert observable behavior and failure safety (previous state retained on error).
 - Integration tests may spawn real PTYs; keep them isolated (temp dirs, `--state-directory`).
 
-## Story workflow (one story at a time, in order)
+## Change workflow (see `docs/development/workflow.md`)
 
-1. Read the story file, its dependencies, and the referenced spec sections.
-2. Set the story `Status:` to In progress; implement with the four named unit tests plus any
-   needed extra tests.
+1. Read the relevant docs pages. For behavior changes or new (P1/P2) features, update the
+   contract page first or alongside the code, adding new requirement IDs with acceptance checks.
+2. Implement with tests (observable behavior + failure safety).
 3. Format, lint, build, test — all clean.
-4. Launch an independent review agent (fresh eyes; correctness, acceptance-criteria gaps,
-   security, data loss, races, leaks, regressions, test gaps). It fixes crucial issues, then
-   formats, lints, builds and tests again.
-5. Record evidence in `docs/evidence/SNNN-<slug>.md` (behavior, review findings/fixes, test
-   counts, what was verified natively, and what remains pending). Update the story status, the
-   progress table in `specs/00-stories/README.md`, and `README.md` if user-visible.
-6. Commit on `master` (repo convention), one commit per story:
-   `feat(SNNN): <concise description>`; fixes use `fix(SNNN): …`.
+4. Launch an independent review agent (fresh eyes; correctness, acceptance gaps, security, data
+   loss, races, leaks, regressions, test gaps). It fixes crucial issues, then formats, lints,
+   builds and tests again.
+5. Record what was verified and what remains pending (in the PR/commit). Closing a pending check
+   or changing a known limit updates `docs/overview/status.md`. Update `README.md` /
+   `CHANGELOG.md` if user-visible.
+6. Commit on `master` (repo convention) with Conventional Commits: `feat(<scope>): …` / `fix(<scope>): …`, using a module or
+   area as scope.
 
 Honesty rules: acceptance checkboxes stay unchecked unless actually observed. Manual checks that
 cannot be performed here (VoiceOver, real IME, keyboard layouts, older macOS/Intel, notarization)

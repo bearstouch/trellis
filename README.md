@@ -4,7 +4,7 @@
 
 A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal panes, Monaco, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
-> **Status:** pre-release. All 32 MVP stories (S001–S032) are implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See the [story plan](specs/00-stories/README.md), the per-story [evidence](docs/evidence/), and the [changelog](CHANGELOG.md) (current version: 0.9.0).
+> **Status:** pre-release. The MVP feature set is implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See [status and known limits](docs/overview/status.md) and the [changelog](CHANGELOG.md) (current version: 0.9.0).
 
 ## Features
 
@@ -59,7 +59,6 @@ You don't need an Apple Developer account, Homebrew packages, or a package manag
 swift build                                   # build (must stay warning-free)
 swift test                                    # full XCTest suite, about 20 s
 swift test --filter TrellisUITests.TabManagementTests   # one test class
-swift test --filter 'S017_UT'                 # one story's named tests
 swift format -i -r Sources Tests              # format in place
 swift format lint --strict -r Sources Tests   # lint: must print nothing
 ```
@@ -95,7 +94,7 @@ An ordinary new workspace starts a login shell. Use Quit to close live sessions 
    swift run trellis-cli                      # prints the available nouns
    ```
 
-The packaged app ships this binary as `trellis` (see the [release guide](docs/release/README.md)). The protocol is specified in [`specs/05-api`](specs/05-api/README.md).
+The packaged app ships this binary as `trellis` (see the [release guide](docs/release/README.md)). The protocol is documented in [`docs/api`](docs/api/index.md).
 
 ### Other scripts
 
@@ -127,8 +126,7 @@ Sources/
   TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)
 Tests/               one XCTest target per module
 ThirdParty/SwiftTerm vendored SwiftTerm 1.20.0 + recorded patches
-specs/               behavior contract and story plan
-docs/evidence/       per-story verification records
+docs/                documentation site (behavior contract, architecture, API, contributor guide)
 docs/release/        packaging, install, upgrade and uninstall guide
 Design/AppIcon/      icon sources
 scripts/             launcher, qualification, packaging, icon tooling
@@ -140,13 +138,32 @@ Architecture in brief:
 - All mutations from the UI and the API go through a single `WorkspaceCommandService`.
 - PTY I/O runs off the main thread, and views update on `@MainActor`.
 
-The full design is in [`specs/02-architecture`](specs/02-architecture/README.md), and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules contributors must follow.
+The full design is in [the architecture docs](docs/architecture/index.md), and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules contributors must follow.
+
+## Documentation
+
+The [`docs/`](docs/index.md) folder is the behavior contract and contributor guide: product overview, architecture, features, the automation API and CLI, integrations, macOS support, and development rules. It's plain Markdown, laid out for [MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
+
+```sh
+python3 -m venv .venv-docs && .venv-docs/bin/pip install mkdocs-material
+.venv-docs/bin/mkdocs serve    # http://127.0.0.1:8000
+```
 
 ## Data and migration
 
 User data lives in `~/Library/Application Support/dev.trellis/`. Files there are owner-only and written atomically, with last-known-good backups. Newer or corrupt state opens in recovery mode and is never overwritten.
 
 Trellis was previously named **uTerm**. On first launch it copies an existing uTerm workspace and theme library into the new directory and leaves the originals untouched. Existing Trellis data takes priority. Theme IDs that begin with `trellis-` are reserved for built-in themes. During the default-directory migration, any custom theme that uses this prefix gets a new ID, and its saved selections are updated to match. Paths passed with `--state-directory` are used as-is. If an older custom library at such a path has theme IDs that begin with `trellis-`, rename those IDs yourself, along with their filenames and saved selections.
+
+## App instances
+
+Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
+
+## Themes and terminal fonts
+
+Settings → Appearance includes 10 editor-inspired theme families, each with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations, with matching terminal and app colors. Choose separate light and dark palettes; System appearance switches between them automatically. The original Trellis defaults remain available.
+
+The Terminal font picker lists the monospace typefaces installed on your Mac and previews the selected font. Apply Appearance to save your choice.
 
 ## Troubleshooting
 

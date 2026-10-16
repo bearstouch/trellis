@@ -27,7 +27,7 @@ final class WorkspacePersistenceTests: XCTestCase {
         return path
     }
 
-    func testS010_UT01_restoreNeverSpawns() async throws {
+    func testRestoreNeverSpawns() async throws {
         let state = try await Self.fixture()
         let settings = WorkspaceSettings(shell: "/bin/zsh", directory: "/tmp", windowFrame: "{{10, 20}, {900, 600}}")
         let data = try WorkspaceSnapshotCodec.encode(state, settings: settings)
@@ -44,7 +44,7 @@ final class WorkspacePersistenceTests: XCTestCase {
         }
     }
 
-    func testS010_UT02_failedAtomicWriteKeepsBackup() async throws {
+    func testFailedAtomicWriteKeepsBackup() async throws {
         let directory = try directory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let first = WorkspacePersistence(directory: directory)
@@ -67,7 +67,7 @@ final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasSuffix(".tmp") })
     }
 
-    func testS010_UT03_newerSchemaIsReadOnly() async throws {
+    func testNewerSchemaIsReadOnly() async throws {
         let directory = try directory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let persistence = WorkspacePersistence(directory: directory)
@@ -81,7 +81,7 @@ final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), before)
     }
 
-    func testS010_UT04_snapshotOmitsSecretsAndBuffers() async throws {
+    func testSnapshotOmitsSecretsAndBuffers() async throws {
         var state = try await Self.fixture()
         let marker = "DISTINCT_PRIVATE_TOKEN_INPUT_OUTPUT_\(UUID())"
         for id in state.sessions.keys {

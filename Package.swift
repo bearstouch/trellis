@@ -10,7 +10,7 @@ let package = Package(
         .library(name: "TrellisUI", targets: ["TrellisUI"]),
         .library(name: "TrellisControl", targets: ["TrellisControl"]),
         .executable(name: "Trellis", targets: ["TrellisApp"]),
-        // Installed as `trellis` by packaging (S032); a distinct build name avoids
+        // Installed as `trellis` by packaging; a distinct build name avoids
         // colliding with the app binary on case-insensitive volumes.
         .executable(name: "trellis-cli", targets: ["TrellisCLIMain"])
     ],

@@ -3,7 +3,7 @@ import XCTest
 @testable import TrellisCore
 
 final class WorkspaceStoreTests: XCTestCase {
-    func testS002_UT01_rejectDanglingReferences() async throws {
+    func testRejectDanglingReferences() async throws {
         let store = try WorkspaceStore()
         let created = try await store.execute(.createWindow(name: "Project"))
         let tabID = try XCTUnwrap(created.snapshot.windows.first?.activeTabID)
@@ -15,7 +15,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(after, created.snapshot)
     }
 
-    func testS002_UT02_rejectMalformedSplit() async throws {
+    func testRejectMalformedSplit() async throws {
         for count in [0, 1, 3] {
             let store = try WorkspaceStore()
             let initial = try await store.execute(.createWindow(name: "Project"))
@@ -28,7 +28,7 @@ final class WorkspaceStoreTests: XCTestCase {
         }
     }
 
-    func testS002_UT03_rejectStaleRevision() async throws {
+    func testRejectStaleRevision() async throws {
         let store = try WorkspaceStore()
         let original = try await store.execute(.createWindow(name: "Project"), expectedRevision: 0)
         let id = try XCTUnwrap(original.createdWindowID)
@@ -43,7 +43,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(after, changed.snapshot)
     }
 
-    func testS002_UT04_failedLaunchKeepsValidPane() async throws {
+    func testFailedLaunchKeepsValidPane() async throws {
         let store = try WorkspaceStore()
         let service = WorkspaceCommandService(store: store)
         let created = try await service.execute(.createWindow(name: "Project"))

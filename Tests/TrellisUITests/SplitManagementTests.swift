@@ -5,7 +5,7 @@ import TrellisCore
 @testable import TrellisUI
 
 final class SplitManagementTests: XCTestCase {
-    func testS007_UT01_mixedAxisSplitPreservesLeaf() async throws {
+    func testMixedAxisSplitPreservesLeaf() async throws {
         let store = try WorkspaceStore()
         let initial = try await store.execute(.createWindow(name: "Project")).snapshot
         let original = try XCTUnwrap(initial.panes.values.first)
@@ -23,7 +23,7 @@ final class SplitManagementTests: XCTestCase {
         try second.snapshot.validate()
     }
 
-    func testS007_UT02_closeCollapsesOnlyParent() async throws {
+    func testCloseCollapsesOnlyParent() async throws {
         let store = try WorkspaceStore()
         let initial = try await store.execute(.createWindow(name: "Project")).snapshot
         let original = try XCTUnwrap(initial.panes.keys.first)
@@ -41,7 +41,7 @@ final class SplitManagementTests: XCTestCase {
         try result.validate()
     }
 
-    func testS007_UT03_lastLeafCascadesToEmpty() async throws {
+    func testLastLeafCascadesToEmpty() async throws {
         let store = try WorkspaceStore()
         let created = try await store.execute(.createWindow(name: "Project"))
         let removed = try await store.execute(.deletePane(id: try XCTUnwrap(created.snapshot.panes.keys.first))).snapshot
@@ -54,7 +54,7 @@ final class SplitManagementTests: XCTestCase {
         try removed.validate()
     }
 
-    func testS007_UT04_rejectSplitLimitsAtomically() async throws {
+    func testRejectSplitLimitsAtomically() async throws {
         let store = try WorkspaceStore()
         var result = try await store.execute(.createWindow(name: "Deep"))
         var leaf = try XCTUnwrap(result.snapshot.panes.keys.first)

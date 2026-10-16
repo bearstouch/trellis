@@ -49,7 +49,7 @@ final class LocalSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testS003_UT01_rejectInaccessibleDirectory() async throws {
+    func testRejectInaccessibleDirectory() async throws {
         let transport = TestSessionTransport()
         let session = LocalSessionController(
             transport: transport,
@@ -63,7 +63,7 @@ final class LocalSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testS003_UT02_preserveLaunchArguments() async throws {
+    func testPreserveLaunchArguments() async throws {
         let transport = TestSessionTransport()
         let session = LocalSessionController(transport: transport, validator: LocalLaunchValidator(files: TestLaunchFiles()))
         let arguments = ["file with spaces", "$(must stay literal)", "it's literal", "", "one\ntwo"]
@@ -79,7 +79,7 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertEqual(session.state, .running)
     }
 
-    func testS003_UT03_stripControlSecrets() throws {
+    func testStripControlSecrets() throws {
         let configuration = LocalLaunchConfiguration(
             executable: "/bin/zsh", directory: "/tmp",
             inheritedEnvironment: ["TRELLIS_TOKEN": "secret-a", "__TRELLIS_SOCKET": "secret-b", "trellis_grant": "secret-c", "PATH": "/bin", "GOOD": "before", "ITERM_SESSION_ID": "old"],
@@ -93,7 +93,7 @@ final class LocalSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testS003_UT04_exitAndCleanupOnce() async throws {
+    func testExitAndCleanupOnce() async throws {
         let transport = TestSessionTransport()
         let session = LocalSessionController(transport: transport, validator: LocalLaunchValidator(files: TestLaunchFiles()))
         var exits = 0

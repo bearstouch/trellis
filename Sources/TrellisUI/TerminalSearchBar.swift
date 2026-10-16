@@ -39,12 +39,16 @@ struct TerminalSearchBar: View {
 struct SearchableTerminalSurface: View {
     @ObservedObject var terminal: NativeTerminal
     let isFocused: Bool
+    let background: Color
     var body: some View {
         VStack(spacing: 0) {
             if terminal.searchVisible { TerminalSearchBar(terminal: terminal) }
             // Opening/selecting a pane with an active find field must not let
             // the native terminal host steal that field's first responder.
             NativeTerminalSurface(terminal: terminal, isFocused: isFocused && !terminal.searchVisible)
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .background(background)
         }
     }
 }

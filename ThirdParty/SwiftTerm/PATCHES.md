@@ -4,8 +4,9 @@ Upstream: SwiftTerm 1.20.0, revision `5d14406844143538cd8f8851d2d8a67c1fe443e5`,
 
 This directory contains the upstream `Sources/SwiftTerm` tree and a minimal macOS library package. The shader resource retains its `SwiftTerm_SwiftTerm.bundle` identity. Demo applications, command-line tools, documentation plugins, and unrelated dependencies are omitted. `SwiftTermBuildInfo.swift` records the pinned upstream identity with the modified-build flag, replacing the upstream build-info generator.
 
-The exact engine delta is [trellis.patch](trellis.patch). It changes four upstream files:
+The exact engine delta is [trellis.patch](trellis.patch). It changes five upstream files:
 
+- `Mac/MacTerminalView.swift`: makes mouse-exit and scroll-wheel overrides open so the Trellis wrapper can reveal its scrollbar on track hover or actual viewport scrolling and fade it when idle. Engine scrolling behavior is unchanged.
 - `Apple/AppleTerminalView.swift`: a font change resizes without DECSTR. Upstream's view-level resize soft-resets application cursor mode, attributes, and other live parser state.
 - `Buffer.swift`: an opt-in `reflowCursorLine` flag permits normal-buffer current-line reflow. It captures the logical cursor cell offset before resize clamps the cursor, maps it to a destination row object, and restores its position after reflow and history trimming. Destination identity handles eviction of earlier rows in the same logical group; wide-character wrap padding and pending-wrap boundaries are accounted for. The wider reflow loop reads the current wrapped group's first row, rather than row zero of the entire buffer.
 - `KittyGraphics.swift`: Kitty graphics file (`t=f`), temporary-file (`t=t`), and shared-memory (`t=s`) transmission are refused with `ENOTSUP`. Terminal output is untrusted (NFR-S05); it must not make the app read, probe for, or unlink local files or POSIX shared memory. Direct (`t=d`) transmission is unchanged.

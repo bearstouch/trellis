@@ -135,7 +135,11 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
 
     /// Graceful close never silently escalates. Force is a separate user/API action.
     public func stop() { requestTermination(force: false) }
-    public func requestTermination(force: Bool) { session.stop(signal: force ? SIGKILL : SIGTERM) }
+    public func requestTermination(force: Bool) {
+        // Interactive shells ignore SIGTERM. A terminal close is a hangup;
+        // SIGHUP lets the shell exit and notify its jobs normally.
+        session.stop(signal: force ? SIGKILL : SIGHUP)
+    }
 
     public func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         terminalView.scrollback.enforce(on: terminalView)

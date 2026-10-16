@@ -71,7 +71,7 @@ public struct ControlRequest: Equatable, Sendable {
     public let params: JSONValue?
 }
 
-/// The authenticated principal for one connection. S022 fills in grants.
+/// The authenticated principal for one connection, backed by its grant.
 public struct ControlIdentity: Equatable, Sendable {
     public let connectionID: UUID
     public let peerUID: uid_t

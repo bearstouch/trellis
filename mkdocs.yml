@@ -1,0 +1,73 @@
+site_name: Trellis
+site_description: Native Swift terminal for macOS — behavior contract and contributor guide
+repo_url: https://github.com/layerx-labs/trellis
+edit_uri: edit/master/docs/
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/brightness-7, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/brightness-4, name: Switch to light mode }
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Overview:
+      - Product: overview/product.md
+      - Status and known limits: overview/status.md
+  - Architecture:
+      - Modules and data flow: architecture/index.md
+      - Domain model: architecture/domain-model.md
+      - Sessions and processes: architecture/sessions.md
+      - Persistence: architecture/persistence.md
+      - Terminal engine: architecture/terminal-engine.md
+  - Features:
+      - Windows, tabs and panes: features/workspace.md
+      - Terminal: features/terminal.md
+      - SSH hosts: features/ssh-hosts.md
+      - Themes: features/themes.md
+      - Keyboard and accessibility: features/keyboard-accessibility.md
+  - Automation API:
+      - Overview and transport: api/index.md
+      - Authorization: api/authorization.md
+      - Methods: api/methods.md
+      - Output and events: api/output-events.md
+      - Errors: api/errors.md
+      - Layouts: api/layouts.md
+      - CLI: api/cli.md
+  - Platform:
+      - Integrations: integrations.md
+      - macOS support: platform/macos.md
+  - Development:
+      - Getting started: development/getting-started.md
+      - Development rules: development/rules.md
+      - Testing: development/testing.md
+      - Contribution workflow: development/workflow.md
+      - Release guide: release/README.md
+  - Project:
+      - Roadmap and decisions: project/roadmap.md

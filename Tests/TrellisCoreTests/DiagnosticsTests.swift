@@ -2,7 +2,7 @@ import XCTest
 @testable import TrellisCore
 
 final class DiagnosticsTests: XCTestCase {
-    func testS030_UT03_sanitizeErrorsAndDiagnostics() throws {
+    func testSanitizeErrorsAndDiagnostics() throws {
         var snapshot = WorkspaceSnapshot()
         let window = UUID(), tab = UUID(), pane = UUID(), session = UUID()
         snapshot.windows = [ManagedWindow(id: window, name: "SECRET-WINDOW", tabIDs: [tab], activeTabID: tab)]

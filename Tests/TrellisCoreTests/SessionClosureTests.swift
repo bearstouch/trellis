@@ -23,7 +23,7 @@ private final class FakeClosureClock {
 
 final class SessionClosureTests: XCTestCase {
     @MainActor
-    func testS009_UT01_cancelHasNoEffects() async throws {
+    func testCancelHasNoEffects() async throws {
         let clock = FakeClosureClock()
         let coordinator = SessionClosureCoordinator(now: { clock.elapsed }, sleep: { try await clock.sleep($0) })
         let sessions = [CloseSpy(), CloseSpy(), CloseSpy()]
@@ -39,7 +39,7 @@ final class SessionClosureTests: XCTestCase {
     }
 
     @MainActor
-    func testS009_UT02_graceTimeoutRequiresExplicitForce() async {
+    func testGraceTimeoutRequiresExplicitForce() async {
         let clock = FakeClosureClock()
         let coordinator = SessionClosureCoordinator(now: { clock.elapsed }, sleep: { try await clock.sleep($0) })
         let session = CloseSpy()
@@ -73,7 +73,7 @@ final class SessionClosureTests: XCTestCase {
         XCTAssertEqual(closed, .closed)
     }
 
-    func testS009_UT03_neverSignalReusedPid() {
+    func testNeverSignalReusedPid() {
         let original = OwnedProcessIdentity(pid: 1234, parentPID: 567, groupID: 1234, startedSeconds: 100, startedMicroseconds: 10)
         let reused = OwnedProcessIdentity(pid: 1234, parentPID: 567, groupID: 1234, startedSeconds: 101, startedMicroseconds: 10)
         XCTAssertTrue(original.permitsSignal(current: original, ownerPID: 567))
@@ -82,7 +82,7 @@ final class SessionClosureTests: XCTestCase {
         XCTAssertFalse(original.permitsSignal(current: original, ownerPID: 999))
     }
 
-    func testS009_UT04_restartReplacesOnlySession() async throws {
+    func testRestartReplacesOnlySession() async throws {
         let store = try WorkspaceStore()
         let created = try await store.execute(.createWindow(name: "Project")).snapshot
         let pane = try XCTUnwrap(created.panes.values.first)

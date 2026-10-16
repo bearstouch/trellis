@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-nord-light",
+  "name": "Nord Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#ECEFF4",
+    "foreground": "#2E3440",
+    "cursor": "#346171",
+    "cursorText": "#ECEFF4",
+    "selectionBackground": "#BAC9D1",
+    "selectionForeground": "#2E3440",
+    "ansi": [
+      "#D8DEE9",
+      "#A33743",
+      "#426F35",
+      "#806012",
+      "#3E648A",
+      "#80547B",
+      "#356F70",
+      "#2E3440",
+      "#70757F",
+      "#8B2F39",
+      "#385E2D",
+      "#6D520F",
+      "#355575",
+      "#6D4769",
+      "#2D5E5F",
+      "#2E3440"
+    ]
+  },
+  "ui": {
+    "background": "#ECEFF4",
+    "surface": "#E5E9F0",
+    "sidebarBackground": "#D8DEE9",
+    "foreground": "#2E3440",
+    "mutedForeground": "#565B64",
+    "accent": "#346171",
+    "border": "#75797F",
+    "activeTabBackground": "#BAC9D1",
+    "activeTabForeground": "#2E3440",
+    "focusRing": "#346171",
+    "success": "#3D6631",
+    "warning": "#765811",
+    "error": "#A33743"
+  }
+}

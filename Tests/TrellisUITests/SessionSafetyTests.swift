@@ -5,6 +5,39 @@ import TrellisCore
 
 final class SessionSafetyTests: XCTestCase {
     @MainActor
+    func testInteractiveShellCloseAsksForConfirmationOnlyOnce() async throws {
+        _ = NSApplication.shared
+        let seed = try WorkspaceStore()
+        var state = try await seed.execute(.createWindow(name: "Interactive shell")).snapshot
+        let source = try XCTUnwrap(state.panes.values.first)
+        state.sessions[source.sessionID]?.launch = .process(
+            executable: "/bin/zsh", arguments: ["-f", "-i", "-c", "printf 'READY\\n'; read -r line"], directory: "/tmp")
+        let model = AppWorkspaceModel(store: try WorkspaceStore(snapshot: state))
+        await model.refresh()
+        await model.createTab(duplicate: try XCTUnwrap(state.tabs.keys.first))
+        let terminal = try XCTUnwrap(model.activeTerminal)
+        defer { terminal.requestTermination(force: true) }
+        let pane = try XCTUnwrap(model.presentation.activePane)
+        let deadline = Date().addingTimeInterval(5)
+        while !(try terminal.adapter.read(.retainedText).contains("READY")), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(try terminal.adapter.read(.retainedText).contains("READY"))
+        var closePrompts = 0, forcePrompts = 0
+        model.confirmCloseSessions = { _ in
+            closePrompts += 1; return true
+        }
+        model.confirmForceSessions = { _ in
+            forcePrompts += 1; return false
+        }
+        await model.closePane(pane.id)
+        XCTAssertEqual(closePrompts, 1)
+        XCTAssertEqual(forcePrompts, 0)
+        XCTAssertFalse(terminal.isRunning)
+        XCTAssertNil(model.snapshot.panes[pane.id])
+    }
+
+    @MainActor
     func testRestartRetainsExitedOutputUntilExplicitReplacement() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
@@ -47,7 +80,7 @@ final class SessionSafetyTests: XCTestCase {
         let seed = try WorkspaceStore()
         var state = try await seed.execute(.createWindow(name: "Controlled")).snapshot
         let source = try XCTUnwrap(state.panes.values.first)
-        state.sessions[source.sessionID]?.launch = .process(executable: "/bin/zsh", arguments: ["-f", "-c", "trap '' TERM; printf 'READY\\n'; while :; do sleep 1; done"], directory: "/tmp")
+        state.sessions[source.sessionID]?.launch = .process(executable: "/bin/zsh", arguments: ["-f", "-c", "trap '' HUP TERM; printf 'READY\\n'; while :; do sleep 1; done"], directory: "/tmp")
         let model = AppWorkspaceModel(store: try WorkspaceStore(snapshot: state))
         await model.refresh()
         await model.createTab(duplicate: try XCTUnwrap(state.tabs.keys.first))

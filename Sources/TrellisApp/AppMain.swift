@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(activateExistingInstance),
+            name: Notification.Name("dev.trellis.activateExistingInstance"), object: nil)
         NSWindow.allowsAutomaticWindowTabbing = false
         model.onChromeModeChanged = { mode in
             switch mode {
@@ -86,13 +89,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
         }
-        // Local automation is optional: an unsafe endpoint or a second live
-        // instance leaves the app fully usable without a control socket.
+        // Local automation is optional: an unsafe endpoint leaves the app
+        // fully usable without a control socket.
         _ = try? control.start()
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) { control.stop() }
+
+    @objc private func activateExistingInstance() {
+        window?.deminiaturize(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     /// Menus are rebuilt from the saved shortcut map, so every configurable
     /// command shows its current chord where users look for it.
@@ -116,6 +125,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         let menu = NSMenu()
         let app = NSMenuItem(); app.submenu = NSMenu(title: "Trellis")
+        let about = app.submenu?.addItem(withTitle: "About Trellis", action: #selector(aboutAction), keyEquivalent: "")
+        about?.target = self
+        app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
         app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Hide Trellis", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
@@ -284,6 +296,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.accessibilityDisplayOptionsDidChange(
             increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
     }
+    @objc private func aboutAction() {
+        let credits = NSMutableAttributedString(string: "Released under the ", attributes: [.font: NSFont.systemFont(ofSize: 12)])
+        credits.append(
+            NSAttributedString(
+                string: "MIT License",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 12),
+                    .link: URL(string: "https://github.com/layerx-labs/trellis/blob/main/LICENSE")!
+                ]))
+        credits.append(NSAttributedString(string: ".", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Trellis",
+            .applicationIcon: NSApp.applicationIconImage!,
+            .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
+            .version: "",
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "© 2026 LayerX Labs and Trellis contributors. All rights reserved.",
+            .credits: credits
+        ])
+    }
+
     @objc private func settingsAction() { showSettings() }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {
@@ -378,8 +410,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     private func showSettings() {
         if settingsWindow == nil {
-            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 570, height: 490), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             panel.title = "Settings"
+            panel.contentMinSize = NSSize(width: 860, height: 620)
             panel.isReleasedWhenClosed = false
             panel.contentView = NSHostingView(rootView: AppSettingsView(model: model, grants: grants, hosts: hosts))
             settingsCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in
@@ -452,6 +485,18 @@ struct TrellisMain {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         do {
+            let lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("dev.trellis-\(getuid()).instance.lock")
+            let instanceLock: ApplicationInstanceLock
+            switch try ApplicationInstanceLock.acquire(at: lockURL) {
+            case .acquired(let lock): instanceLock = lock
+            case .alreadyRunning(let pid):
+                if let pid { NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows]) }
+                DistributedNotificationCenter.default().postNotificationName(
+                    Notification.Name("dev.trellis.activateExistingInstance"), object: nil,
+                    userInfo: nil, deliverImmediately: true)
+                return
+            }
+            defer { withExtendedLifetime(instanceLock) {} }
             let directory: URL
             if let index = CommandLine.arguments.firstIndex(of: "--state-directory"), CommandLine.arguments.indices.contains(index + 1) {
                 directory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)

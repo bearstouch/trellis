@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class ThemeLibraryTests: XCTestCase {
     private func folder() -> URL { FileManager.default.temporaryDirectory.appendingPathComponent("trellis-theme-\(UUID())/Themes") }
-    func testS016_UT01_duplicateRequiresReplace() async throws {
+    func testDuplicateRequiresReplace() async throws {
         let directory = folder()
         defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
         let library = ThemeLibrary(directory: directory)
@@ -20,7 +20,7 @@ final class ThemeLibraryTests: XCTestCase {
         let replaced = try await library.install(replacement, replace: true)
         XCTAssertEqual(replaced.documents["my-dark"]?.name, "Replacement")
     }
-    func testS016_UT02_failedReplacePreservesOldFile() async throws {
+    func testFailedReplacePreservesOldFile() async throws {
         let directory = folder()
         defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
         let original = try ThemeExamples.data(.dark)
@@ -34,7 +34,7 @@ final class ThemeLibraryTests: XCTestCase {
         let after = await library.snapshot()
         XCTAssertEqual(after, before)
     }
-    func testS016_UT04_reloadInvalidAndMissingThemes() async throws {
+    func testReloadInvalidAndMissingThemes() async throws {
         let directory = folder()
         defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
         let library = ThemeLibrary(directory: directory)

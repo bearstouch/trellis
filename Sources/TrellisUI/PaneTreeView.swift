@@ -46,6 +46,7 @@ struct PaneTreeView: View {
         if let terminal = model.terminals[id] {
             let focused = activePaneID == id
             let descriptor = model.accessibility.panes.first { $0.id == id }
+            let context = sessionContext(id)
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Button(model.snapshot.panes[id]?.title ?? "Terminal") { Task { await model.selectPane(id) } }
@@ -54,7 +55,13 @@ struct PaneTreeView: View {
                         .accessibilityValue(descriptor?.value ?? "")
                         .accessibilityHint("Focuses this pane")
                         .accessibilityAddTraits(focused ? [.isSelected] : [])
+                    if let directory = context.directory {
+                        Image(systemName: "folder").accessibilityHidden(true)
+                        Text(directory).lineLimit(1).truncationMode(.middle)
+                            .help(directory)
+                    }
                     Spacer(minLength: 0)
+                    Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.
                         Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)
@@ -94,33 +101,46 @@ struct PaneTreeView: View {
                     }
                     .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
-                    .padding(.horizontal, 9).frame(height: 26).background(model.themeColor(.surface))
+                    .padding(.horizontal, 9).frame(height: 30).background(model.themeColor(.surface))
                 // A tab rename may select another tab first; its terminal host must not
                 // take first responder from the name field (its input is suspended).
-                SearchableTerminalSurface(terminal: terminal, isFocused: focused && model.editingTabID == nil)
-                    .overlay {
-                        if terminal.sessionState == .stopped {
-                            VStack(spacing: 8) {
-                                if model.unconfiguredPaneIDs.contains(id) {
-                                    Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
-                                    Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
-                                } else {
-                                    Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
-                                }
+                SearchableTerminalSurface(
+                    terminal: terminal, isFocused: focused && model.editingTabID == nil,
+                    background: model.terminalBackground
+                )
+                .overlay {
+                    if terminal.sessionState == .stopped {
+                        VStack(spacing: 8) {
+                            if model.unconfiguredPaneIDs.contains(id) {
+                                Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
+                                Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
+                            } else {
+                                Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
                             }
                         }
                     }
-            }.overlay {
-                Rectangle().strokeBorder(focused ? model.themeColor(.focusRing) : .clear, lineWidth: model.increaseContrast ? 3 : 2).allowsHitTesting(false)
+                }
             }
         } else {
             model.terminalBackground
         }
     }
 
+    private func sessionContext(_ id: UUID) -> (directory: String?, kind: String) {
+        let launch = model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
+        let directory: String
+        switch launch {
+        case .host: return (nil, "SSH")
+        case .shell(let path), .process(_, _, let path): directory = path ?? model.defaultDirectory
+        case nil: directory = model.defaultDirectory
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let display = directory == home ? "~" : directory.hasPrefix(home + "/") ? "~" + directory.dropFirst(home.count) : directory
+        return (display, "Local")
+    }
+
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {
-        model.themeColor(.surface)
-            .overlay { Rectangle().fill(model.themeColor(.border)).frame(width: axis == .x ? 1 : nil, height: axis == .y ? 1 : nil).allowsHitTesting(false) }
+        model.themeColor(.border)
             .frame(
                 width: axis == .x ? CanvasDimensions.dividerThickness : nil,
                 height: axis == .y ? CanvasDimensions.dividerThickness : nil

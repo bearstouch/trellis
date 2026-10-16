@@ -8,7 +8,7 @@ final class KeyboardAccessibilityTests: XCTestCase {
     private let noReplacement = NSRange(location: NSNotFound, length: 0)
 
     @MainActor
-    func testS017_UT02_editingConsumesRenameKeys() async throws {
+    func testEditingConsumesRenameKeys() async throws {
         _ = NSApplication.shared
         let store = try WorkspaceStore()
         let model = AppWorkspaceModel(store: store)
