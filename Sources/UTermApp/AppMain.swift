@@ -73,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.submenu?.addItem(withTitle: "Paste Escaped Path", action: NSSelectorFromString("pasteEscapedPath:"), keyEquivalent: "")
         edit.submenu?.addItem(withTitle: "Select All", action: #selector(selectAllText(_:)), keyEquivalent: "a")
+        edit.submenu?.addItem(.separator())
+        edit.submenu?.addItem(withTitle: "Find in Pane…", action: #selector(showPaneSearch), keyEquivalent: "f")
+        edit.submenu?.addItem(withTitle: "Find Next", action: #selector(findNextInPane), keyEquivalent: "g")
+        edit.submenu?.addItem(withTitle: "Find Previous", action: #selector(findPreviousInPane), keyEquivalent: "g").keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(edit)
         let panes = NSMenuItem(); panes.submenu = NSMenu(title: "Pane")
         for direction in PaneDirection.allCases {
@@ -109,10 +113,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if [#selector(showPaneSearch), #selector(findNextInPane), #selector(findPreviousInPane)].contains(menuItem.action) {
+            return window?.isKeyWindow == true && model.activeTerminal != nil
+        }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
     }
+    @objc private func showPaneSearch() { if window?.isKeyWindow == true { model.activeTerminal?.showSearch() } }
+    @objc private func findNextInPane() { if window?.isKeyWindow == true { model.activeTerminal?.findInPane() } }
+    @objc private func findPreviousInPane() { if window?.isKeyWindow == true { model.activeTerminal?.findInPane(forward: false) } }
     @objc private func newTab() { Task { await model.createTab() } }
     @objc private func renameTab() { model.tabRenameRequest = UUID() }
     @objc private func nextTab() { selectRelativeTab(1) }

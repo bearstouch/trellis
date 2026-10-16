@@ -2,11 +2,18 @@ import AppKit
 import Darwin
 import SwiftTerm
 import UTermCore
+import Combine
 
 /// SwiftTerm renders terminal state; PTYProcess exclusively owns process I/O
 /// and reaping so EOF cannot race termination or leak an exited session’s FD.
 @MainActor
-public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegate, ClosableSession {
+public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency TerminalViewDelegate, ClosableSession {
+    @Published public private(set) var searchVisible = false
+    @Published public var searchQuery = ""
+    @Published public private(set) var searchStatus = ""
+    @Published public private(set) var searchFocusRequest = UUID()
+    private var hasSearchMatch = false
+    private let paneSearch = PaneTextSearch()
     public let view: NSView
     private let terminalView: AccessibleTerminalView
     private let process: PTYProcess
@@ -25,10 +32,12 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     public var onInputError: ((Error) -> Void)?
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
 
-    public init(sessionID: UUID = UUID()) {
+    public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard) {
         let surface = AccessibleTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 520),
                                    font: NSFont(name: "Monaco", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
         terminalView = surface
+        surface.scrollback = TerminalScrollback(budget: scrollbackBudget)
+        surface.changeScrollback(scrollbackBudget.lineLimit)
         view = surface
         let process = PTYProcess()
         self.process = process
@@ -41,6 +50,8 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         surface.terminalDelegate = self
         surface.onFocused = { [weak self] in self?.onFocused?() }
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
+        surface.onSearchRequested = { [weak self] in self?.showSearch() }
+        surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
             if !data.isEmpty { self?.onOutput?() }
@@ -98,6 +109,8 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     public func requestTermination(force: Bool) { session.stop(signal: force ? SIGKILL : SIGTERM) }
 
     public func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+        terminalView.scrollback.enforce(on: terminalView)
+        invalidateSearchForOutput()
         guard let size = try? TerminalSize(columns: newCols, rows: newRows) else { return }
         try? adapter.resize(size)
     }
@@ -109,6 +122,43 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         guard session.state == .running else { throw TerminalAdapterError.inputClosed }
         // Enqueue payload and negotiated framing together, preserving every byte.
         try adapter.send(plan.data(bracketed: terminalView.getTerminal().bracketedPasteMode))
+    }
+
+    public var historyNotice: String {
+        if terminalView.getTerminal().isCurrentBufferAlternate { return "Current screen only · No scrollback" }
+        return terminalView.scrollback.historyEvicted ? "Earlier output was evicted" : "Retained output only"
+    }
+    public func showSearch() {
+        searchVisible = true
+        searchFocusRequest = UUID()
+        searchStatus = searchQuery.isEmpty ? historyNotice : "Search again · \(historyNotice)"
+    }
+    public func closeSearch() {
+        searchVisible = false
+        terminalView.clearSearch()
+        paneSearch.reset()
+        hasSearchMatch = false
+        if terminalView.window?.makeFirstResponder(terminalView) == true { onFocused?() }
+    }
+    @discardableResult
+    public func findInPane(forward: Bool = true, reset: Bool = false) -> Bool {
+        if reset { terminalView.clearSearch(); paneSearch.reset() }
+        guard !searchQuery.isEmpty, searchQuery.utf8.count <= 8192 else {
+            terminalView.clearSearch(); paneSearch.reset(); hasSearchMatch = false
+            searchStatus = searchQuery.isEmpty ? historyNotice : "Search is limited to 8 KiB · \(historyNotice)"
+            return false
+        }
+        let found = paneSearch.find(searchQuery, forward: forward, in: terminalView)
+        hasSearchMatch = found
+        searchStatus = "\(found ? "Match found" : "No match") · \(historyNotice)"
+        return found
+    }
+    private func invalidateSearchForOutput() {
+        if hasSearchMatch { terminalView.clearSearch(); paneSearch.reset(); hasSearchMatch = false }
+        if searchVisible {
+            let next = searchQuery.isEmpty ? historyNotice : "Output changed — search again · \(historyNotice)"
+            if searchStatus != next { searchStatus = next }
+        }
     }
     public func getWindowSize() -> winsize {
         let terminal = terminalView.getTerminal()

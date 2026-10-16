@@ -1,7 +1,7 @@
 # S013 — Retain bounded output and search a pane
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented and reviewed — 138 tests pass; native long-output, alternate-screen, and search-focus checks verified
 Delivery phase: 3  
 Depends on: [S001](001-terminal-engine-feasibility.md), [S003](003-local-pty-session.md)  
 Requirements: `FR-S04`, `NFR-P05`, `NFR-R06`
@@ -12,14 +12,14 @@ As a terminal user, I want to search recent output without allowing scrollback t
 
 ## Acceptance criteria
 
-- [ ] **S013-AC01:** Keep 10,000 lines per pane by default and an additional 16 MiB storage cap; evict oldest retained content when either limit is reached.
-- [ ] **S013-AC02:** Search plain-text retained output forward/backward with a visible current match; expose that earlier history may have been evicted.
-- [ ] **S013-AC03:** Keep screen/alternate-screen state and scrollback behavior consistent with the selected engine; search never mixes output from other panes.
-- [ ] **S013-AC04:** Preserve byte ordering in parsing; bounded output queues and frame coalescing do not silently reorder terminal data.
+- [x] **S013-AC01:** Keep 10,000 lines per pane by default and an additional 16 MiB storage cap; evict oldest retained content when either limit is reached.
+- [x] **S013-AC02:** Search plain-text retained output forward/backward with a visible current match; expose that earlier history may have been evicted.
+- [x] **S013-AC03:** Keep screen/alternate-screen state and scrollback behavior consistent with the selected engine; search never mixes output from other panes.
+- [x] **S013-AC04:** Preserve byte ordering in parsing; bounded output queues and frame coalescing do not silently reorder terminal data.
 
 ## Unit tests
 
-These are test specifications to implement with the story, not executed tests. Names are proposed and may follow repository conventions once the Swift project exists. Isolate time, filesystem, process, Keychain, clipboard, and transport dependencies as relevant; assert observable behavior and failure safety.
+All four named cases are implemented and passing, with additional real PTY ordering, wrap/last-column, capacity-recovery/reflow, small-read flood, and hosted native-focus regressions.
 
 | Test | Setup, action, and expected result |
 | --- | --- |
@@ -34,7 +34,7 @@ Search a real long-output session and alternate-screen app; flood output and ver
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S013 evidence](../../docs/evidence/S013-scrollback-search.md) for 138 passing tests, independent review/fixes, native 12,000-row and Vim checks, keyboard focus verification, and engine-memory qualification limits. The 10,000-row/16 MiB budgets apply to historical rendered text; active-screen and engine overhead are accounted separately under NFR-P05.
 
 ## Source specifications
 

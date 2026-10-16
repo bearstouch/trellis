@@ -8,6 +8,11 @@ import UTermCore
 final class AccessibleTerminalView: TerminalView {
     var onFocused: (() -> Void)?
     var onPasteRequested: ((TerminalPasteInput) -> Void)?
+    var onSearchRequested: (() -> Void)?
+    var onContentsChanged: (() -> Void)?
+    var scrollback = TerminalScrollback(budget: .standard)
+    private var accessibilityUpdateScheduled = false
+    @objc func showPaneSearch(_ sender: Any?) { onSearchRequested?() }
     var readClipboardText: () -> String? = { NSPasteboard.general.string(forType: .string) }
     var readClipboardPaths: () -> [String] = {
         let board = NSPasteboard.general
@@ -81,6 +86,7 @@ final class AccessibleTerminalView: TerminalView {
             case "c": copy(self); return true
             case "a": selectAllTerminalText(self); return true
             case "v": paste(self); return true
+            case "f": showPaneSearch(self); return true
             default: break
             }
         }
@@ -90,7 +96,7 @@ final class AccessibleTerminalView: TerminalView {
     var copyAllTitle: String {
         let terminal = getTerminal()
         if terminal.isCurrentBufferAlternate { return "Copy All Current Screen (No Scrollback)" }
-        return terminal.buffer.totalLinesTrimmed > 0
+        return scrollback.historyEvicted || terminal.buffer.totalLinesTrimmed > 0
             ? "Copy All Retained Text (Older Lines Evicted)" : "Copy All Retained Text"
     }
 
@@ -101,6 +107,7 @@ final class AccessibleTerminalView: TerminalView {
         }
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
         if item.action == #selector(pasteEscapedPath(_:)) { return true }
+        if item.action == #selector(showPaneSearch(_:)) { return true }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
     }
@@ -114,7 +121,8 @@ final class AccessibleTerminalView: TerminalView {
                                 (copyAllTitle, #selector(copyAllRetainedText(_:))),
                                 ("Select All", #selector(selectAllTerminalText(_:))),
                                 ("Paste", #selector(paste(_:))),
-                                ("Paste Escaped Path", #selector(pasteEscapedPath(_:)))] {
+                                ("Paste Escaped Path", #selector(pasteEscapedPath(_:))),
+                                ("Find…", #selector(showPaneSearch(_:)))] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             menu.addItem(item)
@@ -162,7 +170,17 @@ final class AccessibleTerminalView: TerminalView {
 
     func display(_ data: Data) {
         feed(byteArray: Array(data)[...])
-        NSAccessibility.post(element: self, notification: .valueChanged)
+        scrollback.enforce(on: self)
+        onContentsChanged?()
+        // Coalesce notifications, never parser input: reads retain byte order.
+        guard !accessibilityUpdateScheduled else { return }
+        accessibilityUpdateScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(16))
+            guard let self else { return }
+            self.accessibilityUpdateScheduled = false
+            NSAccessibility.post(element: self, notification: .valueChanged)
+        }
     }
 
     override func isAccessibilityFocused() -> Bool { window?.firstResponder === self }

@@ -62,7 +62,7 @@ struct PaneTreeView: View {
                         .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
                     .padding(.horizontal, 9).frame(height: 26).background(Color(nsColor: .windowBackgroundColor))
-                NativeTerminalSurface(terminal: terminal, isFocused: activePaneID == id)
+                SearchableTerminalSurface(terminal: terminal, isFocused: activePaneID == id)
                     .overlay {
                         if terminal.sessionState == .stopped {
                             VStack(spacing: 8) {
