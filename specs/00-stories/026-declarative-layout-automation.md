@@ -1,7 +1,7 @@
 # S026 — Validate, plan, and apply declarative layouts
 
 Priority: P0 / MVP  
-Status: Implemented — independently reviewed, 272 tests pass; live CLI demo pending (S027)  
+Status: Implemented — independently reviewed; live CLI apply-twice demo performed in S027  
 Delivery phase: 4  
 Depends on: [S002](002-domain-model-and-command-service.md), [S010](010-persistence-and-stopped-restore.md), [S023](023-automation-resource-commands.md), [S024](024-automation-session-control.md)  
 Requirements: `FR-A04`, `API-03`, `API-04`, `NFR-S07`

@@ -131,3 +131,5 @@ Follow-ups, not applied:
 Not performed, and **not** marked passed:
 
 - Apply the example layout through the CLI (S027) against the live app twice, and observe stable IDs and no duplicate processes.
+
+> **Update (S027):** the live CLI demo applied `example-layout.json` twice to an isolated app instance. Both applies returned identical mapping IDs with 0 launches, and the second returned `changed: false`. See the [S027 evidence](S027-cli.md).

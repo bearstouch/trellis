@@ -36,8 +36,9 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S023 | Implemented/reviewed — 251 tests pass; live socket client checks pending | [S023 evidence](../../docs/evidence/S023-automation-resources.md) |
 | S024 | Implemented/reviewed — 257 tests pass; live agent/SSH checks pending | [S024 evidence](../../docs/evidence/S024-automation-session-control.md) |
 | S025 | Implemented/reviewed — 268 tests pass; multi-client manual checks pending | [S025 evidence](../../docs/evidence/S025-automation-output-events.md) |
-| S026 | Implemented/reviewed — 272 tests pass; live CLI demo pending | [S026 evidence](../../docs/evidence/S026-declarative-layouts.md) |
-| S027–S032 | Planned | Stories below |
+| S026 | Implemented/reviewed — 272 tests pass; live apply-twice demo done in S027 | [S026 evidence](../../docs/evidence/S026-declarative-layouts.md) |
+| S027 | Implemented/reviewed — 280 tests and live CLI demo pass; Keychain/installed-CLI checks pending | [S027 evidence](../../docs/evidence/S027-cli.md) |
+| S028–S032 | Planned | Stories below |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 

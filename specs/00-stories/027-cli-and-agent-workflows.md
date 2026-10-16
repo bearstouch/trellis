@@ -1,7 +1,7 @@
 # S027 — Ship a script-friendly trellis CLI
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 280 tests and a live CLI demo pass; Keychain/installed-CLI checks pending  
 Delivery phase: 4  
 Depends on: [S021](021-local-control-socket.md), [S022](022-automation-grants.md), [S023](023-automation-resource-commands.md), [S024](024-automation-session-control.md), [S025](025-automation-output-and-events.md), [S026](026-declarative-layout-automation.md)  
 Requirements: `FR-A01`, `FR-A02`, `INT-06`, `API-06`, `MAC-10`
@@ -34,7 +34,7 @@ Run a shell script that creates two windows, tabs, mixed splits, starts a dedica
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S027 CLI evidence](../../docs/evidence/S027-cli.md) for parsing, exit-code, launch, and credential tests, the live demo, review fixes, and pending checks.
 
 ## Source specifications
 
