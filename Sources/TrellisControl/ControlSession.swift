@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import TrellisCore
 
 /// Fixed, sanitized errors (API-06). Standard JSON-RPC failures use their
 /// reserved codes; application failures use -32000 with a stable `data.code`
@@ -21,6 +22,14 @@ public struct ControlError: Error, Equatable, Sendable {
     /// An application error (-32000) from the API-06 code list.
     public static func application(_ appCode: String, _ message: String, retryable: Bool = false, details: JSONValue? = nil) -> Self {
         Self(code: -32000, message: message, appCode: appCode, retryable: retryable, details: details)
+    }
+
+    /// Attaches layout issues (key + message) as `data.issues`.
+    public func withIssues(_ issues: [LayoutIssue]) -> Self {
+        var object: [String: JSONValue] = [:]
+        if case .object(let existing)? = details { object = existing }
+        object["issues"] = LayoutJSON.issuesJSON(issues)
+        return Self(code: code, message: message, appCode: appCode, retryable: retryable, details: .object(object))
     }
 
     public static func invalidParams(_ message: String, fields: [String: String] = [:]) -> Self {

@@ -84,6 +84,10 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             case "session.restart": return try await restartSession(p, access)
             case "session.sendInput": return .success(try sendInput(p))
             case "session.readOutput": return .success(try readOutput(p))
+            case "layout.validate": return .success(try layoutValidate(p, access))
+            case "layout.plan": return .success(try layoutPlan(p, access))
+            case "layout.apply": return try await layoutApply(p, access)
+            case "layout.export": return .success(try layoutExport(p, access))
             case "session.execute": return .success(try execute(p))
             case "host.connect": return try await connect(p, access)
             case "host.list": return .success(.object(["hosts": .array(hostsVisible(access, query: try p.optionalString("query")).map(hostJSON))]))
@@ -479,6 +483,159 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
 
     private static let invalidCursor = ControlError.application(
         "INVALID_CURSOR", "This cursor belongs to another session, a restarted session, or another app instance. Read again without a cursor.")
+
+    // MARK: - Declarative layouts (S026)
+
+    @MainActor private func parsedLayout(_ p: Params) throws -> LayoutDocument {
+        switch LayoutJSON.parse(p.object["document"]) {
+        case .success(let document): return document
+        case .failure(let error):
+            throw ControlError.invalidParams("The layout document is invalid.", fields: [:]).withIssues(error.issues)
+        }
+    }
+
+    @MainActor private func namespace(_ p: Params) throws -> String {
+        let namespace = try p.string("namespace")
+        guard LayoutPlanner.isValidKey(namespace) else { throw ControlError.invalidParams("namespace must match the layout key pattern.", fields: ["namespace": "layout key"]) }
+        return namespace
+    }
+
+    /// Hosts outside the grant look exactly like missing ones, and bindings to
+    /// windows outside it are ignored so a plan never reveals hidden resources.
+    @MainActor private func plan(_ document: LayoutDocument, namespace: String?, _ access: GrantAccess) throws -> LayoutPlan {
+        var bindings: [String: LayoutBinding] = [:]
+        if let namespace {
+            do { bindings = try model.layoutBindings(namespace) } catch { throw Self.map(error) }
+            let kinds: [LayoutResourceKind: ResourceKind] = [.window: .window, .tab: .tab, .split: .branch, .pane: .pane]
+            bindings = bindings.filter { _, binding in kinds[binding.kind].flatMap { access.owningWindow($0, binding.id) }.map(access.canSee) == true }
+        }
+        return LayoutPlanner.plan(
+            document, bindings: bindings, snapshot: model.snapshot,
+            home: FileManager.default.homeDirectoryForCurrentUser.path,
+            hostExists: { id in access.hostAccess(self.hosts.hosts.first { $0.id == id }) == .allowed },
+            directoryExists: { path in
+                var isDirectory: ObjCBool = false; return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+            })
+    }
+
+    @MainActor private func layoutValidate(_ p: Params, _ access: GrantAccess) throws -> JSONValue {
+        let document: LayoutDocument
+        do { document = try parsedLayout(p) } catch let error as ControlError {
+            return .object(["valid": .bool(false), "errors": error.details?["issues"] ?? .array([]), "warnings": .array([])])
+        }
+        let result = try plan(document, namespace: nil, access)
+        return .object(["valid": .bool(result.errors.isEmpty), "errors": LayoutJSON.issuesJSON(result.errors), "warnings": LayoutJSON.issuesJSON(result.warnings)])
+    }
+
+    @MainActor private func layoutPlan(_ p: Params, _ access: GrantAccess) throws -> JSONValue {
+        let result = try plan(try parsedLayout(p), namespace: try namespace(p), access)
+        return planJSON(result, access)
+    }
+
+    @MainActor private func planJSON(_ result: LayoutPlan, _ access: GrantAccess) -> JSONValue {
+        let unmanaged = result.unmanaged.filter { id in
+            access.owningWindow(.window, id).map(access.canSee) ?? access.owningWindow(.tab, id).map(access.canSee) ?? false
+        }
+        return .object([
+            "baseRevision": revision(result.baseRevision), "applicable": .bool(result.canApply), "errors": LayoutJSON.issuesJSON(result.errors),
+            "warnings": LayoutJSON.issuesJSON(result.warnings), "conflicts": LayoutJSON.issuesJSON(result.conflicts),
+            "creates": .array(result.creates.map { .object(["kind": .string($0.kind.rawValue), "key": .string($0.key)]) }),
+            "updates": .array(result.updates.map { .object(["kind": .string($0.kind.rawValue), "key": .string($0.key)]) }),
+            "unmanaged": .array(unmanaged.map { .string($0.uuidString) })
+        ])
+    }
+
+    @MainActor private func layoutApply(_ p: Params, _ access: GrantAccess) async throws -> Result<JSONValue, ControlError> {
+        let document = try parsedLayout(p), namespace = try namespace(p)
+        guard let expected = try p.revision() else {
+            throw ControlError.invalidParams("layout.apply requires expectedRevision from layout.plan.", fields: ["expectedRevision": "plan baseRevision"])
+        }
+        let startNew = try p.optionalBool("startNew") == true
+        let result = try plan(document, namespace: namespace, access)
+        guard result.errors.isEmpty else { throw ControlError.invalidParams("The layout document is invalid.").withIssues(result.errors) }
+        guard result.baseRevision == expected else {
+            return .failure(
+                .application(
+                    "CONFLICT", "The workspace changed since the plan. Plan again and apply with the new baseRevision.",
+                    details: .object(["expectedRevision": revision(expected), "currentRevision": revision(result.baseRevision)])))
+        }
+        guard result.canApply else {
+            return .failure(.application("CONFLICT", "The layout conflicts with the current workspace.", details: .object(["conflicts": LayoutJSON.issuesJSON(result.conflicts)])))
+        }
+        let committed: WorkspaceCommandResult
+        do { committed = try await model.automationApplyLayout(result, namespace: namespace) } catch { throw Self.map(error) }
+        // Launches are independent of the committed layout: failures are reported, never rolled back.
+        var launches: [JSONValue] = []
+        if startNew {
+            for (key, paneID) in result.createdPanes {
+                var failure: ControlError?
+                do { try await model.automationStartSession(paneID, launch: nil, environment: [:]) } catch { failure = Self.map(error) }
+                let session = model.snapshot.panes[paneID].flatMap { model.snapshot.sessions[$0.sessionID] }
+                var outcome: [String: JSONValue] = [
+                    "key": .string(key), "paneId": .string(paneID.uuidString), "sessionId": .string(session?.id.uuidString ?? ""),
+                    "state": .string(model.terminals[paneID]?.sessionState.rawValue ?? session?.state.rawValue ?? "stopped")
+                ]
+                if let message = session?.failureMessage { outcome["failureMessage"] = .string(message) }
+                if let failure { outcome["error"] = .object(["code": .string(failure.appCode ?? "INTERNAL_ERROR"), "message": .string(failure.message)]) }
+                launches.append(.object(outcome))
+            }
+        }
+        return .success(
+            .object([
+                "revision": revision(model.snapshot.revision), "changed": .bool(committed.snapshot.revision != result.baseRevision),
+                "mapping": .object(result.bindings.mapValues { .object(["kind": .string($0.kind.rawValue), "id": .string($0.id.uuidString)]) }),
+                "creates": .array(result.creates.map { .object(["kind": .string($0.kind.rawValue), "key": .string($0.key)]) }),
+                "launches": .array(launches)
+            ]))
+    }
+
+    /// Exports visible windows with fresh keys. Launch details need execute and
+    /// host references need host-read; otherwise the document is marked redacted.
+    @MainActor private func layoutExport(_ p: Params, _ access: GrantAccess) throws -> JSONValue {
+        let requested = try p.object["windowIds"] == nil ? nil : Set(p.uuids("windowIds"))
+        let snapshot = model.snapshot
+        var counter = 0, redacted = false
+        func key(_ prefix: String) -> JSONValue {
+            counter += 1
+            return .string("\(prefix)\(counter)")
+        }
+        func launch(_ paneID: UUID) -> JSONValue {
+            switch snapshot.panes[paneID].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
+            case .host(let hostID)? where access.allows(.hostRead) && access.hostAccess(hosts.hosts.first { $0.id == hostID }) == .allowed:
+                return .object(["kind": .string("host"), "hostId": .string(hostID.uuidString)])
+            case .shell(let directory)? where access.allows(.sessionExecute):
+                return .object(directory.map { ["kind": .string("shell"), "directory": .string($0)] } ?? ["kind": .string("shell")])
+            case .process(_, let arguments, let directory)? where access.allows(.sessionExecute) && arguments == ["-l"]:
+                return .object(directory.map { ["kind": .string("shell"), "directory": .string($0)] } ?? ["kind": .string("shell")])
+            default:
+                redacted = true
+                return .object(["kind": .string("shell")])
+            }
+        }
+        func node(_ layout: PaneLayout) -> JSONValue {
+            switch layout {
+            case .pane(let id):
+                var object: [String: JSONValue] = ["type": .string("pane"), "key": key("p"), "launch": launch(id)]
+                if let title = snapshot.panes[id]?.title { object["title"] = .string(title) }
+                return .object(object)
+            case .split(_, let axis, let ratio, let children):
+                return .object(["type": .string("split"), "key": key("s"), "axis": .string(axis.rawValue), "ratio": .number(ratio), "children": .array(children.map(node))])
+            }
+        }
+        let windows = snapshot.windows.filter { access.canSee(window: $0.id) && (requested?.contains($0.id) ?? true) }
+        if let requested, requested.count != windows.count { throw ControlError.notFound }
+        let document: JSONValue = .object([
+            "version": .number(1),
+            "windows": .array(
+                windows.map { window in
+                    .object([
+                        "key": key("w"), "name": .string(window.name),
+                        "tabs": .array(window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in .object(["key": key("t"), "title": .string(tab.title), "root": node(tab.root)]) })
+                    ])
+                })
+        ])
+        return .object(["document": document, "redacted": .bool(redacted), "importable": .bool(!redacted)])
+    }
 
     // MARK: - Projection
 

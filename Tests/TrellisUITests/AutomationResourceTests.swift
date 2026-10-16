@@ -36,10 +36,15 @@ final class Harness {
     private var tokens: [String: String] = [:]
     private var nextID = 1
 
+    /// Isolated preferences so tests never touch the user's settings.
+    let preferences: UserDefaults
+    private let suite = "trellis.tests.harness.\(UUID().uuidString)"
+
     init(clock: Clock = Clock()) throws {
         _ = NSApplication.shared
         self.clock = clock
-        model = AppWorkspaceModel(store: try WorkspaceStore())
+        preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
         // API calls must never present the UI's modal confirmations.
         model.confirmCloseSessions = { _ in
             XCTFail("Automation showed a close dialog"); return false
@@ -52,6 +57,8 @@ final class Harness {
         handler = AuthorizingControlHandler(
             grants: grants, domain: AutomationService(model: model, hosts: hosts), idempotency: IdempotencyCache(now: { [clock] in clock.now }))
     }
+
+    func discardPreferences() { preferences.removePersistentDomain(forName: suite) }
 
     func grant(_ name: String, _ capabilities: Set<Capability> = Set(Capability.allCases), scope: WindowScope = .all) async throws {
         tokens[name] = try await grants.create(name: name, capabilities: capabilities, windowScope: scope, hostScope: .all, lifetime: 3600).token

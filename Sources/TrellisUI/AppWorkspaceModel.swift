@@ -262,7 +262,10 @@ public final class AppWorkspaceModel: ObservableObject {
     var automationInputSessionIDs = Set<UUID>()
     public private(set) var restoredWindowFrame: String?
     public var onRestoreWindowFrame: ((String) -> Void)?
-    private let persistence: WorkspacePersistence?
+    let persistence: WorkspacePersistence?
+    /// Declarative layout key bindings per namespace; loaded on first use.
+    var layoutNamespaces: [String: [String: LayoutBinding]]?
+    var layoutApplyInFlight = false
     private var recoveryBackup: RestoredWorkspace?
     private var recoveryReason: WorkspacePersistenceError?
     private var pendingSaveTask: Task<Void, Never>?

@@ -41,6 +41,9 @@ public enum WorkspaceCommand: Sendable {
     case replaceTabLayout(id: UUID, root: PaneLayout)
     case startSession(paneID: UUID, resolvedLaunch: SessionLaunch? = nil)
     case completeLaunch(sessionID: UUID, attemptID: UUID, outcome: LaunchOutcome)
+    /// Declarative layout target computed by `LayoutPlanner` from this store's
+    /// state. The store re-checks that nothing is deleted and live sessions are untouched.
+    case applyLayout(target: WorkspaceSnapshot)
 }
 
 /// Optimistic concurrency for one resource, checked atomically with the command.
@@ -332,6 +335,36 @@ public actor WorkspaceStore {
             session.launchAttemptID = attempt
             next.sessions[session.id] = session
             effects = [.start(SessionLaunchRequest(sessionID: session.id, paneID: paneID, attemptID: attempt, launch: session.launch))]
+        case .applyLayout(let target):
+            // Reapplying an identical document changes nothing and keeps revisions.
+            guard target != state else { return unchanged() }
+            let keptWindows = Set(next.windows.map(\.id)).isSubset(of: Set(target.windows.map(\.id)))
+            guard keptWindows, Set(next.tabs.keys).isSubset(of: Set(target.tabs.keys)), Set(next.panes.keys).isSubset(of: Set(target.panes.keys)),
+                Set(next.sessions.keys).isSubset(of: Set(target.sessions.keys))
+            else { throw WorkspaceError.invalidState("A layout apply cannot delete resources") }
+            for (id, session) in target.sessions {
+                if let current = next.sessions[id] {
+                    // Runtime ownership never changes; only an inactive launch may.
+                    let live = [SessionState.starting, .running, .closing].contains(current.state)
+                    guard session.state == current.state, session.processID == current.processID, session.launchAttemptID == current.launchAttemptID,
+                        session.exitCode == current.exitCode, !live || session.launch == current.launch
+                    else { throw WorkspaceError.invalidTransition }
+                } else {
+                    guard session.state == .stopped, session.processID == nil, session.launchAttemptID == nil else { throw WorkspaceError.invalidTransition }
+                }
+            }
+            for (id, pane) in target.panes {
+                if let current = next.panes[id], current.tabID != pane.tabID || current.sessionID != pane.sessionID { throw WorkspaceError.invalidTransition }
+            }
+            for (id, tab) in target.tabs { if let current = next.tabs[id], current.windowID != tab.windowID { throw WorkspaceError.invalidTransition } }
+            guard target.activeWindowID == nil || target.windows.contains(where: { $0.id == target.activeWindowID }) else { throw WorkspaceError.invalidTransition }
+            var applied = target
+            applied.revision = next.revision
+            for index in applied.windows.indices where next.windows.first(where: { $0.id == applied.windows[index].id }).map({ $0 != applied.windows[index] }) ?? true {
+                applied.windows[index].revision = next.revision
+            }
+            for (id, tab) in applied.tabs where next.tabs[id].map({ $0 != tab }) ?? true { applied.tabs[id]?.revision = next.revision }
+            next = applied
         case .completeLaunch(let id, let attempt, let outcome):
             guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
             guard session.state == .starting, session.launchAttemptID == attempt else { throw WorkspaceError.staleLaunch }

@@ -1,4 +1,5 @@
 import Foundation
+import TrellisControl
 import TrellisCore
 import TrellisTerminal
 
@@ -245,5 +246,57 @@ extension AppWorkspaceModel {
         } catch {
             throw .failed
         }
+    }
+}
+
+// MARK: - Declarative layouts (S026)
+
+extension AppWorkspaceModel {
+    private var layoutBindingsURL: URL? { persistence?.directory.appendingPathComponent("layout-bindings.json") }
+
+    /// Key bindings for a namespace (empty when the namespace is new). An
+    /// unreadable file fails closed: it is never treated as empty or overwritten,
+    /// since that would duplicate every managed resource on the next apply.
+    public func layoutBindings(_ namespace: String) throws(AutomationModelError) -> [String: LayoutBinding] {
+        if layoutNamespaces == nil {
+            do {
+                let stored = try layoutBindingsURL.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
+                layoutNamespaces = try stored.map { try JSONDecoder().decode([String: [String: LayoutBinding]].self, from: $0) } ?? [:]
+            } catch { throw .store(.invalidState("Saved layout bindings could not be read, so layouts cannot be planned or applied.")) }
+        }
+        return layoutNamespaces?[namespace] ?? [:]
+    }
+
+    /// Records the namespace bindings durably, then commits the planned layout
+    /// atomically against its base revision, so a committed layout always has
+    /// its bindings. Bindings to resources that no longer exist are pruned.
+    public func automationApplyLayout(_ plan: LayoutPlan, namespace: String) async throws(AutomationModelError) -> WorkspaceCommandResult {
+        guard let target = plan.target else { throw .store(.invalidState("The layout plan cannot be applied")) }
+        // One apply at a time, so pruning never drops another apply's uncommitted bindings.
+        guard !layoutApplyInFlight else { throw .unavailable }
+        // Never add to, or edit inside, a window that is being closed.
+        guard target.windows.allSatisfy({ !closingWindowIDs.contains($0.id) }), target.tabs.keys.allSatisfy({ !closingTabIDs.contains($0) }) else {
+            throw .unavailable
+        }
+        layoutApplyInFlight = true
+        defer { layoutApplyInFlight = false }
+        let previous = try layoutBindings(namespace)
+        try saveLayoutBindings(namespace, plan.bindings)
+        do { return try await automationExecute(.applyLayout(target: target), expecting: .workspace(revision: plan.baseRevision)) } catch {
+            try? saveLayoutBindings(namespace, previous)
+            throw error
+        }
+    }
+
+    private func saveLayoutBindings(_ namespace: String, _ bindings: [String: LayoutBinding]) throws(AutomationModelError) {
+        var namespaces = (layoutNamespaces ?? [:]).mapValues { LayoutPlanner.live($0, in: snapshot) }
+        namespaces[namespace] = bindings.isEmpty ? nil : bindings
+        namespaces = namespaces.filter { !$0.value.isEmpty }
+        if let url = layoutBindingsURL {
+            do { try OwnerOnlyFile.publish(try JSONEncoder().encode(namespaces), to: url) } catch {
+                throw .store(.invalidState("Layout bindings could not be saved, so the layout was not applied."))
+            }
+        }
+        layoutNamespaces = namespaces
     }
 }
