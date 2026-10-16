@@ -1,7 +1,7 @@
 # S005 — Manage windows from the sidebar
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented with independent review fixes — 64-test suite passing; native interaction qualification pending  
 Delivery phase: 2  
 Depends on: [S002](002-domain-model-and-command-service.md), [S004](004-native-application-shell.md)  
 Requirements: `FR-W01`, `FR-W02`, `FR-W03`, `FR-W04`
@@ -12,10 +12,10 @@ As a developer, I want to organize independent groups of terminal tabs in named 
 
 ## Acceptance criteria
 
-- [ ] **S005-AC01:** Create, rename, reorder, select, and delete managed windows; creation includes one tab and one pane.
-- [ ] **S005-AC02:** Preserve each window’s active tab/pane when switching; inactive sessions continue running with the same IDs.
-- [ ] **S005-AC03:** Show bounded activity and exit indicators for inactive windows without stealing selection.
-- [ ] **S005-AC04:** Deleting the last window reaches the empty state; live-session deletion uses the common closure workflow rather than bypassing it.
+- [x] **S005-AC01:** Create, rename, reorder, select, and delete managed windows; creation includes one tab and one pane.
+- [x] **S005-AC02:** Preserve each window’s active tab/pane when switching; inactive sessions continue running with the same IDs.
+- [x] **S005-AC03:** Show bounded activity and exit indicators for inactive windows without stealing selection.
+- [x] **S005-AC04:** Deleting the last window reaches the empty state; live-session deletion uses the common closure workflow rather than bypassing it.
 
 ## Unit tests
 
@@ -34,7 +34,7 @@ Run background output, change sidebar selection, and verify output continues. Af
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S005 implementation and review evidence](../../docs/evidence/S005-managed-windows.md). Behavior is covered by nine story tests and the full 64-test suite. Native context-menu/dialog interaction and later persistence qualification remain pending; acceptance checkboxes describe implemented/tested behavior, not completed release qualification.
 
 ## Source specifications
 

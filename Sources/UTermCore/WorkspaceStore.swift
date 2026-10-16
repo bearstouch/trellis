@@ -22,6 +22,8 @@ public enum WorkspaceCommand: Sendable {
     case renameWindow(id: UUID, name: String)
     case closeAllWindows
     case selectWindow(id: UUID)
+    case reorderWindows(ids: [UUID])
+    case deleteWindow(id: UUID)
     case recordSessionExit(sessionID: UUID, code: Int32?)
     case renameTab(id: UUID, title: String)
     case replaceTabLayout(id: UUID, root: PaneLayout)
@@ -84,6 +86,30 @@ public actor WorkspaceStore {
             guard next.windows.contains(where: { $0.id == id }) else { throw WorkspaceError.notFound }
             guard next.activeWindowID != id else { return unchanged() }
             next.activeWindowID = id
+        case .reorderWindows(let order):
+            guard order.count == next.windows.count, Set(order).count == order.count,
+                  Set(order) == Set(next.windows.map(\.id)) else {
+                throw WorkspaceError.invalidState("Window order must contain every window exactly once")
+            }
+            guard order != next.windows.map(\.id) else { return unchanged() }
+            let windows = Dictionary(uniqueKeysWithValues: next.windows.map { ($0.id, $0) })
+            next.windows = order.compactMap { windows[$0] }
+        case .deleteWindow(let id):
+            guard let index = next.windows.firstIndex(where: { $0.id == id }) else { throw WorkspaceError.notFound }
+            let window = next.windows[index]
+            let paneIDs = window.tabIDs.flatMap { next.tabs[$0]?.root.paneIDs ?? [] }
+            let sessionIDs = paneIDs.compactMap { next.panes[$0]?.sessionID }
+            guard sessionIDs.allSatisfy({ sessionID in
+                guard let session = next.sessions[sessionID] else { return false }
+                return ![SessionState.starting, .running, .closing].contains(session.state)
+            }) else { throw WorkspaceError.invalidTransition }
+            for sessionID in sessionIDs { next.sessions.removeValue(forKey: sessionID) }
+            for paneID in paneIDs { next.panes.removeValue(forKey: paneID) }
+            for tabID in window.tabIDs { next.tabs.removeValue(forKey: tabID) }
+            next.windows.remove(at: index)
+            if next.activeWindowID == id {
+                next.activeWindowID = next.windows.isEmpty ? nil : next.windows[min(index, next.windows.count - 1)].id
+            }
         case .recordSessionExit(let id, let code):
             guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
             if session.state == .exited { return unchanged() }

@@ -120,13 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func confirmSessionClosure() -> Bool {
-        guard !model.runningTerminals.isEmpty else { return true }
-        let alert = NSAlert()
-        alert.messageText = "Close \(model.runningTerminals.count) terminal session(s)?"
-        alert.informativeText = "Their local processes will stop."
-        alert.addButton(withTitle: "Close Sessions")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        model.confirmCloseSessions(model.runningTerminals.count)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

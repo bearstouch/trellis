@@ -3,6 +3,12 @@ import Combine
 import UTermCore
 import UTermTerminal
 
+public struct WindowActivity: Equatable, Sendable {
+    public var hasOutput = false
+    public var hasExit = false
+    public init() {}
+}
+
 @MainActor
 public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var snapshot = WorkspaceSnapshot()
@@ -10,6 +16,17 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public var errorMessage: String?
     @Published public private(set) var defaultShell: String
     @Published public private(set) var defaultDirectory: String
+    @Published public private(set) var activity: [UUID: WindowActivity] = [:]
+    public var confirmCloseSessions: (Int) -> Bool = { count in
+        guard count > 0 else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Close \(count) terminal session(s)?"
+        alert.informativeText = "Their local processes will stop."
+        alert.addButton(withTitle: "Close Sessions")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+    private var closingWindowIDs = Set<UUID>()
     public var openSettings: (() -> Void)?
     private let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
@@ -28,7 +45,14 @@ public final class AppWorkspaceModel: ObservableObject {
     public var activeTerminal: NativeTerminal? { presentation.activePane.flatMap { terminals[$0.id] } }
     public var runningTerminals: [NativeTerminal] { terminals.values.filter(\.isRunning) }
 
-    public func refresh() async { snapshot = await service.store.snapshot() }
+    public func refresh() async { publish(await service.store.snapshot()) }
+
+    /// Async command replies can resume out of order; never regress visible state.
+    func publish(_ next: WorkspaceSnapshot) {
+        guard next.revision >= snapshot.revision else { return }
+        snapshot = next
+        if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
+    }
 
     public func createWindow(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async {
         guard !shuttingDown, !Task.isCancelled else { return }
@@ -41,28 +65,31 @@ public final class AppWorkspaceModel: ObservableObject {
                   let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID] else { return }
             let terminal = NativeTerminal(sessionID: pane.sessionID)
             terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
+            terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
             terminals[pane.id] = terminal
-            snapshot = result.snapshot
+            publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
         } catch { errorMessage = "The window could not be created." }
     }
 
     public func selectWindow(_ id: UUID) async {
-        do { snapshot = try await service.execute(.selectWindow(id: id)).snapshot }
+        do {
+            publish(try await service.execute(.selectWindow(id: id)).snapshot)
+        }
         catch { errorMessage = "The window could not be selected." }
     }
 
     public func start(paneID: UUID, fixture: Bool = false) async {
-        guard !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped else { return }
+        guard !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped else { return }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
             let result = try await service.execute(.startSession(paneID: paneID))
-            snapshot = result.snapshot
+            publish(result.snapshot)
             guard case .start(let request) = result.effects.first else { return }
-            guard !shuttingDown, !Task.isCancelled else {
-                snapshot = try await service.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID,
-                    outcome: .failed(message: "Session launch was cancelled."))).snapshot
+            guard !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
+                publish(try await service.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID,
+                    outcome: .failed(message: "Session launch was cancelled."))).snapshot)
                 return
             }
             terminal.onInputError = { [weak self] _ in self?.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste." }
@@ -79,11 +106,64 @@ public final class AppWorkspaceModel: ObservableObject {
                     ? .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: terminal.sessionState == .failed
                         ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
+                self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
             }
             if fixture { await terminal.startFixture() }
             else { await terminal.start(configuration: .loginShell(executable: defaultShell, directory: defaultDirectory)) }
         } catch { errorMessage = "The terminal session could not be started." }
+    }
+
+    private func isClosing(paneID: UUID) -> Bool {
+        guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID] else { return false }
+        return closingWindowIDs.contains(tab.windowID)
+    }
+
+    public func recordActivity(paneID: UUID, exited: Bool = false) {
+        guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID],
+              tab.windowID != snapshot.activeWindowID else { return }
+        var indicator = activity[tab.windowID] ?? WindowActivity()
+        if exited { indicator.hasExit = true } else { indicator.hasOutput = true }
+        if indicator != activity[tab.windowID] { activity[tab.windowID] = indicator }
+    }
+
+    public func renameWindow(_ id: UUID, name: String) async {
+        do { publish(try await service.execute(.renameWindow(id: id, name: name)).snapshot) }
+        catch { errorMessage = "Use a window name between 1 and 200 characters." }
+    }
+
+    public func moveWindow(_ id: UUID, offset: Int) async {
+        var order = snapshot.windows.map(\.id)
+        guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
+        order.swapAt(index, index + offset)
+        do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) }
+        catch { errorMessage = "The window order could not be changed." }
+    }
+
+    public func deleteWindow(_ id: UUID) async {
+        guard !shuttingDown, !closingWindowIDs.contains(id),
+              let window = snapshot.windows.first(where: { $0.id == id }) else { return }
+        let panes = Set(window.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] })
+        let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
+        guard live.isEmpty || confirmCloseSessions(live.count) else { return }
+        closingWindowIDs.insert(id)
+        defer { closingWindowIDs.remove(id) }
+        // A modal confirmation runs a nested event loop: a pending launch may
+        // become live while it is displayed. Stop the current set, not the
+        // earlier set counted for the prompt.
+        panes.compactMap { terminals[$0] }.filter(\.isRunning).forEach { $0.stop() }
+        // A start command can be awaiting the store before its native PTY exists.
+        // Its post-await gate above completes that attempt before deletion.
+        while pendingOperations > 0 || panes.contains(where: { terminals[$0]?.isRunning == true }) {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        await waitForUpdates()
+        guard !shuttingDown else { return }
+        do {
+            publish(try await service.execute(.deleteWindow(id: id)).snapshot)
+            for pane in panes { terminals.removeValue(forKey: pane) }
+            activity.removeValue(forKey: id)
+        } catch { errorMessage = "The window could not be closed." }
     }
 
     /// Preserve callback order across async store calls, including fast exits.
@@ -92,7 +172,7 @@ public final class AppWorkspaceModel: ObservableObject {
         updates = Task { @MainActor [weak self] in
             await previous?.value
             guard let self else { return }
-            do { self.snapshot = try await self.service.execute(command).snapshot }
+            do { self.publish(try await self.service.execute(command).snapshot) }
             catch { self.errorMessage = "The terminal state could not be updated." }
         }
     }
@@ -126,8 +206,9 @@ public final class AppWorkspaceModel: ObservableObject {
     public func closeAllWorkspaces() async {
         await shutdown()
         do {
-            snapshot = try await service.execute(.closeAllWindows).snapshot
+            publish(try await service.execute(.closeAllWindows).snapshot)
             terminals.removeAll()
+            activity.removeAll()
             shuttingDown = false
         } catch { errorMessage = "The workspaces could not be closed." }
     }
