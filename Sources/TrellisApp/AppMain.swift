@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(activateExistingInstance),
+            name: Notification.Name("dev.trellis.activateExistingInstance"), object: nil)
         NSWindow.allowsAutomaticWindowTabbing = false
         model.onChromeModeChanged = { mode in
             switch mode {
@@ -86,13 +89,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
         }
-        // Local automation is optional: an unsafe endpoint or a second live
-        // instance leaves the app fully usable without a control socket.
+        // Local automation is optional: an unsafe endpoint leaves the app
+        // fully usable without a control socket.
         _ = try? control.start()
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) { control.stop() }
+
+    @objc private func activateExistingInstance() {
+        window?.deminiaturize(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     /// Menus are rebuilt from the saved shortcut map, so every configurable
     /// command shows its current chord where users look for it.
@@ -473,6 +482,18 @@ struct TrellisMain {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         do {
+            let lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("dev.trellis-\(getuid()).instance.lock")
+            let instanceLock: ApplicationInstanceLock
+            switch try ApplicationInstanceLock.acquire(at: lockURL) {
+            case .acquired(let lock): instanceLock = lock
+            case .alreadyRunning(let pid):
+                if let pid { NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows]) }
+                DistributedNotificationCenter.default().postNotificationName(
+                    Notification.Name("dev.trellis.activateExistingInstance"), object: nil,
+                    userInfo: nil, deliverImmediately: true)
+                return
+            }
+            defer { withExtendedLifetime(instanceLock) {} }
             let directory: URL
             if let index = CommandLine.arguments.firstIndex(of: "--state-directory"), CommandLine.arguments.indices.contains(index + 1) {
                 directory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)

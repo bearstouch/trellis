@@ -155,6 +155,10 @@ User data lives in `~/Library/Application Support/dev.trellis/`. Files there are
 
 Trellis was previously named **uTerm**. On first launch it copies an existing uTerm workspace and theme library into the new directory and leaves the originals untouched. Existing Trellis data takes priority. Theme IDs that begin with `trellis-` are reserved for built-in themes. During the default-directory migration, any custom theme that uses this prefix gets a new ID, and its saved selections are updated to match. Paths passed with `--state-directory` are used as-is. If an older custom library at such a path has theme IDs that begin with `trellis-`, rename those IDs yourself, along with their filenames and saved selections.
 
+## App instances
+
+Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
+
 ## Themes and terminal fonts
 
 Settings → Appearance includes 10 editor-inspired theme families, each with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations, with matching terminal and app colors. Choose separate light and dark palettes; System appearance switches between them automatically. The original Trellis defaults remain available.
