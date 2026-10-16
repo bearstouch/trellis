@@ -43,6 +43,14 @@ final class LayoutAutomationTests: XCTestCase {
         return try await h.call("layout.apply", ["namespace": namespace, "document": document, "expectedRevision": plan["baseRevision"] as Any, "startNew": startNew])
     }
 
+    // startNew launches are independent of apply, so settle them before snapshot comparisons.
+    @MainActor
+    private func settleLaunches(_ h: Harness) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while h.model.snapshot.sessions.values.contains(where: { $0.state == .starting }), Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(h.model.snapshot.sessions.values.contains { $0.state == .starting })
+    }
+
     @MainActor
     func testS026_UT01_exampleApplyTwiceIsStable() async throws {
         let h = try await harness()
@@ -178,6 +186,7 @@ final class LayoutAutomationTests: XCTestCase {
         XCTAssertEqual(h.model.snapshot, raced)
 
         _ = try result(try await apply(h, document, startNew: true))
+        try await settleLaunches(h)
         let live = h.model.snapshot
         // Changing a running pane's launch, or moving a pane to another tab, conflicts.
         func retarget(_ value: Any) -> Any {
