@@ -14,8 +14,9 @@ public struct ThemeColor: Equatable, Hashable, Sendable {
     public init?(hex: String) {
         let bytes = Array(hex.utf8)
         guard bytes.count == 7, bytes[0] == 35,
-              bytes.dropFirst().allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }),
-              let value = UInt32(hex.dropFirst(), radix: 16) else { return nil }
+            bytes.dropFirst().allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }),
+            let value = UInt32(hex.dropFirst(), radix: 16)
+        else { return nil }
         rgb = value
     }
     init(_ rgb: UInt32) { self.rgb = rgb }
@@ -64,8 +65,9 @@ public struct ThemeDocument: Equatable, Sendable {
             cursor: color(.cursor, inherited.cursor), cursorText: color(.cursorText, inherited.cursorText),
             selectionBackground: color(.selectionBackground, inherited.selectionBackground),
             selectionForeground: color(.selectionForeground, inherited.selectionForeground), ansi: ansi?.map(\.rgb) ?? inherited.ansi)
-        return ResolvedTheme(id: id, name: name, appearance: appearance, terminal: palette,
-                             ui: base.ui.merging(ui) { _, override in override })
+        return ResolvedTheme(
+            id: id, name: name, appearance: appearance, terminal: palette,
+            ui: base.ui.merging(ui) { _, override in override })
     }
 }
 
@@ -81,21 +83,31 @@ public struct ResolvedTheme: Equatable, Sendable {
         self.id = id; self.name = name; self.appearance = appearance; self.terminal = terminal; uiColors = ui
     }
     public func encoded() throws -> Data {
-        let colors: [String: Any] = ["background": ThemeColor(terminal.background).hex, "foreground": ThemeColor(terminal.foreground).hex,
+        let colors: [String: Any] = [
+            "background": ThemeColor(terminal.background).hex, "foreground": ThemeColor(terminal.foreground).hex,
             "cursor": ThemeColor(terminal.cursor).hex, "cursorText": ThemeColor(terminal.cursorText).hex,
             "selectionBackground": ThemeColor(terminal.selectionBackground).hex, "selectionForeground": ThemeColor(terminal.selectionForeground).hex,
-            "ansi": terminal.ansi.map { ThemeColor($0).hex }]
-        return try JSONSerialization.data(withJSONObject: ["version": 1, "id": id, "name": name, "appearance": appearance.rawValue,
-            "terminal": colors, "ui": Dictionary(uniqueKeysWithValues: uiColors.map { ($0.key.rawValue, $0.value.hex) })], options: [.prettyPrinted, .sortedKeys])
+            "ansi": terminal.ansi.map { ThemeColor($0).hex }
+        ]
+        return try JSONSerialization.data(
+            withJSONObject: [
+                "version": 1, "id": id, "name": name, "appearance": appearance.rawValue,
+                "terminal": colors, "ui": Dictionary(uniqueKeysWithValues: uiColors.map { ($0.key.rawValue, $0.value.hex) })
+            ], options: [.prettyPrinted, .sortedKeys])
     }
     public static func builtIn(_ appearance: ThemeAppearance) -> Self {
-        let light: [UInt32] = [0xFFFFFF, 0xF2F5F9, 0xE8EDF4, 0x18212F, 0x4E5B6D, 0x185AA8, 0x758397,
-                               0xC8DDF5, 0x18212F, 0x2869B5, 0x216B3B, 0x805400, 0xB22D32]
-        let dark: [UInt32] = [0x141820, 0x202735, 0x10141B, 0xE8EEF4, 0xB0BAC9, 0x8BC7FF, 0x66758B,
-                              0x354C6A, 0xFFFFFF, 0x8BC7FF, 0x8DDAA4, 0xF2CC7A, 0xFFA4A4]
+        let light: [UInt32] = [
+            0xFFFFFF, 0xF2F5F9, 0xE8EDF4, 0x18212F, 0x4E5B6D, 0x185AA8, 0x758397,
+            0xC8DDF5, 0x18212F, 0x2869B5, 0x216B3B, 0x805400, 0xB22D32
+        ]
+        let dark: [UInt32] = [
+            0x141820, 0x202735, 0x10141B, 0xE8EEF4, 0xB0BAC9, 0x8BC7FF, 0x66758B,
+            0x354C6A, 0xFFFFFF, 0x8BC7FF, 0x8DDAA4, 0xF2CC7A, 0xFFA4A4
+        ]
         let values = appearance == .light ? light : dark
-        return Self(id: "trellis-\(appearance.rawValue)", name: "Trellis \(appearance.rawValue.capitalized)", appearance: appearance,
-                    terminal: .builtIn, ui: Dictionary(uniqueKeysWithValues: zip(UIColorField.allCases, values.map(ThemeColor.init))))
+        return Self(
+            id: "trellis-\(appearance.rawValue)", name: "Trellis \(appearance.rawValue.capitalized)", appearance: appearance,
+            terminal: .builtIn, ui: Dictionary(uniqueKeysWithValues: zip(UIColorField.allCases, values.map(ThemeColor.init))))
     }
 }
 
@@ -110,7 +122,8 @@ public enum ThemeValidator {
         let id = try string(required(root, key: "id"), path: "$.id")
         let bytes = Array(id.utf8)
         guard (1...64).contains(bytes.count), let first = bytes.first, (97...122).contains(first),
-              bytes.dropFirst().allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }) else {
+            bytes.dropFirst().allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 })
+        else {
             throw error("$.id", .invalidID, "Use 1–64 lowercase letters, digits, or hyphens, beginning with a letter.")
         }
         let name = try string(required(root, key: "name"), path: "$.name")

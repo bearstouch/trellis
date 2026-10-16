@@ -31,14 +31,15 @@ final class WindowManagementTests: XCTestCase {
             let tabID = UUID(), paneA = UUID(), paneB = UUID(), sessionA = UUID(), sessionB = UUID()
             initial.windows[index].tabIDs.append(tabID)
             initial.windows[index].activeTabID = tabID
-            initial.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: "Split",
+            initial.tabs[tabID] = WorkspaceTab(
+                id: tabID, windowID: windowID, title: "Split",
                 root: .split(id: UUID(), axis: .x, ratio: 0.5, children: [.pane(paneA), .pane(paneB)]), activePaneID: paneB)
             initial.panes[paneA] = WorkspacePane(id: paneA, tabID: tabID, sessionID: sessionA)
             initial.panes[paneB] = WorkspacePane(id: paneB, tabID: tabID, sessionID: sessionB)
             initial.sessions[sessionA] = WorkspaceSession(id: sessionA)
             var live = WorkspaceSession(id: sessionB)
             live.state = .running
-            live.processID = Int32(5000 + index) // Value-only domain fixture; no native process.
+            live.processID = Int32(5000 + index)  // Value-only domain fixture; no native process.
             initial.sessions[sessionB] = live
         }
         let restoredStore = try WorkspaceStore(snapshot: initial)
@@ -60,8 +61,7 @@ final class WindowManagementTests: XCTestCase {
         let before = try await store.execute(.createWindow(name: "Two")).snapshot
         let ids = before.windows.map(\.id)
         for invalid in [[ids[0]], [ids[0], ids[0]], [ids[0], UUID()]] {
-            do { _ = try await store.execute(.reorderWindows(ids: invalid)); XCTFail("Accepted invalid order") }
-            catch {}
+            do { _ = try await store.execute(.reorderWindows(ids: invalid)); XCTFail("Accepted invalid order") } catch {}
             let unchanged = await store.snapshot()
             XCTAssertEqual(unchanged, before)
         }
@@ -74,7 +74,7 @@ final class WindowManagementTests: XCTestCase {
     func testS005_UT04_inactiveOutputDoesNotSelect() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "One", startSession: false)
         let first = try XCTUnwrap(model.snapshot.activeWindowID)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
@@ -96,7 +96,7 @@ final class WindowManagementTests: XCTestCase {
     func testDeletingSelectedWindowClearsFallbackActivity() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "One", startSession: false)
         let first = try XCTUnwrap(model.snapshot.activeWindowID)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
@@ -113,7 +113,7 @@ final class WindowManagementTests: XCTestCase {
     func testOlderCommandReplyCannotRestoreDeletedWindow() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let old = model.snapshot
         await model.deleteWindow(try XCTUnwrap(old.activeWindowID))
@@ -128,8 +128,7 @@ final class WindowManagementTests: XCTestCase {
         let created = try await store.execute(.createWindow(name: "One"))
         let paneID = try XCTUnwrap(created.snapshot.panes.keys.first)
         let launched = try await store.execute(.startSession(paneID: paneID))
-        do { _ = try await store.execute(.deleteWindow(id: try XCTUnwrap(created.createdWindowID))); XCTFail("Deleted starting process") }
-        catch {}
+        do { _ = try await store.execute(.deleteWindow(id: try XCTUnwrap(created.createdWindowID))); XCTFail("Deleted starting process") } catch {}
         let unchanged = await store.snapshot()
         XCTAssertEqual(unchanged, launched.snapshot)
     }
@@ -138,7 +137,7 @@ final class WindowManagementTests: XCTestCase {
     func testDeleteLastStoppedWindowReachesEmptyState() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let id = try XCTUnwrap(model.snapshot.activeWindowID)
         await model.deleteWindow(id)
@@ -152,12 +151,14 @@ final class WindowManagementTests: XCTestCase {
     func testLiveDeletionCanBeCancelledThenConfirmed() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow()
         let id = try XCTUnwrap(model.snapshot.activeWindowID)
         let terminal = try XCTUnwrap(model.activeTerminal)
         defer { terminal.stop() }
-        model.confirmCloseSessions = { count in XCTAssertEqual(count, 1); return false }
+        model.confirmCloseSessions = { count in
+            XCTAssertEqual(count, 1); return false
+        }
         await model.deleteWindow(id)
         XCTAssertTrue(terminal.isRunning)
         XCTAssertEqual(model.snapshot.windows.count, 1)
@@ -167,7 +168,9 @@ final class WindowManagementTests: XCTestCase {
         defer { other.stop() }
         let otherPID = other.processID
         let otherSession = model.presentation.activePane?.sessionID
-        model.confirmCloseSessions = { count in XCTAssertEqual(count, 1); return true }
+        model.confirmCloseSessions = { count in
+            XCTAssertEqual(count, 1); return true
+        }
         await model.deleteWindow(id)
         XCTAssertFalse(terminal.isRunning)
         XCTAssertEqual(model.snapshot.windows.map(\.id), [otherID])

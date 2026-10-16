@@ -11,12 +11,24 @@ struct TerminalSearchBar: View {
                 PaneSearchField(terminal: terminal)
                     .frame(minHeight: 22, maxHeight: 22)
                     .onChange(of: terminal.searchQuery) { _, _ in terminal.findInPane(reset: true) }
-                Button { terminal.onFocused?(); terminal.findInPane(forward: false) } label: { Image(systemName: "chevron.up") }
-                    .accessibilityLabel("Previous Match").help("Previous Match (⇧⌘G)")
-                Button { terminal.onFocused?(); terminal.findInPane() } label: { Image(systemName: "chevron.down") }
-                    .accessibilityLabel("Next Match").help("Next Match (⌘G)")
-                Button { terminal.closeSearch() } label: { Image(systemName: "xmark") }
-                    .accessibilityLabel("Close Search").help("Close Search (Esc)")
+                Button {
+                    terminal.onFocused?(); terminal.findInPane(forward: false)
+                } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .accessibilityLabel("Previous Match").help("Previous Match (⇧⌘G)")
+                Button {
+                    terminal.onFocused?(); terminal.findInPane()
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .accessibilityLabel("Next Match").help("Next Match (⌘G)")
+                Button {
+                    terminal.closeSearch()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Close Search").help("Close Search (Esc)")
             }
             Text(terminal.searchStatus).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
                 .frame(height: 24, alignment: .leading)
@@ -95,7 +107,8 @@ private struct PaneSearchField: NSViewRepresentable {
         private func scheduleFocus() {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.pendingFocus, let window = self.window,
-                      !self.isHiddenOrHasHiddenAncestor else { return }
+                    !self.isHiddenOrHasHiddenAncestor
+                else { return }
                 if window.makeFirstResponder(self) { self.pendingFocus = false }
             }
         }

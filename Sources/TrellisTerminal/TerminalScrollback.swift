@@ -37,8 +37,7 @@ final class TerminalScrollback {
         while terminal.bufferLine(atRow: upper) != nil { lower = upper + 1; upper *= 2 }
         while lower < upper {
             let middle = lower + (upper - lower) / 2
-            if terminal.bufferLine(atRow: middle) != nil { lower = middle + 1 }
-            else { upper = middle }
+            if terminal.bufferLine(atRow: middle) != nil { lower = middle + 1 } else { upper = middle }
         }
         let count = max(0, lower - terminal.rows)
         let removed = trimmed - previousTrimmed
@@ -48,10 +47,12 @@ final class TerminalScrollback {
             guard let line = terminal.bufferLine(atRow: row) else { return false }
             return entry.line === line && entry.generation == line.generation
         }
-        let incremental = previousColumns == terminal.cols && previousRows == terminal.rows
+        let incremental =
+            previousColumns == terminal.cols && previousRows == terminal.rows
             && removed >= 0 && removed <= oldCount && count >= survivors
-            && (survivors == 0 || (matches(history[head + removed], row: 0)
-                && matches(history[history.count - 1], row: survivors - 1)))
+            && (survivors == 0
+                || (matches(history[head + removed], row: 0)
+                    && matches(history[history.count - 1], row: survivors - 1)))
         if incremental {
             for index in head..<(head + removed) { retainedHistoryBytes -= history[index].bytes }
             head += removed
@@ -84,7 +85,8 @@ final class TerminalScrollback {
             engineCapacity = keep
         }
         if engineCapacity < budget.lineLimit, budget.byteLimit > 0,
-           retainedHistoryBytes < budget.byteLimit - budget.byteLimit / 5 {
+            retainedHistoryBytes < budget.byteLimit - budget.byteLimit / 5
+        {
             view.changeScrollback(budget.lineLimit)
             engineCapacity = budget.lineLimit
         }

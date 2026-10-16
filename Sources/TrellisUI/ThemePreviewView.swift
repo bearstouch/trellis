@@ -6,8 +6,9 @@ struct ThemePreviewView: View {
     @ObservedObject var workspace: AppWorkspaceModel
     private func ui(_ field: UIColorField) -> Color { color(model.theme[field].rgb) }
     private func color(_ rgb: UInt32) -> Color {
-        Color(.sRGB, red: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255,
-              blue: Double(rgb & 255) / 255, opacity: 1)
+        Color(
+            .sRGB, red: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255,
+            blue: Double(rgb & 255) / 255, opacity: 1)
     }
     var body: some View {
         ScrollView {

@@ -134,8 +134,9 @@ final class TerminalSearchTests: XCTestCase {
         while let line = view.getTerminal().bufferLine(atRow: count + 3) {
             _ = line
             let row = try XCTUnwrap(view.getTerminal().bufferLine(atRow: count))
-            let text = view.getTerminal().getText(start: Position(col: 0, row: count),
-                                               end: Position(col: row.getTrimmedLength(), row: count))
+            let text = view.getTerminal().getText(
+                start: Position(col: 0, row: count),
+                end: Position(col: row.getTrimmedLength(), row: count))
             bytes += text.utf8.count + 1
             count += 1
         }

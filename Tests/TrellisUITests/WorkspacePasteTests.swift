@@ -16,12 +16,18 @@ final class WorkspacePasteTests: XCTestCase {
         await model.splitPane(first, axis: .x, startSession: false)
         let second = try XCTUnwrap(model.presentation.activePane?.id)
         for id in [first, second] {
-            _ = try await store.execute(.configureStoppedSession(paneID: id,
-                launch: .process(executable: "/bin/zsh", arguments: ["-f", "-c", "stty -echo; printf 'READY\\n'; exec /bin/cat"], directory: "/tmp")))
+            _ = try await store.execute(
+                .configureStoppedSession(
+                    paneID: id,
+                    launch: .process(executable: "/bin/zsh", arguments: ["-f", "-c", "stty -echo; printf 'READY\\n'; exec /bin/cat"], directory: "/tmp")))
         }
         await model.refresh()
         await model.start(paneID: first); await model.start(paneID: second)
-        defer { model.terminals.values.forEach { $0.requestTermination(force: true); $0.adapter.detach() } }
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
         let a = try XCTUnwrap(model.terminals[first]), b = try XCTUnwrap(model.terminals[second])
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {

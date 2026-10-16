@@ -31,7 +31,8 @@ public struct TerminalPastePlan: Equatable, Sendable {
                 if value != 10 || !previousCR { lines += 1 }
             }
             previousCR = value == 13
-            let control = scalar.properties.generalCategory == .control
+            let control =
+                scalar.properties.generalCategory == .control
                 || (scalar.properties.generalCategory == .format && value != 0x200C && value != 0x200D)
                 || value == 0x2028 || value == 0x2029
             controls = controls || control
@@ -76,17 +77,20 @@ public final class TerminalPasteReview {
     public private(set) var pending: PendingTerminalPaste?
     public init() {}
 
-    public func request(_ plan: TerminalPastePlan, target: TerminalPasteTarget, name: String,
-                        send: (TerminalPastePlan) throws -> Void) rethrows {
+    public func request(
+        _ plan: TerminalPastePlan, target: TerminalPasteTarget, name: String,
+        send: (TerminalPastePlan) throws -> Void
+    ) rethrows {
         pending = nil
         guard !plan.text.isEmpty else { return }
-        if plan.requiresReview { pending = PendingTerminalPaste(plan: plan, target: target, targetName: name) }
-        else { try send(plan) }
+        if plan.requiresReview { pending = PendingTerminalPaste(plan: plan, target: target, targetName: name) } else { try send(plan) }
     }
 
     @discardableResult
-    public func confirm(id: UUID, currentTarget: TerminalPasteTarget?,
-                        send: (TerminalPastePlan) throws -> Void) rethrows -> Bool {
+    public func confirm(
+        id: UUID, currentTarget: TerminalPasteTarget?,
+        send: (TerminalPastePlan) throws -> Void
+    ) rethrows -> Bool {
         guard let candidate = pending, candidate.id == id else { return false }
         pending = nil
         guard candidate.target == currentTarget else { return false }

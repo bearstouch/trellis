@@ -43,8 +43,7 @@ public final class ThemePreviewModel: ObservableObject {
         }
     }
     public func example(_ example: ThemeExample) {
-        do { _ = preview(try ThemeExamples.data(example)) }
-        catch { validationMessage = "The bundled example could not be loaded." }
+        do { _ = preview(try ThemeExamples.data(example)) } catch { validationMessage = "The bundled example could not be loaded." }
     }
     public func chooseFile() {
         let panel = NSOpenPanel()

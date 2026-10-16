@@ -20,7 +20,10 @@ final class PaneTextSearch {
                 let wraps = next?.isWrapped == true
                 var length = wraps ? terminal.cols : current.getTrimmedLength()
                 if wraps, length > 0, terminal.getCharacter(for: current[length - 1]) == "\0",
-                   current[length - 1].width <= 1, next?[0].width == 2 { length -= 1 }
+                    current[length - 1].width <= 1, next?[0].width == 2
+                {
+                    length -= 1
+                }
                 let start = characterCount
                 for col in 0..<length {
                     let character = terminal.getCharacter(for: current[col])
@@ -35,7 +38,8 @@ final class PaneTextSearch {
 
             func anchorOffset(_ position: Position) -> Int {
                 guard let entry = offsets.first(where: { $0.row == position.row }),
-                      let line = terminal.bufferLine(atRow: position.row) else {
+                    let line = terminal.bufferLine(atRow: position.row)
+                else {
                     return position.row < (offsets.first?.row ?? row) ? -1 : Int.max
                 }
                 var count = 0
@@ -70,7 +74,8 @@ final class PaneTextSearch {
             var localFirst: (Int, Int)?, localLast: (Int, Int)?, localChosen: (Int, Int)?
             var cursor = text.startIndex, offset = 0
             while cursor < text.endIndex,
-                  let range = text.range(of: query, options: [.caseInsensitive], range: cursor..<text.endIndex) {
+                let range = text.range(of: query, options: [.caseInsensitive], range: cursor..<text.endIndex)
+            {
                 offset += text.distance(from: cursor, to: range.lowerBound)
                 let count = text.distance(from: range.lowerBound, to: range.upperBound)
                 guard count > 0, offset + count <= characterCount else { break }
@@ -79,7 +84,9 @@ final class PaneTextSearch {
                 localLast = match
                 if forward {
                     if localChosen == nil, anchor == nil || match.0 >= anchor! { localChosen = match }
-                } else if anchor == nil || match.1 <= anchor! { localChosen = match }
+                } else if anchor == nil || match.1 <= anchor! {
+                    localChosen = match
+                }
                 offset += count
                 cursor = range.upperBound
             }

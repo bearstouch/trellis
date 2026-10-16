@@ -35,8 +35,10 @@ public final class SessionClosureCoordinator {
     private let sleep: (TimeInterval) async throws -> Void
     private var gracefulSince: [UUID: TimeInterval] = [:]
 
-    public init(now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-                sleep: @escaping (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }) {
+    public init(
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        sleep: @escaping (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
+    ) {
         self.now = now; self.sleep = sleep
     }
 

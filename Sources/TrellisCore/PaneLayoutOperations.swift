@@ -15,9 +15,11 @@ extension PaneLayout {
         case .pane(let id):
             return id == paneID ? .split(id: branchID, axis: axis, ratio: 0.5, children: [self, .pane(newPaneID)]) : self
         case .split(let id, let existingAxis, let ratio, let children):
-            return .split(id: id, axis: existingAxis, ratio: ratio, children: children.map {
-                $0.splitting(paneID: paneID, branchID: branchID, newPaneID: newPaneID, axis: axis)
-            })
+            return .split(
+                id: id, axis: existingAxis, ratio: ratio,
+                children: children.map {
+                    $0.splitting(paneID: paneID, branchID: branchID, newPaneID: newPaneID, axis: axis)
+                })
         }
     }
 

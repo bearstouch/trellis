@@ -13,7 +13,8 @@ final class SplitManagementTests: XCTestCase {
         let second = try await store.execute(.splitPane(id: try XCTUnwrap(first.createdPaneID), axis: .y, availableSize: TerminalSize(columns: 40, rows: 24)))
         let tab = try XCTUnwrap(second.snapshot.tabs.values.first)
         guard case .split(_, .x, 0.5, let children) = tab.root,
-              case .split(_, .y, 0.5, let nested) = children[1] else { return XCTFail("Expected mixed-axis topology") }
+            case .split(_, .y, 0.5, let nested) = children[1]
+        else { return XCTFail("Expected mixed-axis topology") }
         XCTAssertEqual(children[0], .pane(original.id))
         XCTAssertEqual(nested[0], .pane(try XCTUnwrap(first.createdPaneID)))
         XCTAssertEqual(nested[1], .pane(try XCTUnwrap(second.createdPaneID)))
@@ -92,7 +93,7 @@ final class SplitManagementTests: XCTestCase {
         defer { preferences.removePersistentDomain(forName: name) }
         preferences.set("/does-not-exist-trellis", forKey: "terminal.shell")
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane)
         await model.splitPane(original.id, axis: .x)
@@ -109,7 +110,7 @@ final class SplitManagementTests: XCTestCase {
     func testCommittedSplitSurvivesConcurrentOriginalPaneClose() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane?.id)
         let split = Task { await model.splitPane(original, axis: .x, startSession: false) }
@@ -127,7 +128,7 @@ final class SplitManagementTests: XCTestCase {
     func testConcurrentSplitAndTabCloseReleaseAllNativeTerminals() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane?.id)
         let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
@@ -144,7 +145,7 @@ final class SplitManagementTests: XCTestCase {
     func testHostedNestedPaneSurvivesParentCollapse() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let left = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(left, axis: .x, startSession: false)
@@ -172,11 +173,12 @@ final class SplitManagementTests: XCTestCase {
     func testCanvasTooSmallRejectsBeforeMutation() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let before = model.snapshot
-        await model.splitPane(try XCTUnwrap(model.presentation.activePane?.id), axis: .y,
-                              availableCanvas: CanvasDimensions(width: 200, height: 100), startSession: false)
+        await model.splitPane(
+            try XCTUnwrap(model.presentation.activePane?.id), axis: .y,
+            availableCanvas: CanvasDimensions(width: 200, height: 100), startSession: false)
         XCTAssertEqual(model.snapshot, before)
         XCTAssertEqual(model.terminals.count, 1)
         XCTAssertNotNil(model.errorMessage)

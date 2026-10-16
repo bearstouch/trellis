@@ -21,8 +21,9 @@ extension TerminalPalette {
         // Theme indexes 0–15 must not derive new 256-color cube values.
         view.getTerminal().ansi256PaletteStrategy = .xterm
         func color(_ rgb: UInt32) -> NSColor {
-            NSColor(srgbRed: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255,
-                    blue: Double(rgb & 255) / 255, alpha: 1)
+            NSColor(
+                srgbRed: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255,
+                blue: Double(rgb & 255) / 255, alpha: 1)
         }
         view.nativeBackgroundColor = color(background)
         view.nativeForegroundColor = color(foreground)

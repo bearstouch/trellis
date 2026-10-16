@@ -61,8 +61,9 @@ final class AccessibleTerminalView: TerminalView {
         if selection.selectingRows {
             let first = min(selection.start.row, selection.end.row)
             let last = max(selection.start.row, selection.end.row)
-            return getTerminal().getText(start: Position(col: 0, row: first),
-                                         end: Position(col: getTerminal().cols, row: last))
+            return getTerminal().getText(
+                start: Position(col: 0, row: first),
+                end: Position(col: getTerminal().cols, row: last))
         }
         return selection.getSelectedText()
     }
@@ -70,9 +71,10 @@ final class AccessibleTerminalView: TerminalView {
     private func writePlainText(_ text: String) {
         // The engine resolves ANSI and grapheme cells. Defensively exclude
         // remaining control scalars without damaging combining marks or ZWJ.
-        let plain = String(text.unicodeScalars.filter {
-            $0.value == 9 || $0.value == 10 || ($0.value >= 32 && !((127...159).contains($0.value)))
-        })
+        let plain = String(
+            text.unicodeScalars.filter {
+                $0.value == 9 || $0.value == 10 || ($0.value >= 32 && !((127...159).contains($0.value)))
+            })
         guard !plain.isEmpty else { return }
         writeClipboard(plain)
     }
@@ -81,7 +83,8 @@ final class AccessibleTerminalView: TerminalView {
         // Consume Cmd-C even when Copy is disabled. It must never fall through
         // to a terminal keyboard protocol as interrupt/input bytes.
         if window?.firstResponder === self,
-           event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command {
+            event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
+        {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "c": copy(self); return true
             case "a": selectAllTerminalText(self); return true
@@ -117,12 +120,14 @@ final class AccessibleTerminalView: TerminalView {
         window?.makeFirstResponder(self)
         onFocused?()
         let menu = NSMenu()
-        for (title, action) in [("Copy", #selector(copy(_:))),
-                                (copyAllTitle, #selector(copyAllRetainedText(_:))),
-                                ("Select All", #selector(selectAllTerminalText(_:))),
-                                ("Paste", #selector(paste(_:))),
-                                ("Paste Escaped Path", #selector(pasteEscapedPath(_:))),
-                                ("Find…", #selector(showPaneSearch(_:)))] {
+        for (title, action) in [
+            ("Copy", #selector(copy(_:))),
+            (copyAllTitle, #selector(copyAllRetainedText(_:))),
+            ("Select All", #selector(selectAllTerminalText(_:))),
+            ("Paste", #selector(paste(_:))),
+            ("Paste Escaped Path", #selector(pasteEscapedPath(_:))),
+            ("Find…", #selector(showPaneSearch(_:)))
+        ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             menu.addItem(item)
@@ -142,8 +147,9 @@ final class AccessibleTerminalView: TerminalView {
         guard count > 0 else { return "" }
         // getBufferAsData does not resolve SwiftTerm's grapheme table and emits
         // NUL continuation cells. getText uses the engine's Unicode-aware path.
-        return terminal.getText(start: Position(col: 0, row: 0),
-                                end: Position(col: terminal.cols, row: count - 1))
+        return terminal.getText(
+            start: Position(col: 0, row: 0),
+            end: Position(col: terminal.cols, row: count - 1))
     }
 
     override func isAccessibilityElement() -> Bool { true }
@@ -188,7 +194,8 @@ final class AccessibleTerminalView: TerminalView {
     override func accessibilityString(for range: NSRange) -> String? {
         let text = retainedText as NSString
         guard range.location != NSNotFound, range.location <= text.length,
-              range.length <= text.length - range.location else { return nil }
+            range.length <= text.length - range.location
+        else { return nil }
         return text.substring(with: range)
     }
 

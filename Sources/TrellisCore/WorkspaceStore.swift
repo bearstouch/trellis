@@ -56,9 +56,11 @@ public actor WorkspaceStore {
     private let makeID: @Sendable () -> UUID
     private let now: @Sendable () -> Date
 
-    public init(snapshot: WorkspaceSnapshot = WorkspaceSnapshot(),
-                makeID: @escaping @Sendable () -> UUID = { UUID() },
-                now: @escaping @Sendable () -> Date = { Date() }) throws {
+    public init(
+        snapshot: WorkspaceSnapshot = WorkspaceSnapshot(),
+        makeID: @escaping @Sendable () -> UUID = { UUID() },
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) throws {
         try snapshot.validate()
         self.state = snapshot
         self.makeID = makeID
@@ -110,7 +112,8 @@ public actor WorkspaceStore {
             next.activeWindowID = id
         case .reorderWindows(let order):
             guard order.count == next.windows.count, Set(order).count == order.count,
-                  Set(order) == Set(next.windows.map(\.id)) else {
+                Set(order) == Set(next.windows.map(\.id))
+            else {
                 throw WorkspaceError.invalidState("Window order must contain every window exactly once")
             }
             guard order != next.windows.map(\.id) else { return unchanged() }
@@ -121,10 +124,12 @@ public actor WorkspaceStore {
             let window = next.windows[index]
             let paneIDs = window.tabIDs.flatMap { next.tabs[$0]?.root.paneIDs ?? [] }
             let sessionIDs = paneIDs.compactMap { next.panes[$0]?.sessionID }
-            guard sessionIDs.allSatisfy({ sessionID in
-                guard let session = next.sessions[sessionID] else { return false }
-                return ![SessionState.starting, .running, .closing].contains(session.state)
-            }) else { throw WorkspaceError.invalidTransition }
+            guard
+                sessionIDs.allSatisfy({ sessionID in
+                    guard let session = next.sessions[sessionID] else { return false }
+                    return ![SessionState.starting, .running, .closing].contains(session.state)
+                })
+            else { throw WorkspaceError.invalidTransition }
             for sessionID in sessionIDs { next.sessions.removeValue(forKey: sessionID) }
             for paneID in paneIDs { next.panes.removeValue(forKey: paneID) }
             for tabID in window.tabIDs { next.tabs.removeValue(forKey: tabID) }
@@ -182,7 +187,8 @@ public actor WorkspaceStore {
         case .resizeSplit(let tabID, let splitID, let ratio, let canvas):
             guard var tab = next.tabs[tabID] else { throw WorkspaceError.notFound }
             guard ratio.isFinite, (0.1...0.9).contains(ratio), canvas.width.isFinite, canvas.height.isFinite,
-                  canvas.width > 0, canvas.height > 0 else { throw WorkspaceError.invalidState("Invalid divider allocation") }
+                canvas.width > 0, canvas.height > 0
+            else { throw WorkspaceError.invalidState("Invalid divider allocation") }
             guard PaneGeometry(layout: tab.root, canvas: canvas).branches[splitID] != nil else { throw WorkspaceError.notFound }
             let root = tab.root.resizing(splitID: splitID, ratio: ratio)
             let minimum = CanvasDimensions.minimum(for: root)
@@ -263,7 +269,8 @@ public actor WorkspaceStore {
             createdTabID = newTabID
         case .deleteTab(let id):
             guard let tab = next.tabs[id], let index = next.windows.firstIndex(where: { $0.id == tab.windowID }),
-                  let position = next.windows[index].tabIDs.firstIndex(of: id) else { throw WorkspaceError.notFound }
+                let position = next.windows[index].tabIDs.firstIndex(of: id)
+            else { throw WorkspaceError.notFound }
             let paneIDs = tab.root.paneIDs
             let sessionIDs = paneIDs.compactMap { next.panes[$0]?.sessionID }
             guard sessionIDs.allSatisfy({ ![SessionState.starting, .running, .closing].contains(next.sessions[$0]!.state) }) else { throw WorkspaceError.invalidTransition }

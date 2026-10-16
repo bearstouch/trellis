@@ -34,8 +34,10 @@ public final class LocalSessionController {
     private var closeSignal: Int32?
     private var requestedSize: TerminalSize?
 
-    public init(id: UUID = UUID(), transport: any LocalSessionTransport,
-                validator: LocalLaunchValidator = LocalLaunchValidator()) {
+    public init(
+        id: UUID = UUID(), transport: any LocalSessionTransport,
+        validator: LocalLaunchValidator = LocalLaunchValidator()
+    ) {
         self.id = id; self.transport = transport; self.validator = validator
         transport.onOutput = { [weak self] in self?.onOutput?($0) }
         transport.onInputError = { [weak self] in self?.onInputError?($0) }

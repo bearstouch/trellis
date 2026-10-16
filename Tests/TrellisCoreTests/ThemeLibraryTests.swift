@@ -13,8 +13,7 @@ final class ThemeLibraryTests: XCTestCase {
         _ = try await library.install(original)
         let file = directory.appendingPathComponent("my-dark.theme.json"), before = try Data(contentsOf: directory.appendingPathComponent("my-dark.theme.json"))
         let replacement = Data(String(decoding: original, as: UTF8.self).replacingOccurrences(of: "My Dark", with: "Replacement").utf8)
-        do { _ = try await library.install(replacement); XCTFail("Duplicate replaced without explicit authorization") }
-        catch { XCTAssertEqual(error as? ThemeLibraryError, .duplicateID("my-dark")) }
+        do { _ = try await library.install(replacement); XCTFail("Duplicate replaced without explicit authorization") } catch { XCTAssertEqual(error as? ThemeLibraryError, .duplicateID("my-dark")) }
         XCTAssertEqual(try Data(contentsOf: file), before)
         let unchanged = await library.snapshot()
         XCTAssertEqual(unchanged.documents["my-dark"]?.name, "My Dark")
@@ -30,8 +29,7 @@ final class ThemeLibraryTests: XCTestCase {
         let before = await library.reload()
         let file = directory.appendingPathComponent("my-dark.theme.json"), bytes = try Data(contentsOf: directory.appendingPathComponent("my-dark.theme.json"))
         let replacement = Data(String(decoding: original, as: UTF8.self).replacingOccurrences(of: "My Dark", with: "Replacement").utf8)
-        do { _ = try await library.install(replacement, replace: true); XCTFail("Injected write should fail") }
-        catch { XCTAssertEqual(error as? ThemeLibraryError, .io(ENOSPC)) }
+        do { _ = try await library.install(replacement, replace: true); XCTFail("Injected write should fail") } catch { XCTAssertEqual(error as? ThemeLibraryError, .io(ENOSPC)) }
         XCTAssertEqual(try Data(contentsOf: file), bytes)
         let after = await library.snapshot()
         XCTAssertEqual(after, before)
@@ -73,12 +71,9 @@ final class ThemeLibraryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
         let library = ThemeLibrary(directory: directory)
         let data = try ResolvedTheme.builtIn(.light).encoded()
-        do { _ = try await library.install(data, replace: true); XCTFail("Built-in replacement") }
-        catch { XCTAssertEqual(error as? ThemeLibraryError, .reservedID) }
-        do { _ = try await library.delete("trellis-light"); XCTFail("Built-in deletion") }
-        catch { XCTAssertEqual(error as? ThemeLibraryError, .reservedID) }
-        do { _ = try await library.delete("../other"); XCTFail("Traversal") }
-        catch { XCTAssertEqual(error as? ThemeLibraryError, .notFound) }
+        do { _ = try await library.install(data, replace: true); XCTFail("Built-in replacement") } catch { XCTAssertEqual(error as? ThemeLibraryError, .reservedID) }
+        do { _ = try await library.delete("trellis-light"); XCTFail("Built-in deletion") } catch { XCTAssertEqual(error as? ThemeLibraryError, .reservedID) }
+        do { _ = try await library.delete("../other"); XCTFail("Traversal") } catch { XCTAssertEqual(error as? ThemeLibraryError, .notFound) }
     }
 }
 

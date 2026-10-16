@@ -36,7 +36,10 @@ struct PaneTreeView: View {
     }
 
     private var layoutCoordinateSpace: UUID {
-        switch layout { case .pane(let id): return id; case .split(let id, _, _, _): return id }
+        switch layout {
+        case .pane(let id): return id;
+        case .split(let id, _, _, _): return id
+        }
     }
 
     @ViewBuilder private func leaf(_ id: UUID, size: CGSize) -> some View {
@@ -50,16 +53,30 @@ struct PaneTreeView: View {
                         Button("Restart") { Task { await model.restartPane(id) } }
                             .help("Start a fresh session in this pane").accessibilityLabel("Restart Session")
                     }
-                    Button { Task { await model.toggleMaximize(id) } } label: {
+                    Button {
+                        Task { await model.toggleMaximize(id) }
+                    } label: {
                         Image(systemName: model.maximizedPanes[tabID] == id ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                     }.help(model.maximizedPanes[tabID] == id ? "Restore Panes" : "Maximize Pane")
                         .accessibilityLabel(model.maximizedPanes[tabID] == id ? "Restore Panes" : "Maximize Pane")
-                    Button { split(id, axis: .x, size: size) } label: { Image(systemName: "rectangle.split.2x1") }
-                        .help("Split Left/Right").accessibilityLabel("Split Left/Right").disabled(model.maximizedPanes[tabID] != nil)
-                    Button { split(id, axis: .y, size: size) } label: { Image(systemName: "rectangle.split.1x2") }
-                        .help("Split Top/Bottom").accessibilityLabel("Split Top/Bottom").disabled(model.maximizedPanes[tabID] != nil)
-                    Button { Task { await model.closePane(id) } } label: { Image(systemName: "xmark") }
-                        .help("Close Pane").accessibilityLabel("Close Pane")
+                    Button {
+                        split(id, axis: .x, size: size)
+                    } label: {
+                        Image(systemName: "rectangle.split.2x1")
+                    }
+                    .help("Split Left/Right").accessibilityLabel("Split Left/Right").disabled(model.maximizedPanes[tabID] != nil)
+                    Button {
+                        split(id, axis: .y, size: size)
+                    } label: {
+                        Image(systemName: "rectangle.split.1x2")
+                    }
+                    .help("Split Top/Bottom").accessibilityLabel("Split Top/Bottom").disabled(model.maximizedPanes[tabID] != nil)
+                    Button {
+                        Task { await model.closePane(id) }
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
                     .padding(.horizontal, 9).frame(height: 26).background(model.themeColor(.surface))
                 SearchableTerminalSurface(terminal: terminal, isFocused: activePaneID == id)
@@ -84,16 +101,20 @@ struct PaneTreeView: View {
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {
         model.themeColor(.surface)
             .overlay { Rectangle().fill(model.themeColor(.border)).frame(width: axis == .x ? 1 : nil, height: axis == .y ? 1 : nil).allowsHitTesting(false) }
-            .frame(width: axis == .x ? CanvasDimensions.dividerThickness : nil,
-                   height: axis == .y ? CanvasDimensions.dividerThickness : nil)
+            .frame(
+                width: axis == .x ? CanvasDimensions.dividerThickness : nil,
+                height: axis == .y ? CanvasDimensions.dividerThickness : nil
+            )
             .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(id)).onChanged { value in
-                if dragStartRatio == nil { dragStartRatio = ratio }
-                updateDivider(id, axis: axis, size: size, translation: value.translation)
-            }.onEnded { value in
-                updateDivider(id, axis: axis, size: size, translation: value.translation)
-                dragStartRatio = nil
-            })
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(id)).onChanged { value in
+                    if dragStartRatio == nil { dragStartRatio = ratio }
+                    updateDivider(id, axis: axis, size: size, translation: value.translation)
+                }.onEnded { value in
+                    updateDivider(id, axis: axis, size: size, translation: value.translation)
+                    dragStartRatio = nil
+                }
+            )
             .accessibilityLabel(axis == .x ? "Left/right divider" : "Top/bottom divider")
             .accessibilityValue("\(Int(ratio * 100)) percent")
             .accessibilityAdjustableAction { direction in

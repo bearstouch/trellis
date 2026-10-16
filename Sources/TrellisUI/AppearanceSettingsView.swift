@@ -3,7 +3,11 @@ import TrellisCore
 
 extension ChromeMode {
     var colorScheme: ColorScheme? {
-        switch self { case .light: .light; case .dark: .dark; case .system: nil }
+        switch self {
+        case .light: .light;
+        case .dark: .dark;
+        case .system: nil
+        }
     }
 }
 

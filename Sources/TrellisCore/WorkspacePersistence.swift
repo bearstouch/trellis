@@ -6,9 +6,11 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public var directory: String
     public var windowFrame: String?
     public var appearance: AppearanceSettings
-    public init(shell: String = LocalLaunchConfiguration.loginShell().executable,
-                directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
-                appearance: AppearanceSettings = .init()) {
+    public init(
+        shell: String = LocalLaunchConfiguration.loginShell().executable,
+        directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
+        appearance: AppearanceSettings = .init()
+    ) {
         self.shell = shell; self.directory = directory; self.windowFrame = windowFrame
         self.appearance = appearance
     }
@@ -89,8 +91,9 @@ public enum WorkspaceSnapshotCodec {
             guard let session = snapshot.sessions[pane.sessionID] else { throw WorkspacePersistenceError.corrupt }
             return SavedPane(pane: pane, launch: SavedLaunch(session.launch, settings: settings))
         }
-        let saved = SavedWorkspace(revision: snapshot.revision, windows: snapshot.windows, activeWindowID: snapshot.activeWindowID,
-                                   tabs: snapshot.tabs.values.sorted { $0.id.uuidString < $1.id.uuidString }, panes: panes)
+        let saved = SavedWorkspace(
+            revision: snapshot.revision, windows: snapshot.windows, activeWindowID: snapshot.activeWindowID,
+            tabs: snapshot.tabs.values.sorted { $0.id.uuidString < $1.id.uuidString }, panes: panes)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(Document(schemaVersion: currentVersion, workspace: saved, settings: settings))
         guard data.count <= 4_194_304 else { throw WorkspacePersistenceError.corrupt }
@@ -103,12 +106,14 @@ public enum WorkspaceSnapshotCodec {
         var depth = 0, string = false, escaped = false
         for byte in data {
             if string {
-                if escaped { escaped = false }
-                else if byte == 92 { escaped = true }
-                else if byte == 34 { string = false }
-            } else if byte == 34 { string = true }
-            else if byte == 91 || byte == 123 { depth += 1; guard depth <= 128 else { throw WorkspacePersistenceError.corrupt } }
-            else if byte == 93 || byte == 125 { depth -= 1 }
+                if escaped { escaped = false } else if byte == 92 { escaped = true } else if byte == 34 { string = false }
+            } else if byte == 34 {
+                string = true
+            } else if byte == 91 || byte == 123 {
+                depth += 1; guard depth <= 128 else { throw WorkspacePersistenceError.corrupt }
+            } else if byte == 93 || byte == 125 {
+                depth -= 1
+            }
         }
         let decoder = JSONDecoder()
         guard let header = try? decoder.decode(Header.self, from: data) else { throw WorkspacePersistenceError.corrupt }
@@ -128,7 +133,8 @@ public enum WorkspaceSnapshotCodec {
             var unconfigured = Set<UUID>()
             for saved in document.workspace.panes {
                 guard result.panes.updateValue(saved.pane, forKey: saved.pane.id) == nil,
-                      result.sessions[saved.pane.sessionID] == nil else { throw WorkspacePersistenceError.corrupt }
+                    result.sessions[saved.pane.sessionID] == nil
+                else { throw WorkspacePersistenceError.corrupt }
                 result.sessions[saved.pane.sessionID] = WorkspaceSession(id: saved.pane.sessionID, launch: saved.launch.restored)
                 if saved.launch.needsConfiguration { unconfigured.insert(saved.pane.id) }
             }
@@ -176,9 +182,7 @@ public actor WorkspacePersistence {
     /// A newer version always remains read-only, including after recovery choice.
     public func authorizeRecovery() throws {
         if let data = try read(currentURL) {
-            do { _ = try WorkspaceSnapshotCodec.decode(data) }
-            catch WorkspacePersistenceError.unsupportedVersion { throw WorkspacePersistenceError.readOnly }
-            catch { /* preserve the malformed source below */ }
+            do { _ = try WorkspaceSnapshotCodec.decode(data) } catch WorkspacePersistenceError.unsupportedVersion { throw WorkspacePersistenceError.readOnly } catch { /* preserve the malformed source below */  }
             try ensureDirectory()
             try atomicWrite(data, to: directory.appendingPathComponent("workspace.corrupt.\(UUID().uuidString).json"))
         }
@@ -192,8 +196,7 @@ public actor WorkspacePersistence {
         let data = try WorkspaceSnapshotCodec.encode(snapshot, settings: settings)
         try ensureDirectory()
         if let previous = try read(currentURL) {
-            if (try? WorkspaceSnapshotCodec.decode(previous)) != nil { try atomicWrite(previous, to: backupURL) }
-            else if !replaceCorrupt { writable = false; throw WorkspacePersistenceError.readOnly }
+            if (try? WorkspaceSnapshotCodec.decode(previous)) != nil { try atomicWrite(previous, to: backupURL) } else if !replaceCorrupt { writable = false; throw WorkspacePersistenceError.readOnly }
         }
         try atomicWrite(data, to: currentURL)
         replaceCorrupt = false

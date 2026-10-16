@@ -84,7 +84,9 @@ public struct WorkspaceRootView: View {
         }
         .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
-        } message: { Text(model.errorMessage ?? "") }
+        } message: {
+            Text(model.errorMessage ?? "")
+        }
     }
 
     private var sessionStatus: String {
@@ -104,44 +106,56 @@ public struct WorkspaceRootView: View {
             HStack {
                 Text("WINDOWS").font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
                 Spacer()
-                Button { Task { await model.createWindow() } } label: { Image(systemName: "plus") }
-                    .buttonStyle(.plain).help("New Window").accessibilityLabel("New Window")
+                Button {
+                    Task { await model.createWindow() }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain).help("New Window").accessibilityLabel("New Window")
             }.padding(.horizontal, 10).padding(.bottom, 8)
             ScrollView {
-            VStack(spacing: 6) {
-            ForEach(model.snapshot.windows) { window in
-                Button { Task { await model.selectWindow(window.id) } } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
-                        Text(window.name).lineLimit(1)
-                        Spacer()
-                        if model.activity[window.id]?.hasExit == true {
-                            Image(systemName: "stop.circle").help("A session exited").accessibilityLabel("Session exited")
-                        } else if model.activity[window.id]?.hasOutput == true {
-                            Circle().fill(model.themeColor(.accent)).frame(width: 6, height: 6).help("New terminal output").accessibilityLabel("New output")
-                        }
-                        Text("\(window.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
-                    }.padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(window.id == model.snapshot.activeWindowID ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 6))
-                        .contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityLabel(window.name)
-                    .accessibilityAddTraits(window.id == model.snapshot.activeWindowID ? [.isSelected] : [])
-                    .contextMenu {
-                        Button("Rename…") { windowName = window.name; windowToRename = window }
-                        Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
-                            .disabled(model.snapshot.windows.first?.id == window.id)
-                        Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
-                            .disabled(model.snapshot.windows.last?.id == window.id)
-                        Divider().overlay(model.separatorOverlay)
-                        Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+                VStack(spacing: 6) {
+                    ForEach(model.snapshot.windows) { window in
+                        Button {
+                            Task { await model.selectWindow(window.id) }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
+                                Text(window.name).lineLimit(1)
+                                Spacer()
+                                if model.activity[window.id]?.hasExit == true {
+                                    Image(systemName: "stop.circle").help("A session exited").accessibilityLabel("Session exited")
+                                } else if model.activity[window.id]?.hasOutput == true {
+                                    Circle().fill(model.themeColor(.accent)).frame(width: 6, height: 6).help("New terminal output").accessibilityLabel("New output")
+                                }
+                                Text("\(window.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
+                            }.padding(.horizontal, 10).padding(.vertical, 8)
+                                .background(window.id == model.snapshot.activeWindowID ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 6))
+                                .contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel(window.name)
+                            .accessibilityAddTraits(window.id == model.snapshot.activeWindowID ? [.isSelected] : [])
+                            .contextMenu {
+                                Button("Rename…") {
+                                    windowName = window.name; windowToRename = window
+                                }
+                                Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
+                                    .disabled(model.snapshot.windows.first?.id == window.id)
+                                Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
+                                    .disabled(model.snapshot.windows.last?.id == window.id)
+                                Divider().overlay(model.separatorOverlay)
+                                Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+                            }
                     }
-            }
-            }
+                }
             }
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
-            Button { model.openSettings?() } label: { Label("Settings", systemImage: "slider.horizontal.3") }
-                .buttonStyle(.plain).padding(.horizontal, 10).padding(.top, 6)
+            Button {
+                model.openSettings?()
+            } label: {
+                Label("Settings", systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(.plain).padding(.horizontal, 10).padding(.top, 6)
         }
         .font(.system(size: 12)).padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 14)
         .background(model.themeColor(.sidebarBackground))
@@ -182,8 +196,12 @@ public struct WorkspaceRootView: View {
                             }
                         }
                     }.scrollIndicators(.hidden)
-                    Button { Task { await model.createTab() } } label: { Image(systemName: "plus") }
-                        .buttonStyle(.plain).padding(.horizontal, 14).help("New Tab (⌘T)").accessibilityLabel("New Tab")
+                    Button {
+                        Task { await model.createTab() }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.plain).padding(.horizontal, 14).help("New Tab (⌘T)").accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
                 Divider().overlay(model.separatorOverlay)
                 HStack(spacing: 6) {
@@ -215,10 +233,14 @@ public struct WorkspaceRootView: View {
                     .onTapGesture(count: 2) { beginTabRename(tab) }
                     .onTapGesture { Task { await model.selectTab(tab.id) } }
             }
-            Button { Task { await model.closeTab(tab.id) } } label: { Image(systemName: "xmark").font(.system(size: 9)) }
-                .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(tab.title)")
+            Button {
+                Task { await model.closeTab(tab.id) }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9))
+            }
+            .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(tab.title)")
         }.foregroundStyle(tab.id == model.presentation.selectedTab?.id ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
-        .font(.system(size: 12)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
+            .font(.system(size: 12)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
             .background(tab.id == model.presentation.selectedTab?.id ? model.themeColor(.activeTabBackground) : .clear)
             .overlay(alignment: .bottom) {
                 if tab.id == model.presentation.selectedTab?.id { Rectangle().fill(model.themeColor(.accent)).frame(height: 2) }
@@ -267,7 +289,9 @@ public struct WorkspaceRootView: View {
                     .onAppear { model.setCanvasSize(fullSize, tabID: tab.id) }
                     .onChange(of: tab.id) { _, _ in model.setCanvasSize(fullSize, tabID: tab.id) }
                     .onChange(of: fullSize) { _, next in model.setCanvasSize(next, tabID: tab.id) }
-            } else { model.terminalBackground }
+            } else {
+                model.terminalBackground
+            }
         }
     }
 }
@@ -306,7 +330,8 @@ final class TerminalContainerView: NSView {
         if focused && (changed || !wasFocused) {
             DispatchQueue.main.async { [weak self, weak terminal] in
                 guard let self, let terminal, self.wasFocused, terminal.superview === self,
-                      self.window?.isKeyWindow == true else { return }
+                    self.window?.isKeyWindow == true
+                else { return }
                 self.window?.makeFirstResponder(terminal)
             }
         }

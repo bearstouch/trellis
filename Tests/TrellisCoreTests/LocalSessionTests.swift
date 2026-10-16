@@ -51,10 +51,12 @@ final class LocalSessionTests: XCTestCase {
     @MainActor
     func testS003_UT01_rejectInaccessibleDirectory() async throws {
         let transport = TestSessionTransport()
-        let session = LocalSessionController(transport: transport,
-                      validator: LocalLaunchValidator(files: TestLaunchFiles(directoryAccessible: false)))
-        await session.start(LocalLaunchConfiguration(executable: "/bin/zsh", directory: "/denied"),
-                            size: try TerminalSize(columns: 80, rows: 24))
+        let session = LocalSessionController(
+            transport: transport,
+            validator: LocalLaunchValidator(files: TestLaunchFiles(directoryAccessible: false)))
+        await session.start(
+            LocalLaunchConfiguration(executable: "/bin/zsh", directory: "/denied"),
+            size: try TerminalSize(columns: 80, rows: 24))
         XCTAssertEqual(session.state, .failed)
         XCTAssertEqual(session.failure, .inaccessibleDirectory)
         XCTAssertTrue(transport.launches.isEmpty)
@@ -65,8 +67,9 @@ final class LocalSessionTests: XCTestCase {
         let transport = TestSessionTransport()
         let session = LocalSessionController(transport: transport, validator: LocalLaunchValidator(files: TestLaunchFiles()))
         let arguments = ["file with spaces", "$(must stay literal)", "it's literal", "", "one\ntwo"]
-        let configuration = LocalLaunchConfiguration(executable: "/bin/tool with spaces", arguments: arguments,
-                                                     directory: "/directory with spaces", inheritedEnvironment: [:])
+        let configuration = LocalLaunchConfiguration(
+            executable: "/bin/tool with spaces", arguments: arguments,
+            directory: "/directory with spaces", inheritedEnvironment: [:])
         let size = try TerminalSize(columns: 111, rows: 33)
         await session.start(configuration, size: size)
         XCTAssertEqual(transport.launches.first?.arguments, arguments)
@@ -77,7 +80,8 @@ final class LocalSessionTests: XCTestCase {
     }
 
     func testS003_UT03_stripControlSecrets() throws {
-        let configuration = LocalLaunchConfiguration(executable: "/bin/zsh", directory: "/tmp",
+        let configuration = LocalLaunchConfiguration(
+            executable: "/bin/zsh", directory: "/tmp",
             inheritedEnvironment: ["TRELLIS_TOKEN": "secret-a", "__TRELLIS_SOCKET": "secret-b", "trellis_grant": "secret-c", "PATH": "/bin", "GOOD": "before", "ITERM_SESSION_ID": "old"],
             environmentOverrides: ["GOOD": "after", "SPECIAL": "x=y"])
         let validated = try LocalLaunchValidator(files: TestLaunchFiles()).validate(configuration)
@@ -94,8 +98,9 @@ final class LocalSessionTests: XCTestCase {
         let session = LocalSessionController(transport: transport, validator: LocalLaunchValidator(files: TestLaunchFiles()))
         var exits = 0
         session.onExit = { _ in exits += 1 }
-        await session.start(LocalLaunchConfiguration(executable: "/bin/zsh", directory: "/tmp"),
-                            size: try TerminalSize(columns: 80, rows: 24))
+        await session.start(
+            LocalLaunchConfiguration(executable: "/bin/zsh", directory: "/tmp"),
+            size: try TerminalSize(columns: 80, rows: 24))
         session.stop(); session.stop()
         XCTAssertEqual(transport.signals, [SIGTERM])
         transport.onExit?(7); transport.onExit?(7)
@@ -112,8 +117,9 @@ final class LocalSessionTests: XCTestCase {
         let session = LocalSessionController(transport: transport, validator: LocalLaunchValidator(files: TestLaunchFiles()))
         var states: [SessionState] = []
         session.onStateChanged = { states.append($0) }
-        await session.start(LocalLaunchConfiguration(executable: "/bin/zsh", directory: "/tmp"),
-                            size: try TerminalSize(columns: 80, rows: 24))
+        await session.start(
+            LocalLaunchConfiguration(executable: "/bin/zsh", directory: "/tmp"),
+            size: try TerminalSize(columns: 80, rows: 24))
         XCTAssertEqual(states, [.starting, .running, .exited])
         XCTAssertEqual(session.exitCode, 7)
         XCTAssertNil(session.processID)

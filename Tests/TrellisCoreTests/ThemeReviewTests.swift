@@ -70,13 +70,16 @@ final class ThemeReviewTests: XCTestCase {
     }
 
     func testFocusAndDividersWarnWhenTheyDisappearAgainstTerminalCanvas() throws {
-        let json: [String: Any] = ["version": 1, "id": "invisible-boundaries", "name": "Invisible boundaries", "appearance": "dark",
-                                  "terminal": ["background": "#66758B"], "ui": ["focusRing": "#66758B", "border": "#66758B"]]
+        let json: [String: Any] = [
+            "version": 1, "id": "invisible-boundaries", "name": "Invisible boundaries", "appearance": "dark",
+            "terminal": ["background": "#66758B"], "ui": ["focusRing": "#66758B", "border": "#66758B"]
+        ]
         let resolved = try ThemeValidator.validate(JSONSerialization.data(withJSONObject: json)).resolved()
         for field in ["ui.focusRing", "ui.border"] {
-            let warning = try XCTUnwrap(resolved.contrastWarnings.first {
-                $0.foregroundPath == field && $0.backgroundPath == "terminal.background"
-            })
+            let warning = try XCTUnwrap(
+                resolved.contrastWarnings.first {
+                    $0.foregroundPath == field && $0.backgroundPath == "terminal.background"
+                })
             XCTAssertEqual(warning.ratio, 1, accuracy: 0.001)
             XCTAssertEqual(warning.minimum, 3)
         }

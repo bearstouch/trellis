@@ -62,7 +62,7 @@ final class TerminalPasteTests: XCTestCase {
             let plan = TerminalPastePlan(input: .paths([path]), shell: shell)
             XCTAssertEqual(plan.text, "'/tmp/a b'\\''s $HOME\nfile'")
             XCTAssertFalse(plan.unsupportedShell)
-            XCTAssertTrue(plan.requiresReview) // Newline remains a visible reviewed control.
+            XCTAssertTrue(plan.requiresReview)  // Newline remains a visible reviewed control.
         }
         let ordinary = TerminalPastePlan(input: .text(path), shell: "/bin/zsh")
         XCTAssertEqual(ordinary.text, path)

@@ -9,8 +9,10 @@ final class ThemePaletteTests: XCTestCase {
     func testS015_UT03_paletteIndexesKeepOrder() throws {
         _ = NSApplication.shared
         let values = (0..<16).map { UInt32(0x102030 + $0 * 0x010203) }
-        let json: [String: Any] = ["version": 1, "id": "ordered", "name": "Ordered", "appearance": "dark",
-                                  "terminal": ["ansi": values.map { String(format: "#%06X", $0) }]]
+        let json: [String: Any] = [
+            "version": 1, "id": "ordered", "name": "Ordered", "appearance": "dark",
+            "terminal": ["ansi": values.map { String(format: "#%06X", $0) }]
+        ]
         let palette = try ThemeValidator.validate(JSONSerialization.data(withJSONObject: json)).resolved().terminal
         let native = NativeTerminal()
         defer { native.adapter.detach() }
@@ -21,8 +23,9 @@ final class ThemePaletteTests: XCTestCase {
         XCTAssertTrue(observer.sent.isEmpty)
         for (index, value) in values.enumerated() {
             native.adapter.receive(Data("\u{1b}]4;\(index);?\u{7}".utf8))
-            let expected = String(format: "4;%d;rgb:%04x/%04x/%04x", index, ((value >> 16) & 255) * 257,
-                                  ((value >> 8) & 255) * 257, (value & 255) * 257)
+            let expected = String(
+                format: "4;%d;rgb:%04x/%04x/%04x", index, ((value >> 16) & 255) * 257,
+                ((value >> 8) & 255) * 257, (value & 255) * 257)
             XCTAssertTrue(String(decoding: observer.sent, as: UTF8.self).contains(expected), expected)
         }
         XCTAssertNil(native.processID)

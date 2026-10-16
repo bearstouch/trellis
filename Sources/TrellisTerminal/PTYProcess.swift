@@ -33,9 +33,11 @@ final class PTYProcess: LocalSessionTransport {
 
     // The fallback must remain sufficient even when the platform notification
     // path is unavailable. Tests disable that path to verify independent reaping.
-    init(processExitNotifications: Bool = true,
-         readIdentity: @escaping (Int32) -> OwnedProcessIdentity? = PTYProcess.identity,
-         signalProcessGroup: @escaping (Int32, Int32) -> Void = { _ = kill(-$0, $1) }) {
+    init(
+        processExitNotifications: Bool = true,
+        readIdentity: @escaping (Int32) -> OwnedProcessIdentity? = PTYProcess.identity,
+        signalProcessGroup: @escaping (Int32, Int32) -> Void = { _ = kill(-$0, $1) }
+    ) {
         self.processExitNotifications = processExitNotifications
         self.readIdentity = readIdentity
         self.signalProcessGroup = signalProcessGroup
@@ -44,8 +46,9 @@ final class PTYProcess: LocalSessionTransport {
     nonisolated static func identity(_ pid: Int32) -> OwnedProcessIdentity? {
         let value = trellis_read_process_identity(pid)
         guard value.valid != 0 else { return nil }
-        return OwnedProcessIdentity(pid: pid, parentPID: value.parent_pid, groupID: value.group_id,
-                                    startedSeconds: value.started_seconds, startedMicroseconds: value.started_microseconds)
+        return OwnedProcessIdentity(
+            pid: pid, parentPID: value.parent_pid, groupID: value.group_id,
+            startedSeconds: value.started_seconds, startedMicroseconds: value.started_microseconds)
     }
 
     func launch(_ configuration: ValidatedLocalLaunch, size: TerminalSize) async throws -> Int32 {
@@ -92,7 +95,7 @@ final class PTYProcess: LocalSessionTransport {
         reapFallback = reaper
         reaper.activate()
         readNext()
-        reapChild() // also handles a child that exited before the monitor armed
+        reapChild()  // also handles a child that exited before the monitor armed
         return child.pid
     }
 
@@ -151,7 +154,8 @@ final class PTYProcess: LocalSessionTransport {
     func signalGroup(_ signal: Int32) {
         reapChild()
         guard isRunning, let identity = launchIdentity,
-              identity.permitsSignal(current: readIdentity(pid), ownerPID: getpid()) else { return }
+            identity.permitsSignal(current: readIdentity(pid), ownerPID: getpid())
+        else { return }
         signalProcessGroup(pid, signal)
     }
 
@@ -164,7 +168,9 @@ final class PTYProcess: LocalSessionTransport {
                 if let data, !data.isEmpty { self.onOutput?(Data(data)) }
                 if error != 0 || (done && (data?.isEmpty ?? true)) {
                     self.endReading()
-                } else if done { self.readNext() }
+                } else if done {
+                    self.readNext()
+                }
             }
         }
     }

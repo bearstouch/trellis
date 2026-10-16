@@ -50,8 +50,9 @@ final class TerminalAdapterTests: XCTestCase {
 
     @MainActor
     func testAdapterPropagatesInputFailure() async {
-        let adapter = TerminalAdapter(render: { _ in }, write: { _ in throw TerminalAdapterError.inputQueueFull },
-                                      resizePTY: { _ in }, readText: { "" }, cleanup: {})
+        let adapter = TerminalAdapter(
+            render: { _ in }, write: { _ in throw TerminalAdapterError.inputQueueFull },
+            resizePTY: { _ in }, readText: { "" }, cleanup: {})
         XCTAssertThrowsError(try adapter.send(Data([1]))) {
             XCTAssertEqual($0 as? TerminalAdapterError, .inputQueueFull)
         }

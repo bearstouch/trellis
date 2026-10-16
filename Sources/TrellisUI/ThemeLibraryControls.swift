@@ -60,8 +60,7 @@ struct ThemeLibraryControls: View {
                 let data = try await workspace.exportTheme(id, resolved: false)
                 guard selectedID == id, preview.contentGeneration == generation else { return }
                 _ = preview.preview(data)
-            }
-            catch {
+            } catch {
                 guard selectedID == id, preview.contentGeneration == generation else { return }
                 message = error.localizedDescription
             }

@@ -6,9 +6,11 @@ import SwiftTerm
 final class TerminalCopyTests: XCTestCase {
     @MainActor
     private func key(_ flags: NSEvent.ModifierFlags, characters: String, window: NSWindow) throws -> NSEvent {
-        try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
-            timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: characters,
-            charactersIgnoringModifiers: "c", isARepeat: false, keyCode: 8))
+        try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: flags,
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: characters,
+                charactersIgnoringModifiers: "c", isARepeat: false, keyCode: 8))
     }
 
     @MainActor
@@ -149,8 +151,10 @@ final class TerminalCopyTests: XCTestCase {
         var focused = 0, writes: [String] = []
         surface.onFocused = { focused += 1 }
         surface.writeClipboard = { writes.append($0) }
-        let event = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        let event = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
         let menu = try XCTUnwrap(surface.menu(for: event))
         XCTAssertTrue(window.firstResponder === surface)
         XCTAssertEqual(focused, 1)

@@ -12,10 +12,13 @@ final class PTYProcessTests: XCTestCase {
         var exitCode: Int32?
         var output = Data()
         process.onOutput = { output.append($0) }
-        process.onExit = { exitCode = $0; exited.fulfill() }
-        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "sleep 0.1; printf done; exit 7"],
-                                environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
-                                size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        process.onExit = {
+            exitCode = $0; exited.fulfill()
+        }
+        try await process.start(
+            executable: "/bin/zsh", arguments: ["-f", "-c", "sleep 0.1; printf done; exit 7"],
+            environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+            size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let pid = process.pid
         let descriptor = process.descriptor
         await fulfillment(of: [exited], timeout: 5)
@@ -43,9 +46,10 @@ final class PTYProcessTests: XCTestCase {
         process.onExit = { _ in exited.fulfill() }
         // Perl can probe a numeric descriptor without opening/reusing it.
         let probe = "if (open(my $copy, '<&=\(descriptor)')) { print 'LEAKED' } else { print 'CLOSED' }"
-        try await process.start(executable: "/usr/bin/perl", arguments: ["-e", probe],
-                                environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
-                                size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        try await process.start(
+            executable: "/usr/bin/perl", arguments: ["-e", probe],
+            environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+            size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         await fulfillment(of: [exited], timeout: 5)
         XCTAssertEqual(String(decoding: output, as: UTF8.self), "CLOSED")
         XCTAssertGreaterThanOrEqual(fcntl(descriptor, F_GETFD), 0, "the parent retains ownership")
@@ -56,10 +60,13 @@ final class PTYProcessTests: XCTestCase {
         let process = PTYProcess()
         let exited = expectation(description: "closed-stdio child is reaped")
         var code: Int32?
-        process.onExit = { code = $0; exited.fulfill() }
-        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "exec /usr/bin/perl -e 'close STDIN; close STDOUT; close STDERR; sleep 30'"],
-                          environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
-                          size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        process.onExit = {
+            code = $0; exited.fulfill()
+        }
+        try await process.start(
+            executable: "/bin/zsh", arguments: ["-f", "-c", "exec /usr/bin/perl -e 'close STDIN; close STDOUT; close STDERR; sleep 30'"],
+            environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+            size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let deadline = Date().addingTimeInterval(2)
         while process.descriptor >= 0, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(process.descriptor, -1, "fixture must actually reach PTY EOF before testing termination")
@@ -78,9 +85,10 @@ final class PTYProcessTests: XCTestCase {
         var received = Data()
         process.onOutput = { received.append($0) }
         process.onExit = { _ in exited.fulfill() }
-        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "printf 'final bytes'; exit 7"],
-                          environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
-                          size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        try await process.start(
+            executable: "/bin/zsh", arguments: ["-f", "-c", "printf 'final bytes'; exit 7"],
+            environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+            size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let fd = process.descriptor
         let pid = process.pid
         await fulfillment(of: [exited], timeout: 5)
@@ -113,10 +121,12 @@ final class PTYProcessTests: XCTestCase {
         var output = Data()
         process.onOutput = { output.append($0) }
         process.onExit = { _ in exited.fulfill() }
-        let script = #"stty raw -echo; printf READY; exec /usr/bin/perl -e '$n=0; $bad=0; while ($n<131072) { $r=sysread(STDIN,$b,131072-$n); last unless $r; $n+=$r; $bad=1 if $b =~ /[^x]/; } print "RECEIVED:$n:BAD:$bad"'"#
-        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", script],
-                          environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
-                          size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        let script =
+            #"stty raw -echo; printf READY; exec /usr/bin/perl -e '$n=0; $bad=0; while ($n<131072) { $r=sysread(STDIN,$b,131072-$n); last unless $r; $n+=$r; $bad=1 if $b =~ /[^x]/; } print "RECEIVED:$n:BAD:$bad"'"#
+        try await process.start(
+            executable: "/bin/zsh", arguments: ["-f", "-c", script],
+            environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+            size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let deadline = Date().addingTimeInterval(3)
         while !String(decoding: output, as: UTF8.self).contains("READY"), Date() < deadline {
             try await Task.sleep(for: .milliseconds(10))
@@ -137,9 +147,10 @@ final class PTYProcessTests: XCTestCase {
         var output = Data()
         process.onOutput = { output.append($0) }
         process.onExit = { _ in exited.fulfill() }
-        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "stty raw -echo; printf READY; exec /bin/sleep 30"],
-                          environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
-                          size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        try await process.start(
+            executable: "/bin/zsh", arguments: ["-f", "-c", "stty raw -echo; printf READY; exec /bin/sleep 30"],
+            environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+            size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let readyDeadline = Date().addingTimeInterval(3)
         while !String(decoding: output, as: UTF8.self).contains("READY"), Date() < readyDeadline {
             try await Task.sleep(for: .milliseconds(10))

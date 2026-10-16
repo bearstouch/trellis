@@ -73,8 +73,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public func useTheme(_ id: String) {
         guard !isRestoring, !themeBusy, !shuttingDown, let theme = allThemes.first(where: { $0.id == id }) else { return }
         var settings = appearance
-        if theme.appearance == .light { settings.lightThemeID = id; settings.chromeMode = .light }
-        else { settings.darkThemeID = id; settings.chromeMode = .dark }
+        if theme.appearance == .light { settings.lightThemeID = id; settings.chromeMode = .light } else { settings.darkThemeID = id; settings.chromeMode = .dark }
         previewedTheme = nil
         commitThemeChoice(settings)
     }
@@ -98,8 +97,7 @@ public final class AppWorkspaceModel: ObservableObject {
             themeReplacementID = nil
             previewedTheme = nil
             var settings = appearance
-            if document.appearance == .light { settings.lightThemeID = document.id; settings.chromeMode = .light }
-            else { settings.darkThemeID = document.id; settings.chromeMode = .dark }
+            if document.appearance == .light { settings.lightThemeID = document.id; settings.chromeMode = .light } else { settings.darkThemeID = document.id; settings.chromeMode = .dark }
             commitThemeChoice(settings)
             themeNotice = "Saved \(document.name)."
             return true
@@ -145,7 +143,8 @@ public final class AppWorkspaceModel: ObservableObject {
     public func applyAppearance(_ settings: AppearanceSettings) -> Bool {
         guard settings.isValid else { return false }
         let previous = appearance
-        let terminalSettingsChanged = previous.fontName != settings.fontName || previous.fontSize != settings.fontSize
+        let terminalSettingsChanged =
+            previous.fontName != settings.fontName || previous.fontSize != settings.fontSize
             || previous.cursorShape != settings.cursorShape || previous.cursorBlinks != settings.cursorBlinks
             || previous.scrollbackLines != settings.scrollbackLines
         appearance = settings
@@ -229,8 +228,7 @@ public final class AppWorkspaceModel: ObservableObject {
         switch result {
         case .missing: return false
         case .loaded(let restored):
-            do { try await applyRestored(restored); return true }
-            catch { recoveryMessage = "The saved workspace could not be restored."; return true }
+            do { try await applyRestored(restored); return true } catch { recoveryMessage = "The saved workspace could not be restored."; return true }
         case .recovery(let reason, let backup):
             recoveryReason = reason; recoveryBackup = backup; backupAvailable = backup != nil
             if case .unsupportedVersion = reason {
@@ -265,10 +263,10 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let persistence, recoveryMessage != nil, !isRestoring else { return }
         guard !useBackup || recoveryBackup != nil else { return }
         isRestoring = true
-        if case .unsupportedVersion = recoveryReason { persistenceReadOnly = true }
-        else {
-            do { try await persistence.authorizeRecovery() }
-            catch { persistenceReadOnly = true }
+        if case .unsupportedVersion = recoveryReason {
+            persistenceReadOnly = true
+        } else {
+            do { try await persistence.authorizeRecovery() } catch { persistenceReadOnly = true }
         }
         do {
             if useBackup, let backup = recoveryBackup { try await applyRestored(backup) }
@@ -280,7 +278,8 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func startRestoredShell(_ paneID: UUID) async {
         guard unconfiguredPaneIDs.contains(paneID), !isClosing(paneID: paneID), !shuttingDown,
-              let pane = snapshot.panes[paneID], let session = snapshot.sessions[pane.sessionID] else { return }
+            let pane = snapshot.panes[paneID], let session = snapshot.sessions[pane.sessionID]
+        else { return }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         let directory: String?
@@ -327,10 +326,12 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func saveWorkspaceNow() async -> Bool {
         guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
-        let settings = WorkspaceSettings(shell: defaultShell, directory: defaultDirectory,
-                                         windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance)
-        do { try await persistence.save(snapshot, settings: settings, sequence: saveGeneration); return true }
-        catch { errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false }
+        let settings = WorkspaceSettings(
+            shell: defaultShell, directory: defaultDirectory,
+            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance)
+        do { try await persistence.save(snapshot, settings: settings, sequence: saveGeneration); return true } catch {
+            errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
+        }
     }
 
     public var presentation: WorkspacePresentation { WorkspacePresentation(snapshot: snapshot) }
@@ -360,7 +361,8 @@ public final class AppWorkspaceModel: ObservableObject {
             // Always materialize a committed result, including during a native
             // confirmation loop. Shutdown gates only the process launch.
             guard let id = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == id }),
-                  let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID] else { return }
+                let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID]
+            else { return }
             attachTerminal(pane)
             publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
@@ -371,13 +373,13 @@ public final class AppWorkspaceModel: ObservableObject {
         if id != snapshot.activeWindowID { cancelPaste(); notePasteFocus(nil) }
         do {
             publish(try await service.execute(.selectWindow(id: id)).snapshot)
-        }
-        catch { errorMessage = "The window could not be selected." }
+        } catch { errorMessage = "The window could not be selected." }
     }
 
     public func start(paneID: UUID, fixture: Bool = false) async {
         guard !isRestoring, recoveryMessage == nil, !unconfiguredPaneIDs.contains(paneID),
-              !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped else { return }
+            !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped
+        else { return }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
@@ -392,13 +394,19 @@ public final class AppWorkspaceModel: ObservableObject {
                     resolvedLaunch = .process(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
                 case .host: resolvedLaunch = nil
                 }
-            } else { resolvedLaunch = nil }
+            } else {
+                resolvedLaunch = nil
+            }
             let result = try await service.execute(.startSession(paneID: paneID, resolvedLaunch: resolvedLaunch))
             publish(result.snapshot)
             guard case .start(let request) = result.effects.first else { return }
             guard !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
-                publish(try await service.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID,
-                    outcome: .failed(message: "Session launch was cancelled."))).snapshot)
+                publish(
+                    try await service.execute(
+                        .completeLaunch(
+                            sessionID: request.sessionID, attemptID: request.attemptID,
+                            outcome: .failed(message: "Session launch was cancelled."))
+                    ).snapshot)
                 return
             }
             terminal.onInputError = { [weak self] _ in self?.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste." }
@@ -413,16 +421,21 @@ public final class AppWorkspaceModel: ObservableObject {
             }
             terminal.onExit = { [weak self, weak terminal] code in
                 guard let self, let terminal else { return }
-                let command: WorkspaceCommand = !launchCompleted
-                    ? .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: terminal.sessionState == .failed
-                        ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
+                let command: WorkspaceCommand =
+                    !launchCompleted
+                    ? .completeLaunch(
+                        sessionID: request.sessionID, attemptID: request.attemptID,
+                        outcome: .failed(
+                            message: terminal.sessionState == .failed
+                                ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
                 self.closureCoordinator.forget(sessionID: request.sessionID)
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
             }
-            if fixture { await terminal.startFixture() }
-            else {
+            if fixture {
+                await terminal.startFixture()
+            } else {
                 let configuration: LocalLaunchConfiguration
                 switch request.launch {
                 case .shell(let directory):
@@ -430,8 +443,12 @@ public final class AppWorkspaceModel: ObservableObject {
                 case .process(let executable, let arguments, let directory):
                     configuration = LocalLaunchConfiguration(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
                 case .host:
-                    publish(try await service.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID,
-                        outcome: .failed(message: "Saved host connections require SSH integration."))).snapshot)
+                    publish(
+                        try await service.execute(
+                            .completeLaunch(
+                                sessionID: request.sessionID, attemptID: request.attemptID,
+                                outcome: .failed(message: "Saved host connections require SSH integration."))
+                        ).snapshot)
                     return
                 }
                 await terminal.start(configuration: configuration)
@@ -446,23 +463,22 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func recordActivity(paneID: UUID, exited: Bool = false) {
         guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID],
-              tab.windowID != snapshot.activeWindowID else { return }
+            tab.windowID != snapshot.activeWindowID
+        else { return }
         var indicator = activity[tab.windowID] ?? WindowActivity()
         if exited { indicator.hasExit = true } else { indicator.hasOutput = true }
         if indicator != activity[tab.windowID] { activity[tab.windowID] = indicator }
     }
 
     public func renameWindow(_ id: UUID, name: String) async {
-        do { publish(try await service.execute(.renameWindow(id: id, name: name)).snapshot) }
-        catch { errorMessage = "Use a window name between 1 and 200 characters." }
+        do { publish(try await service.execute(.renameWindow(id: id, name: name)).snapshot) } catch { errorMessage = "Use a window name between 1 and 200 characters." }
     }
 
     public func moveWindow(_ id: UUID, offset: Int) async {
         var order = snapshot.windows.map(\.id)
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) }
-        catch { errorMessage = "The window order could not be changed." }
+        do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
     }
 
     private func attachTerminal(_ pane: WorkspacePane) {
@@ -477,16 +493,19 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         terminal.onPasteRequested = { [weak self, weak terminal] input in
             guard let self, let terminal,
-                  terminal.view.window?.firstResponder === terminal.view else { return }
+                terminal.view.window?.firstResponder === terminal.view
+            else { return }
             self.notePasteFocus(pane.id)
             let epoch = self.pasteFocusEpoch
             Task { @MainActor [weak self, weak terminal] in
                 guard let self, let terminal, self.pasteFocusEpoch == epoch,
-                      self.terminals[pane.id] === terminal,
-                      terminal.view.window?.firstResponder === terminal.view else { return }
+                    self.terminals[pane.id] === terminal,
+                    terminal.view.window?.firstResponder === terminal.view
+                else { return }
                 guard await self.selectPane(pane.id), self.pasteFocusEpoch == epoch,
-                      self.terminals[pane.id] === terminal,
-                      terminal.view.window?.firstResponder === terminal.view else { return }
+                    self.terminals[pane.id] === terminal,
+                    terminal.view.window?.firstResponder === terminal.view
+                else { return }
                 self.requestPaste(input, paneID: pane.id)
             }
         }
@@ -501,19 +520,21 @@ public final class AppWorkspaceModel: ObservableObject {
     public func toggleMaximize(_ paneID: UUID) async {
         guard !shuttingDown, let pane = snapshot.panes[paneID], !isClosing(paneID: paneID) else { return }
         guard await selectPane(paneID), !shuttingDown, !isClosing(paneID: paneID),
-              presentation.selectedTab?.id == pane.tabID,
-              snapshot.tabs[pane.tabID]?.activePaneID == paneID else { return }
-        if maximizedPanes[pane.tabID] == paneID { maximizedPanes.removeValue(forKey: pane.tabID) }
-        else { maximizedPanes[pane.tabID] = paneID }
+            presentation.selectedTab?.id == pane.tabID,
+            snapshot.tabs[pane.tabID]?.activePaneID == paneID
+        else { return }
+        if maximizedPanes[pane.tabID] == paneID { maximizedPanes.removeValue(forKey: pane.tabID) } else { maximizedPanes[pane.tabID] = paneID }
     }
 
     public func focusPane(_ direction: PaneDirection) async {
         guard let tab = presentation.selectedTab, let canvas = canvasSizes[tab.id],
-              let next = PaneGeometry(layout: tab.root, canvas: canvas).neighbor(of: tab.activePaneID, direction: direction) else { return }
+            let next = PaneGeometry(layout: tab.root, canvas: canvas).neighbor(of: tab.activePaneID, direction: direction)
+        else { return }
         let wasMaximized = maximizedPanes[tab.id] != nil
         guard await selectPane(next), !shuttingDown, !isClosing(paneID: next),
-              presentation.selectedTab?.id == tab.id,
-              snapshot.tabs[tab.id]?.activePaneID == next else { return }
+            presentation.selectedTab?.id == tab.id,
+            snapshot.tabs[tab.id]?.activePaneID == next
+        else { return }
         if wasMaximized, maximizedPanes[tab.id] != nil { maximizedPanes[tab.id] = next }
     }
 
@@ -533,8 +554,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func resizeSplit(_ splitID: UUID, ratio: Double, tabID: UUID, quietly: Bool = false) async {
         guard !shuttingDown, maximizedPanes[tabID] == nil, let canvas = canvasSizes[tabID] else { return }
-        do { publish(try await service.execute(.resizeSplit(tabID: tabID, splitID: splitID, ratio: ratio, canvas: canvas)).snapshot) }
-        catch { if !quietly { errorMessage = "This divider would make a pane too small." } }
+        do { publish(try await service.execute(.resizeSplit(tabID: tabID, splitID: splitID, ratio: ratio, canvas: canvas)).snapshot) } catch { if !quietly { errorMessage = "This divider would make a pane too small." } }
     }
 
     public func resizeFocusedPane(_ direction: PaneDirection) async {
@@ -547,7 +567,8 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func restartPane(_ id: UUID, startSession: Bool = true) async {
         guard !shuttingDown, !isClosing(paneID: id), let terminal = terminals[id],
-              terminal.sessionState == .exited || terminal.sessionState == .failed else { return }
+            terminal.sessionState == .exited || terminal.sessionState == .failed
+        else { return }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         await waitForUpdates()
@@ -613,8 +634,9 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func createTab(windowID: UUID? = nil, duplicate id: UUID? = nil, startSessions: Bool = true) async {
         guard !shuttingDown, !Task.isCancelled,
-              let windowID = windowID ?? presentation.selectedWindow?.id,
-              !closingWindowIDs.contains(windowID) else { return }
+            let windowID = windowID ?? presentation.selectedWindow?.id,
+            !closingWindowIDs.contains(windowID)
+        else { return }
         if let id {
             guard snapshot.tabs[id]?.windowID == windowID, !closingTabIDs.contains(id) else { return }
         }
@@ -635,8 +657,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func selectTab(_ id: UUID) async {
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
-        do { publish(try await service.execute(.selectTab(id: id)).snapshot) }
-        catch { errorMessage = "The tab could not be selected." }
+        do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = "The tab could not be selected." }
     }
 
     public func finishTabRename(_ id: UUID, draft: String, action: TabRenameAction) async {
@@ -647,8 +668,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public func renameTab(_ id: UUID, title: String) async {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) }
-        catch { errorMessage = "Use a tab name between 1 and 200 characters." }
+        do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) } catch { errorMessage = "Use a tab name between 1 and 200 characters." }
     }
 
     public func moveTab(_ id: UUID, offset: Int) async {
@@ -656,13 +676,13 @@ public final class AppWorkspaceModel: ObservableObject {
         var order = window.tabIDs
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) }
-        catch { errorMessage = "The tab order could not be changed." }
+        do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
     }
 
     public func deleteWindow(_ id: UUID) async {
         guard !shuttingDown, !closureInProgress, !closingWindowIDs.contains(id),
-              let window = snapshot.windows.first(where: { $0.id == id }) else { return }
+            let window = snapshot.windows.first(where: { $0.id == id })
+        else { return }
         closureInProgress = true
         defer { closureInProgress = false }
         let pastePaneID = pendingPaste?.target.paneID ?? pasteFocusPaneID
@@ -676,7 +696,8 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func closeTab(_ id: UUID) async {
         guard !shuttingDown, !closureInProgress, let tab = snapshot.tabs[id], !closingTabIDs.contains(id),
-              !closingWindowIDs.contains(tab.windowID) else { return }
+            !closingWindowIDs.contains(tab.windowID)
+        else { return }
         closureInProgress = true
         defer { closureInProgress = false }
         let pastePaneID = pendingPaste?.target.paneID ?? pasteFocusPaneID
@@ -690,7 +711,8 @@ public final class AppWorkspaceModel: ObservableObject {
     private func prepareCloseSummary(_ panes: Set<UUID>) {
         closeSummary = panes.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
             guard terminals[id]?.isRunning == true, let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID],
-                  let window = snapshot.windows.first(where: { $0.id == tab.windowID }) else { return nil }
+                let window = snapshot.windows.first(where: { $0.id == tab.windowID })
+            else { return nil }
             return "\(window.name) / \(tab.title) / \(pane.title ?? "Terminal")"
         }
     }
@@ -701,7 +723,8 @@ public final class AppWorkspaceModel: ObservableObject {
         alert.messageText = force ? "Force stop \(count) session(s)?" : "Close \(count) terminal session(s)?"
         let summary = closeSummary.prefix(8).joined(separator: "\n")
         let more = closeSummary.count > 8 ? "\n…and \(closeSummary.count - 8) more" : ""
-        alert.informativeText = (force ? "These sessions have not finished closing after two seconds.\n\n" : "Their owned local processes will stop.\n\n")
+        alert.informativeText =
+            (force ? "These sessions have not finished closing after two seconds.\n\n" : "Their owned local processes will stop.\n\n")
             + summary + more + "\n\nDetached or remote processes may continue running."
         alert.addButton(withTitle: force ? "Force Stop" : "Close Sessions")
         alert.addButton(withTitle: force ? "Keep Waiting" : "Cancel")
@@ -782,8 +805,7 @@ public final class AppWorkspaceModel: ObservableObject {
         updates = Task { @MainActor [weak self] in
             await previous?.value
             guard let self else { return }
-            do { self.publish(try await self.service.execute(command).snapshot) }
-            catch { self.errorMessage = "The terminal state could not be updated." }
+            do { self.publish(try await self.service.execute(command).snapshot) } catch { self.errorMessage = "The terminal state could not be updated." }
         }
     }
 
@@ -809,14 +831,16 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private var currentPasteTarget: TerminalPasteTarget? {
         guard !shuttingDown, let pane = presentation.activePane, !isClosing(paneID: pane.id),
-              let terminal = terminals[pane.id], terminal.sessionID == pane.sessionID,
-              terminal.sessionState == .running else { return nil }
+            let terminal = terminals[pane.id], terminal.sessionID == pane.sessionID,
+            terminal.sessionState == .running
+        else { return nil }
         return TerminalPasteTarget(paneID: pane.id, sessionID: pane.sessionID)
     }
 
     public func requestPaste(_ input: TerminalPasteInput, paneID: UUID) {
         guard let target = currentPasteTarget, target.paneID == paneID,
-              let session = snapshot.sessions[target.sessionID], let terminal = terminals[paneID] else { return }
+            let session = snapshot.sessions[target.sessionID], let terminal = terminals[paneID]
+        else { return }
         let shell: String?
         switch session.launch {
         case .shell: shell = defaultShell

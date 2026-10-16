@@ -58,7 +58,9 @@ final class SessionSafetyTests: XCTestCase {
         await model.waitForUpdates()
         model.confirmCloseSessions = { _ in true }
         var forcePrompts = 0
-        model.confirmForceSessions = { count in forcePrompts += 1; XCTAssertEqual(count, 1); return false }
+        model.confirmForceSessions = { count in
+            forcePrompts += 1; XCTAssertEqual(count, 1); return false
+        }
         await model.closePane(pane.id)
         XCTAssertEqual(forcePrompts, 1)
         XCTAssertTrue(terminal.isRunning)

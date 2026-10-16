@@ -51,7 +51,8 @@ public struct WindowRectangle: Equatable, Sendable {
         }
         let display = available.max { overlap($0) < overlap($1) } ?? first
         let w = min(width, display.width), h = min(height, display.height)
-        return Self(x: min(max(x, display.x), display.x + display.width - w),
-                    y: min(max(y, display.y), display.y + display.height - h), width: w, height: h)
+        return Self(
+            x: min(max(x, display.x), display.x + display.width - w),
+            y: min(max(y, display.y), display.y + display.height - h), width: w, height: h)
     }
 }

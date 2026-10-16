@@ -6,7 +6,8 @@ public struct TerminalSize: Equatable, Sendable {
 
     public init(columns: Int, rows: Int) throws {
         guard (1...Int(UInt16.max)).contains(columns),
-              (1...Int(UInt16.max)).contains(rows) else {
+            (1...Int(UInt16.max)).contains(rows)
+        else {
             throw TerminalAdapterError.invalidSize
         }
         self.columns = columns
@@ -40,11 +41,13 @@ public final class TerminalAdapter {
     private var lastSize: TerminalSize?
     public private(set) var isDetached = false
 
-    public init(render: @escaping (Data) -> Void,
-                write: @escaping (Data) throws -> Void,
-                resizePTY: @escaping (TerminalSize) -> Void,
-                readText: @escaping () -> String,
-                cleanup: @escaping () -> Void) {
+    public init(
+        render: @escaping (Data) -> Void,
+        write: @escaping (Data) throws -> Void,
+        resizePTY: @escaping (TerminalSize) -> Void,
+        readText: @escaping () -> String,
+        cleanup: @escaping () -> Void
+    ) {
         self.render = render
         self.write = write
         self.resizePTY = resizePTY

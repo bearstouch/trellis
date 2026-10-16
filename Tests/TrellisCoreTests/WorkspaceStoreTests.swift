@@ -22,8 +22,7 @@ final class WorkspaceStoreTests: XCTestCase {
             let tabID = try XCTUnwrap(initial.snapshot.windows.first?.activeTabID)
             let paneID = try XCTUnwrap(initial.snapshot.tabs[tabID]?.activePaneID)
             let root = PaneLayout.split(id: UUID(), axis: .x, ratio: 0.5, children: Array(repeating: .pane(paneID), count: count))
-            do { _ = try await store.execute(.replaceTabLayout(id: tabID, root: root)); XCTFail("accepted \(count) children") }
-            catch { XCTAssertNotNil(error as? WorkspaceError) }
+            do { _ = try await store.execute(.replaceTabLayout(id: tabID, root: root)); XCTFail("accepted \(count) children") } catch { XCTAssertNotNil(error as? WorkspaceError) }
             let after = await store.snapshot()
             XCTAssertEqual(after, initial.snapshot)
         }
@@ -90,8 +89,7 @@ final class WorkspaceStoreTests: XCTestCase {
     func testDuplicateIDGeneratorCannotCorruptState() async throws {
         let duplicate = UUID()
         let store = try WorkspaceStore(makeID: { duplicate })
-        do { _ = try await store.execute(.createWindow(name: "Project")); XCTFail("duplicate IDs accepted") }
-        catch { XCTAssertNotNil(error as? WorkspaceError) }
+        do { _ = try await store.execute(.createWindow(name: "Project")); XCTFail("duplicate IDs accepted") } catch { XCTAssertNotNil(error as? WorkspaceError) }
         let snapshot = await store.snapshot()
         XCTAssertEqual(snapshot, WorkspaceSnapshot())
     }
@@ -102,12 +100,14 @@ final class WorkspaceStoreTests: XCTestCase {
         let pane = try XCTUnwrap(created.snapshot.panes.values.first)
         let started = try await store.execute(.startSession(paneID: pane.id))
         guard case .start(let request) = try XCTUnwrap(started.effects.first) else { return XCTFail("missing effect") }
-        do { _ = try await store.execute(.completeLaunch(sessionID: request.sessionID, attemptID: UUID(), outcome: .started(processID: 42))); XCTFail("stale attempt accepted") }
-        catch { XCTAssertEqual(error as? WorkspaceError, .staleLaunch) }
+        do { _ = try await store.execute(.completeLaunch(sessionID: request.sessionID, attemptID: UUID(), outcome: .started(processID: 42))); XCTFail("stale attempt accepted") } catch {
+            XCTAssertEqual(error as? WorkspaceError, .staleLaunch)
+        }
         let running = try await store.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .started(processID: 42)))
         XCTAssertEqual(running.snapshot.sessions[request.sessionID]?.state, .running)
-        do { _ = try await store.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: "late"))); XCTFail("duplicate completion accepted") }
-        catch { XCTAssertEqual(error as? WorkspaceError, .staleLaunch) }
+        do { _ = try await store.execute(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: "late"))); XCTFail("duplicate completion accepted") } catch {
+            XCTAssertEqual(error as? WorkspaceError, .staleLaunch)
+        }
         let after = await store.snapshot()
         XCTAssertEqual(after, running.snapshot)
     }
@@ -144,9 +144,10 @@ final class WorkspaceStoreTests: XCTestCase {
         guard case .split(let id, let axis, _, let children) = tab.root else {
             return XCTFail("fixture must contain a split")
         }
-        let changed = try await store.execute(.replaceTabLayout(
-            id: tab.id, root: .split(id: id, axis: axis, ratio: 0.7, children: children.reversed())
-        ), expectedRevision: 0)
+        let changed = try await store.execute(
+            .replaceTabLayout(
+                id: tab.id, root: .split(id: id, axis: axis, ratio: 0.7, children: children.reversed())
+            ), expectedRevision: 0)
         try changed.snapshot.validate()
         XCTAssertEqual(changed.snapshot.windows.first?.tabIDs, window.tabIDs)
         XCTAssertEqual(changed.snapshot.tabs[tab.id]?.root.paneIDs, children.reversed().flatMap(\.paneIDs))
@@ -175,7 +176,8 @@ final class WorkspaceStoreTests: XCTestCase {
 
         var duplicateSplit = initial
         guard case .split(let firstID, _, _, _) = firstTab.root,
-              case .split(_, let axis, let ratio, let children) = secondTab.root else {
+            case .split(_, let axis, let ratio, let children) = secondTab.root
+        else {
             return XCTFail("fixture must contain splits")
         }
         duplicateSplit.tabs[secondTab.id]?.root = .split(id: firstID, axis: axis, ratio: ratio, children: children)
@@ -218,17 +220,19 @@ final class WorkspaceStoreTests: XCTestCase {
         guard case .start(let firstRequest) = try XCTUnwrap(first.effects.first) else {
             return XCTFail("missing first launch effect")
         }
-        _ = try await store.execute(.completeLaunch(
-            sessionID: firstRequest.sessionID, attemptID: firstRequest.attemptID, outcome: .started(processID: 42)
-        ))
+        _ = try await store.execute(
+            .completeLaunch(
+                sessionID: firstRequest.sessionID, attemptID: firstRequest.attemptID, outcome: .started(processID: 42)
+            ))
         let second = try await store.execute(.startSession(paneID: paneIDs[1]))
         guard case .start(let secondRequest) = try XCTUnwrap(second.effects.first) else {
             return XCTFail("missing second launch effect")
         }
         do {
-            _ = try await store.execute(.completeLaunch(
-                sessionID: secondRequest.sessionID, attemptID: secondRequest.attemptID, outcome: .started(processID: 42)
-            ))
+            _ = try await store.execute(
+                .completeLaunch(
+                    sessionID: secondRequest.sessionID, attemptID: secondRequest.attemptID, outcome: .started(processID: 42)
+                ))
             XCTFail("duplicate PID ownership accepted")
         } catch { XCTAssertNotNil(error as? WorkspaceError) }
         let after = await store.snapshot()

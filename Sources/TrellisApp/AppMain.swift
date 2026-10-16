@@ -34,15 +34,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         buildMenus()
         model.openSettings = { [weak self] in self?.showSettings() }
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
-                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Trellis"
         window.minSize = NSSize(width: 400, height: 260)
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: WorkspaceRootView(model: model))
-        if let saved = UserDefaults.standard.string(forKey: "app.windowFrame") { window.setFrame(NSRectFromString(saved), display: false) }
-        else { window.center() }
+        if let saved = UserDefaults.standard.string(forKey: "app.windowFrame") { window.setFrame(NSRectFromString(saved), display: false) } else { window.center() }
         constrainWindow()
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.constrainWindow() }
@@ -162,7 +162,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     private func arrowKey(_ direction: PaneDirection) -> String {
         let code: Int
-        switch direction { case .left: code = NSLeftArrowFunctionKey; case .right: code = NSRightArrowFunctionKey; case .up: code = NSUpArrowFunctionKey; case .down: code = NSDownArrowFunctionKey }
+        switch direction {
+        case .left: code = NSLeftArrowFunctionKey;
+        case .right: code = NSRightArrowFunctionKey;
+        case .up: code = NSUpArrowFunctionKey;
+        case .down: code = NSDownArrowFunctionKey
+        }
         return String(UnicodeScalar(code)!)
     }
     @objc private func focusPane(_ sender: NSMenuItem) {
@@ -196,10 +201,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func constrainWindow() {
         guard let window else { return }
         let rect = window.frame
-        let clamped = WindowRectangle(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height).constrained(to: NSScreen.screens.map {
-            let frame = $0.visibleFrame
-            return WindowRectangle(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height)
-        })
+        let clamped = WindowRectangle(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height).constrained(
+            to: NSScreen.screens.map {
+                let frame = $0.visibleFrame
+                return WindowRectangle(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height)
+            })
         window.setFrame(NSRect(x: clamped.x, y: clamped.y, width: clamped.width, height: clamped.height), display: true)
     }
     func windowDidMove(_ notification: Notification) { saveGeometry() }
@@ -261,8 +267,9 @@ struct TrellisMain {
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
                     bundleIdentifier: Bundle.main.bundleIdentifier)
             }
-            let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
-                                          themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
+            let model = AppWorkspaceModel(
+                store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
+                themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
             let delegate = AppDelegate(model: model)
             app.delegate = delegate
             app.run()

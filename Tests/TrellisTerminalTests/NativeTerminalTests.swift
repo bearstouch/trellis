@@ -55,8 +55,9 @@ final class NativeTerminalTests: XCTestCase {
         let surface = try XCTUnwrap(native.view as? AccessibleTerminalView)
         let input = InputObserver()
         surface.terminalDelegate = input
-        surface.setMarkedText("漢", selectedRange: NSRange(location: 1, length: 0),
-                              replacementRange: NSRange(location: NSNotFound, length: 0))
+        surface.setMarkedText(
+            "漢", selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0))
         XCTAssertEqual(input.received, Data())
         surface.insertText("漢字", replacementRange: NSRange(location: NSNotFound, length: 0))
         XCTAssertEqual(input.received, Data("漢字".utf8))
@@ -80,7 +81,9 @@ final class NativeTerminalTests: XCTestCase {
         let native = NativeTerminal()
         let exited = expectation(description: "fixture exits")
         var exitCode: Int32?
-        native.onExit = { code in exitCode = code; exited.fulfill() }
+        native.onExit = { code in
+            exitCode = code; exited.fulfill()
+        }
         native.start(fixture: true)
         await fulfillment(of: [exited], timeout: 10)
         // PTY and child-exit notifications are independent; let queued reads drain.

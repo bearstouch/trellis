@@ -16,7 +16,10 @@ struct TerminalSelectionBookmark {
                 let wraps = terminal.bufferLine(atRow: row + 1)?.isWrapped == true
                 var length = wraps ? terminal.cols : line.getTrimmedLength()
                 if wraps, length > 0, terminal.getCharacter(for: line[length - 1]) == "\0",
-                   line[length - 1].width <= 1, terminal.bufferLine(atRow: row + 1)?[0].width == 2 { length -= 1 }
+                    line[length - 1].width <= 1, terminal.bufferLine(atRow: row + 1)?[0].width == 2
+                {
+                    length -= 1
+                }
                 var value = ""
                 for col in 0..<length {
                     let character = terminal.getCharacter(for: line[col])
@@ -32,7 +35,8 @@ struct TerminalSelectionBookmark {
         }
         func offset(_ position: Position, view: AccessibleTerminalView) -> Int? {
             guard let row = rows.first(where: { $0.index == position.row }),
-                  let line = view.getTerminal().bufferLine(atRow: position.row) else { return nil }
+                let line = view.getTerminal().bufferLine(atRow: position.row)
+            else { return nil }
             var length = 0
             for col in 0..<min(position.col, view.getTerminal().cols) {
                 let char = view.getTerminal().getCharacter(for: line[col])
@@ -43,7 +47,8 @@ struct TerminalSelectionBookmark {
         }
         func position(_ offset: Int, end: Bool, view: AccessibleTerminalView) -> Position? {
             guard let row = rows.last(where: { end ? $0.offset < offset : $0.offset <= offset }),
-                  let line = view.getTerminal().bufferLine(atRow: row.index) else { return nil }
+                let line = view.getTerminal().bufferLine(atRow: row.index)
+            else { return nil }
             var count = row.offset
             for col in 0..<view.getTerminal().cols {
                 let char = view.getTerminal().getCharacter(for: line[col])
@@ -99,9 +104,10 @@ struct TerminalSelectionBookmark {
         }
         let chosen = NSRange(location: max(0, shifted), length: selectedLength)
         guard shifted >= 0, NSMaxRange(chosen) <= text.length,
-              text.substring(with: chosen) == selected,
-              let start = map.position(chosen.location, end: false, view: view),
-              let end = map.position(NSMaxRange(chosen), end: true, view: view) else {
+            text.substring(with: chosen) == selected,
+            let start = map.position(chosen.location, end: false, view: view),
+            let end = map.position(NSMaxRange(chosen), end: true, view: view)
+        else {
             view.selection.selectNone(); return
         }
         view.selection.setSoftStart(bufferPosition: start)

@@ -72,7 +72,8 @@ final class ThemeValidationTests: XCTestCase {
         XCTAssertNoThrow(try ThemeValidator.validate(Data(exact.utf8)))
     }
     func testS015_UT04_contrastWarningsNamePairs() throws {
-        let json = ##"{"version":1,"id":"dim","name":"Dim","appearance":"dark","terminal":{"background":"#101010","foreground":"#101010","cursor":"#101010","cursorText":"#101010","selectionBackground":"#101010","selectionForeground":"#101010"}}"##
+        let json =
+            ##"{"version":1,"id":"dim","name":"Dim","appearance":"dark","terminal":{"background":"#101010","foreground":"#101010","cursor":"#101010","cursorText":"#101010","selectionBackground":"#101010","selectionForeground":"#101010"}}"##
         let resolved = try ThemeValidator.validate(Data(json.utf8)).resolved()
         let warnings = resolved.contrastWarnings
         for first in ["terminal.foreground", "terminal.selectionForeground", "terminal.cursorText", "terminal.cursor"] {

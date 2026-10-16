@@ -52,9 +52,11 @@ final class WorkspacePersistenceTests: XCTestCase {
         let state = try await Self.fixture()
         try await first.save(state, settings: WorkspaceSettings(), sequence: 1)
         let original = try Data(contentsOf: first.currentURL)
-        let failing = WorkspacePersistence(directory: directory, beforeReplace: { target in
-            if target.lastPathComponent == "workspace.json" { throw InjectedFailure.beforeReplace }
-        })
+        let failing = WorkspacePersistence(
+            directory: directory,
+            beforeReplace: { target in
+                if target.lastPathComponent == "workspace.json" { throw InjectedFailure.beforeReplace }
+            })
         _ = await failing.load()
         var next = state; next.windows[0].name = "Changed"
         do { try await failing.save(next, settings: WorkspaceSettings(), sequence: 2); XCTFail("Write did not fail") } catch {}

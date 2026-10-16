@@ -20,9 +20,12 @@ final class LocalLaunchIntegrationTests: XCTestCase {
         let exited = expectation(description: "configured child exits")
         process.onOutput = { bytes.append($0) }
         var status: Int32?
-        process.onExit = { status = $0; exited.fulfill() }
+        process.onExit = {
+            status = $0; exited.fulfill()
+        }
         let script = #"use Cwd; print getcwd()."\n"; print join('|', @ARGV)."\n"; print "GOOD=$ENV{GOOD}\n"; print exists($ENV{TRELLIS_TOKEN}) ? 'LEAK' : 'CLEAN'; print "\n"; system('/bin/stty', 'size'); exit 7;"#
-        let config = LocalLaunchConfiguration(executable: "/usr/bin/perl", arguments: ["-e", script, "--", "file with spaces", "$(literal)", "it's literal"],
+        let config = LocalLaunchConfiguration(
+            executable: "/usr/bin/perl", arguments: ["-e", script, "--", "file with spaces", "$(literal)", "it's literal"],
             directory: directory.path, inheritedEnvironment: ["PATH": "/bin:/usr/bin", "TRELLIS_TOKEN": "control-secret"], environmentOverrides: ["GOOD": "override"])
         let validated = try LocalLaunchValidator().validate(config)
         let pid = try await process.launch(validated, size: TerminalSize(columns: 111, rows: 33))
@@ -66,8 +69,9 @@ final class LocalLaunchIntegrationTests: XCTestCase {
         let session = LocalSessionController(transport: process)
         let exited = expectation(description: "exec succeeded and process exited")
         session.onExit = { _ in exited.fulfill() }
-        await session.start(LocalLaunchConfiguration(executable: "/bin/zsh", arguments: ["-f", "-c", "exit 127"], directory: "/tmp", inheritedEnvironment: [:]),
-                            size: try TerminalSize(columns: 80, rows: 24))
+        await session.start(
+            LocalLaunchConfiguration(executable: "/bin/zsh", arguments: ["-f", "-c", "exit 127"], directory: "/tmp", inheritedEnvironment: [:]),
+            size: try TerminalSize(columns: 80, rows: 24))
         await fulfillment(of: [exited], timeout: 10)
         XCTAssertEqual(session.state, .exited)
         XCTAssertEqual(session.exitCode, 127)
@@ -81,10 +85,13 @@ final class LocalLaunchIntegrationTests: XCTestCase {
         var bytes = Data()
         var code: Int32?
         process.onOutput = { bytes.append($0) }
-        process.onExit = { code = $0; exited.fulfill() }
+        process.onExit = {
+            code = $0; exited.fulfill()
+        }
         // No shell startup files: this owned fixture reads terminal-generated input.
         let script = #"$SIG{INT}=sub { print "INTERRUPTED\n"; exit 23 }; print "READY\n"; while (defined($line=<STDIN>)) { system('/bin/stty','size'); }"#
-        let validated = try LocalLaunchValidator().validate(LocalLaunchConfiguration(executable: "/usr/bin/perl", arguments: ["-e", script], directory: "/tmp", inheritedEnvironment: [:], environmentOverrides: ["PERL_UNICODE": "S"]))
+        let validated = try LocalLaunchValidator().validate(
+            LocalLaunchConfiguration(executable: "/usr/bin/perl", arguments: ["-e", script], directory: "/tmp", inheritedEnvironment: [:], environmentOverrides: ["PERL_UNICODE": "S"]))
         let pid = try await process.launch(validated, size: TerminalSize(columns: 80, rows: 24))
         defer { process.signalGroup(SIGKILL) }
         XCTAssertEqual(getpgid(pid), pid)
@@ -110,7 +117,8 @@ final class LocalLaunchIntegrationTests: XCTestCase {
             let exited = expectation(description: "\(executable) exits on Ctrl-D")
             process.onOutput = { output.append($0) }
             process.onExit = { _ in exited.fulfill() }
-            let configuration = LocalLaunchConfiguration(executable: executable, arguments: arguments, directory: "/tmp",
+            let configuration = LocalLaunchConfiguration(
+                executable: executable, arguments: arguments, directory: "/tmp",
                 inheritedEnvironment: ["PATH": "/usr/bin:/bin", "HOME": "/tmp", "PS1": "TRELLIS-READY> ", "LC_ALL": "C"])
             let pid = try await process.launch(LocalLaunchValidator().validate(configuration), size: TerminalSize(columns: 100, rows: 30))
             var jobGroup: pid_t?
@@ -133,7 +141,7 @@ final class LocalLaunchIntegrationTests: XCTestCase {
             XCTAssertGreaterThan(foreground, 0)
             XCTAssertNotEqual(foreground, pid, "shell did not transfer foreground job control")
             if foreground > 0, foreground != pid { jobGroup = foreground }
-            try process.send(Data([26])) // Ctrl-Z stops the foreground job.
+            try process.send(Data([26]))  // Ctrl-Z stops the foreground job.
             deadline = Date().addingTimeInterval(5)
             while tcgetpgrp(process.descriptor) != pid, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertEqual(tcgetpgrp(process.descriptor), pid)
@@ -141,11 +149,11 @@ final class LocalLaunchIntegrationTests: XCTestCase {
             deadline = Date().addingTimeInterval(5)
             while tcgetpgrp(process.descriptor) == pid, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertNotEqual(tcgetpgrp(process.descriptor), pid)
-            try process.send(Data([3])) // Ctrl-C interrupts the resumed sleep.
+            try process.send(Data([3]))  // Ctrl-C interrupts the resumed sleep.
             deadline = Date().addingTimeInterval(5)
             while tcgetpgrp(process.descriptor) != pid, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertEqual(tcgetpgrp(process.descriptor), pid)
-            try process.send(Data([4])) // Ctrl-D at the shell prompt exits.
+            try process.send(Data([4]))  // Ctrl-D at the shell prompt exits.
             await fulfillment(of: [exited], timeout: 10)
             XCTAssertFalse(process.isRunning)
             XCTAssertEqual(process.descriptor, -1)

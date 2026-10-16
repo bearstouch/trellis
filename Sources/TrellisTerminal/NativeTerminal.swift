@@ -34,8 +34,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
 
     public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard) {
-        let surface = AccessibleTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 520),
-                                   font: NSFont(name: "Monaco", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
+        let surface = AccessibleTerminalView(
+            frame: NSRect(x: 0, y: 0, width: 900, height: 520),
+            font: NSFont(name: "Monaco", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
         terminalView = surface
         surface.scrollback = TerminalScrollback(budget: scrollbackBudget)
         surface.changeScrollback(scrollbackBudget.lineLimit)
@@ -86,20 +87,22 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
 
     public func start(fixture: Bool = false) {
         Task {
-            if fixture { await startFixture() }
-            else { await start(configuration: .loginShell()) }
+            if fixture { await startFixture() } else { await start(configuration: .loginShell()) }
         }
     }
 
     public func startFixture() async {
         let script = "printf '\\033[32mPTY ready\\033[0m — café 漢字 👋\\n'; stty size; printf '\\033[?1049hAlternate screen\\r\\n'; sleep 0.1; printf '\\033[?1049l'; printf 'Fixture complete\\n'; exit 7"
-        await start(configuration: LocalLaunchConfiguration(executable: "/bin/zsh", arguments: ["-f", "-c", script],
-                    directory: FileManager.default.homeDirectoryForCurrentUser.path))
+        await start(
+            configuration: LocalLaunchConfiguration(
+                executable: "/bin/zsh", arguments: ["-f", "-c", script],
+                directory: FileManager.default.homeDirectoryForCurrentUser.path))
     }
 
     func start(arguments: [String]) {
-        let configuration = LocalLaunchConfiguration(executable: "/bin/zsh", arguments: arguments,
-                            directory: FileManager.default.homeDirectoryForCurrentUser.path)
+        let configuration = LocalLaunchConfiguration(
+            executable: "/bin/zsh", arguments: arguments,
+            directory: FileManager.default.homeDirectoryForCurrentUser.path)
         Task { await start(configuration: configuration) }
     }
 
@@ -114,8 +117,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         try? adapter.resize(size)
     }
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
-        do { try adapter.send(Data(data)) }
-        catch { onInputError?(error) }
+        do { try adapter.send(Data(data)) } catch { onInputError?(error) }
     }
     /// Mutate the stable native view. No session lifecycle or input operation is
     /// involved; a metrics change only updates the PTY's dimensions.

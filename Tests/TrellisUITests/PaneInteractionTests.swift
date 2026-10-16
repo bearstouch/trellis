@@ -29,8 +29,12 @@ final class PaneInteractionTests: XCTestCase {
 
     func testS008_UT02_directionalFocusUsesGeometry() {
         let left = UUID(), top = UUID(), bottom = UUID()
-        let layout = PaneLayout.split(id: UUID(), axis: .x, ratio: 0.35, children: [.pane(left),
-            .split(id: UUID(), axis: .y, ratio: 0.3, children: [.pane(top), .pane(bottom)])])
+        let layout = PaneLayout.split(
+            id: UUID(), axis: .x, ratio: 0.35,
+            children: [
+                .pane(left),
+                .split(id: UUID(), axis: .y, ratio: 0.3, children: [.pane(top), .pane(bottom)])
+            ])
         let geometry = PaneGeometry(layout: layout, canvas: CanvasDimensions(width: 1000, height: 700))
         XCTAssertEqual(geometry.neighbor(of: left, direction: .right), bottom)
         XCTAssertEqual(geometry.neighbor(of: top, direction: .down), bottom)
@@ -46,7 +50,7 @@ final class PaneInteractionTests: XCTestCase {
     func testS008_UT03_maximizeRoundTrip() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow()
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x)
@@ -91,7 +95,7 @@ final class PaneInteractionTests: XCTestCase {
     func testHostedMaximizeRestoresHiddenViewsAndExactLayout() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x, startSession: false)
@@ -120,7 +124,7 @@ final class PaneInteractionTests: XCTestCase {
     func testNavigationAndKeyboardResizeUseActiveTabCanvas() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let left = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(left, axis: .x, startSession: false)
@@ -148,7 +152,7 @@ final class PaneInteractionTests: XCTestCase {
         _ = NSApplication.shared
         for _ in 0..<12 {
             let model = AppWorkspaceModel(store: try WorkspaceStore())
-            model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+            model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
             await model.createWindow(startSession: false)
             let first = try XCTUnwrap(model.presentation.activePane?.id)
             await model.splitPane(first, axis: .x, startSession: false)
@@ -175,7 +179,7 @@ final class PaneInteractionTests: XCTestCase {
     func testSameSizedTabSwitchRegistersCanvasForKeyboardResize() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x, startSession: false)

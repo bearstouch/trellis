@@ -8,7 +8,7 @@ final class TabManagementTests: XCTestCase {
     func testS006_UT01_renameCommitsWithoutRestart() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow()
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let pane = try XCTUnwrap(model.presentation.activePane)
@@ -28,7 +28,7 @@ final class TabManagementTests: XCTestCase {
     func testS006_UT02_cancelAndEmptyRenamePreserveTitle() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let original = model.snapshot
@@ -72,7 +72,7 @@ final class TabManagementTests: XCTestCase {
         }
         try compare(tab.root, clone.root)
         XCTAssertTrue(cloneIDs.isDisjoint(with: originalIDs))
-        XCTAssertEqual(cloneIDs.count, 9) // tab + 2 branches + 3 panes + 3 sessions
+        XCTAssertEqual(cloneIDs.count, 9)  // tab + 2 branches + 3 panes + 3 sessions
         XCTAssertEqual(clone.activePaneID, clone.root.paneIDs.last)
         try result.snapshot.validate()
     }
@@ -103,7 +103,7 @@ final class TabManagementTests: XCTestCase {
         let initial = try await Self.splitFixture()
         let tab = try XCTUnwrap(initial.tabs.values.first)
         let model = AppWorkspaceModel(store: try WorkspaceStore(snapshot: initial))
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.refresh()
         await model.createTab(duplicate: tab.id, startSessions: false)
         let clone = try XCTUnwrap(model.presentation.selectedTab)
@@ -130,7 +130,7 @@ final class TabManagementTests: XCTestCase {
     func testClosingLastTabUsesConfirmationAndRemovesWindow() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow()
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let terminal = try XCTUnwrap(model.activeTerminal)
@@ -153,7 +153,7 @@ final class TabManagementTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { preferences.removePersistentDomain(forName: suite) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         let saved = await model.saveLaunchSettings(shell: "/bin/zsh", directory: "/tmp")
         XCTAssertTrue(saved)
         await model.createWindow()
@@ -200,8 +200,12 @@ final class TabManagementTests: XCTestCase {
             let sessionID = try XCTUnwrap(state.panes[id]?.sessionID)
             state.sessions[sessionID]?.launch = .process(executable: "/bin/zsh", arguments: ["-f", "-c", "printf 'fresh session\\n'; exit 7"], directory: "/tmp")
         }
-        state.tabs[tabID]?.root = .split(id: UUID(), axis: .x, ratio: 0.3, children: [.pane(a),
-            .split(id: UUID(), axis: .y, ratio: 0.6, children: [.pane(b), .pane(c)])])
+        state.tabs[tabID]?.root = .split(
+            id: UUID(), axis: .x, ratio: 0.3,
+            children: [
+                .pane(a),
+                .split(id: UUID(), axis: .y, ratio: 0.6, children: [.pane(b), .pane(c)])
+            ])
         state.tabs[tabID]?.activePaneID = c
         try state.validate()
         return state

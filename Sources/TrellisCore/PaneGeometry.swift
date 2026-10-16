@@ -75,8 +75,9 @@ extension PaneLayout {
         switch self {
         case .pane: return self
         case .split(let id, let axis, let old, let children):
-            return .split(id: id, axis: axis, ratio: id == splitID ? ratio : old,
-                          children: children.map { $0.resizing(splitID: splitID, ratio: ratio) })
+            return .split(
+                id: id, axis: axis, ratio: id == splitID ? ratio : old,
+                children: children.map { $0.resizing(splitID: splitID, ratio: ratio) })
         }
     }
 

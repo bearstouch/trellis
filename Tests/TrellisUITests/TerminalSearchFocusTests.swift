@@ -9,8 +9,9 @@ final class TerminalSearchFocusTests: XCTestCase {
     func testReopeningSearchTransfersFirstResponderFromTerminalToField() async throws {
         _ = NSApplication.shared
         let terminal = NativeTerminal()
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 400),
-                              styleMask: [.titled], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 400),
+            styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: SearchableTerminalSurface(terminal: terminal, isFocused: true))
         window.makeKeyAndOrderFront(nil)
@@ -40,13 +41,15 @@ final class TerminalSearchFocusTests: XCTestCase {
         let a = NativeTerminal(), b = NativeTerminal()
         var active = ""
         a.onFocused = { active = "a" }; b.onFocused = { active = "b" }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 400),
-                              styleMask: [.titled], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 400),
+            styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: HStack {
-            SearchableTerminalSurface(terminal: a, isFocused: true)
-            SearchableTerminalSurface(terminal: b, isFocused: false)
-        })
+        window.contentView = NSHostingView(
+            rootView: HStack {
+                SearchableTerminalSurface(terminal: a, isFocused: true)
+                SearchableTerminalSurface(terminal: b, isFocused: false)
+            })
         window.makeKeyAndOrderFront(nil)
         defer { a.adapter.detach(); b.adapter.detach(); window.close() }
         a.showSearch(); b.showSearch()

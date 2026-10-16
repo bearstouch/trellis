@@ -122,12 +122,14 @@ public struct WorkspaceSnapshot: Equatable, Sendable {
             switch tree {
             case .pane(let id):
                 guard let pane = panes[id], pane.id == id, pane.tabID == tabID,
-                      referencedPanes.insert(id).inserted else {
+                    referencedPanes.insert(id).inserted
+                else {
                     throw WorkspaceError.invalidState("Missing, duplicate, or incorrectly owned pane")
                 }
                 try insert(id)
                 guard let session = sessions[pane.sessionID], session.id == pane.sessionID,
-                      referencedSessions.insert(session.id).inserted else {
+                    referencedSessions.insert(session.id).inserted
+                else {
                     throw WorkspaceError.invalidState("Missing or shared session")
                 }
                 try insert(session.id)
@@ -168,12 +170,14 @@ public struct WorkspaceSnapshot: Equatable, Sendable {
         for window in windows {
             try insert(window.id)
             guard nameIsValid(window.name), !window.tabIDs.isEmpty,
-                  window.tabIDs.contains(window.activeTabID), window.revision <= revision else {
+                window.tabIDs.contains(window.activeTabID), window.revision <= revision
+            else {
                 throw WorkspaceError.invalidState("Invalid window metadata or selection")
             }
             for id in window.tabIDs {
                 guard let tab = tabs[id], tab.id == id, tab.windowID == window.id,
-                      referencedTabs.insert(id).inserted else {
+                    referencedTabs.insert(id).inserted
+                else {
                     throw WorkspaceError.invalidState("Missing, duplicate, or incorrectly owned tab")
                 }
                 try insert(id)
@@ -187,7 +191,8 @@ public struct WorkspaceSnapshot: Equatable, Sendable {
             }
         }
         guard referencedTabs == Set(tabs.keys), referencedPanes == Set(panes.keys),
-              referencedSessions == Set(sessions.keys) else {
+            referencedSessions == Set(sessions.keys)
+        else {
             throw WorkspaceError.invalidState("Orphan resources")
         }
     }

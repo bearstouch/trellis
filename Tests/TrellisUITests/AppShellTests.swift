@@ -37,9 +37,11 @@ final class AppShellTests: XCTestCase {
 
     func testS004_UT04_smallCanvasRetainsLayout() {
         let a = UUID(), b = UUID(), c = UUID()
-        let tree = PaneLayout.split(id: UUID(), axis: .x, ratio: 0.25, children: [
-            .pane(a), .split(id: UUID(), axis: .y, ratio: 0.5, children: [.pane(b), .pane(c)])
-        ])
+        let tree = PaneLayout.split(
+            id: UUID(), axis: .x, ratio: 0.25,
+            children: [
+                .pane(a), .split(id: UUID(), axis: .y, ratio: 0.5, children: [.pane(b), .pane(c)])
+            ])
         let original = tree
         let minimum = CanvasDimensions.minimum(for: tree)
         let small = minimum.fitting(width: 100, height: 50)
@@ -54,7 +56,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "Project", startSession: false)
         XCTAssertEqual(model.snapshot.windows.count, 1)
         XCTAssertEqual(model.terminals.count, 1)
@@ -68,7 +70,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "Fixture", fixture: true)
         let deadline = Date().addingTimeInterval(10)
         while model.snapshot.sessions.values.first?.state != .exited, Date() < deadline {
@@ -89,7 +91,7 @@ final class AppShellTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: name))
         defer { preferences.removePersistentDomain(forName: name) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         let original = model.defaultShell
         let saved = await model.saveLaunchSettings(shell: "/does-not-exist-trellis", directory: "/tmp")
         XCTAssertFalse(saved)
@@ -119,7 +121,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.activeTerminal)
@@ -142,7 +144,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         await model.closeAllWorkspaces()
         XCTAssertTrue(model.presentation.isEmpty)
@@ -158,7 +160,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         model.stopAll()
@@ -176,7 +178,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         var creationEntered = false
         let creation = Task {
             creationEntered = true

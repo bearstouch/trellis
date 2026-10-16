@@ -16,10 +16,17 @@ final class NativeTerminalPasteTests: XCTestCase {
         defer { window.close() }
         window.contentView = view
         var reads = 0, pathReads = 0, received: [String] = []
-        view.readClipboardText = { reads += 1; return "text\n" }
-        view.readClipboardPaths = { pathReads += 1; return ["/tmp/a b"] }
+        view.readClipboardText = {
+            reads += 1; return "text\n"
+        }
+        view.readClipboardPaths = {
+            pathReads += 1; return ["/tmp/a b"]
+        }
         view.onPasteRequested = { input in
-            switch input { case .text(let value): received.append(value); case .paths(let values): received += values }
+            switch input {
+            case .text(let value): received.append(value);
+            case .paths(let values): received += values
+            }
         }
         _ = view.validateUserInterfaceItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: ""))
         XCTAssertEqual(reads, 0)

@@ -76,7 +76,8 @@ final class ProductRenameTests: XCTestCase {
         XCTAssertEqual(restored.appearance.lightThemeID, "trellis-light")
         XCTAssertEqual(restored.appearance.darkThemeID, "trellis-dark")
         appearance.darkThemeID = "my-dark"
-        let custom = try JSONDecoder().decode(WorkspaceSettings.self,
+        let custom = try JSONDecoder().decode(
+            WorkspaceSettings.self,
             from: JSONEncoder().encode(WorkspaceSettings(appearance: appearance)))
         XCTAssertEqual(custom.appearance.darkThemeID, "my-dark")
     }
