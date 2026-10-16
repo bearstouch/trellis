@@ -40,11 +40,12 @@ final class Harness {
     let preferences: UserDefaults
     private let suite = "trellis.tests.harness.\(UUID().uuidString)"
 
-    init(clock: Clock = Clock()) throws {
+    init(clock: Clock = Clock(), themeDirectory: URL? = nil) throws {
         _ = NSApplication.shared
         self.clock = clock
         preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
-        model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model = AppWorkspaceModel(
+            store: try WorkspaceStore(), preferences: preferences, themeLibrary: themeDirectory.map { ThemeLibrary(directory: $0) })
         // API calls must never present the UI's modal confirmations.
         model.confirmCloseSessions = { _ in
             XCTFail("Automation showed a close dialog"); return false

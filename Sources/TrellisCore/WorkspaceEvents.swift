@@ -16,6 +16,7 @@ public struct WorkspaceEvent: Equatable, Sendable {
     /// The subscription topic this event belongs to.
     public var topic: String {
         if type.hasPrefix("selection.") { return "selection" }
+        if type.hasPrefix("appearance.") { return "appearance" }
         if type.hasPrefix("session.") { return "session" }
         return "resources"
     }

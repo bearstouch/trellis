@@ -45,7 +45,7 @@ public struct OutputCursor: Equatable, Sendable {
 /// raw output delivery. Every delivery re-checks the subscriber's grant.
 public actor EventHub {
     public static let ringCapacity = 1_000
-    public static let topics: Set<String> = ["resources", "selection", "session", "output"]
+    public static let topics: Set<String> = ["resources", "selection", "session", "output", "appearance"]
 
     struct Event: Sendable {
         let sequence: UInt64
@@ -177,7 +177,12 @@ public actor EventHub {
 
     private func deliverEvent(_ event: Event, to subscription: Subscription, grant: AutomationGrant) {
         let workspace = event.event
-        guard visible(workspace.windowID, grant) || (workspace.type == "window.reordered" && grant.windowScope == .all) else { return }
+        if workspace.topic == "appearance" {
+            // Appearance is global: it needs theme.read, independent of window scope.
+            guard grant.allows(.themeRead) else { return }
+        } else {
+            guard visible(workspace.windowID, grant) || (workspace.type == "window.reordered" && grant.windowScope == .all) else { return }
+        }
         guard
             subscription.resourceIDs.isEmpty || subscription.resourceIDs.contains(workspace.resourceID)
                 || workspace.windowID.map(subscription.resourceIDs.contains) == true

@@ -88,6 +88,17 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             case "layout.plan": return .success(try layoutPlan(p, access))
             case "layout.apply": return try await layoutApply(p, access)
             case "layout.export": return .success(try layoutExport(p, access))
+            case "theme.list": return .success(themeList())
+            case "theme.get": return .success(try themeGet(p))
+            case "theme.validate": return .success(try themeValidate(p))
+            case "theme.import": return .success(try await themeImport(p))
+            case "theme.export": return .success(try await themeExport(p))
+            case "theme.delete":
+                let id = try p.string("id")
+                do { try await model.automationDeleteTheme(id) } catch { throw Self.map(error) }
+                return .success(.object(["id": .string(id), "deleted": .bool(true), "appearance": appearanceJSON()]))
+            case "appearance.get": return .success(appearanceJSON())
+            case "appearance.set": return .success(try appearanceSet(p))
             case "session.execute": return .success(try execute(p))
             case "host.connect": return try await connect(p, access)
             case "host.list": return .success(.object(["hosts": .array(hostsVisible(access, query: try p.optionalString("query")).map(hostJSON))]))
@@ -635,6 +646,118 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 })
         ])
         return .object(["document": document, "redacted": .bool(redacted), "importable": .bool(!redacted)])
+    }
+
+    // MARK: - Themes (S029)
+
+    @MainActor private func themeSummary(_ theme: ResolvedTheme) -> JSONValue {
+        var slots: [JSONValue] = []
+        if model.appearance.lightThemeID == theme.id { slots.append(.string("light")) }
+        if model.appearance.darkThemeID == theme.id { slots.append(.string("dark")) }
+        return .object([
+            "id": .string(theme.id), "name": .string(theme.name), "appearance": .string(theme.appearance.rawValue),
+            "builtIn": .bool(theme.id.hasPrefix("trellis-")), "selectedFor": .array(slots)
+        ])
+    }
+
+    @MainActor private func themeList() -> JSONValue {
+        .object(["themes": .array(model.allThemes.map(themeSummary)), "appearanceRevision": revision(model.appearanceRevision)])
+    }
+
+    @MainActor private func themeGet(_ p: Params) throws -> JSONValue {
+        let id = try p.string("id")
+        guard let theme = model.allThemes.first(where: { $0.id == id }), let data = try? theme.encoded(),
+            let palette = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { throw ControlError.notFound }
+        var summary: [String: JSONValue] = [:]
+        if case .object(let object) = themeSummary(theme) { summary = object }
+        summary["resolved"] = palette
+        summary["contrastWarnings"] = .array(theme.contrastWarnings.map { .string($0.message) })
+        return .object(summary)
+    }
+
+    /// Theme documents are re-serialized and checked by the same validator the UI uses.
+    @MainActor private func themeData(_ p: Params) throws -> Data {
+        // Raw text keeps the validator's duplicate-key and number checks intact.
+        if case .string(let text)? = p.object["documentText"] {
+            guard p.object["document"] == nil else { throw ControlError.invalidParams("Send document or documentText, not both.", fields: ["documentText": "exclusive"]) }
+            return Data(text.utf8)
+        }
+        guard let document = p.object["document"], case .object = document, let data = try? JSONEncoder().encode(document) else {
+            throw ControlError.invalidParams("document must be a theme JSON object.", fields: ["document": "theme object"])
+        }
+        return data
+    }
+
+    @MainActor private func themeValidate(_ p: Params) throws -> JSONValue {
+        do {
+            let document = try ThemeValidator.validate(try themeData(p))
+            return .object([
+                "valid": .bool(true), "id": .string(document.id), "appearance": .string(document.appearance.rawValue),
+                "errors": .array([]), "warnings": .array(document.resolved().contrastWarnings.map { .string($0.message) })
+            ])
+        } catch let error as ThemeValidationError {
+            return .object(["valid": .bool(false), "errors": .array([.object(["path": .string(error.path), "message": .string(error.reason)])]), "warnings": .array([])])
+        }
+    }
+
+    @MainActor private func themeImport(_ p: Params) async throws -> JSONValue {
+        let replace = try p.optionalBool("replace") == true
+        let document: ThemeDocument
+        do { document = try await model.automationInstallTheme(try themeData(p), replace: replace) } catch let error as AutomationThemeError { throw Self.map(error) }
+        guard let theme = model.allThemes.first(where: { $0.id == document.id }) else { throw ControlError.internalError }
+        return themeSummary(theme)
+    }
+
+    @MainActor private func themeExport(_ p: Params) async throws -> JSONValue {
+        let id = try p.string("id"), resolved = try p.optionalBool("resolved") == true
+        let data: Data
+        if let builtIn = ThemeAppearance.allCases.map(ResolvedTheme.builtIn).first(where: { $0.id == id }) {
+            guard let encoded = try? builtIn.encoded() else { throw ControlError.internalError }
+            data = encoded
+        } else {
+            do { data = try await model.exportTheme(id, resolved: resolved) } catch { throw ControlError.notFound }
+        }
+        guard let document = try? JSONDecoder().decode(JSONValue.self, from: data) else { throw ControlError.internalError }
+        return .object(["id": .string(id), "resolved": .bool(resolved), "document": document])
+    }
+
+    @MainActor private func appearanceJSON() -> JSONValue {
+        let settings = model.appearance
+        return .object([
+            "mode": .string(settings.chromeMode.rawValue), "lightThemeId": .string(settings.lightThemeID), "darkThemeId": .string(settings.darkThemeID),
+            "effectiveThemeId": .string(model.effectiveTheme.id), "revision": revision(model.appearanceRevision)
+        ])
+    }
+
+    @MainActor private func appearanceSet(_ p: Params) throws -> JSONValue {
+        var mode: ChromeMode?
+        if let raw = try p.optionalString("mode") {
+            guard let parsed = ChromeMode(rawValue: raw) else { throw ControlError.invalidParams("mode must be system, dark, or light.", fields: ["mode": "system, dark, or light"]) }
+            mode = parsed
+        }
+        do {
+            try model.automationSetAppearance(
+                mode: mode, lightThemeID: try p.optionalString("lightThemeId"), darkThemeID: try p.optionalString("darkThemeId"), expectedRevision: try p.revision())
+        } catch let error as AutomationThemeError { throw Self.map(error) }
+        return appearanceJSON()
+    }
+
+    static func map(_ error: AutomationThemeError) -> ControlError {
+        switch error {
+        case .invalid(let validation): .invalidParams("The theme is invalid: \(validation.reason)", fields: [validation.path: validation.reason])
+        case .library(.reservedID): .application("INVALID_STATE", "Built-in trellis- themes cannot be replaced or deleted.")
+        case .library(.duplicateID): .application("CONFLICT", "A theme with this ID exists. Repeat with replace: true to replace it.")
+        case .library(.notFound): .notFound
+        case .library: .application("INVALID_STATE", "The theme library could not be updated.", retryable: true)
+        case .unavailable: .application("INVALID_STATE", "Themes are busy or the app is restoring. Retry shortly.", retryable: true)
+        case .mismatchedSlot(let message): .invalidParams(message, fields: ["themeId": "matching light/dark slot"])
+        case .notFound: .notFound
+        case .conflict(let expected, let actual):
+            .application(
+                "CONFLICT", "Appearance changed. Read it again and retry with its current revision.",
+                details: .object(["expectedRevision": .number(Double(expected)), "currentRevision": .number(Double(actual))]))
+        }
     }
 
     // MARK: - Projection

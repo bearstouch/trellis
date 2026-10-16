@@ -17,13 +17,18 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var terminals: [UUID: NativeTerminal] = [:]
     @Published public var errorMessage: String?
     @Published public private(set) var appearance = AppearanceSettings()
-    @Published public private(set) var themeCatalog = ThemeLibrarySnapshot()
+    /// Advances once per committed settings change; API `expectedRevision` uses it.
+    public private(set) var appearanceRevision: UInt64 = 0
+    /// Called once per committed change of settings or effective theme, after reconciliation; previews are not commits.
+    public var onAppearanceChanged: (() -> Void)?
+    private var committedAppearance = (settings: AppearanceSettings(), themeID: ResolvedTheme.builtIn(.light).id)
+    @Published public internal(set) var themeCatalog = ThemeLibrarySnapshot()
     @Published public private(set) var effectiveTheme = ResolvedTheme.builtIn(.light)
     @Published public private(set) var previewedTheme: ThemeDocument?
     @Published public private(set) var themeNotice: String?
-    @Published public private(set) var themeBusy = false
+    @Published public internal(set) var themeBusy = false
     @Published public private(set) var themeReplacementID: String?
-    private let themeLibrary: ThemeLibrary?
+    let themeLibrary: ThemeLibrary?
     private var systemIsDark = false
     public var themesDirectory: URL? { themeLibrary?.directory }
     public var effectiveChromeMode: ChromeMode {
@@ -39,14 +44,20 @@ public final class AppWorkspaceModel: ObservableObject {
         systemIsDark = isDark
         if appearance.chromeMode == .system, previewedTheme == nil { refreshEffectiveTheme() }
     }
-    private func refreshEffectiveTheme() {
+    func refreshEffectiveTheme() {
         let slot: ThemeAppearance = appearance.chromeMode.isDark(systemIsDark: systemIsDark) ? .dark : .light
         let id = appearance.themeID(systemIsDark: systemIsDark)
-        effectiveTheme = previewedTheme?.resolved() ?? themeCatalog.documents[id]?.resolved() ?? .builtIn(slot)
+        let committed = themeCatalog.documents[id]?.resolved() ?? .builtIn(slot)
+        effectiveTheme = previewedTheme?.resolved() ?? committed
         onChromeModeChanged?(effectiveChromeMode)
         for terminal in terminals.values { terminal.applyPalette(effectiveTheme.terminal) }
+        // Every commit path ends here, so intermediate reconciliation writes never emit.
+        guard appearance != committedAppearance.settings || committed.id != committedAppearance.themeID else { return }
+        if appearance != committedAppearance.settings { appearanceRevision &+= 1 }
+        committedAppearance = (appearance, committed.id)
+        onAppearanceChanged?()
     }
-    private func reconcileThemeSelections() {
+    func reconcileThemeSelections() {
         guard themeLibrary != nil else { return }
         var notices: [String] = []
         for slot in ThemeAppearance.allCases {
@@ -383,7 +394,7 @@ public final class AppWorkspaceModel: ObservableObject {
         } catch { errorMessage = "A new shell could not be configured." }
     }
 
-    private func scheduleWorkspaceSave() {
+    func scheduleWorkspaceSave() {
         guard persistence != nil, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return }
         if saveGeneration < UInt64.max { saveGeneration += 1 }
         let generation = saveGeneration

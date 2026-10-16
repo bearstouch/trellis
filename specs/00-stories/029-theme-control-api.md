@@ -1,7 +1,7 @@
 # S029 — Control themes and appearance from scripts
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 289 tests pass; installed-CLI live check pending  
 Delivery phase: 4  
 Depends on: [S016](016-theme-library-and-preview.md), [S021](021-local-control-socket.md), [S022](022-automation-grants.md), [S027](027-cli-and-agent-workflows.md)  
 Requirements: `FR-TH08`, `INT-10`, `API-03`, `API-04`
@@ -34,7 +34,7 @@ Use CLI commands to validate/import/export a custom theme and switch chrome mode
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S029 theme control evidence](../../docs/evidence/S029-theme-control-api.md) for permission, slot, built-in/revision, and no-process-effect tests, review fixes, and the pending live check.
 
 ## Source specifications
 

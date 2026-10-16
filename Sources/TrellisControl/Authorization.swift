@@ -60,6 +60,12 @@ public enum AuthorizationPolicy {
         }
     }
 
+    /// Appearance events are global and need theme.read.
+    private static let subscribesToAppearance: @Sendable (JSONValue?) -> Bool = { params in
+        guard case .array(let topics)? = params?["topics"] else { return false }
+        return topics.contains { if case .string(let name) = $0 { name.hasPrefix("appearance") } else { false } }
+    }
+
     /// Every method in the API catalog. Unknown methods are not dispatched.
     public static let requirements: [String: MethodRequirement] = [
         "system.info": needs(),
@@ -110,7 +116,8 @@ public enum AuthorizationPolicy {
         "theme.delete": needs(.themeWrite, allWindows: true),
         "appearance.get": needs(.themeRead),
         "appearance.set": needs(.themeWrite, allWindows: true),
-        "events.subscribe": needs(.metadataRead, lists: [(.anyLayout, "resourceIds")], when: [(.sessionOutputRead, subscribesToOutput)]),
+        "events.subscribe": needs(
+            .metadataRead, lists: [(.anyLayout, "resourceIds")], when: [(.sessionOutputRead, subscribesToOutput), (.themeRead, subscribesToAppearance)]),
         "events.unsubscribe": needs()
     ]
 }
@@ -341,7 +348,7 @@ public actor AuthorizingControlHandler: ControlHandler {
         for topic in rawTopics {
             guard case .string(let name) = topic else { return .failure(.invalidParams("topics must be strings.", fields: ["topics": "array of strings"])) }
             // Fine-grained names from the API catalog map onto hub topics.
-            let aliases = ["session.state": "session", "session.exit": "session", "session.output": "output", "resource": "resources"]
+            let aliases = ["session.state": "session", "session.exit": "session", "session.output": "output", "resource": "resources", "appearance.changed": "appearance"]
             topics.insert(aliases[name] ?? name)
         }
         var resourceIDs = Set<UUID>()

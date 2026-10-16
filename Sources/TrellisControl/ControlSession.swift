@@ -111,7 +111,7 @@ public enum ControlMethods {
     /// so a new method is safe by default.
     public static let readOnly: Set<String> = [
         "system.info", "window.list", "window.get", "tab.list", "tab.get", "session.get", "session.readOutput",
-        "host.list", "host.get", "theme.list", "theme.get", "layout.export", "layout.plan", "layout.validate"
+        "host.list", "host.get", "theme.list", "theme.get", "theme.validate", "theme.export", "appearance.get", "layout.export", "layout.plan", "layout.validate"
     ]
     public static func isMutating(_ method: String) -> Bool { !readOnly.contains(method) }
 }

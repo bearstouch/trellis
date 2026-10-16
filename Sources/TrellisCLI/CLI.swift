@@ -146,8 +146,9 @@ public enum CLI {
         let response = try transport.call(command.spec, params)
         if response["error"] != nil { throw failure(from: response) }
         // An invalid document is a schema error (exit 2), with the issues as details.
-        if command.spec == "layout.validate", case .object(let result)? = response["result"], result["valid"] == .bool(false) {
-            throw CLIFailure(code: "INVALID_LAYOUT", message: "The layout document is invalid.", exitStatus: 2, details: response["result"])
+        if ["layout.validate", "theme.validate"].contains(command.spec), case .object(let result)? = response["result"], result["valid"] == .bool(false) {
+            let kind = command.spec == "theme.validate" ? "THEME" : "LAYOUT"
+            throw CLIFailure(code: "INVALID_\(kind)", message: "The \(kind.lowercased()) document is invalid.", exitStatus: 2, details: response["result"])
         }
         return response["result"] ?? .null
     }
@@ -298,6 +299,19 @@ public enum CLI {
             if command.spec == "host.connect" { try window("windowId"); try uuid("paneId", "pane"); set("axis", "axis") }
         case "layout.validate", "layout.plan", "layout.apply":
             try document(); set("namespace", "namespace"); flag("startNew", "start-new")
+        case "theme.validate", "theme.import":
+            // Theme files go as raw text so the app's validator sees duplicate keys exactly.
+            if let path = command.positionals.first {
+                guard let data = try? environment.readFile(path), data.count <= 1_000_000, let text = String(data: data, encoding: .utf8) else {
+                    throw CLIFailure.arguments("Cannot read \(path) as a UTF-8 theme file.")
+                }
+                params["documentText"] = .string(text)
+            }
+            flag("replace", "replace")
+        case "theme.get", "theme.export", "theme.delete":
+            set("id", "id"); set("id", "theme"); flag("resolved", "resolved")
+            guard params["id"] != nil else { throw CLIFailure.arguments("--id is required.") }
+        case "appearance.set": set("mode", "mode"); set("lightThemeId", "light-theme"); set("darkThemeId", "dark-theme")
         case "layout.export":
             if let windows = command.options["window"] { params["windowIds"] = .array(try windows.map { .string(try resolver.window($0).uuidString) }) }
         case "events.subscribe":

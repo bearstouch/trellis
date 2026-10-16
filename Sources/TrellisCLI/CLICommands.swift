@@ -74,7 +74,19 @@ enum CLICommands {
             "apply": spec("layout.apply", ["namespace", "expected-revision"], switches: ["start-new"], positionals: 1),
             "export": spec("layout.export", ["window"], repeatable: ["window"])
         ],
-        "events": ["subscribe": spec("events.subscribe", ["topics", "resource", "after-sequence", "instance"], repeatable: ["resource"])]
+        "events": ["subscribe": spec("events.subscribe", ["topics", "resource", "after-sequence", "instance"], repeatable: ["resource"])],
+        "theme": [
+            "list": spec("theme.list"),
+            "get": spec("theme.get", ["id", "theme"]),
+            "validate": spec("theme.validate", positionals: 1),
+            "import": spec("theme.import", switches: ["replace"], positionals: 1),
+            "export": spec("theme.export", ["id", "theme"], switches: ["resolved"]),
+            "delete": spec("theme.delete", ["id", "theme"])
+        ],
+        "appearance": [
+            "get": spec("appearance.get"),
+            "set": spec("appearance.set", ["mode", "light-theme", "dark-theme", "expected-revision"])
+        ]
     ]
 }
 

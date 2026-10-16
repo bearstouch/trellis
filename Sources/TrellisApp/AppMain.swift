@@ -429,6 +429,21 @@ struct TrellisMain {
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             let forwarder = EventForwarder(hub: events, instanceID: instanceID)
             model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
+            // Appearance is global; the hub gates it on theme.read, not window scope.
+            let appearanceResource = UUID(uuidString: "00000000-0000-0000-0000-00000000A99E")!
+            model.onAppearanceChanged = { [weak model] in
+                guard let model else { return }
+                let settings = model.appearance
+                forwarder.send(
+                    .metadata([
+                        WorkspaceEvent(
+                            type: "appearance.changed", resourceID: appearanceResource, windowID: nil,
+                            data: [
+                                "mode": settings.chromeMode.rawValue, "lightThemeId": settings.lightThemeID, "darkThemeId": settings.darkThemeID,
+                                "effectiveThemeId": model.effectiveTheme.id, "revision": String(model.appearanceRevision)
+                            ])
+                    ]))
+            }
             model.onSessionOutput = { [weak model] session, pane, data, next in
                 let window = model?.snapshot.panes[pane].flatMap { model?.snapshot.tabs[$0.tabID]?.windowID }
                 forwarder.send(.output(session: session, window: window, data: data, next: next))

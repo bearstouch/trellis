@@ -300,3 +300,69 @@ extension AppWorkspaceModel {
         layoutNamespaces = namespaces
     }
 }
+
+// MARK: - Theme control (S029)
+
+public enum AutomationThemeError: Error, Equatable, Sendable {
+    case invalid(ThemeValidationError)
+    case library(ThemeLibraryError)
+    case unavailable
+    case mismatchedSlot(String)
+    case notFound(String)
+    case conflict(expected: UInt64, actual: UInt64)
+}
+
+extension AppWorkspaceModel {
+    /// Installs a validated theme with the library's replacement and built-in
+    /// rules. Unlike the UI's Save & Use, it never changes the selection.
+    public func automationInstallTheme(_ data: Data, replace: Bool) async throws(AutomationThemeError) -> ThemeDocument {
+        guard let themeLibrary, !themeBusy, !isRestoring, !shuttingDown else { throw .unavailable }
+        let document: ThemeDocument
+        do { document = try ThemeValidator.validate(data) } catch let error as ThemeValidationError { throw .invalid(error) } catch { throw .unavailable }
+        themeBusy = true
+        pendingOperations += 1
+        defer { themeBusy = false; pendingOperations -= 1 }
+        do {
+            themeCatalog = try await themeLibrary.install(document.encoded(), replace: replace)
+        } catch let error as ThemeLibraryError {
+            throw .library(error)
+        } catch {
+            throw .unavailable
+        }
+        // A replaced theme that is in use recolors terminals (color-only path); a
+        // replacement with the other appearance can reset a slot, which must persist.
+        reconcileThemeSelections()
+        refreshEffectiveTheme()
+        scheduleWorkspaceSave()
+        return document
+    }
+
+    public func automationDeleteTheme(_ id: String) async throws(AutomationThemeError) {
+        guard let themeLibrary, !themeBusy, !isRestoring, !shuttingDown else { throw .unavailable }
+        themeBusy = true
+        pendingOperations += 1
+        defer { themeBusy = false; pendingOperations -= 1 }
+        do { themeCatalog = try await themeLibrary.delete(id) } catch let error as ThemeLibraryError { throw .library(error) } catch { throw .unavailable }
+        if previewedTheme?.id == id { cancelThemePreview() }
+        reconcileThemeSelections()
+        refreshEffectiveTheme()
+        scheduleWorkspaceSave()
+    }
+
+    /// Mode and slot selection only; terminals get colors, never a restart.
+    public func automationSetAppearance(mode: ChromeMode?, lightThemeID: String?, darkThemeID: String?, expectedRevision: UInt64?) throws(AutomationThemeError) {
+        guard !isRestoring, !shuttingDown, !themeBusy else { throw .unavailable }
+        if let expectedRevision, expectedRevision != appearanceRevision { throw .conflict(expected: expectedRevision, actual: appearanceRevision) }
+        for (id, slot) in [(lightThemeID, ThemeAppearance.light), (darkThemeID, .dark)] {
+            guard let id else { continue }
+            guard let theme = allThemes.first(where: { $0.id == id }) else { throw .notFound(id) }
+            guard theme.appearance == slot else { throw .mismatchedSlot("Theme '\(id)' is a \(theme.appearance.rawValue) theme and cannot be used for the \(slot.rawValue) slot.") }
+        }
+        var settings = appearance
+        if let mode { settings.chromeMode = mode }
+        if let lightThemeID { settings.lightThemeID = lightThemeID }
+        if let darkThemeID { settings.darkThemeID = darkThemeID }
+        guard settings != appearance else { return }
+        _ = applyAppearance(settings)
+    }
+}

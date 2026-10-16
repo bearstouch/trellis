@@ -257,6 +257,23 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(CLIHarness().run(["window", "list"]), 2, "Credentials are required")
     }
 
+    func testThemeAndAppearanceCommandsMapToTheAPI() {
+        let h = CLIHarness()
+        XCTAssertEqual(h.run(["appearance", "set", "--mode", "dark", "--dark-theme", "calm", "--expected-revision", "4", "--token-stdin"]), 0)
+        XCTAssertEqual(h.transport.calls.last?.method, "appearance.set")
+        XCTAssertEqual(h.transport.calls.last?.params, ["mode": .string("dark"), "darkThemeId": .string("calm"), "expectedRevision": .number(4)])
+        XCTAssertEqual(h.run(["theme", "export", "--id", "calm", "--resolved", "--token-stdin"]), 0)
+        XCTAssertEqual(h.transport.calls.last?.params, ["id": .string("calm"), "resolved": .bool(true)])
+        XCTAssertEqual(h.run(["theme", "import", "theme.json", "--replace", "--token-stdin"]), 0)
+        XCTAssertEqual(h.transport.calls.last?.method, "theme.import")
+        XCTAssertEqual(h.transport.calls.last?.params["replace"], .bool(true))
+        XCTAssertNotNil(h.transport.calls.last?.params["documentText"])
+        XCTAssertEqual(h.run(["theme", "delete", "--token-stdin"]), 2, "--id is required")
+        h.transport.replies["theme.validate"] = ["result": .object(["valid": .bool(false), "errors": .array([])])]
+        XCTAssertEqual(h.run(["theme", "validate", "theme.json", "--token-stdin", "--json"]), 2, "An invalid theme is a schema error")
+        XCTAssertTrue(h.out.last?.contains("INVALID_THEME") == true)
+    }
+
     func testRealSocketRoundTripThroughDiscovery() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tcli-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
