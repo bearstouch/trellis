@@ -74,7 +74,7 @@ A script can build the same workspace, discover its IDs, observe the output it's
 
 ## Milestones
 
-The MVP was delivered in five phases. The [delivery history](../project/delivery-history.md) has the story-by-story record.
+The MVP was delivered in five phases:
 
 1. **Terminal feasibility:** embed the terminal engine and prove a PTY shell, resizing, Unicode and IME, selection, clipboard, alternate-screen apps, accessibility and resource cleanup.
 2. **Organization:** windows, tabs, the split tree, focus, process lifecycle and restoring stopped layouts.

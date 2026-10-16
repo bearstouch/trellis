@@ -19,7 +19,7 @@
 
 5. If you changed launching, bundling or resources, also run `scripts/run-feasibility.sh --build-only` and the launcher regression.
 6. **Review:** get an independent review that looks at correctness, acceptance gaps, security, data loss, races, leaks, regressions and test gaps. Fix what it finds, then run the gate again.
-7. **Record evidence:** list what you verified in the pull request, including commands, test counts and manual checks. For qualification work, or for closing a pending item from an MVP story, update the matching `docs/evidence/SNNN-*.md`.
+7. **Record verification:** list what you verified in the pull request, including commands, test counts and manual checks, with anything you couldn't run marked *pending*.
 8. **Update the docs:**
     - `README.md` for user-visible changes
     - `CHANGELOG.md` under *Unreleased*
@@ -30,17 +30,17 @@
 
 - Leave a check unticked unless you actually observed it.
 - Record manual checks you couldn't perform here as **pending**, never as passed. That includes VoiceOver, a real IME, keyboard layouts, older macOS, Intel hardware and notarization.
-- Document blockers instead of faking results. S031 and S032 are examples of stories recorded as *blocked* with their measurements.
+- Document blockers, with measurements, instead of faking results.
 
 ## Commits
 
 This repo uses a [Conventional Commits](https://www.conventionalcommits.org/) style with imperative subjects:
 
-- `feat(S017): add configurable keyboard shortcuts`
+- `feat(keyboard): add configurable shortcuts`
 - `fix(control): reject oversized subscription topic lists`
 - `docs: clarify state-directory usage`
 
-Use an MVP story ID as the scope when the change closes or fixes something in that story. Otherwise use a module or area. Don't commit build output (`.build/`, `dist/`, `site/`), personal Xcode state, or anything from your real Application Support folder.
+Use a module or area as the scope. Don't commit build output (`.build/`, `dist/`, `site/`), personal Xcode state, or anything from your real Application Support folder.
 
 ## Pull requests
 

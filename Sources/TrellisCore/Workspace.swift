@@ -66,7 +66,7 @@ public struct WorkspacePane: Identifiable, Equatable, Codable, Sendable {
     }
 }
 
-/// In-memory state, not a persistence format. S010 must encode a safe snapshot
+/// In-memory state, not a persistence format. Persistence encodes a safe snapshot
 /// that excludes runtime PID/attempt/status and restores stopped sessions.
 public struct WorkspaceSession: Identifiable, Equatable, Sendable {
     public let id: UUID

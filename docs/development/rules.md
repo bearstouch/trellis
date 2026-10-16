@@ -6,7 +6,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 
 - These docs define how Trellis behaves. If your change alters behavior, update the relevant page in the same pull request.
 - If a page is ambiguous, resolve the ambiguity in the page. Don't invent behavior in code that conflicts with it.
-- Requirement IDs (`FR-…`, `NFR-…`, `API-…`, `INT-…`, `MAC-…`) are stable. Don't renumber or reuse them. New requirements get new IDs, and retired ones are marked as retired.
+- Requirement IDs (`FR-…`, `API-…`, `INT-…`, `MAC-…`) are stable. Don't renumber or reuse them. New requirements get new IDs, and retired ones are marked as retired.
 
 ## Architecture
 

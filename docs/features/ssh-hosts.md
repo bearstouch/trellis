@@ -30,7 +30,7 @@ A host never contains passwords or private-key contents. Deleting a host removes
 
 ## How a connection is launched
 
-- Trellis builds an executable path plus an argument array. No shell is involved, so nothing in a host field can be interpolated (`NFR-S04`).
+- Trellis builds an executable path plus an argument array. No shell is involved, so nothing in a host field can be interpolated.
 - Fields you set explicitly override SSH defaults through documented client arguments. Fields you leave unset are left to your SSH configuration.
 - There's no free-form "extra SSH arguments" field in the MVP.
 - No host-trust bypass flag (such as `StrictHostKeyChecking=no`) is ever added.

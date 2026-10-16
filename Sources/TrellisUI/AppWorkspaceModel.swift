@@ -273,7 +273,7 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var backupAvailable = false
     @Published public private(set) var persistenceReadOnly = false
     @Published public internal(set) var unconfiguredPaneIDs = Set<UUID>()
-    /// Sessions that received API input: their late write failures never raise an alert (S024-AC04).
+    /// Sessions that received API input: their late write failures never raise an alert.
     var automationInputSessionIDs = Set<UUID>()
     public private(set) var restoredWindowFrame: String?
     public var onRestoreWindowFrame: ((String) -> Void)?

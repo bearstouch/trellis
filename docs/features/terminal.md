@@ -33,13 +33,13 @@ The UI paste review is mandatory. API input (`session.sendInput`) doesn't show i
 
 ## Scrollback and search
 
-- Each pane keeps 10,000 lines of scrollback by default, plus a 16 MiB byte cap (`NFR-P05`). The oldest lines are evicted first.
+- Each pane keeps 10,000 lines of scrollback by default, plus a 16 MiB byte cap. The oldest lines are evicted first.
 - Search is per pane and runs forward and backward. It shows the current match, and says when the history it could have matched has been evicted.
 - The alternate screen (vim, less, top) and the main screen's history are searched separately.
 
 ## Terminal output is untrusted
 
-Terminal output can be written by anything, so Trellis treats it as hostile (`NFR-S05`):
+Terminal output can be written by anything, so Trellis treats it as hostile:
 
 - Terminal-initiated clipboard reads and writes, including OSC 52, are disabled by default.
 - Opening a link needs a user gesture (Cmd-click), and only `http`, `https` and `mailto` are allowed. Custom schemes and automatic opening are disabled.

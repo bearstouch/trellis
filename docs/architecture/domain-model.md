@@ -51,6 +51,6 @@ Here's what happens when a pane closes: its parent split collapses into the sibl
 ## Revisions and conflicts
 
 - Every successful mutation increments the snapshot `revision` and stamps it on each window and tab it touched. A no-op command doesn't change the revision.
-- Callers can pass a global `expectedRevision`, or a resource expectation (`.window(id, revision)`, `.tab(id, revision)` or `.workspace(revision)`). If it doesn't match, the call fails with `conflict(expected:actual:)`, which becomes `CONFLICT` in the API. Concurrent edits are never silently overwritten (`NFR-R03`).
+- Callers can pass a global `expectedRevision`, or a resource expectation (`.window(id, revision)`, `.tab(id, revision)` or `.workspace(revision)`). If it doesn't match, the call fails with `conflict(expected:actual:)`, which becomes `CONFLICT` in the API. Concurrent edits are never silently overwritten.
 - Compound operations (`execute(_:expecting:then:)`) roll back to the saved state if the follow-up command fails.
 - `WorkspaceError` cases: `invalidState`, `notFound`, `conflict`, `invalidTransition`, `staleLaunch` and `revisionExhausted`.

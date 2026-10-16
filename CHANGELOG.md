@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.9.0] - 2026-10-16
 
-This is the first public release of Trellis, previously named uTerm. It is a native Swift terminal for macOS 14 and later, built for Apple silicon and Intel (Universal 2). This release delivers the full MVP, stories S001 to S032. It is a pre-1.0 release, and some platform checks are still pending; see [Known issues](#known-issues).
+This is the first public release of Trellis, previously named uTerm. It is a native Swift terminal for macOS 14 and later, built for Apple silicon and Intel (Universal 2). This release delivers the full MVP. It is a pre-1.0 release, and some platform checks are still pending; see [Known issues](#known-issues).
 
 ### Added
 
@@ -116,7 +116,7 @@ This is the first public release of Trellis, previously named uTerm. It is a nat
 
 ### Performance
 
-Measured on the release build on an Apple M1 Pro running macOS 26.6. Full results are in [S031 results](docs/evidence/S031-qualification-results.md).
+Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce with `python3 scripts/qualify.py`; see [status](docs/overview/status.md).
 
 | Target | Result |
 | --- | --- |

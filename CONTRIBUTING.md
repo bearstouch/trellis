@@ -22,7 +22,7 @@ swift run Trellis --state-directory "$PWD/.build/dev-state"
 
 - Look for issues labelled `good first issue` or `help wanted`.
 - For anything larger than a small fix, open an issue first and describe the problem and your proposed approach. Agreeing on direction early saves rework.
-- Deferred features and open qualification work are listed in the [roadmap](docs/project/roadmap.md). The completed MVP stories, with their acceptance criteria and named unit tests, are in the [delivery history](docs/project/delivery-history.md).
+- Deferred features and open qualification work are listed in the [roadmap](docs/project/roadmap.md).
 
 ## Making a change
 
@@ -44,7 +44,7 @@ swift run Trellis --state-directory "$PWD/.build/dev-state"
    python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"
    ```
 
-5. Update the docs. Update `README.md` for user-visible changes and the relevant page under `docs/` for behavior changes. If the change closes pending work from an MVP story, update `docs/evidence/SNNN-*.md` as well.
+5. Update the docs. Update `README.md` for user-visible changes and the relevant page under `docs/` for behavior changes. If it closes a pending check or changes a known limit, update [status](docs/overview/status.md) as well.
 6. Open a pull request (see [Pull requests](#pull-requests)).
 
 ## Architecture rules and code style
@@ -65,30 +65,29 @@ The [architecture docs](docs/architecture/index.md) explain how the pieces fit t
 
 - Tests use XCTest, with one test class per area, in the test target that matches the module.
 - Assert observable behavior and failure safety. For example, if an operation fails, test that the previous state is retained.
-- Story tests are named `testSNNN_UTnn_camelCaseName`, for example `testS015_UT01_minimalThemeInheritsDefaults`. The four named unit tests from each MVP story (listed in the [delivery history](docs/project/delivery-history.md)) must keep exactly those IDs. See [Testing](docs/development/testing.md). Extra tests that come out of review go in `*ReviewTests.swift`.
+- Use descriptive test names, and keep existing test names stable. Extra tests that come out of review go in `*ReviewTests.swift`. See [Testing](docs/development/testing.md).
 - Integration tests may spawn real PTYs, but they must stay isolated: use temporary directories and `--state-directory`, and never touch the user's workspace, Keychain or hosts.
 - Useful filters:
 
   ```sh
   swift test --filter TrellisCoreTests
   swift test --filter TrellisUITests.TabManagementTests
-  swift test --filter 'S017_UT'
   ```
 
 ## Commits
 
 - Write focused commits with imperative subjects. This repo uses a [Conventional Commits](https://www.conventionalcommits.org/) style:
-  - `feat(S017): add configurable keyboard shortcuts`
-  - `fix(S012): keep paste review open on cancel`
+  - `feat(keyboard): add configurable shortcuts`
+  - `fix(paste): keep paste review open on cancel`
   - `docs: clarify state-directory usage`
-- Use the story ID as the scope when the change belongs to a story. Otherwise use a module or area name, for example `fix(control): …`.
+- Use a module or area name as the scope, for example `fix(control): …`.
 - Don't commit build output (`.build/`, `dist/`), personal Xcode state, or anything from your real Application Support directory.
 
 ## Pull requests
 
 A good pull request:
 
-- explains **what** changed and **why**, and links the issue or story;
+- explains **what** changed and **why**, and links the issue;
 - lists **how you verified** it: the commands you ran, the test counts, and any manual checks, with unperformed checks marked *pending*;
 - includes screenshots or a short recording for UI changes, in both light and dark appearance where relevant;
 - keeps to one concern. Refactors that aren't needed for the change belong in their own PR.

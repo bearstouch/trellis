@@ -1,6 +1,6 @@
 # Trellis release guide
 
-Release decisions are recorded in [`release/manifest.json`](https://github.com/layerx-labs/trellis/blob/master/release/manifest.json) and checked by `testS032_UT01`.
+Release decisions are recorded in [`release/manifest.json`](https://github.com/layerx-labs/trellis/blob/master/release/manifest.json) and checked by `ReleaseTests`.
 
 | Decision | Value |
 | --- | --- |
@@ -82,7 +82,7 @@ Only these combinations have been run. Nothing else is claimed.
 
 | macOS | CPU | Build | Result |
 | --- | --- | --- | --- |
-| 26.6.2 (25G83) | Apple M1 Pro (arm64, native) | Development and release builds | Full automated suite (303+ tests); native checks recorded per story; S031 qualification run |
+| 26.6.2 (25G83) | Apple M1 Pro (arm64, native) | Development and release builds | Full automated suite; native checks; qualification run (`scripts/qualify.py`) |
 | 26.6.2 | x86_64 slice under Rosetta | Universal release | The CLI executes; **not** a native Intel qualification |
 
 **Not yet tested:** macOS 14 (the declared minimum), macOS 15, native Intel hardware, external displays, and a clean machine.
@@ -90,10 +90,10 @@ Only these combinations have been run. Nothing else is claimed.
 ## Known limits
 
 - **Signing:** no Developer ID signing, notarization, or clean-machine Gatekeeper verification has been performed. The current builds are ad-hoc.
-- **Flood throughput:** a 10 MiB/s output flood is consumed at about 5–7.6 MiB/s (S031 blocker).
+- **Flood throughput:** a 10 MiB/s output flood is consumed at about 5–7.6 MiB/s.
 - **Latency:** typing and switching latency are measured through API proxies, not UI frame timing.
-- **Accessibility and input:** VoiceOver, real IME, and keyboard-layout checks are pending (S017).
-- **SSH:** checks against a real server are pending (S020).
+- **Accessibility and input:** VoiceOver, real IME, and keyboard-layout checks are pending.
+- **SSH:** checks against a real server are pending.
 - **Windows:** there is one native terminal window; managed windows live in its sidebar.
 - **Updates:** no automatic updates.
 

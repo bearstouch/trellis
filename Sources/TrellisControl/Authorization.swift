@@ -111,7 +111,7 @@ public enum AuthorizationPolicy {
         "theme.get": needs(.themeRead),
         "theme.validate": needs(.themeRead),
         "theme.export": needs(.themeRead),
-        // Theme writes change every window, so they need explicitly global scope (S029-AC02).
+        // Theme writes change every window, so they need explicitly global scope.
         "theme.import": needs(.themeWrite, allWindows: true),
         "theme.delete": needs(.themeWrite, allWindows: true),
         "appearance.get": needs(.themeRead),

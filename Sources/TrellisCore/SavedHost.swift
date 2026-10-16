@@ -34,7 +34,7 @@ public struct SavedHost: Identifiable, Equatable, Codable, Sendable {
         identityFile = try values.decodeIfPresent(String.self, forKey: .identityFile)
         tags = try values.decode([String].self, forKey: .tags)
         revision = try values.decode(UInt64.self, forKey: .revision)
-        // Files written before S022 have no separate connection revision.
+        // Older host files have no separate connection revision.
         connectionRevision = try values.decodeIfPresent(UInt64.self, forKey: .connectionRevision) ?? revision
     }
 

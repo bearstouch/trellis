@@ -99,7 +99,7 @@ final class PTYProcess: LocalSessionTransport {
         return child.pid
     }
 
-    // Compatibility for the isolated S001 fixtures; production uses validated launch.
+    // Compatibility for the isolated feasibility fixtures; production uses validated launch.
     func start(executable: String, arguments: [String], environment: [String], directory: String, size: winsize) async throws {
         let pairs = environment.map { $0.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init) }
         let values = Dictionary(pairs.filter { $0.count == 2 }.map { ($0[0], $0[1]) }, uniquingKeysWith: { _, last in last })

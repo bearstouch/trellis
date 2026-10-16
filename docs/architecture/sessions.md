@@ -28,7 +28,7 @@ The launch descriptor is validated before any process exists (`LocalLaunchValida
 - The interactive shell is the account's login shell (from `getpwuid_r`, falling back to `/bin/zsh`), run with `-l`.
 - **Environment:**
     - The child inherits the app's environment plus allowed overrides.
-    - Variables with a `TRELLIS_`, `__TRELLIS_`, `UTERM_` or `__UTERM_` prefix are removed when inherited and rejected when passed as overrides. This keeps application control secrets out of shells (`NFR-S08`).
+    - Variables with a `TRELLIS_`, `__TRELLIS_`, `UTERM_` or `__UTERM_` prefix are removed when inherited and rejected when passed as overrides. This keeps application control secrets out of shells.
     - `ITERM_SESSION_ID` and `TERM_SESSION_ID` are removed.
     - `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Trellis` are set.
 
@@ -60,7 +60,7 @@ Trellis must never signal a PID that the OS has reused for another process.
 
 Cancelling a confirmation sends no signal. Closing a pane doesn't guarantee that remote processes stop, including anything detached with tmux or nohup.
 
-Every 100 create/close cycles must leave no orphaned PTYs, no unreaped children and no growth in descriptor count (`NFR-R01`, verified by `scripts/qualify.py`).
+Every 100 create/close cycles must leave no orphaned PTYs, no unreaped children and no growth in descriptor count (verified by `scripts/qualify.py`).
 
 ## SSH sessions
 

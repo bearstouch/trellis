@@ -33,7 +33,6 @@ swift run Trellis --state-directory "$PWD/.build/dev-state"
 swift build                                   # build (must stay warning-free)
 swift test                                    # full XCTest suite, about 20 s
 swift test --filter TrellisUITests.TabManagementTests   # one test class
-swift test --filter 'S017_UT'                 # one story's named tests
 swift format -i -r Sources Tests              # format in place
 swift format lint --strict -r Sources Tests   # lint: must print nothing
 ```
@@ -99,7 +98,7 @@ Sources/
   TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)
 Tests/               one XCTest target per module
 ThirdParty/SwiftTerm vendored SwiftTerm 1.20.0 plus recorded patches
-docs/                this documentation, including schemas, evidence and the release guide
+docs/                this documentation, including schemas and the release guide
 release/manifest.json  release decisions checked by the release tests
 Design/AppIcon/      icon sources
 scripts/             launcher, qualification, packaging, icon tooling

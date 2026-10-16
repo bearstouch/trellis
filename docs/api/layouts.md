@@ -1,6 +1,6 @@
 # Declarative layouts
 
-A layout document describes windows, tabs and split trees, plus safe launch references. It is **data, not shell code**. A layout can't embed commands, and validating or applying one never runs anything; starting work is always a separate, explicit API call (`NFR-S07`).
+A layout document describes windows, tabs and split trees, plus safe launch references. It is **data, not shell code**. A layout can't embed commands, and validating or applying one never runs anything; starting work is always a separate, explicit API call.
 
 - Schema: [`layout.schema.json`](layout.schema.json) (JSON Schema 2020-12)
 - Example: [`example-layout.json`](example-layout.json). The tests apply it twice and check that the result is stable.

@@ -19,7 +19,7 @@ Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and t
 | --- | --- | --- |
 | `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset | Zooming mustn't reset live parser state such as cursor mode and attributes |
 | `Buffer.swift` | Opt-in `reflowCursorLine` for normal-buffer cursor-line reflow | Keeps the cursor and selections correct across font changes |
-| `KittyGraphics.swift` | Refuses file (`t=f`), temp-file (`t=t`) and shared-memory (`t=s`) transmission with `ENOTSUP` | Terminal output is untrusted and must never make the app read or unlink local files (`NFR-S05`) |
+| `KittyGraphics.swift` | Refuses file (`t=f`), temp-file (`t=t`) and shared-memory (`t=s`) transmission with `ENOTSUP` | Terminal output is untrusted and must never make the app read or unlink local files |
 | `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes | |
 
 To update SwiftTerm:
@@ -41,7 +41,7 @@ Children get `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Trel
 | Automation output journal | 8 MiB shared by all sessions, oldest evicted first, in memory only. Small reads are coalesced into 16 KiB chunks. | `OutputJournal` |
 | Event ring | 1,000 metadata events | `EventHub` |
 
-Output must keep the PTY's byte order (`NFR-R06`). The UI may coalesce frames, but it never reorders data. When history has been evicted, search and `readOutput` say so instead of pretending it never existed.
+Output must keep the PTY's byte order. The UI may coalesce frames, but it never reorders data. When history has been evicted, search and `readOutput` say so instead of pretending it never existed.
 
 ## Search and selection
 
@@ -57,4 +57,4 @@ Output must keep the PTY's byte order (`NFR-R06`). The UI may coalesce frames, b
 
 ## Accessibility
 
-VoiceOver must be able to identify terminal panes and their state. An engine that isn't accessible would block a release (`NFR-U02`). Checking terminal reading with real VoiceOver is still pending. See [Status](../overview/status.md).
+VoiceOver must be able to identify terminal panes and their state. An engine that isn't accessible would block a release. Checking terminal reading with real VoiceOver is still pending. See [Status](../overview/status.md).

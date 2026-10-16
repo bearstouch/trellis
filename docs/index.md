@@ -24,15 +24,14 @@ These pages are the behavior contract for Trellis and the guide for anyone worki
 - **Features:** [workspace](features/workspace.md), [terminal](features/terminal.md), [SSH hosts](features/ssh-hosts.md), [themes](features/themes.md) and [keyboard and accessibility](features/keyboard-accessibility.md).
 - **Automation API:** [overview and transport](api/index.md), [authorization](api/authorization.md), [methods](api/methods.md), [output and events](api/output-events.md), [errors](api/errors.md), [layouts](api/layouts.md) and the [CLI](api/cli.md).
 - **Platform:** [integrations](integrations.md) and [macOS support](platform/macos.md).
-- **Quality:** [non-functional requirements](quality/non-functional.md) and [verification](quality/verification.md).
 - **Development:** [getting started](development/getting-started.md), [rules](development/rules.md), [testing](development/testing.md), [contribution workflow](development/workflow.md) and the [release guide](release/README.md).
-- **Project:** [roadmap and open decisions](project/roadmap.md), [requirements traceability](project/traceability.md), [delivery history](project/delivery-history.md) and the per-story [evidence](evidence/S001-terminal-feasibility.md).
+- **Project:** [roadmap and decisions](project/roadmap.md).
 
 ## Conventions
 
 - **MUST** marks a requirement. **SHOULD** marks a preferred behavior; an exception is allowed if it is documented.
 - **P0** is the MVP, **P1** is the next follow-up and **P2** is exploratory.
-- Requirement IDs are stable and are referenced from tests, evidence and commits. The prefixes are `FR` (functional), `NFR` (non-functional), `API`, `INT` (integrations) and `MAC` (macOS). The [traceability table](project/traceability.md) maps each ID to the stories that delivered it.
+- Requirement IDs are stable. The prefixes are `FR` (functional), `API`, `INT` (integrations) and `MAC` (macOS).
 - A requirement passes only once it has been observed working. A dependency claiming to support something doesn't count, and checks that couldn't be run are recorded as **pending**.
 
 ## Building this site

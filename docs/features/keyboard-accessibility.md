@@ -49,7 +49,7 @@ Rules for shortcuts:
 
 Changes apply live, without restarting sessions.
 
-## Accessibility (NFR-U01 – NFR-U04)
+## Accessibility
 
 - Every primary operation can be done from the keyboard, and the focus location stays visible in the terminal, tabs, sidebar and dialogs.
 - VoiceOver can identify sidebar items, tabs, terminal panes, their status, and action labels. `WorkspaceAccessibility` provides them, for example "Window Project, 2 tabs, new output", "Tab Build, 1 of 2", and "Terminal Server, Exited (7), focused".
@@ -64,4 +64,4 @@ Rules for new views:
 - Never rely on color alone.
 - Keep focus visible.
 
-The full input matrix still has to be checked by hand: US and Portuguese layouts, dead keys, Option behavior, emoji, combining marks, wide CJK characters, and IME composition (`NFR-U04`). That check and VoiceOver terminal reading are still **pending**. See [Status](../overview/status.md).
+The full input matrix still has to be checked by hand: US and Portuguese layouts, dead keys, Option behavior, emoji, combining marks, wide CJK characters, and IME composition. That check and VoiceOver terminal reading are still **pending**. See [Status](../overview/status.md).

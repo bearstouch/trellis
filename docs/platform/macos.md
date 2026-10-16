@@ -46,7 +46,7 @@ The step-by-step procedures are in the [release guide](../release/README.md).
 | Security | Gatekeeper, signing and notarization, protected paths, token revocation, same-user socket ownership, malformed clients |
 | Hosts | Known, unknown and changed host keys; agent authentication; passphrase and password prompts; alias configuration; dropped networks |
 
-[Status](../overview/status.md) shows which rows still have evidence pending.
+[Status](../overview/status.md) shows which rows are still pending.
 
 ## Deferred: multiple native windows
 

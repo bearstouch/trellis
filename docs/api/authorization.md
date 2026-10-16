@@ -59,8 +59,8 @@ Tokens never go on a command line. The CLI reads the token from standard input (
 
 ## Untrusted output
 
-No permission ever comes from terminal text. Output is untrusted data, and that includes text that seems to ask an agent to change its permissions or run something. A client that can list metadata can't assume it may also read or control every pane (`NFR-S06`).
+No permission ever comes from terminal text. Output is untrusted data, and that includes text that seems to ask an agent to change its permissions or run something. A client that can list metadata can't assume it may also read or control every pane.
 
 ## Threat model
 
-These controls protect against accidental and unauthorized access by *other clients*. Malware running as the same user is outside any strong isolation guarantee, and nothing here can make a compromised user account safe (`NFR-S02`).
+These controls protect against accidental and unauthorized access by *other clients*. Malware running as the same user is outside any strong isolation guarantee, and nothing here can make a compromised user account safe.

@@ -4,7 +4,7 @@
 
 Everything in [Status](../overview/status.md) under *Release blockers* and *Pending verification*:
 
-- raise flood throughput to meet `NFR-P07`
+- raise flood throughput to the 10 MiB/s target
 - measure UI frame latency
 - Developer ID signing and notarization
 - the macOS 14 and 15, native Intel and clean-machine matrix
@@ -38,7 +38,7 @@ These were decided during the MVP. Reopening one needs a docs change and a revie
 | Decision | Outcome | Where it's recorded |
 | --- | --- | --- |
 | What a "window" means | Sidebar workspaces inside one native window | [Product overview](../overview/product.md#vocabulary) |
-| Terminal engine | SwiftTerm 1.20.0 behind the `TrellisTerminal` adapter, vendored and patched. Trellis owns the PTY. | [Terminal engine](../architecture/terminal-engine.md), S001 |
+| Terminal engine | SwiftTerm 1.20.0 behind the `TrellisTerminal` adapter, vendored and patched. Trellis owns the PTY. | [Terminal engine](../architecture/terminal-engine.md) |
 | `TERM` | `xterm-256color` with `COLORTERM=truecolor` | [Sessions](../architecture/sessions.md#launching) |
 | Platform | macOS 14+, Universal 2 | [macOS support](../platform/macos.md), `release/manifest.json` |
 | Default scrollback | 10,000 lines plus 16 MiB per pane | [Terminal engine](../architecture/terminal-engine.md#scrollback-and-output-buffers) |

@@ -249,7 +249,7 @@ extension AppWorkspaceModel {
     }
 }
 
-// MARK: - Declarative layouts (S026)
+// MARK: - Declarative layouts
 
 extension AppWorkspaceModel {
     private var layoutBindingsURL: URL? { persistence?.directory.appendingPathComponent("layout-bindings.json") }
@@ -301,7 +301,7 @@ extension AppWorkspaceModel {
     }
 }
 
-// MARK: - Theme control (S029)
+// MARK: - Theme control
 
 public enum AutomationThemeError: Error, Equatable, Sendable {
     case invalid(ThemeValidationError)

@@ -16,9 +16,9 @@ All tests use XCTest (`swift test`). The suite has about 310 tests and runs in r
 ## Conventions
 
 - One test class per area, named `<Area>Tests.swift`, in the target that matches the module.
-- **Story tests** are named `testSNNN_UTnn_camelCaseName`, for example `testS015_UT01_minimalThemeInheritsDefaults`. Each MVP story's four named tests are listed in the [delivery history](../project/delivery-history.md). Keep them, and don't rename them.
+- Keep existing test names stable when you touch a file.
 - Extra tests that come out of review go in `*ReviewTests.swift`.
-- New work that isn't part of a story uses ordinary descriptive names, for example `testResizeRejectsRatioOutsideBounds`.
+- New tests use ordinary descriptive names, for example `testResizeRejectsRatioOutsideBounds`.
 - Assert observable behavior **and failure safety**. When an operation fails, check that the previous state is untouched.
 - Inject clocks, IDs, the filesystem, processes, the clipboard, the Keychain and transports. Don't sleep in tests unless you're exercising a real PTY.
 
@@ -33,7 +33,6 @@ All tests use XCTest (`swift test`). The suite has about 310 tests and runs in r
 ```sh
 swift test --filter TrellisCoreTests
 swift test --filter TrellisUITests.TabManagementTests
-swift test --filter 'S017_UT'
 ```
 
 ## Beyond unit tests
@@ -42,10 +41,10 @@ swift test --filter 'S017_UT'
 | --- | --- | --- |
 | Launcher regression | `python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"` | After changing launching, bundling or resources |
 | App bundle | `scripts/run-feasibility.sh --build-only` | Same |
-| Qualification | `python3 scripts/qualify.py [--quick]` | After changes that could affect performance or lifecycle. It writes `docs/evidence/S031-qualification-results.md`. |
+| Qualification | `python3 scripts/qualify.py [--quick]` | After changes that could affect performance or lifecycle. It writes a Markdown report to `.build/qualification-results.md` (override with `--report`). |
 | Release gate | `scripts/package-release.sh` | Before a release |
 
-Manual checks that can't run here, such as VoiceOver, real IME, keyboard layouts, older macOS, Intel hardware and notarization, are recorded as **pending**. See [Verification](../quality/verification.md).
+Manual checks that can't run here, such as VoiceOver, real IME, keyboard layouts, older macOS, Intel hardware and notarization, are recorded as **pending**. List them in the pull request.
 
 ## CI
 

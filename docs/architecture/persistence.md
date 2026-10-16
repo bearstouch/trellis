@@ -38,7 +38,7 @@ Reads use `O_NOFOLLOW`, require a regular file, and are capped at 4 MiB and 128 
 
 Only one writer runs at a time, and writes are sequence-gated, so an older save can't overwrite a newer one. Ordinary UI changes are debounced by **300 ms**. ⌘S and Quit flush immediately, and if the save fails, Quit is cancelled.
 
-Interrupting a save at any point must still leave a readable current file or backup (`NFR-R02`).
+Interrupting a save at any point must still leave a readable current file or backup.
 
 ## Versions and migration
 
@@ -52,7 +52,7 @@ Loading returns `.missing`, `.loaded` or `.recovery(reason, backup?)`.
 
 - **Corrupt file:** the user chooses **Recover backup** or **Start empty**. Before anything is written, the original is preserved as `workspace.corrupt.<UUID>.json`.
 - **Unsupported version:** persistence stays read-only for the rest of the session.
-- **After a crash:** the app says that sessions stopped. It never implies that processes continued, and it never replays input (`NFR-R05`).
+- **After a crash:** the app says that sessions stopped. It never implies that processes continued, and it never replays input.
 
 ## Restoring stopped sessions
 

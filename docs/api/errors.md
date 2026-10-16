@@ -37,6 +37,6 @@ Layout errors also include `issues: [{key?, message}]`. Inside a `layout.apply` 
 
 ## Rules for error payloads
 
-- Messages are sanitized. They never include tokens or full terminal input or output (`NFR-U05`).
+- Messages are sanitized. They never include tokens or full terminal input or output.
 - An error should name the target resource and say how to recover.
 - New error codes are SCREAMING_SNAKE strings. Add them to this page, to `knownErrorCodes` in diagnostics, and to the CLI's [exit-code mapping](cli.md#exit-codes).
