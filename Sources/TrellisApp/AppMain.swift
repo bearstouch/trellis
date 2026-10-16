@@ -116,6 +116,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         let menu = NSMenu()
         let app = NSMenuItem(); app.submenu = NSMenu(title: "Trellis")
+        let about = app.submenu?.addItem(withTitle: "About Trellis", action: #selector(aboutAction), keyEquivalent: "")
+        about?.target = self
+        app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
         app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Hide Trellis", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
@@ -284,6 +287,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.accessibilityDisplayOptionsDidChange(
             increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
     }
+    @objc private func aboutAction() {
+        let credits = NSMutableAttributedString(string: "Released under the ", attributes: [.font: NSFont.systemFont(ofSize: 12)])
+        credits.append(NSAttributedString(string: "MIT License", attributes: [
+            .font: NSFont.systemFont(ofSize: 12),
+            .link: URL(string: "https://github.com/layerx-labs/trellis/blob/main/LICENSE")!
+        ]))
+        credits.append(NSAttributedString(string: ".", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Trellis",
+            .applicationIcon: NSApp.applicationIconImage!,
+            .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
+            .version: "",
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "© 2026 LayerX Labs and Trellis contributors. All rights reserved.",
+            .credits: credits
+        ])
+    }
+
     @objc private func settingsAction() { showSettings() }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {
