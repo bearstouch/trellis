@@ -98,6 +98,13 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         }
     }
 
+    /// Shows why a launch was refused without spawning anything.
+    public func refuseLaunch(message: String) {
+        guard sessionState == .stopped, !adapter.isDetached else { return }
+        adapter.receive(Data("\(message)\r\n".utf8))
+        session.refuseLaunch()
+    }
+
     public func start(fixture: Bool = false) {
         Task {
             if fixture { await startFixture() } else { await start(configuration: .loginShell()) }

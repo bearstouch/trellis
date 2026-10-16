@@ -74,6 +74,14 @@ public final class LocalSessionController {
         }
     }
 
+    /// Fails a session refused before any process existed (for example a missing
+    /// saved host), so its pane reports failure and offers an explicit restart.
+    public func refuseLaunch() {
+        guard state == .stopped else { return }
+        exitReceived = true; exitNotified = true
+        changeState(.failed)
+    }
+
     public func send(_ data: Data) throws {
         guard state == .running else { throw TerminalAdapterError.inputClosed }
         try transport.send(data)

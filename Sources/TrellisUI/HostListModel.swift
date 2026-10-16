@@ -12,6 +12,12 @@ public final class HostListModel: ObservableObject {
 
     public init(library: HostLibrary) { self.library = library }
 
+    /// Opens a connection; set by the app to the workspace model.
+    public var onConnect: ((SavedHost, AppWorkspaceModel.HostPlacement) -> Void)?
+
+    /// The latest committed host, read when a session spawns.
+    public func host(_ id: UUID) async -> SavedHost? { await library.hosts.first { $0.id == id } }
+
     public var visibleHosts: [SavedHost] { SavedHost.search(hosts, query: query) }
 
     public func load() async {

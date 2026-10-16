@@ -45,6 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
         model.openHosts = { [weak self] in self?.showHosts() }
+        model.resolveHost = { [hosts] id in await hosts.host(id) }
+        hosts.onConnect = { [weak self] host, placement in
+            guard let self else { return }
+            window?.makeKeyAndOrderFront(nil)
+            Task { await self.model.connect(host: host, placement: placement) }
+        }
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -65,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             constrainWindow()
         }
         startupTask = Task {
+            // Saved-host panes resolve their host when started, so load hosts first.
+            await hosts.load()
             let restored = await model.loadWorkspace()
             await model.refresh()
             guard !Task.isCancelled else { return }

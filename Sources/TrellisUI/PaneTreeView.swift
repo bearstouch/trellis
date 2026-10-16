@@ -60,8 +60,14 @@ struct PaneTreeView: View {
                         Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)
                     }
                     if terminal.sessionState == .exited || terminal.sessionState == .failed {
-                        Button("Restart") { Task { await model.restartPane(id) } }
-                            .help("Start a fresh session in this pane").accessibilityLabel("Restart Session")
+                        // Saved-host panes reconnect only when the user asks; there is no retry timer.
+                        let isHost =
+                            model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID] }.map {
+                                if case .host = $0.launch { true } else { false }
+                            } == true
+                        Button(isHost ? "Reconnect" : "Restart") { Task { await model.restartPane(id) } }
+                            .help(isHost ? "Start a new ssh connection in this pane" : "Start a fresh session in this pane")
+                            .accessibilityLabel(isHost ? "Reconnect" : "Restart Session")
                     }
                     Button {
                         Task { await model.toggleMaximize(id) }

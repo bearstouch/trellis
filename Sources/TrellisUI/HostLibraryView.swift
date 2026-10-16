@@ -97,6 +97,21 @@ public struct HostLibraryView: View {
             Text("Trellis stores no passwords or key contents. Changes apply to future connections only.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let message { Text(message).font(.caption).accessibilityIdentifier("hosts.result") }
+            if let host = editing {
+                HStack {
+                    Button("Connect in New Tab") { model.onConnect?(host, .newTab) }
+                        .accessibilityHint("Starts a new ssh process for \(host.name)")
+                    Menu("Connect in Split") {
+                        Button("Left/Right") { model.onConnect?(host, .split(.x)) }
+                        Button("Top/Bottom") { model.onConnect?(host, .split(.y)) }
+                    }
+                    .fixedSize()
+                }
+                .disabled(model.onConnect == nil || draft != host.draft)
+                if draft != host.draft {
+                    Text("Save or revert your changes before connecting.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             HStack {
                 if editing != nil {
                     Button("Delete…", role: .destructive) { confirmingDelete = true }.disabled(saving)

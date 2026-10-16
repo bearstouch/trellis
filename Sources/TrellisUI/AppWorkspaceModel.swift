@@ -267,6 +267,10 @@ public final class AppWorkspaceModel: ObservableObject {
     private var saveGeneration: UInt64 = 0
     public var openSettings: (() -> Void)?
     public var openHosts: (() -> Void)?
+    /// Reads the current saved host at spawn time, so reconnects use later edits.
+    public var resolveHost: ((UUID) async -> SavedHost?)?
+    /// Injected only by tests; connections always use the system OpenSSH client.
+    var sshExecutable = "/usr/bin/ssh"
     private let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
     private let preferences: UserDefaults
@@ -520,14 +524,25 @@ public final class AppWorkspaceModel: ObservableObject {
                     configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory)
                 case .process(let executable, let arguments, let directory):
                     configuration = LocalLaunchConfiguration(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
-                case .host:
-                    publish(
-                        try await service.execute(
-                            .completeLaunch(
-                                sessionID: request.sessionID, attemptID: request.attemptID,
-                                outcome: .failed(message: "Saved host connections require SSH integration."))
-                        ).snapshot)
-                    return
+                case .host(let hostID):
+                    // Each spawn freezes the host's current arguments; the domain keeps
+                    // `.host(id)` so persistence and explicit reconnects re-read it.
+                    let host = await resolveHost?(hostID)
+                    guard let host, case .process(_, let arguments, _) = host.connectionLaunch,
+                        terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled
+                    else {
+                        let message = host == nil ? "This saved host is no longer available." : "Session launch was cancelled."
+                        // The pane must show Failed (with Reconnect), not a startable stopped pane.
+                        if host == nil, terminals[paneID] === terminal {
+                            terminal.refuseLaunch(message: "This saved host was deleted or the host library could not be read. Close this pane or connect to another host.")
+                        }
+                        publish(
+                            try await service.execute(
+                                .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: message))
+                            ).snapshot)
+                        return
+                    }
+                    configuration = LocalLaunchConfiguration(executable: sshExecutable, arguments: arguments, directory: defaultDirectory)
                 }
                 await terminal.start(configuration: configuration)
             }
@@ -681,29 +696,74 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
 
-    public func splitPane(_ id: UUID, axis: SplitAxis, availableCanvas: CanvasDimensions? = nil, startSession: Bool = true) async {
-        guard !shuttingDown, !isClosing(paneID: id), let terminal = terminals[id] else { return }
+    @discardableResult
+    public func splitPane(_ id: UUID, axis: SplitAxis, availableCanvas: CanvasDimensions? = nil, startSession: Bool = true) async -> UUID? {
+        guard !shuttingDown, !isClosing(paneID: id), let terminal = terminals[id] else { return nil }
         if let canvas = availableCanvas {
             let minimum = CanvasDimensions.minimum(for: .split(id: UUID(), axis: axis, ratio: 0.5, children: [.pane(UUID()), .pane(UUID())]))
             guard canvas.width >= minimum.width, canvas.height >= minimum.height else {
                 errorMessage = "Enlarge this pane before splitting it."
-                return
+                return nil
             }
         }
         let dimensions = terminal.getWindowSize()
-        guard let size = try? TerminalSize(columns: Int(dimensions.ws_col), rows: Int(dimensions.ws_row)) else { return }
+        guard let size = try? TerminalSize(columns: Int(dimensions.ws_col), rows: Int(dimensions.ws_row)) else { return nil }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
             let result = try await service.execute(.splitPane(id: id, axis: axis, availableSize: size))
-            guard let newID = result.createdPaneID, let pane = result.snapshot.panes[newID] else { return }
+            guard let newID = result.createdPaneID, let pane = result.snapshot.panes[newID] else { return nil }
             attachTerminal(pane)
             publish(result.snapshot)
             // The store may have committed while a close operation began. Keep
             // its surviving pane materialized, but do not launch a new process
             // inside a hierarchy that is already closing.
             if startSession, !isClosing(paneID: id), !isClosing(paneID: newID) { await start(paneID: newID) }
-        } catch { errorMessage = "This pane cannot be split further. Check its size and the layout limits." }
+            return newID
+        } catch {
+            errorMessage = "This pane cannot be split further. Check its size and the layout limits."
+            return nil
+        }
+    }
+
+    /// Where a saved-host connection opens. Splits divide the focused pane.
+    public enum HostPlacement: Sendable, Equatable { case newTab, split(SplitAxis) }
+
+    /// Each call creates a new pane and session with its own ssh process; an
+    /// existing connection is never reused or retried.
+    @discardableResult
+    public func connect(host: SavedHost, placement: HostPlacement = .newTab) async -> UUID? {
+        guard !isRestoring, recoveryMessage == nil, !shuttingDown else { return nil }
+        let paneID: UUID?
+        switch placement {
+        case .newTab:
+            let created: UUID?
+            if presentation.selectedWindow == nil {
+                // A new window already contains one stopped pane; use it instead of adding a tab.
+                await createWindow(name: host.name, startSession: false)
+                created = presentation.selectedTab?.id
+            } else {
+                created = await createTab(startSessions: false)
+            }
+            paneID = created.flatMap { snapshot.tabs[$0]?.activePaneID }
+            if let created { await renameTab(created, title: host.name) }
+        case .split(let axis):
+            // Match the pane split controls: a hidden split would hide ssh prompts.
+            guard let tab = presentation.selectedTab, let focused = presentation.activePane?.id, maximizedPanes[tab.id] == nil else {
+                errorMessage = presentation.selectedTab == nil ? "Open a window before connecting in a split." : "Restore panes before connecting in a split."
+                return nil
+            }
+            paneID = await splitPane(focused, axis: axis, startSession: false)
+        }
+        guard let paneID, snapshot.panes[paneID] != nil, !isClosing(paneID: paneID), !shuttingDown else { return nil }
+        do {
+            publish(try await service.execute(.configureStoppedSession(paneID: paneID, launch: .host(host.id))).snapshot)
+        } catch {
+            errorMessage = "The connection pane could not be prepared."
+            return nil
+        }
+        await start(paneID: paneID)
+        return paneID
     }
 
     public func closePane(_ id: UUID) async {
@@ -717,19 +777,20 @@ public final class AppWorkspaceModel: ObservableObject {
         if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
     }
 
-    public func createTab(windowID: UUID? = nil, duplicate id: UUID? = nil, startSessions: Bool = true) async {
+    @discardableResult
+    public func createTab(windowID: UUID? = nil, duplicate id: UUID? = nil, startSessions: Bool = true) async -> UUID? {
         guard !shuttingDown, !Task.isCancelled,
             let windowID = windowID ?? presentation.selectedWindow?.id,
             !closingWindowIDs.contains(windowID)
-        else { return }
+        else { return nil }
         if let id {
-            guard snapshot.tabs[id]?.windowID == windowID, !closingTabIDs.contains(id) else { return }
+            guard snapshot.tabs[id]?.windowID == windowID, !closingTabIDs.contains(id) else { return nil }
         }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
             let result = try await service.execute(id.map { .duplicateTab(id: $0) } ?? .createTab(windowID: windowID))
-            guard let tabID = result.createdTabID, let tab = result.snapshot.tabs[tabID] else { return }
+            guard let tabID = result.createdTabID, let tab = result.snapshot.tabs[tabID] else { return nil }
             for paneID in tab.root.paneIDs {
                 if let pane = result.snapshot.panes[paneID] { attachTerminal(pane) }
             }
@@ -737,7 +798,11 @@ public final class AppWorkspaceModel: ObservableObject {
             if startSessions {
                 for paneID in tab.root.paneIDs { await start(paneID: paneID) }
             }
-        } catch { errorMessage = "The tab could not be created." }
+            return tabID
+        } catch {
+            errorMessage = "The tab could not be created."
+            return nil
+        }
     }
 
     public func selectTab(_ id: UUID) async {

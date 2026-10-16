@@ -1,7 +1,7 @@
 # S020 — Open SSH sessions in tabs or splits
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 226 tests pass; real SSH server checks pending  
 Delivery phase: 3  
 Depends on: [S003](003-local-pty-session.md), [S007](007-nested-split-tree.md), [S009](009-safe-session-close-and-restart.md), [S018](018-saved-host-library.md), [S019](019-ssh-config-alias-discovery.md)  
 Requirements: `FR-H02`, `FR-H04`, `FR-H05`, `INT-03`, `INT-05`, `NFR-S04`
@@ -34,7 +34,7 @@ Against a controlled local SSH server verify key/agent/password prompts, unknown
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S020 SSH connection evidence](../../docs/evidence/S020-ssh-connections.md) for argument construction, independent-session, no-retry tests with an ssh fixture, review fixes, and the pending controlled-server checks.
 
 ## Source specifications
 
