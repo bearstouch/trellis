@@ -92,6 +92,7 @@ final class SplitManagementTests: XCTestCase {
         defer { preferences.removePersistentDomain(forName: name) }
         preferences.set("/does-not-exist-uterm", forKey: "terminal.shell")
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane)
         await model.splitPane(original.id, axis: .x)
@@ -108,6 +109,7 @@ final class SplitManagementTests: XCTestCase {
     func testCommittedSplitSurvivesConcurrentOriginalPaneClose() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane?.id)
         let split = Task { await model.splitPane(original, axis: .x, startSession: false) }
@@ -125,6 +127,7 @@ final class SplitManagementTests: XCTestCase {
     func testConcurrentSplitAndTabCloseReleaseAllNativeTerminals() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane?.id)
         let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
@@ -141,6 +144,7 @@ final class SplitManagementTests: XCTestCase {
     func testHostedNestedPaneSurvivesParentCollapse() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let left = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(left, axis: .x, startSession: false)
@@ -168,6 +172,7 @@ final class SplitManagementTests: XCTestCase {
     func testCanvasTooSmallRejectsBeforeMutation() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let before = model.snapshot
         await model.splitPane(try XCTUnwrap(model.presentation.activePane?.id), axis: .y,

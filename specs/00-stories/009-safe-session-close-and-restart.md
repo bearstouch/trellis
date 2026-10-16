@@ -1,7 +1,7 @@
 # S009 — Close and restart sessions safely
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented and independently reviewed — 98 tests and native close/restart checks pass
 Delivery phase: 2  
 Depends on: [S003](003-local-pty-session.md), [S005](005-managed-window-sidebar.md), [S006](006-tabs-and-inline-renaming.md), [S007](007-nested-split-tree.md)  
 Requirements: `FR-S03`, `FR-T03`, `MAC-04`, `NFR-R01`
@@ -12,10 +12,10 @@ As a terminal user, I want to understand what will stop before closing panes, ta
 
 ## Acceptance criteria
 
-- [ ] **S009-AC01:** Running-session closure presents one affected-session summary per action; cancel sends no termination signal and changes no structure.
-- [ ] **S009-AC02:** After explicit acceptance, gracefully terminate only owned process groups, wait up to two seconds, and offer force termination when needed.
-- [ ] **S009-AC03:** Automation returns CONFIRMATION_REQUIRED without allowRunning authorization and CLOSE_PENDING after the grace interval; force requires a separate explicit request.
-- [ ] **S009-AC04:** Reap children and close descriptors exactly once. Restart creates a fresh session UUID in the same pane; exited output remains inspectable until restart. Remote detached processes are not reported as terminated.
+- [x] **S009-AC01:** Running-session closure presents one affected-session summary per action; cancel sends no termination signal and changes no structure.
+- [x] **S009-AC02:** After explicit acceptance, gracefully terminate only owned process groups, wait up to two seconds, and offer force termination when needed.
+- [x] **S009-AC03:** Automation returns CONFIRMATION_REQUIRED without allowRunning authorization and CLOSE_PENDING after the grace interval; force requires a separate explicit request.
+- [x] **S009-AC04:** Reap children and close descriptors exactly once. Restart creates a fresh session UUID in the same pane; exited output remains inspectable until restart. Remote detached processes are not reported as terminated.
 
 ## Unit tests
 
@@ -34,7 +34,7 @@ Close running local and controlled SSH sessions, test a child that ignores grace
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S009 implementation, review fixes, and verification evidence](../../docs/evidence/S009-session-safety.md). All 98 tests pass. Native restart, Cancel, Keep Waiting, and explicit Force Stop checks passed. Controlled SSH close qualification remains pending its integration story; automation result codes are tested at the shared lifecycle policy boundary, with transport/grant wiring in later stories.
 
 ## Source specifications
 

@@ -46,6 +46,10 @@ struct PaneTreeView: View {
                     Button(model.snapshot.panes[id]?.title ?? "Terminal") { Task { await model.selectPane(id) } }
                         .buttonStyle(.plain).lineLimit(1)
                     Spacer(minLength: 0)
+                    if terminal.sessionState == .exited || terminal.sessionState == .failed {
+                        Button("Restart") { Task { await model.restartPane(id) } }
+                            .help("Start a fresh session in this pane").accessibilityLabel("Restart Session")
+                    }
                     Button { Task { await model.toggleMaximize(id) } } label: {
                         Image(systemName: model.maximizedPanes[tabID] == id ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                     }.help(model.maximizedPanes[tabID] == id ? "Restore Panes" : "Maximize Pane")

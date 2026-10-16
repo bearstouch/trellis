@@ -8,6 +8,7 @@ final class TabManagementTests: XCTestCase {
     func testS006_UT01_renameCommitsWithoutRestart() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow()
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let pane = try XCTUnwrap(model.presentation.activePane)
@@ -27,6 +28,7 @@ final class TabManagementTests: XCTestCase {
     func testS006_UT02_cancelAndEmptyRenamePreserveTitle() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let original = model.snapshot
@@ -101,6 +103,7 @@ final class TabManagementTests: XCTestCase {
         let initial = try await Self.splitFixture()
         let tab = try XCTUnwrap(initial.tabs.values.first)
         let model = AppWorkspaceModel(store: try WorkspaceStore(snapshot: initial))
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.refresh()
         await model.createTab(duplicate: tab.id, startSessions: false)
         let clone = try XCTUnwrap(model.presentation.selectedTab)
@@ -127,6 +130,7 @@ final class TabManagementTests: XCTestCase {
     func testClosingLastTabUsesConfirmationAndRemovesWindow() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow()
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let terminal = try XCTUnwrap(model.activeTerminal)
@@ -149,6 +153,7 @@ final class TabManagementTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { preferences.removePersistentDomain(forName: suite) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         let saved = await model.saveLaunchSettings(shell: "/bin/zsh", directory: "/tmp")
         XCTAssertTrue(saved)
         await model.createWindow()

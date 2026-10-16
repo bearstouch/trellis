@@ -25,6 +25,8 @@ public enum WorkspaceCommand: Sendable {
     case reorderWindows(ids: [UUID])
     case deleteWindow(id: UUID)
     case recordSessionExit(sessionID: UUID, code: Int32?)
+    case markSessionClosing(sessionID: UUID)
+    case restartSession(paneID: UUID)
     case splitPane(id: UUID, axis: SplitAxis, availableSize: TerminalSize)
     case deletePane(id: UUID)
     case selectPane(id: UUID)
@@ -123,6 +125,20 @@ public actor WorkspaceStore {
             if next.activeWindowID == id {
                 next.activeWindowID = next.windows.isEmpty ? nil : next.windows[min(index, next.windows.count - 1)].id
             }
+        case .markSessionClosing(let id):
+            guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
+            guard session.state != .closing else { return unchanged() }
+            guard session.state == .running else { throw WorkspaceError.invalidTransition }
+            session.state = .closing
+            next.sessions[id] = session
+        case .restartSession(let paneID):
+            guard var pane = next.panes[paneID], let old = next.sessions[pane.sessionID] else { throw WorkspaceError.notFound }
+            guard old.state == .exited || old.state == .failed else { throw WorkspaceError.invalidTransition }
+            let sessionID = makeID()
+            next.sessions.removeValue(forKey: old.id)
+            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: old.launch, createdAt: now())
+            pane.sessionID = sessionID
+            next.panes[paneID] = pane
         case .recordSessionExit(let id, let code):
             guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
             if session.state == .exited { return unchanged() }

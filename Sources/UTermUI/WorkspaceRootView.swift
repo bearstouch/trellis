@@ -21,7 +21,7 @@ public struct WorkspaceRootView: View {
             HStack(spacing: 8) {
                 Text(model.presentation.selectedWindow?.name ?? "uTerm")
                 Spacer()
-                Text(model.activeTerminal?.sessionState.rawValue.capitalized ?? "No session")
+                Text(sessionStatus)
                 Text("·  UTF-8  ·  Local")
             }
             .font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 12).frame(height: 28)
@@ -56,6 +56,12 @@ public struct WorkspaceRootView: View {
         .alert("uTerm", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(model.errorMessage ?? "") }
+    }
+
+    private var sessionStatus: String {
+        guard let terminal = model.activeTerminal else { return "No session" }
+        if terminal.sessionState == .exited, let code = terminal.exitCode { return "Exited (\(code))" }
+        return terminal.sessionState.rawValue.capitalized
     }
 
     private var sidebar: some View {

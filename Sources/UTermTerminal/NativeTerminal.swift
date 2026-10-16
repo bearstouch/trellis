@@ -6,13 +6,16 @@ import UTermCore
 /// SwiftTerm renders terminal state; PTYProcess exclusively owns process I/O
 /// and reaping so EOF cannot race termination or leak an exited session’s FD.
 @MainActor
-public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegate {
+public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegate, ClosableSession {
     public let view: NSView
     private let terminalView: AccessibleTerminalView
     private let process: PTYProcess
     public private(set) var adapter: TerminalAdapter!
     private let session: LocalSessionController
     public var isRunning: Bool { [.starting, .running, .closing].contains(session.state) }
+    public var requiresTermination: Bool { process.isRunning || (isRunning && processID == nil) }
+    public var sessionID: UUID { session.id }
+    public var exitCode: Int32? { session.exitCode }
     public var processID: Int32? { session.processID }
     public var sessionState: SessionState { session.state }
     public var onStateChanged: ((SessionState) -> Void)?
@@ -20,8 +23,6 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     public var onOutput: (() -> Void)?
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
-    private var closing = false
-    private var killTimer: Timer?
 
     public init(sessionID: UUID = UUID()) {
         let surface = AccessibleTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 520),
@@ -90,19 +91,9 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         Task { await start(configuration: configuration) }
     }
 
-    /// Keep process ownership and reaping active independently of terminal EOF.
-    public func stop() {
-        guard isRunning, !closing else { return }
-        closing = true
-        signalOwnedProcessGroup(SIGTERM)
-        killTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.signalOwnedProcessGroup(SIGKILL) }
-        }
-    }
-
-    private func signalOwnedProcessGroup(_ signal: Int32) {
-        session.stop(signal: signal)
-    }
+    /// Graceful close never silently escalates. Force is a separate user/API action.
+    public func stop() { requestTermination(force: false) }
+    public func requestTermination(force: Bool) { session.stop(signal: force ? SIGKILL : SIGTERM) }
 
     public func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         guard let size = try? TerminalSize(columns: newCols, rows: newRows) else { return }
@@ -117,9 +108,6 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         return winsize(ws_row: UInt16(clamping: terminal.rows), ws_col: UInt16(clamping: terminal.cols), ws_xpixel: 0, ws_ypixel: 0)
     }
     private func processTerminated(exitCode: Int32?) {
-        closing = false
-        killTimer?.invalidate()
-        killTimer = nil
         onExit?(exitCode)
     }
     // OSC 52 clipboard access is denied; native selection copy/paste remains in the view.

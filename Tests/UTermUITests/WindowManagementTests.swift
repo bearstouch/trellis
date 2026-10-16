@@ -74,6 +74,7 @@ final class WindowManagementTests: XCTestCase {
     func testS005_UT04_inactiveOutputDoesNotSelect() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "One", startSession: false)
         let first = try XCTUnwrap(model.snapshot.activeWindowID)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
@@ -95,6 +96,7 @@ final class WindowManagementTests: XCTestCase {
     func testDeletingSelectedWindowClearsFallbackActivity() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "One", startSession: false)
         let first = try XCTUnwrap(model.snapshot.activeWindowID)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
@@ -111,6 +113,7 @@ final class WindowManagementTests: XCTestCase {
     func testOlderCommandReplyCannotRestoreDeletedWindow() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let old = model.snapshot
         await model.deleteWindow(try XCTUnwrap(old.activeWindowID))
@@ -135,6 +138,7 @@ final class WindowManagementTests: XCTestCase {
     func testDeleteLastStoppedWindowReachesEmptyState() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let id = try XCTUnwrap(model.snapshot.activeWindowID)
         await model.deleteWindow(id)
@@ -148,6 +152,7 @@ final class WindowManagementTests: XCTestCase {
     func testLiveDeletionCanBeCancelledThenConfirmed() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow()
         let id = try XCTUnwrap(model.snapshot.activeWindowID)
         let terminal = try XCTUnwrap(model.activeTerminal)

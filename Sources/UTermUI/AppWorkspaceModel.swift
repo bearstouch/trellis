@@ -19,15 +19,11 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var defaultShell: String
     @Published public private(set) var defaultDirectory: String
     @Published public private(set) var activity: [UUID: WindowActivity] = [:]
-    public var confirmCloseSessions: (Int) -> Bool = { count in
-        guard count > 0 else { return true }
-        let alert = NSAlert()
-        alert.messageText = "Close \(count) terminal session(s)?"
-        alert.informativeText = "Their local processes will stop."
-        alert.addButton(withTitle: "Close Sessions")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
-    }
+    public var confirmCloseSessions: (Int) -> Bool = { _ in true }
+    public var confirmForceSessions: (Int) -> Bool = { _ in false }
+    private var closeSummary: [String] = []
+    private let closureCoordinator = SessionClosureCoordinator()
+    private var closureInProgress = false
     private var closingWindowIDs = Set<UUID>()
     private var closingTabIDs = Set<UUID>()
     private var closingPaneIDs = Set<UUID>()
@@ -48,6 +44,8 @@ public final class AppWorkspaceModel: ObservableObject {
         self.preferences = preferences
         defaultShell = preferences.string(forKey: "terminal.shell") ?? LocalLaunchConfiguration.loginShell().executable
         defaultDirectory = preferences.string(forKey: "terminal.directory") ?? FileManager.default.homeDirectoryForCurrentUser.path
+        confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
+        confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
     }
 
     public var presentation: WorkspacePresentation { WorkspacePresentation(snapshot: snapshot) }
@@ -71,7 +69,8 @@ public final class AppWorkspaceModel: ObservableObject {
         defer { pendingOperations -= 1 }
         do {
             let result = try await service.execute(.createWindow(name: name ?? "Window \(snapshot.windows.count + 1)"))
-            guard !shuttingDown, !Task.isCancelled else { return }
+            // Always materialize a committed result, including during a native
+            // confirmation loop. Shutdown gates only the process launch.
             guard let id = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == id }),
                   let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID] else { return }
             attachTerminal(pane)
@@ -115,10 +114,11 @@ public final class AppWorkspaceModel: ObservableObject {
             terminal.onInputError = { [weak self] _ in self?.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste." }
             var launchCompleted = false
             terminal.onStateChanged = { [weak self, weak terminal] state in
-                guard !launchCompleted, state == .running || state == .closing,
-                      let pid = terminal?.processID else { return }
-                launchCompleted = true
-                self?.enqueue(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .started(processID: pid)))
+                if !launchCompleted, state == .running || state == .closing, let pid = terminal?.processID {
+                    launchCompleted = true
+                    self?.enqueue(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .started(processID: pid)))
+                }
+                if launchCompleted, state == .closing { self?.enqueue(.markSessionClosing(sessionID: request.sessionID)) }
             }
             terminal.onExit = { [weak self, weak terminal] code in
                 guard let self, let terminal else { return }
@@ -126,6 +126,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     ? .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: terminal.sessionState == .failed
                         ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
+                self.closureCoordinator.forget(sessionID: request.sessionID)
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
             }
@@ -233,7 +234,23 @@ public final class AppWorkspaceModel: ObservableObject {
         await resizeSplit(split.id, ratio: split.ratio + delta, tabID: tab.id)
     }
 
-    @discardableResult
+    public func restartPane(_ id: UUID, startSession: Bool = true) async {
+        guard !shuttingDown, !isClosing(paneID: id), let terminal = terminals[id],
+              terminal.sessionState == .exited || terminal.sessionState == .failed else { return }
+        pendingOperations += 1
+        defer { pendingOperations -= 1 }
+        await waitForUpdates()
+        guard !shuttingDown, !isClosing(paneID: id), terminals[id] === terminal else { return }
+        do {
+            let result = try await service.execute(.restartSession(paneID: id))
+            guard let pane = result.snapshot.panes[id] else { return }
+            terminal.adapter.detach()
+            attachTerminal(pane)
+            publish(result.snapshot)
+            if startSession { await start(paneID: id) }
+        } catch { errorMessage = "The session could not be restarted." }
+    }
+
     public func selectPane(_ id: UUID) async -> Bool {
         guard !shuttingDown, !isClosing(paneID: id), snapshot.panes[id] != nil else { return false }
         do {
@@ -261,7 +278,6 @@ public final class AppWorkspaceModel: ObservableObject {
         defer { pendingOperations -= 1 }
         do {
             let result = try await service.execute(.splitPane(id: id, axis: axis, availableSize: size))
-            guard !shuttingDown else { return }
             guard let newID = result.createdPaneID, let pane = result.snapshot.panes[newID] else { return }
             attachTerminal(pane)
             publish(result.snapshot)
@@ -273,7 +289,9 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func closePane(_ id: UUID) async {
-        guard !shuttingDown, !isClosing(paneID: id), let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID] else { return }
+        guard !shuttingDown, !closureInProgress, !isClosing(paneID: id), let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID] else { return }
+        closureInProgress = true
+        defer { closureInProgress = false }
         closingPaneIDs.insert(id)
         defer { closingPaneIDs.remove(id) }
         await closeResources(panes: [id], command: .deletePane(id: id))
@@ -291,7 +309,6 @@ public final class AppWorkspaceModel: ObservableObject {
         defer { pendingOperations -= 1 }
         do {
             let result = try await service.execute(id.map { .duplicateTab(id: $0) } ?? .createTab(windowID: windowID))
-            guard !shuttingDown, !Task.isCancelled, !closingWindowIDs.contains(windowID) else { return }
             guard let tabID = result.createdTabID, let tab = result.snapshot.tabs[tabID] else { return }
             for paneID in tab.root.paneIDs {
                 if let pane = result.snapshot.panes[paneID] { attachTerminal(pane) }
@@ -330,8 +347,10 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func deleteWindow(_ id: UUID) async {
-        guard !shuttingDown, !closingWindowIDs.contains(id),
+        guard !shuttingDown, !closureInProgress, !closingWindowIDs.contains(id),
               let window = snapshot.windows.first(where: { $0.id == id }) else { return }
+        closureInProgress = true
+        defer { closureInProgress = false }
         closingWindowIDs.insert(id)
         defer { closingWindowIDs.remove(id) }
         let panes = Set(window.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] })
@@ -340,29 +359,100 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func closeTab(_ id: UUID) async {
-        guard !shuttingDown, let tab = snapshot.tabs[id], !closingTabIDs.contains(id),
+        guard !shuttingDown, !closureInProgress, let tab = snapshot.tabs[id], !closingTabIDs.contains(id),
               !closingWindowIDs.contains(tab.windowID) else { return }
+        closureInProgress = true
+        defer { closureInProgress = false }
         closingTabIDs.insert(id)
         defer { closingTabIDs.remove(id) }
         await closeResources(panes: Set(tab.root.paneIDs), command: .deleteTab(id: id))
         if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
     }
 
-    private func closeResources(panes: Set<UUID>, command: WorkspaceCommand) async {
-        let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
-        guard live.isEmpty || confirmCloseSessions(live.count) else { return }
-        // Modal dialogs run a nested event loop, so recheck after confirmation.
-        panes.compactMap { terminals[$0] }.filter(\.isRunning).forEach { $0.stop() }
-        while pendingOperations > 0 || panes.contains(where: { terminals[$0]?.isRunning == true }) {
+    private func prepareCloseSummary(_ panes: Set<UUID>) {
+        closeSummary = panes.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
+            guard terminals[id]?.isRunning == true, let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID],
+                  let window = snapshot.windows.first(where: { $0.id == tab.windowID }) else { return nil }
+            return "\(window.name) / \(tab.title) / \(pane.title ?? "Terminal")"
+        }
+    }
+
+    private func showClosureConfirmation(count: Int, force: Bool) -> Bool {
+        guard count > 0 else { return true }
+        let alert = NSAlert()
+        alert.messageText = force ? "Force stop \(count) session(s)?" : "Close \(count) terminal session(s)?"
+        let summary = closeSummary.prefix(8).joined(separator: "\n")
+        let more = closeSummary.count > 8 ? "\n…and \(closeSummary.count - 8) more" : ""
+        alert.informativeText = (force ? "These sessions have not finished closing after two seconds.\n\n" : "Their owned local processes will stop.\n\n")
+            + summary + more + "\n\nDetached or remote processes may continue running."
+        alert.addButton(withTitle: force ? "Force Stop" : "Close Sessions")
+        alert.addButton(withTitle: force ? "Keep Waiting" : "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    public func confirmAllSessionClosure() -> Bool {
+        guard !shuttingDown, !closureInProgress else { return false }
+        // Freeze creation before entering the native modal loop. Cancel restores
+        // the gate without sending any signal or changing the workspace.
+        shuttingDown = true
+        prepareCloseSummary(Set(terminals.keys))
+        let accepted = confirmCloseSessions(runningTerminals.count)
+        if !accepted { shuttingDown = false }
+        return accepted
+    }
+
+    private func finishClosure(_ panes: Set<UUID>) async -> Bool {
+        let affected: [any ClosableSession] = panes.compactMap { terminals[$0] }
+        var result = await closureCoordinator.close(affected, allowRunning: true)
+        if case .closePending = result {
+            let live = affected.filter(\.requiresTermination)
+            guard !Task.isCancelled else { return false }
+            if live.isEmpty {
+                // The child has exited; allow bounded I/O cleanup without
+                // asking the user to force-stop an already dead process.
+                result = await closureCoordinator.close(affected, allowRunning: true)
+            } else {
+                prepareCloseSummary(Set(panes.filter { terminals[$0]?.requiresTermination == true }))
+                guard confirmForceSessions(live.count) else { return false }
+                result = await closureCoordinator.close(affected, allowRunning: true, force: true)
+            }
+        }
+        guard result == .closed else { errorMessage = "Some sessions are still closing. Try Close again when they are ready."; return false }
+        // Pending store/start work must complete before deleting its hierarchy.
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while pendingOperations > 0, ProcessInfo.processInfo.systemUptime < deadline, !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(10))
         }
+        guard pendingOperations == 0 else { errorMessage = "A session launch is still finishing. Try Close again shortly."; return false }
         await waitForUpdates()
-        guard !shuttingDown else { return }
+        return !Task.isCancelled
+    }
+
+    private func closeResources(panes initialPanes: Set<UUID>, command: WorkspaceCommand) async {
+        // Close gates are already set. Let operations that committed just before
+        // the gate materialize their stopped panes before computing the summary.
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while pendingOperations > 0, ProcessInfo.processInfo.systemUptime < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        guard pendingOperations == 0, !Task.isCancelled else {
+            errorMessage = "A session launch is still finishing. Try Close again shortly."
+            return
+        }
+        await waitForUpdates()
+        let panes: Set<UUID>
+        switch command {
+        case .deleteWindow(let id):
+            panes = Set(snapshot.windows.first(where: { $0.id == id })?.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] } ?? [])
+        case .deleteTab(let id): panes = Set(snapshot.tabs[id]?.root.paneIDs ?? [])
+        default: panes = initialPanes
+        }
+        prepareCloseSummary(panes)
+        let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
+        guard live.isEmpty || confirmCloseSessions(live.count) else { return }
+        guard await finishClosure(panes), !shuttingDown else { return }
         do {
             publish(try await service.execute(command).snapshot)
-            // A split can commit while this close waits for its processes. Its
-            // stopped pane may belong to a deleted tab/window even though it
-            // was absent from the original resource set.
             terminals = terminals.filter { snapshot.panes[$0.key] != nil }
         } catch { errorMessage = "The sessions could not be closed." }
     }
@@ -396,21 +486,24 @@ public final class AppWorkspaceModel: ObservableObject {
         runningTerminals.forEach { $0.stop() }
     }
 
-    public func shutdown() async {
+    @discardableResult
+    public func shutdown() async -> Bool {
+        prepareCloseSummary(Set(terminals.keys))
         stopAll()
-        while pendingOperations > 0 || !runningTerminals.isEmpty {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        await waitForUpdates()
+        let closed = await finishClosure(Set(terminals.keys))
+        if !closed { shuttingDown = false }
+        return closed
     }
 
-    public func closeAllWorkspaces() async {
-        await shutdown()
+    @discardableResult
+    public func closeAllWorkspaces() async -> Bool {
+        guard await shutdown() else { return false }
         do {
             publish(try await service.execute(.closeAllWindows).snapshot)
             terminals.removeAll()
             activity.removeAll()
             shuttingDown = false
-        } catch { errorMessage = "The workspaces could not be closed." }
+            return true
+        } catch { errorMessage = "The workspaces could not be closed."; shuttingDown = false; return false }
     }
 }

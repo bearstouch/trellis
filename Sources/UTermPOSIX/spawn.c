@@ -7,6 +7,19 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <util.h>
+#include <libproc.h>
+
+struct uterm_process_identity uterm_read_process_identity(pid_t pid) {
+    struct uterm_process_identity result = {0};
+    struct proc_bsdinfo info = {0};
+    if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info)) == sizeof(info)) {
+        result.valid = 1; result.parent_pid = (pid_t)info.pbi_ppid;
+        result.group_id = getpgid(pid);
+        result.started_seconds = info.pbi_start_tvsec;
+        result.started_microseconds = info.pbi_start_tvusec;
+    }
+    return result;
+}
 
 static void report_child_error(int descriptor, int failure) {
     const char *bytes = (const char *)&failure;

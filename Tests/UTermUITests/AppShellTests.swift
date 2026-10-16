@@ -54,6 +54,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "uterm.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "Project", startSession: false)
         XCTAssertEqual(model.snapshot.windows.count, 1)
         XCTAssertEqual(model.terminals.count, 1)
@@ -67,6 +68,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "uterm.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(name: "Fixture", fixture: true)
         let deadline = Date().addingTimeInterval(10)
         while model.snapshot.sessions.values.first?.state != .exited, Date() < deadline {
@@ -87,6 +89,7 @@ final class AppShellTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: name))
         defer { preferences.removePersistentDomain(forName: name) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         let original = model.defaultShell
         let saved = await model.saveLaunchSettings(shell: "/does-not-exist-uterm", directory: "/tmp")
         XCTAssertFalse(saved)
@@ -116,6 +119,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "uterm.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.activeTerminal)
@@ -138,6 +142,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "uterm.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         await model.closeAllWorkspaces()
         XCTAssertTrue(model.presentation.isEmpty)
@@ -153,6 +158,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "uterm.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         await model.createWindow(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         model.stopAll()
@@ -170,6 +176,7 @@ final class AppShellTests: XCTestCase {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "uterm.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        model.confirmForceSessions = { _ in true } // Explicit cleanup authorization for owned test processes.
         var creationEntered = false
         let creation = Task {
             creationEntered = true

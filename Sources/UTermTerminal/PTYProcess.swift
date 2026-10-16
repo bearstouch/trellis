@@ -27,11 +27,25 @@ final class PTYProcess: LocalSessionTransport {
     private var generation = UUID()
     private let queue = DispatchQueue(label: "dev.uterm.pty", qos: .userInitiated)
     private let processExitNotifications: Bool
+    private var launchIdentity: OwnedProcessIdentity?
+    private let readIdentity: (Int32) -> OwnedProcessIdentity?
+    private let signalProcessGroup: (Int32, Int32) -> Void
 
     // The fallback must remain sufficient even when the platform notification
     // path is unavailable. Tests disable that path to verify independent reaping.
-    init(processExitNotifications: Bool = true) {
+    init(processExitNotifications: Bool = true,
+         readIdentity: @escaping (Int32) -> OwnedProcessIdentity? = PTYProcess.identity,
+         signalProcessGroup: @escaping (Int32, Int32) -> Void = { _ = kill(-$0, $1) }) {
         self.processExitNotifications = processExitNotifications
+        self.readIdentity = readIdentity
+        self.signalProcessGroup = signalProcessGroup
+    }
+
+    nonisolated static func identity(_ pid: Int32) -> OwnedProcessIdentity? {
+        let value = uterm_read_process_identity(pid)
+        guard value.valid != 0 else { return nil }
+        return OwnedProcessIdentity(pid: pid, parentPID: value.parent_pid, groupID: value.group_id,
+                                    startedSeconds: value.started_seconds, startedMicroseconds: value.started_microseconds)
     }
 
     func launch(_ configuration: ValidatedLocalLaunch, size: TerminalSize) async throws -> Int32 {
@@ -44,6 +58,7 @@ final class PTYProcess: LocalSessionTransport {
         generation = UUID()
         let current = generation
         pid = child.pid
+        launchIdentity = readIdentity(child.pid)
         descriptor = child.fd
         isRunning = true
         readEnded = false
@@ -134,8 +149,10 @@ final class PTYProcess: LocalSessionTransport {
     }
 
     func signalGroup(_ signal: Int32) {
-        guard isRunning, pid > 0, getpgid(pid) == pid else { return }
-        _ = kill(-pid, signal)
+        reapChild()
+        guard isRunning, let identity = launchIdentity,
+              identity.permitsSignal(current: readIdentity(pid), ownerPID: getpid()) else { return }
+        signalProcessGroup(pid, signal)
     }
 
     private func readNext() {
@@ -200,10 +217,18 @@ final class PTYProcess: LocalSessionTransport {
         io?.close(flags: .stop)
         if isRunning, pid > 0 {
             let child = pid
-            if getpgid(child) == child { _ = kill(-child, SIGKILL) }
-            DispatchQueue.global().async {
-                var status: Int32 = 0
-                while waitpid(child, &status, 0) < 0 && errno == EINTR {}
+            // Confirm this remains our unreaped child before checking identity.
+            var status: Int32 = 0
+            var result: pid_t
+            repeat { result = waitpid(child, &status, WNOHANG) } while result < 0 && errno == EINTR
+            if result == 0, let identity = launchIdentity, identity.permitsSignal(current: readIdentity(child), ownerPID: getpid()) {
+                signalProcessGroup(child, SIGKILL)
+            }
+            if result == 0 {
+                DispatchQueue.global().async {
+                    var status: Int32 = 0
+                    while waitpid(child, &status, 0) < 0 && errno == EINTR {}
+                }
             }
         }
     }

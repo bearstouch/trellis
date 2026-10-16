@@ -157,28 +157,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         startupTask?.cancel()
         model.stopAll()
         Task {
-            await model.closeAllWorkspaces()
-            if !terminationPending { window.orderOut(nil) }
+            let closed = await model.closeAllWorkspaces()
+            if closed, !terminationPending { window.orderOut(nil) }
             closingWindow = false
         }
         return false
     }
 
     private func confirmSessionClosure() -> Bool {
-        model.confirmCloseSessions(model.runningTerminals.count)
+        model.confirmAllSessionClosure()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationPending else { return .terminateLater }
-        guard closingWindow || confirmSessionClosure() else { return .terminateCancel }
+        guard !closingWindow, confirmSessionClosure() else { return .terminateCancel }
         terminationPending = true
         startupTask?.cancel()
         // Gate pending UI operations before yielding, including launches that
         // are waiting for the shared command store rather than a live PTY.
         model.stopAll()
         Task {
-            await model.shutdown()
-            NSApp.reply(toApplicationShouldTerminate: true)
+            let closed = await model.shutdown()
+            if !closed { terminationPending = false }
+            NSApp.reply(toApplicationShouldTerminate: closed)
         }
         return .terminateLater
     }
