@@ -1,7 +1,7 @@
 # S021 — Expose a bounded local JSON-RPC control socket
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 235 tests and native socket checks pass  
 Delivery phase: 4  
 Depends on: [S002](002-domain-model-and-command-service.md), [S004](004-native-application-shell.md)  
 Requirements: `API-01`, `API-06`, `NFR-S01`, `NFR-R04`
@@ -34,7 +34,7 @@ Connect through a real Unix socket; inspect file modes, same-user peer verificat
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S021 control socket evidence](../../docs/evidence/S021-control-socket.md) for framing/endpoint tests, the native mode/listener/stale-instance check, and review fixes.
 
 ## Source specifications
 

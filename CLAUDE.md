@@ -45,8 +45,9 @@ Always run format + lint + build + test before committing.
 | `TrellisPOSIX` | Small C target (`spawn.c`) for PTY/process-group spawning. |
 | `TrellisTerminal` | SwiftTerm-specific code only: `NativeTerminal`, `AccessibleTerminalView`, `PTYProcess`, scrollback, search, selection bookmarks, terminal appearance. |
 | `TrellisUI` | SwiftUI/AppKit views and `AppWorkspaceModel` (`@MainActor` `ObservableObject` bridging store ↔ views ↔ terminals). |
+| `TrellisControl` | Local automation: AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, auth-gated `ControlHandler`. |
 | `TrellisApp` | `AppMain.swift`: app entry, menus/commands, launch arguments. |
-| Tests | `TrellisCoreTests`, `TrellisTerminalTests`, `TrellisUITests` (XCTest). |
+| Tests | `TrellisCoreTests`, `TrellisTerminalTests`, `TrellisUITests`, `TrellisControlTests` (XCTest). |
 
 `ThirdParty/SwiftTerm` is a vendored SwiftTerm 1.20.0 with small patches. Record any engine
 change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `TrellisTerminal`.

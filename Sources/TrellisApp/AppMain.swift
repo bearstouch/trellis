@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TrellisControl
 import TrellisCore
 import TrellisUI
 
@@ -8,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let model: AppWorkspaceModel
     private let hosts: HostListModel
     private var hostsWindow: NSWindow?
+    private let control: ControlServer
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
     private var terminationPending = false
@@ -18,7 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
 
-    init(model: AppWorkspaceModel, hosts: HostListModel) { self.model = model; self.hosts = hosts }
+    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer) {
+        self.model = model; self.hosts = hosts; self.control = control
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -80,8 +84,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
         }
+        // Local automation is optional: an unsafe endpoint or a second live
+        // instance leaves the app fully usable without a control socket.
+        _ = try? control.start()
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    func applicationWillTerminate(_ notification: Notification) { control.stop() }
 
     /// Menus are rebuilt from the saved shortcut map, so every configurable
     /// command shows its current chord where users look for it.
@@ -364,7 +373,9 @@ struct TrellisMain {
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory)))
-            let delegate = AppDelegate(model: model, hosts: hosts)
+            // Grants arrive in S022; until then every domain call is rejected.
+            let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: RejectingControlHandler())
+            let delegate = AppDelegate(model: model, hosts: hosts, control: control)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}
