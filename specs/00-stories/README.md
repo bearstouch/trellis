@@ -14,7 +14,8 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S001 (`f8ecff0`) | Implemented and reviewed; manual feasibility checks pending | [S001 evidence](../../docs/evidence/S001-terminal-feasibility.md) |
 | S002 | Done — reviewed and fixed; full 30-test suite passing | [S002 evidence](../../docs/evidence/S002-workspace-model.md) |
 | S003 | Done — independent review/fixes; 43-test suite passing | [S003 evidence](../../docs/evidence/S003-local-sessions.md) |
-| S004–S032 | Planned | Stories below |
+| S004 | Implemented/reviewed — 55 tests pass; native lifecycle/display checks pending | [S004 evidence](../../docs/evidence/S004-native-shell.md) |
+| S005–S032 | Planned | Stories below |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 

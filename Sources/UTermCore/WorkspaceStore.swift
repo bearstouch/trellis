@@ -20,6 +20,9 @@ public enum WorkspaceEffect: Equatable, Sendable {
 public enum WorkspaceCommand: Sendable {
     case createWindow(name: String)
     case renameWindow(id: UUID, name: String)
+    case closeAllWindows
+    case selectWindow(id: UUID)
+    case recordSessionExit(sessionID: UUID, code: Int32?)
     case renameTab(id: UUID, title: String)
     case replaceTabLayout(id: UUID, root: PaneLayout)
     case startSession(paneID: UUID)
@@ -68,6 +71,28 @@ public actor WorkspaceStore {
             next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
             next.activeWindowID = windowID
             createdWindowID = windowID
+        case .closeAllWindows:
+            guard !next.sessions.values.contains(where: { [.starting, .running, .closing].contains($0.state) }) else {
+                throw WorkspaceError.invalidTransition
+            }
+            next.windows = []
+            next.tabs = [:]
+            next.panes = [:]
+            next.sessions = [:]
+            next.activeWindowID = nil
+        case .selectWindow(let id):
+            guard next.windows.contains(where: { $0.id == id }) else { throw WorkspaceError.notFound }
+            guard next.activeWindowID != id else { return unchanged() }
+            next.activeWindowID = id
+        case .recordSessionExit(let id, let code):
+            guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
+            if session.state == .exited { return unchanged() }
+            guard session.state == .running || session.state == .closing else { throw WorkspaceError.invalidTransition }
+            session.state = .exited
+            session.processID = nil
+            session.exitCode = code
+            session.endedAt = now()
+            next.sessions[id] = session
         case .renameWindow(let id, let rawName):
             guard let index = next.windows.firstIndex(where: { $0.id == id }) else { throw WorkspaceError.notFound }
             let name = try validatedName(rawName)

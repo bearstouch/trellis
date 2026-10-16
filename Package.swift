@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "UTermCore", targets: ["UTermCore"]),
         .library(name: "UTermTerminal", targets: ["UTermTerminal"]),
+        .library(name: "UTermUI", targets: ["UTermUI"]),
         .executable(name: "uTerm", targets: ["UTermApp"])
     ],
     dependencies: [
@@ -16,8 +17,10 @@ let package = Package(
         .target(name: "UTermCore"),
         .target(name: "UTermPOSIX"),
         .target(name: "UTermTerminal", dependencies: ["UTermCore", "UTermPOSIX", "SwiftTerm"]),
-        .executableTarget(name: "UTermApp", dependencies: ["UTermTerminal"]),
+        .target(name: "UTermUI", dependencies: ["UTermCore", "UTermTerminal"]),
+        .executableTarget(name: "UTermApp", dependencies: ["UTermUI"]),
         .testTarget(name: "UTermCoreTests", dependencies: ["UTermCore"]),
+        .testTarget(name: "UTermUITests", dependencies: ["UTermUI", "UTermCore"]),
         .testTarget(name: "UTermTerminalTests", dependencies: ["UTermTerminal"])
     ],
     swiftLanguageModes: [.v6]

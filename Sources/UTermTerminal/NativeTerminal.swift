@@ -13,6 +13,7 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     public private(set) var adapter: TerminalAdapter!
     private let session: LocalSessionController
     public var isRunning: Bool { [.starting, .running, .closing].contains(session.state) }
+    public var processID: Int32? { session.processID }
     public var sessionState: SessionState { session.state }
     public var onStateChanged: ((SessionState) -> Void)?
     public var onExit: ((Int32?) -> Void)?
@@ -20,14 +21,14 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     private var closing = false
     private var killTimer: Timer?
 
-    public override init() {
+    public init(sessionID: UUID = UUID()) {
         let surface = AccessibleTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 520),
                                    font: NSFont(name: "Monaco", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
         terminalView = surface
         view = surface
         let process = PTYProcess()
         self.process = process
-        session = LocalSessionController(transport: process)
+        session = LocalSessionController(id: sessionID, transport: process)
         super.init()
         surface.nativeBackgroundColor = NSColor(srgbRed: 0.082, green: 0.09, blue: 0.098, alpha: 1)
         surface.nativeForegroundColor = NSColor(srgbRed: 0.87, green: 0.88, blue: 0.90, alpha: 1)
@@ -65,12 +66,16 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     }
 
     public func start(fixture: Bool = false) {
-        if fixture {
-            let script = "printf '\\033[32mPTY ready\\033[0m — café 漢字 👋\\n'; stty size; printf '\\033[?1049hAlternate screen\\r\\n'; sleep 0.1; printf '\\033[?1049l'; printf 'Fixture complete\\n'; exit 7"
-            start(arguments: ["-f", "-c", script])
-        } else {
-            Task { await start(configuration: .loginShell()) }
+        Task {
+            if fixture { await startFixture() }
+            else { await start(configuration: .loginShell()) }
         }
+    }
+
+    public func startFixture() async {
+        let script = "printf '\\033[32mPTY ready\\033[0m — café 漢字 👋\\n'; stty size; printf '\\033[?1049hAlternate screen\\r\\n'; sleep 0.1; printf '\\033[?1049l'; printf 'Fixture complete\\n'; exit 7"
+        await start(configuration: LocalLaunchConfiguration(executable: "/bin/zsh", arguments: ["-f", "-c", script],
+                    directory: FileManager.default.homeDirectoryForCurrentUser.path))
     }
 
     func start(arguments: [String]) {
