@@ -4,7 +4,7 @@ import UTermCore
 import UTermUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     private let model: AppWorkspaceModel
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
@@ -69,8 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(file)
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         edit.submenu?.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.submenu?.addItem(withTitle: "Copy All Retained Text", action: NSSelectorFromString("copyAllRetainedText:"), keyEquivalent: "")
         edit.submenu?.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.submenu?.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.submenu?.addItem(withTitle: "Select All", action: #selector(selectAllText(_:)), keyEquivalent: "a")
         menu.addItem(edit)
         let panes = NSMenuItem(); panes.submenu = NSMenu(title: "Pane")
         for direction in PaneDirection.allCases {
@@ -101,6 +102,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Task { await model.createWindow() }
     }
     @objc private func saveWorkspace() { Task { await model.flushWorkspaceSave() } }
+    @objc private func selectAllText(_ sender: Any?) {
+        if !NSApp.sendAction(NSSelectorFromString("selectAllTerminalText:"), to: nil, from: sender) {
+            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: sender)
+        }
+    }
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(selectAllText(_:)) else { return true }
+        return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
+            || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
+    }
     @objc private func newTab() { Task { await model.createTab() } }
     @objc private func renameTab() { model.tabRenameRequest = UUID() }
     @objc private func nextTab() { selectRelativeTab(1) }

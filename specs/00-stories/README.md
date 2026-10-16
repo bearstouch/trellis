@@ -21,7 +21,8 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S008 | Implemented/reviewed — 89 tests and native pane interaction checks pass | [S008 evidence](../../docs/evidence/S008-pane-interaction.md) |
 | S009 | Implemented/reviewed — 98 tests and native close/restart checks pass | [S009 evidence](../../docs/evidence/S009-session-safety.md) |
 | S010 | Implemented/reviewed — 110 tests and native restore/recovery checks pass | [S010 evidence](../../docs/evidence/S010-workspace-persistence.md) |
-| S011–S032 | Planned | Stories below |
+| S011 | Implemented — 117 tests/native copy checks pass; independent review blocked by agent usage limit | [S011 evidence](../../docs/evidence/S011-terminal-copy.md) |
+| S012–S032 | Planned | Stories below |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 

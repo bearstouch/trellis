@@ -1,7 +1,7 @@
 # S011 — Select and copy terminal text naturally
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — 117 tests and native copy checks pass; independent review pending (agent usage limit)
 Delivery phase: 3  
 Depends on: [S001](001-terminal-engine-feasibility.md), [S003](003-local-pty-session.md), [S004](004-native-application-shell.md)  
 Requirements: `FR-C01`, `FR-C02`, `INT-08`, `MAC-07`
@@ -12,14 +12,14 @@ As a terminal user, I want to select and copy text with native macOS gestures an
 
 ## Acceptance criteria
 
-- [ ] **S011-AC01:** Support drag, word/line selection, Select All, copy selection, and copy all retained text as plain Unicode text without terminal control sequences.
-- [ ] **S011-AC02:** Cmd-C copies a selection; Cmd-C without a selection does not send SIGINT. Ctrl-C remains terminal interrupt input.
-- [ ] **S011-AC03:** Context-menu and menu-bar copy operate on the focused pane and honor the native responder chain.
-- [ ] **S011-AC04:** Copy all covers only retained content and indicates eviction when older output is unavailable; never poll or retain clipboard contents.
+- [x] **S011-AC01:** Support drag, word/line selection, Select All, copy selection, and copy all retained text as plain Unicode text without terminal control sequences.
+- [x] **S011-AC02:** Cmd-C copies a selection; Cmd-C without a selection does not send SIGINT. Ctrl-C remains terminal interrupt input.
+- [x] **S011-AC03:** Context-menu and menu-bar copy operate on the focused pane and honor the native responder chain.
+- [x] **S011-AC04:** Copy all covers only retained content and indicates eviction when older output is unavailable; never poll or retain clipboard contents.
 
 ## Unit tests
 
-These are test specifications to implement with the story, not executed tests. Names are proposed and may follow repository conventions once the Swift project exists. Isolate time, filesystem, process, Keychain, clipboard, and transport dependencies as relevant; assert observable behavior and failure safety.
+All four named cases are implemented and passing, with three additional retention, context-menu, and last-column regressions. Clipboard writes use injected sinks.
 
 | Test | Setup, action, and expected result |
 | --- | --- |
@@ -34,7 +34,7 @@ Verify drag/word/line selection, alternate-screen selection behavior, menus, and
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S011 evidence](../../docs/evidence/S011-terminal-copy.md) for 117 passing tests, native selection/clipboard/interrupt checks, engine edge fixes, and the outstanding independent-review gap. The review agent was launched but could not run because its service usage limit was reached.
 
 ## Source specifications
 
