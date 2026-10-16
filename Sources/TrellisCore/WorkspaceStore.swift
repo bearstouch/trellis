@@ -43,6 +43,28 @@ public enum WorkspaceCommand: Sendable {
     case completeLaunch(sessionID: UUID, attemptID: UUID, outcome: LaunchOutcome)
 }
 
+/// Optimistic concurrency for one resource, checked atomically with the command.
+public enum ResourceExpectation: Equatable, Sendable {
+    case window(UUID, revision: UInt64)
+    case tab(UUID, revision: UInt64)
+    /// The whole collection (for example window order).
+    case workspace(revision: UInt64)
+
+    /// Throws `notFound` or `conflict` when `snapshot` does not match.
+    public func verify(in snapshot: WorkspaceSnapshot) throws {
+        switch self {
+        case .window(let id, let revision):
+            guard let window = snapshot.windows.first(where: { $0.id == id }) else { throw WorkspaceError.notFound }
+            guard window.revision == revision else { throw WorkspaceError.conflict(expected: revision, actual: window.revision) }
+        case .tab(let id, let revision):
+            guard let tab = snapshot.tabs[id] else { throw WorkspaceError.notFound }
+            guard tab.revision == revision else { throw WorkspaceError.conflict(expected: revision, actual: tab.revision) }
+        case .workspace(let revision):
+            guard revision == snapshot.revision else { throw WorkspaceError.conflict(expected: revision, actual: snapshot.revision) }
+        }
+    }
+}
+
 public struct WorkspaceCommandResult: Equatable, Sendable {
     public let snapshot: WorkspaceSnapshot
     public let effects: [WorkspaceEffect]
@@ -75,10 +97,11 @@ public actor WorkspaceStore {
 
     public func snapshot() -> WorkspaceSnapshot { state }
 
-    public func execute(_ command: WorkspaceCommand, expectedRevision: UInt64? = nil) throws -> WorkspaceCommandResult {
+    public func execute(_ command: WorkspaceCommand, expectedRevision: UInt64? = nil, expecting: ResourceExpectation? = nil) throws -> WorkspaceCommandResult {
         if let expectedRevision, expectedRevision != state.revision {
             throw WorkspaceError.conflict(expected: expectedRevision, actual: state.revision)
         }
+        try expecting?.verify(in: state)
         guard state.revision < UInt64.max else { throw WorkspaceError.revisionExhausted }
         var next = state
         next.revision += 1
@@ -331,6 +354,25 @@ public actor WorkspaceStore {
         return WorkspaceCommandResult(snapshot: next, effects: effects, createdWindowID: createdWindowID, createdTabID: createdTabID, createdPaneID: createdPaneID)
     }
 
+    /// Runs `command` and an optional follow-up derived from its result as one
+    /// unit: if the follow-up fails, the first command is rolled back too.
+    public func execute(
+        _ command: WorkspaceCommand, expecting: ResourceExpectation? = nil, then follow: @Sendable (WorkspaceCommandResult) -> WorkspaceCommand?
+    ) throws -> WorkspaceCommandResult {
+        let saved = state
+        let first = try execute(command, expecting: expecting)
+        guard let next = follow(first) else { return first }
+        do {
+            let second = try execute(next)
+            return WorkspaceCommandResult(
+                snapshot: second.snapshot, effects: first.effects + second.effects, createdWindowID: first.createdWindowID, createdTabID: first.createdTabID,
+                createdPaneID: first.createdPaneID)
+        } catch {
+            state = saved
+            throw error
+        }
+    }
+
     private func unchanged() -> WorkspaceCommandResult {
         WorkspaceCommandResult(snapshot: state, effects: [], createdWindowID: nil, createdTabID: nil, createdPaneID: nil)
     }
@@ -348,7 +390,15 @@ public struct WorkspaceCommandService: Sendable {
     public let store: WorkspaceStore
     public init(store: WorkspaceStore) { self.store = store }
 
-    public func execute(_ command: WorkspaceCommand, expectedRevision: UInt64? = nil) async throws -> WorkspaceCommandResult {
-        try await store.execute(command, expectedRevision: expectedRevision)
+    public func execute(_ command: WorkspaceCommand, expectedRevision: UInt64? = nil, expecting: ResourceExpectation? = nil) async throws
+        -> WorkspaceCommandResult
+    {
+        try await store.execute(command, expectedRevision: expectedRevision, expecting: expecting)
+    }
+
+    public func execute(
+        _ command: WorkspaceCommand, expecting: ResourceExpectation? = nil, then follow: @escaping @Sendable (WorkspaceCommandResult) -> WorkspaceCommand?
+    ) async throws -> WorkspaceCommandResult {
+        try await store.execute(command, expecting: expecting, then: follow)
     }
 }

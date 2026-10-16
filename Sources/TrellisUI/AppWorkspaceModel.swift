@@ -14,7 +14,7 @@ public struct WindowActivity: Equatable, Sendable {
 @MainActor
 public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var snapshot = WorkspaceSnapshot()
-    @Published public private(set) var terminals: [UUID: NativeTerminal] = [:]
+    @Published public internal(set) var terminals: [UUID: NativeTerminal] = [:]
     @Published public var errorMessage: String?
     @Published public private(set) var appearance = AppearanceSettings()
     @Published public private(set) var themeCatalog = ThemeLibrarySnapshot()
@@ -235,15 +235,15 @@ public final class AppWorkspaceModel: ObservableObject {
     public var confirmCloseSessions: (Int) -> Bool = { _ in true }
     public var confirmForceSessions: (Int) -> Bool = { _ in false }
     private var closeSummary: [String] = []
-    private let closureCoordinator = SessionClosureCoordinator()
-    private var closureInProgress = false
-    private var closingWindowIDs = Set<UUID>()
-    private var closingTabIDs = Set<UUID>()
-    private var closingPaneIDs = Set<UUID>()
-    @Published public private(set) var maximizedPanes: [UUID: UUID] = [:]
+    let closureCoordinator = SessionClosureCoordinator()
+    var closureInProgress = false
+    var closingWindowIDs = Set<UUID>()
+    var closingTabIDs = Set<UUID>()
+    var closingPaneIDs = Set<UUID>()
+    @Published public internal(set) var maximizedPanes: [UUID: UUID] = [:]
     private var pendingDividerResize: (splitID: UUID, ratio: Double, tabID: UUID)?
     private var dividerResizeTask: Task<Void, Never>?
-    private var canvasSizes: [UUID: CanvasDimensions] = [:]
+    var canvasSizes: [UUID: CanvasDimensions] = [:]
     @Published public var tabRenameRequest: UUID?
     @Published public var windowRenameRequest: UUID?
     @Published public private(set) var editingTabID: UUID?
@@ -271,11 +271,11 @@ public final class AppWorkspaceModel: ObservableObject {
     public var resolveHost: ((UUID) async -> SavedHost?)?
     /// Injected only by tests; connections always use the system OpenSSH client.
     var sshExecutable = "/usr/bin/ssh"
-    private let service: WorkspaceCommandService
+    let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
     private let preferences: UserDefaults
-    private var shuttingDown = false
-    private var pendingOperations = 0
+    var shuttingDown = false
+    var pendingOperations = 0
 
     public init(store: WorkspaceStore, preferences: UserDefaults = .standard, persistence: WorkspacePersistence? = nil, themeLibrary: ThemeLibrary? = nil) {
         self.themeLibrary = themeLibrary
@@ -458,7 +458,8 @@ public final class AppWorkspaceModel: ObservableObject {
         } catch { errorMessage = "The window could not be selected." }
     }
 
-    public func start(paneID: UUID, fixture: Bool = false) async {
+    /// `quietly` (automation) reports failure through session state, never an alert.
+    public func start(paneID: UUID, fixture: Bool = false, quietly: Bool = false) async {
         guard !isRestoring, recoveryMessage == nil, !unconfiguredPaneIDs.contains(paneID),
             !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped
         else { return }
@@ -546,10 +547,10 @@ public final class AppWorkspaceModel: ObservableObject {
                 }
                 await terminal.start(configuration: configuration)
             }
-        } catch { errorMessage = "The terminal session could not be started." }
+        } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
     }
 
-    private func isClosing(paneID: UUID) -> Bool {
+    func isClosing(paneID: UUID) -> Bool {
         guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID] else { return false }
         return closingWindowIDs.contains(tab.windowID) || closingTabIDs.contains(tab.id) || closingPaneIDs.contains(paneID)
     }
@@ -574,7 +575,7 @@ public final class AppWorkspaceModel: ObservableObject {
         do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
     }
 
-    private func attachTerminal(_ pane: WorkspacePane) {
+    func attachTerminal(_ pane: WorkspacePane) {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
         terminal.applyAppearance(terminalAppearance)
         terminal.optionAsMeta = keyboard.optionAsMeta

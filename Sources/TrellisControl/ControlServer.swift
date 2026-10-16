@@ -7,6 +7,8 @@ public final class ControlServer: @unchecked Sendable {
     public static let maximumConnections = 16
     private let endpoint: ControlEndpoint
     private let handler: any ControlHandler
+    /// Published in discovery and reported by system.info.
+    public let instanceID: UUID
     private let lock = NSLock()
     private var listenFD: Int32 = -1
     private var clients = Set<Int32>()
@@ -14,8 +16,8 @@ public final class ControlServer: @unchecked Sendable {
     private var discovery: ControlDiscovery?
     private var runtimeDirectory: String?
 
-    public init(endpoint: ControlEndpoint, handler: any ControlHandler) {
-        self.endpoint = endpoint; self.handler = handler
+    public init(endpoint: ControlEndpoint, handler: any ControlHandler, instanceID: UUID = UUID()) {
+        self.endpoint = endpoint; self.handler = handler; self.instanceID = instanceID
     }
 
     /// Binds the socket, then publishes discovery. Throws without publishing
@@ -44,7 +46,7 @@ public final class ControlServer: @unchecked Sendable {
             close(fd); unlink(path); rmdir(directory)
             throw error
         }
-        let published = ControlDiscovery(protocolVersion: ControlDiscovery.currentProtocolVersion, instanceID: UUID(), socketPath: path)
+        let published = ControlDiscovery(protocolVersion: ControlDiscovery.currentProtocolVersion, instanceID: instanceID, socketPath: path)
         do {
             try endpoint.publish(published)
         } catch {

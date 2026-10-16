@@ -22,7 +22,7 @@ let package = Package(
         .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
         .executableTarget(name: "TrellisApp", dependencies: ["TrellisUI", "TrellisControl"]),
         .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore"]),
-        .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore"]),
+        .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore", "TrellisControl"]),
         .testTarget(name: "TrellisTerminalTests", dependencies: ["TrellisTerminal"]),
         .testTarget(name: "TrellisControlTests", dependencies: ["TrellisControl", "TrellisCore"])
     ],

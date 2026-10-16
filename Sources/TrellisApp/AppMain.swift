@@ -375,8 +375,9 @@ struct TrellisMain {
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory)))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
-            let handler = AuthorizingControlHandler(grants: grantStore, domain: AppControlDomain(model: model, hosts: hosts))
-            let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler)
+            let instanceID = UUID()
+            let handler = AuthorizingControlHandler(grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID))
+            let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             Task {
                 await grantStore.load()
                 // Revocation disconnects every client authenticated with that grant.

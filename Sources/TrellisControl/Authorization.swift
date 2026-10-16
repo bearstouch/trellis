@@ -182,16 +182,68 @@ public actor AuthenticationRateLimiter {
     public func recordFailure() { failures.append(now()) }
 }
 
+/// API-04: same grant + same key + same method/params replays the first result
+/// for ten minutes in this app instance; a different payload is a conflict.
+/// Nothing persists across restarts, so a new instance executes again.
+public actor IdempotencyCache {
+    public static let lifetime: TimeInterval = 600
+    private struct Entry {
+        let method: String
+        let params: JSONValue?
+        let stored: Date
+        var result: Result<JSONValue, ControlError>?
+    }
+    private var entries: [String: Entry] = [:]
+    private let now: @Sendable () -> Date
+
+    public init(now: @escaping @Sendable () -> Date = { Date() }) { self.now = now }
+
+    public enum Lookup: Sendable {
+        case execute
+        case replay(Result<JSONValue, ControlError>)
+        case conflict
+        case inProgress
+        case limited
+    }
+
+    /// Reserves the key when it is new; the caller must `finish` it.
+    public func begin(grant: UUID, key: String, method: String, params: JSONValue?) -> Lookup {
+        let cutoff = now().addingTimeInterval(-Self.lifetime)
+        entries = entries.filter { $0.value.stored > cutoff }
+        let id = grant.uuidString + "\u{0}" + key
+        if let entry = entries[id] {
+            guard entry.method == method, entry.params == params else { return .conflict }
+            return entry.result.map(Lookup.replay) ?? .inProgress
+        }
+        // Bound memory per grant: one client cannot exhaust the cache for others.
+        let prefix = grant.uuidString + "\u{0}"
+        guard entries.keys.lazy.filter({ $0.hasPrefix(prefix) }).count < 1_000 else { return .limited }
+        entries[id] = Entry(method: method, params: params, stored: now(), result: nil)
+        return .execute
+    }
+
+    /// Retryable failures release the key, so the documented retry can run;
+    /// every other outcome is replayed for the rest of the lifetime.
+    public func finish(grant: UUID, key: String, result: Result<JSONValue, ControlError>) {
+        let id = grant.uuidString + "\u{0}" + key
+        if case .failure(let error) = result, error.retryable { entries.removeValue(forKey: id) } else { entries[id]?.result = result }
+    }
+}
+
 /// API-02/API-03 authorization at the service boundary. Every domain call is
 /// re-checked against the stored grant, so revocation and expiry apply at once.
 public actor AuthorizingControlHandler: ControlHandler {
     private let grants: GrantStore
     private let domain: any ControlDomain
     private let limiter: AuthenticationRateLimiter
+    private let idempotency: IdempotencyCache
     private var connections: [UUID: UUID] = [:]
 
-    public init(grants: GrantStore, domain: any ControlDomain, limiter: AuthenticationRateLimiter = AuthenticationRateLimiter()) {
-        self.grants = grants; self.domain = domain; self.limiter = limiter
+    public init(
+        grants: GrantStore, domain: any ControlDomain, limiter: AuthenticationRateLimiter = AuthenticationRateLimiter(),
+        idempotency: IdempotencyCache = IdempotencyCache()
+    ) {
+        self.grants = grants; self.domain = domain; self.limiter = limiter; self.idempotency = idempotency
     }
 
     /// Connections currently authenticated with `grantID`, for revocation.
@@ -238,7 +290,25 @@ public actor AuthorizingControlHandler: ControlHandler {
         guard let requirement = AuthorizationPolicy.requirements[method] else { return .failure(.methodNotFound) }
         let access = GrantAccess(grant: grant, snapshot: await domain.snapshot())
         if case .failure(let error) = await authorize(requirement, params: params, access: access) { return .failure(error) }
-        return await domain.execute(method, params: params, access: access)
+        guard ControlMethods.isMutating(method), let keyValue = params?["idempotencyKey"] else {
+            return await domain.execute(method, params: params, access: access)
+        }
+        guard case .string(let key) = keyValue, (1...128).contains(key.utf8.count) else {
+            return .failure(.invalidParams("idempotencyKey must be a string of 1–128 bytes.", fields: ["idempotencyKey": "1–128 byte string"]))
+        }
+        switch await idempotency.begin(grant: grant.id, key: key, method: method, params: params) {
+        case .replay(let result): return result
+        case .conflict:
+            return .failure(.application("CONFLICT", "This idempotencyKey was already used with a different method or parameters."))
+        case .inProgress:
+            return .failure(.application("CONFLICT", "A request with this idempotencyKey is still running. Inspect state before retrying.", retryable: true))
+        case .limited:
+            return .failure(.application("LIMIT_EXCEEDED", "Too many idempotency keys are active for this grant. Retry later.", retryable: true))
+        case .execute:
+            let result = await domain.execute(method, params: params, access: access)
+            await idempotency.finish(grant: grant.id, key: key, result: result)
+            return result
+        }
     }
 
     public func disconnected(connectionID: UUID) async { connections.removeValue(forKey: connectionID) }

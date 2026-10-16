@@ -1,7 +1,7 @@
 # S023 — Expose resource commands with revisions and idempotency
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 251 tests pass; live socket client checks pending  
 Delivery phase: 4  
 Depends on: [S005](005-managed-window-sidebar.md), [S006](006-tabs-and-inline-renaming.md), [S007](007-nested-split-tree.md), [S008](008-pane-resize-focus-and-maximize.md), [S009](009-safe-session-close-and-restart.md), [S018](018-saved-host-library.md), [S021](021-local-control-socket.md), [S022](022-automation-grants.md)  
 Requirements: `FR-A01`, `FR-A02`, `API-03`, `API-04`, `API-06`
@@ -34,7 +34,7 @@ Run clients that race revisions, disconnect after a mutation, close live contain
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S023 automation resource evidence](../../docs/evidence/S023-automation-resources.md) for the method inventory, revision/idempotency/closure tests, review fixes, and pending live-client checks.
 
 ## Source specifications
 

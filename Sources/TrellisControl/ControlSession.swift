@@ -10,14 +10,21 @@ public struct ControlError: Error, Equatable, Sendable {
     /// Stable application code shared with the CLI (`AUTH_REQUIRED`, …).
     public let appCode: String?
     public let retryable: Bool
+    /// Optional structured details, such as per-field validation messages or
+    /// affected session IDs. Never contains terminal text or secrets.
+    public let details: JSONValue?
 
-    public init(code: Int, message: String, appCode: String? = nil, retryable: Bool = false) {
-        self.code = code; self.message = message; self.appCode = appCode; self.retryable = retryable
+    public init(code: Int, message: String, appCode: String? = nil, retryable: Bool = false, details: JSONValue? = nil) {
+        self.code = code; self.message = message; self.appCode = appCode; self.retryable = retryable; self.details = details
     }
 
     /// An application error (-32000) from the API-06 code list.
-    public static func application(_ appCode: String, _ message: String, retryable: Bool = false) -> Self {
-        Self(code: -32000, message: message, appCode: appCode, retryable: retryable)
+    public static func application(_ appCode: String, _ message: String, retryable: Bool = false, details: JSONValue? = nil) -> Self {
+        Self(code: -32000, message: message, appCode: appCode, retryable: retryable, details: details)
+    }
+
+    public static func invalidParams(_ message: String, fields: [String: String] = [:]) -> Self {
+        Self(code: -32602, message: message, details: fields.isEmpty ? nil : .object(["fields": .object(fields.mapValues(JSONValue.string))]))
     }
 
     public static let parse = Self(code: -32700, message: "Parse error: send one UTF-8 JSON object per line.")
@@ -229,7 +236,10 @@ public actor ControlSession {
 
     static func encode(error: ControlError, id: ControlRequestID?) -> Data {
         var body: [String: JSONValue] = ["code": .number(Double(error.code)), "message": .string(error.message)]
-        if let appCode = error.appCode { body["data"] = .object(["code": .string(appCode), "retryable": .bool(error.retryable)]) }
+        var data: [String: JSONValue] = [:]
+        if let appCode = error.appCode { data = ["code": .string(appCode), "retryable": .bool(error.retryable)] }
+        if case .object(let details)? = error.details { data.merge(details) { current, _ in current } }
+        if !data.isEmpty { body["data"] = .object(data) }
         return line(.object(["jsonrpc": .string("2.0"), "id": id?.json ?? .null, "error": .object(body)]))
     }
 
