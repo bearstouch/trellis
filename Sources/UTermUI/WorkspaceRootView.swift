@@ -54,6 +54,29 @@ public struct WorkspaceRootView: View {
                 }
             }.padding(24).frame(width: 330)
         }
+        .sheet(item: Binding(get: { model.pendingPaste }, set: { if $0 == nil { model.cancelPaste() } })) { paste in
+            VStack(alignment: .leading, spacing: 14) {
+                Text(paste.plan.isPath ? "Review Escaped Path" : "Review Paste").font(.headline)
+                Text("Target: \(paste.targetName)").font(.subheadline)
+                Text("\(paste.plan.lineCount) line(s) · \(paste.plan.text.utf8.count) bytes · No newline added")
+                    .font(.caption).foregroundStyle(.secondary)
+                if paste.plan.unsupportedShell {
+                    Text("This shell is not supported for path escaping. POSIX quoting is shown below; check it before pasting as text.")
+                        .font(.callout)
+                }
+                ScrollView {
+                    Text(paste.plan.preview).font(.system(size: 12, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                }.frame(height: 220).background(Color(nsColor: .textBackgroundColor))
+                Text("Controls appear in ⟨brackets⟩. Changing panes discards this review.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { model.cancelPaste() }.keyboardShortcut(.cancelAction)
+                    Button(paste.plan.unsupportedShell ? "Paste Quoted Text" : "Paste") { model.confirmPaste(paste.id) }
+                }
+            }.padding(24).frame(width: 540)
+        }
         .alert("uTerm", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(model.errorMessage ?? "") }

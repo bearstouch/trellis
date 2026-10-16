@@ -23,6 +23,7 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     public var onOutput: (() -> Void)?
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
+    public var onPasteRequested: ((TerminalPasteInput) -> Void)?
 
     public init(sessionID: UUID = UUID()) {
         let surface = AccessibleTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 520),
@@ -39,6 +40,7 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         surface.setAccessibilityLabel("Terminal session")
         surface.terminalDelegate = self
         surface.onFocused = { [weak self] in self?.onFocused?() }
+        surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
             if !data.isEmpty { self?.onOutput?() }
@@ -102,6 +104,11 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
         do { try adapter.send(Data(data)) }
         catch { onInputError?(error) }
+    }
+    public func paste(_ plan: TerminalPastePlan) throws {
+        guard session.state == .running else { throw TerminalAdapterError.inputClosed }
+        // Enqueue payload and negotiated framing together, preserving every byte.
+        try adapter.send(plan.data(bracketed: terminalView.getTerminal().bracketedPasteMode))
     }
     public func getWindowSize() -> winsize {
         let terminal = terminalView.getTerminal()

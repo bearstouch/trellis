@@ -16,6 +16,10 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var snapshot = WorkspaceSnapshot()
     @Published public private(set) var terminals: [UUID: NativeTerminal] = [:]
     @Published public var errorMessage: String?
+    @Published public private(set) var pendingPaste: PendingTerminalPaste?
+    private let pasteReview = TerminalPasteReview()
+    private var pasteFocusPaneID: UUID?
+    private var pasteFocusEpoch: UInt64 = 0
     @Published public private(set) var defaultShell: String
     @Published public private(set) var defaultDirectory: String
     @Published public private(set) var activity: [UUID: WindowActivity] = [:]
@@ -186,6 +190,7 @@ public final class AppWorkspaceModel: ObservableObject {
     func publish(_ next: WorkspaceSnapshot) {
         guard next.revision >= snapshot.revision else { return }
         snapshot = next
+        if let pendingPaste, pendingPaste.target != currentPasteTarget { cancelPaste() }
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
@@ -210,6 +215,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func selectWindow(_ id: UUID) async {
+        if id != snapshot.activeWindowID { cancelPaste(); notePasteFocus(nil) }
         do {
             publish(try await service.execute(.selectWindow(id: id)).snapshot)
         }
@@ -245,6 +251,7 @@ public final class AppWorkspaceModel: ObservableObject {
             terminal.onInputError = { [weak self] _ in self?.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste." }
             var launchCompleted = false
             terminal.onStateChanged = { [weak self, weak terminal] state in
+                if state != .running, self?.pendingPaste?.target.paneID == paneID { self?.cancelPaste() }
                 if !launchCompleted, state == .running || state == .closing, let pid = terminal?.processID {
                     launchCompleted = true
                     self?.enqueue(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .started(processID: pid)))
@@ -309,7 +316,25 @@ public final class AppWorkspaceModel: ObservableObject {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
-        terminal.onFocused = { [weak self] in Task { await self?.selectPane(pane.id) } }
+        terminal.onFocused = { [weak self] in
+            self?.notePasteFocus(pane.id)
+            Task { await self?.selectPane(pane.id) }
+        }
+        terminal.onPasteRequested = { [weak self, weak terminal] input in
+            guard let self, let terminal,
+                  terminal.view.window?.firstResponder === terminal.view else { return }
+            self.notePasteFocus(pane.id)
+            let epoch = self.pasteFocusEpoch
+            Task { @MainActor [weak self, weak terminal] in
+                guard let self, let terminal, self.pasteFocusEpoch == epoch,
+                      self.terminals[pane.id] === terminal,
+                      terminal.view.window?.firstResponder === terminal.view else { return }
+                guard await self.selectPane(pane.id), self.pasteFocusEpoch == epoch,
+                      self.terminals[pane.id] === terminal,
+                      terminal.view.window?.firstResponder === terminal.view else { return }
+                self.requestPaste(input, paneID: pane.id)
+            }
+        }
         terminals[pane.id] = terminal
     }
 
@@ -383,6 +408,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func selectPane(_ id: UUID) async -> Bool {
+        notePasteFocus(id)
         guard !shuttingDown, !isClosing(paneID: id), snapshot.panes[id] != nil else { return false }
         do {
             publish(try await service.execute(.selectPane(id: id)).snapshot)
@@ -423,6 +449,7 @@ public final class AppWorkspaceModel: ObservableObject {
         guard !shuttingDown, !closureInProgress, !isClosing(paneID: id), let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID] else { return }
         closureInProgress = true
         defer { closureInProgress = false }
+        if pendingPaste?.target.paneID == id || pasteFocusPaneID == id { cancelPaste() }
         closingPaneIDs.insert(id)
         defer { closingPaneIDs.remove(id) }
         await closeResources(panes: [id], command: .deletePane(id: id))
@@ -452,6 +479,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func selectTab(_ id: UUID) async {
+        if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) }
         catch { errorMessage = "The tab could not be selected." }
     }
@@ -482,6 +510,8 @@ public final class AppWorkspaceModel: ObservableObject {
               let window = snapshot.windows.first(where: { $0.id == id }) else { return }
         closureInProgress = true
         defer { closureInProgress = false }
+        let pastePaneID = pendingPaste?.target.paneID ?? pasteFocusPaneID
+        if pastePaneID.flatMap({ snapshot.panes[$0] }).flatMap({ snapshot.tabs[$0.tabID] })?.windowID == id { cancelPaste() }
         closingWindowIDs.insert(id)
         defer { closingWindowIDs.remove(id) }
         let panes = Set(window.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] })
@@ -494,6 +524,8 @@ public final class AppWorkspaceModel: ObservableObject {
               !closingWindowIDs.contains(tab.windowID) else { return }
         closureInProgress = true
         defer { closureInProgress = false }
+        let pastePaneID = pendingPaste?.target.paneID ?? pasteFocusPaneID
+        if pastePaneID.flatMap({ snapshot.panes[$0] })?.tabID == id { cancelPaste() }
         closingTabIDs.insert(id)
         defer { closingTabIDs.remove(id) }
         await closeResources(panes: Set(tab.root.paneIDs), command: .deleteTab(id: id))
@@ -525,6 +557,7 @@ public final class AppWorkspaceModel: ObservableObject {
         guard !shuttingDown, !closureInProgress else { return false }
         // Freeze creation before entering the native modal loop. Cancel restores
         // the gate without sending any signal or changing the workspace.
+        cancelPaste()
         shuttingDown = true
         prepareCloseSummary(Set(terminals.keys))
         let accepted = confirmCloseSessions(runningTerminals.count)
@@ -614,12 +647,60 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func stopAll() {
+        cancelPaste()
         shuttingDown = true
         runningTerminals.forEach { $0.stop() }
     }
 
+    private var currentPasteTarget: TerminalPasteTarget? {
+        guard !shuttingDown, let pane = presentation.activePane, !isClosing(paneID: pane.id),
+              let terminal = terminals[pane.id], terminal.sessionID == pane.sessionID,
+              terminal.sessionState == .running else { return nil }
+        return TerminalPasteTarget(paneID: pane.id, sessionID: pane.sessionID)
+    }
+
+    public func requestPaste(_ input: TerminalPasteInput, paneID: UUID) {
+        guard let target = currentPasteTarget, target.paneID == paneID,
+              let session = snapshot.sessions[target.sessionID], let terminal = terminals[paneID] else { return }
+        let shell: String?
+        switch session.launch {
+        case .shell: shell = defaultShell
+        case .process(let executable, _, _): shell = executable
+        case .host: shell = nil
+        }
+        let plan = TerminalPastePlan(input: input, shell: shell)
+        let paneNumber = (presentation.selectedTab?.root.paneIDs.firstIndex(of: paneID) ?? 0) + 1
+        let paneName = "Pane \(paneNumber) — \(presentation.activePane?.title ?? "Terminal")"
+        let name = [presentation.selectedWindow?.name, presentation.selectedTab?.title, paneName]
+            .compactMap { $0 }.joined(separator: " / ")
+        defer { pendingPaste = pasteReview.pending }
+        do {
+            try pasteReview.request(plan, target: target, name: name) { try terminal.paste($0) }
+        } catch { errorMessage = "The paste could not be sent. The session may have stopped or the input may be too large." }
+    }
+
+    public func confirmPaste(_ id: UUID) {
+        let target = currentPasteTarget
+        defer { pendingPaste = pasteReview.pending }
+        do {
+            try pasteReview.confirm(id: id, currentTarget: target) { plan in
+                guard let target, let terminal = terminals[target.paneID] else { return }
+                try terminal.paste(plan)
+            }
+        } catch { errorMessage = "The paste could not be sent. The session may have stopped or the input may be too large." }
+    }
+
+    private func notePasteFocus(_ paneID: UUID?) {
+        guard pasteFocusPaneID != paneID else { return }
+        pasteFocusPaneID = paneID
+        cancelPaste()
+    }
+
+    public func cancelPaste() { pasteFocusEpoch &+= 1; pasteReview.cancel(); pendingPaste = nil }
+
     @discardableResult
     public func shutdown() async -> Bool {
+        cancelPaste()
         prepareCloseSummary(Set(terminals.keys))
         stopAll()
         let closed = await finishClosure(Set(terminals.keys))

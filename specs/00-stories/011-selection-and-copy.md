@@ -1,7 +1,7 @@
 # S011 — Select and copy terminal text naturally
 
 Priority: P0 / MVP  
-Status: Implemented — 117 tests and native copy checks pass; independent review pending (agent usage limit)
+Status: Implemented and reviewed — 117 tests and native copy checks pass; delayed independent review completed during S012
 Delivery phase: 3  
 Depends on: [S001](001-terminal-engine-feasibility.md), [S003](003-local-pty-session.md), [S004](004-native-application-shell.md)  
 Requirements: `FR-C01`, `FR-C02`, `INT-08`, `MAC-07`
@@ -34,7 +34,7 @@ Verify drag/word/line selection, alternate-screen selection behavior, menus, and
 
 ## Completion evidence
 
-See [S011 evidence](../../docs/evidence/S011-terminal-copy.md) for 117 passing tests, native selection/clipboard/interrupt checks, engine edge fixes, and the outstanding independent-review gap. The review agent was launched but could not run because its service usage limit was reached.
+See [S011 evidence](../../docs/evidence/S011-terminal-copy.md) for 117 passing tests, native selection/clipboard/interrupt checks, engine edge fixes, and the independent review completed during S012 after the first agent hit its service usage limit.
 
 ## Source specifications
 

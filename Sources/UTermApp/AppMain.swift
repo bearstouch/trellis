@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.submenu?.addItem(withTitle: "Copy All Retained Text", action: NSSelectorFromString("copyAllRetainedText:"), keyEquivalent: "")
         edit.submenu?.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.submenu?.addItem(withTitle: "Paste Escaped Path", action: NSSelectorFromString("pasteEscapedPath:"), keyEquivalent: "")
         edit.submenu?.addItem(withTitle: "Select All", action: #selector(selectAllText(_:)), keyEquivalent: "a")
         menu.addItem(edit)
         let panes = NSMenuItem(); panes.submenu = NSMenu(title: "Pane")

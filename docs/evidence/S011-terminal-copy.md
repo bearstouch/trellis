@@ -1,6 +1,6 @@
 # S011 terminal selection and copy
 
-Date: 2026-10-16. Implemented and verified; independent agent review is pending because the review agent reached its usage limit.
+Date: 2026-10-16. Implemented and verified. Independent review completed during S012 after the original review attempt reached its usage limit.
 
 ## Behavior
 
@@ -20,4 +20,4 @@ Native checks used an isolated application identity and disposable sessions. Dra
 
 Self-review found and fixed SwiftTerm’s half-open last-column edge. Terminal Select All now uses a dedicated responder action and public selection operations; the application forwards ordinary text-field Select All through AppKit. Row copy includes the full final column.
 
-The requested independent review agent was launched, but exited immediately with a service usage-limit error before reviewing. No alternate local review capability was available. This remains an explicit workflow gap; do not treat S011 as independently reviewed.
+The original independent review agent reached its service usage limit before reviewing. During S012, a separate agent reviewed the complete S011 diff (032c348..e557d82), including copy selectors, native responder forwarding, retained/line selection bounds, Unicode filtering, key handling, and the seven native tests. It found no actionable defects. This closes the previously documented independent-review gap.

@@ -1,11 +1,31 @@
 import AppKit
 import SwiftTerm
+import UTermCore
 
 /// SwiftTerm 1.20's macOS accessibility helper is a stub. Supply a native text
 /// area interface here so assistive clients can read actual retained terminal text.
 @MainActor
 final class AccessibleTerminalView: TerminalView {
     var onFocused: (() -> Void)?
+    var onPasteRequested: ((TerminalPasteInput) -> Void)?
+    var readClipboardText: () -> String? = { NSPasteboard.general.string(forType: .string) }
+    var readClipboardPaths: () -> [String] = {
+        let board = NSPasteboard.general
+        let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if !urls.isEmpty { return urls.map(\.path) }
+        return board.string(forType: .string).map { [$0] } ?? []
+    }
+
+    override func paste(_ sender: Any) {
+        guard window?.firstResponder === self, let text = readClipboardText() else { return }
+        onPasteRequested?(.text(text))
+    }
+
+    @objc func pasteEscapedPath(_ sender: Any?) {
+        guard window?.firstResponder === self else { return }
+        let paths = readClipboardPaths()
+        if !paths.isEmpty { onPasteRequested?(.paths(paths)) }
+    }
     // Write-only injection keeps selection tests off the user's pasteboard.
     var writeClipboard: (String) -> Void = { text in
         let pasteboard = NSPasteboard.general
@@ -60,6 +80,7 @@ final class AccessibleTerminalView: TerminalView {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "c": copy(self); return true
             case "a": selectAllTerminalText(self); return true
+            case "v": paste(self); return true
             default: break
             }
         }
@@ -79,6 +100,7 @@ final class AccessibleTerminalView: TerminalView {
             return !retainedText.isEmpty
         }
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
+        if item.action == #selector(pasteEscapedPath(_:)) { return true }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
     }
@@ -91,7 +113,8 @@ final class AccessibleTerminalView: TerminalView {
         for (title, action) in [("Copy", #selector(copy(_:))),
                                 (copyAllTitle, #selector(copyAllRetainedText(_:))),
                                 ("Select All", #selector(selectAllTerminalText(_:))),
-                                ("Paste", #selector(paste(_:)))] {
+                                ("Paste", #selector(paste(_:))),
+                                ("Paste Escaped Path", #selector(pasteEscapedPath(_:)))] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             menu.addItem(item)
