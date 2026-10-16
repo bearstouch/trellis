@@ -10,7 +10,7 @@
 
 **MAC-04:** Integrate the menu bar, settings, Dock, standard hide/minimize/full-screen actions, standard dialogs, system appearance (including explicit Dark/Light overrides and custom JSON palettes), clipboard, font selection, and keyboard responder chain. Closing the terminal-bearing native window with live sessions asks once whether to terminate affected sessions; on acceptance it closes the workspaces and returns the app to an empty state. Reopening the main window shows the current state. Quitting has its own running-session confirmation.
 
-**MAC-05:** Distinguish application-managed tabs from macOS automatic window tabbing. Disable automatic native tabbing in MVP. All workspace tabs belong to uTerm's model and are controllable by the API.
+**MAC-05:** Distinguish application-managed tabs from macOS automatic window tabbing. Disable automatic native tabbing in MVP. All workspace tabs belong to Trellis's model and are controllable by the API.
 
 **MAC-06:** Support Retina scaling, monitor changes, full-screen layouts, restored window geometry constrained to available displays, and consistent terminal cell sizing. When available area becomes too small, retain the tree and ratios in a scrollable minimum-sized terminal canvas instead of silently deleting panes or resizing below minimum dimensions. Exact canvas behavior must be verified in the UI spike.
 
@@ -28,7 +28,7 @@ Apple's [App Sandbox guidance](https://developer.apple.com/documentation/securit
 
 ## Installation, upgrades, and removal
 
-**MAC-10:** Distribute an application bundle in a DMG or signed installer, selected before release. Bundle the `uterm` executable; provide an explicit user-invoked setup step to install a user-local CLI link. Never change shell startup files or write system directories silently.
+**MAC-10:** Distribute an application bundle in a DMG or signed installer, selected before release. Bundle the `trellis` executable; provide an explicit user-invoked setup step to install a user-local CLI link. Never change shell startup files or write system directories silently.
 
 **MAC-11:** MVP can use manual signed upgrades; automatic update delivery is P1. Version persisted state, migrate safely, retain a last-known-good backup, and reject unsupported newer formats without overwriting them. Document downgrade limitations.
 

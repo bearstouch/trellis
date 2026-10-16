@@ -112,17 +112,17 @@ CLI process exits: 0 success; 2 argument/schema error; 3 not found; 4 auth/permi
 Proposed CLI examples (UUID placeholders must be replaced):
 
 ```sh
-uterm window list --json
-uterm window create --name Project --json
-uterm tab create --window WINDOW_UUID --title Server --json
-uterm pane split --pane PANE_UUID --axis x --json
-uterm session start --pane PANE_UUID --json
-uterm host connect --host HOST_UUID --window WINDOW_UUID --json
-uterm layout validate ./project-layout.json --json
-uterm layout plan ./project-layout.json --namespace project --json
-uterm layout apply ./project-layout.json --namespace project --expected-revision 12 --json
-uterm session execute --session SESSION_UUID --command 'git status' --submit --json
-uterm session output --session SESSION_UUID --view screen --json
+trellis window list --json
+trellis window create --name Project --json
+trellis tab create --window WINDOW_UUID --title Server --json
+trellis pane split --pane PANE_UUID --axis x --json
+trellis session start --pane PANE_UUID --json
+trellis host connect --host HOST_UUID --window WINDOW_UUID --json
+trellis layout validate ./project-layout.json --json
+trellis layout plan ./project-layout.json --namespace project --json
+trellis layout apply ./project-layout.json --namespace project --expected-revision 12 --json
+trellis session execute --session SESSION_UUID --command 'git status' --submit --json
+trellis session output --session SESSION_UUID --view screen --json
 ```
 
 ## Layout contract
@@ -136,11 +136,11 @@ JSON Schema checks document shape; service validation additionally enforces glob
 Themes use the [v1 theme schema](../03-functional-requirements/themes/theme.schema.json) and [theme requirements](../03-functional-requirements/themes/README.md). Theme operations are global, independent of layout documents, and never start or alter a process. Mutations follow existing revision/idempotency conventions. Appearance changes emit `appearance.changed` metadata events available with `theme.read`. Missing theme IDs return `NOT_FOUND`; attempts to replace/delete built-in themes return `INVALID_STATE`.
 
 ```sh
-uterm theme validate ./my-theme.json --json
-uterm theme import ./my-theme.json --json
-uterm appearance set --mode dark --dark-theme my-midnight --json
-uterm appearance set --mode system --json
-uterm theme export --id my-midnight --resolved --json
+trellis theme validate ./my-theme.json --json
+trellis theme import ./my-theme.json --json
+trellis appearance set --mode dark --dark-theme my-midnight --json
+trellis appearance set --mode system --json
+trellis theme export --id my-midnight --resolved --json
 ```
 
 ## Contract acceptance

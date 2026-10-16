@@ -1,4 +1,8 @@
-# uTerm
+# Trellis
+
+Previously named uTerm. On first launch, Trellis copies an existing default workspace and theme library into its new Application Support directory, preserving the original files. Existing Trellis data takes priority. Saved built-in theme IDs are upgraded when loaded. During this default-directory migration, custom themes using the newly reserved `trellis-` prefix receive new IDs and their saved selections are updated.
+
+Explicit `--state-directory` paths are used directly. For an older custom library at such a path, change any custom theme IDs beginning with `trellis-` (including their filenames and saved selections) before using Trellis; other custom IDs continue to work unchanged.
 
 Native Swift terminal for macOS. Product direction: light Native calm chrome, dark terminal panes, Monaco, sidebar windows and independent renameable tabs with nested splits.
 
@@ -13,8 +17,8 @@ Requires Xcode 26 / Swift 6.2, provisionally macOS 14 or later. This is a feasib
 ```sh
 swift build
 swift test
-swift run uTerm
-swift run uTerm --fixture
+swift run Trellis
+swift run Trellis --fixture
 scripts/run-feasibility.sh
 scripts/run-feasibility.sh --build-only
 ```
@@ -23,7 +27,7 @@ scripts/run-feasibility.sh --build-only
 
 Settings → Themes can load a JSON file or bundled example, preview it in the sample or temporarily in the workspace, and Save & Use it. Cancel Preview, leaving the Themes tab, or closing Settings restores the saved appearance. Existing IDs require the separate Replace Theme action. The same pane offers export, resolved export, deletion, Open Themes Folder, and Reload Themes. Invalid edits keep the last valid in-memory colors; missing selected themes fall back to the matching built-in theme with a notice. Appearance settings choose separate Light/Dark slots. Built-in exports keep reserved IDs; change their ID before importing as a custom copy.
 
-SwiftTerm 1.20.0 is vendored at revision `5d14406844143538cd8f8851d2d8a67c1fe443e5` with small font-change fixes. Its MIT license, provenance, and reproducible engine delta are in [ThirdParty/SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Engine-specific APIs stay inside UTermTerminal; UTermCore contains the engine-independent adapter.
+SwiftTerm 1.20.0 is vendored at revision `5d14406844143538cd8f8851d2d8a67c1fe443e5` with small font-change fixes. Its MIT license, provenance, and reproducible engine delta are in [ThirdParty/SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Engine-specific APIs stay inside TrellisTerminal; TrellisCore contains the engine-independent adapter.
 
 The launcher assembles a fresh development app, applies a local ad-hoc signature, verifies the completed bundle, then opens it. `--build-only` packages and verifies without opening a window. This local signature does not require an Apple account; distribution signing/notarization remains S032.
 

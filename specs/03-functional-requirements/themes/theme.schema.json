@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "uTerm theme v1",
+  "title": "Trellis theme v1",
   "type": "object",
   "additionalProperties": false,
   "required": [

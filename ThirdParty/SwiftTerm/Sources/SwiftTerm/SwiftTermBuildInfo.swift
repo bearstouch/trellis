@@ -1,4 +1,4 @@
-// Pinned upstream identity; uTerm carries the patches listed in PATCHES.md.
+// Pinned upstream identity; Trellis carries the patches listed in PATCHES.md.
 
 /// Source-control information for this SwiftTerm build.
 public enum SwiftTermBuildInfo {

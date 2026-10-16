@@ -12,7 +12,7 @@ As a terminal user, I want to try and edit JSON themes without risking my workin
 
 ## Acceptance criteria
 
-- [x] **S016-AC01:** Import validated files into the app-owned Themes directory using validated IDs; reserve uterm- IDs for built-ins and require explicit replacement of duplicates.
+- [x] **S016-AC01:** Import validated files into the app-owned Themes directory using validated IDs; reserve trellis- IDs for built-ins and require explicit replacement of duplicates.
 - [x] **S016-AC02:** Preview is reversible, Save installs atomically, and Cancel restores the prior effective appearance without touching sessions.
 - [x] **S016-AC03:** Provide export, Export Resolved, Open Themes Folder, and Reload Themes; invalid edits retain the last valid in-memory palette with actionable errors.
 - [x] **S016-AC04:** Deleting a selected custom theme or launching with a missing file falls back to the built-in palette for that slot with a notice; built-ins cannot be replaced/deleted.

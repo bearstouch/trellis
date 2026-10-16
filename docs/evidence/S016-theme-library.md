@@ -4,7 +4,7 @@ Date: 2026-10-16. Implemented with independent review and fixes, automated integ
 
 ## Behavior
 
-The app-owned `Themes/<id>.theme.json` library resides under the workspace support directory. Default launches use Application Support/<app identity>; `--state-directory` keeps development workspaces and themes separate. Imports are validated before installation, copied as portable color-only JSON, and independent of the source file. Built-in `uterm-` IDs cannot be installed over or deleted. A duplicate ID requires the separate Replace Theme action.
+The app-owned `Themes/<id>.theme.json` library resides under the workspace support directory. Default launches use Application Support/<app identity>; `--state-directory` keeps development workspaces and themes separate. Imports are validated before installation, copied as portable color-only JSON, and independent of the source file. Built-in `trellis-` IDs cannot be installed over or deleted. A duplicate ID requires the separate Replace Theme action.
 
 Files are published from a sibling temporary file after a complete write and file sync. A hard link provides atomic no-replace installation, and rename provides atomic replacement. Failures before publication preserve the prior destination and catalog; no throwable operation follows successful publication. New files use mode 0600 and created directories use 0700. Reads reject symlinks/non-regular files, do not block on FIFOs, and are bounded to 64 KiB plus the validation sentinel byte. Filenames must match the validated document ID.
 

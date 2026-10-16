@@ -2,26 +2,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "uTerm",
+    name: "Trellis",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "UTermCore", targets: ["UTermCore"]),
-        .library(name: "UTermTerminal", targets: ["UTermTerminal"]),
-        .library(name: "UTermUI", targets: ["UTermUI"]),
-        .executable(name: "uTerm", targets: ["UTermApp"])
+        .library(name: "TrellisCore", targets: ["TrellisCore"]),
+        .library(name: "TrellisTerminal", targets: ["TrellisTerminal"]),
+        .library(name: "TrellisUI", targets: ["TrellisUI"]),
+        .executable(name: "Trellis", targets: ["TrellisApp"])
     ],
     dependencies: [
         .package(path: "ThirdParty/SwiftTerm")
     ],
     targets: [
-        .target(name: "UTermCore", resources: [.copy("Resources/Themes")]),
-        .target(name: "UTermPOSIX"),
-        .target(name: "UTermTerminal", dependencies: ["UTermCore", "UTermPOSIX", "SwiftTerm"]),
-        .target(name: "UTermUI", dependencies: ["UTermCore", "UTermTerminal"]),
-        .executableTarget(name: "UTermApp", dependencies: ["UTermUI"]),
-        .testTarget(name: "UTermCoreTests", dependencies: ["UTermCore"]),
-        .testTarget(name: "UTermUITests", dependencies: ["UTermUI", "UTermCore"]),
-        .testTarget(name: "UTermTerminalTests", dependencies: ["UTermTerminal"])
+        .target(name: "TrellisCore", resources: [.copy("Resources/Themes")]),
+        .target(name: "TrellisPOSIX"),
+        .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "SwiftTerm"]),
+        .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal"]),
+        .executableTarget(name: "TrellisApp", dependencies: ["TrellisUI"]),
+        .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore"]),
+        .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore"]),
+        .testTarget(name: "TrellisTerminalTests", dependencies: ["TrellisTerminal"])
     ],
     swiftLanguageModes: [.v6]
 )

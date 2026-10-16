@@ -22,9 +22,9 @@ def main():
         raise SystemExit(__doc__)
     products = Path(sys.argv[1]).resolve()
     project = Path(__file__).resolve().parent.parent
-    if not (products / "uTerm").is_file():
+    if not (products / "Trellis").is_file():
         raise SystemExit("Build the app first and supply its Swift bin path.")
-    with tempfile.TemporaryDirectory(prefix="uterm launcher ") as temporary:
+    with tempfile.TemporaryDirectory(prefix="trellis launcher ") as temporary:
         root = Path(temporary)
         (root / "scripts").mkdir()
         (root / ".build").mkdir()
@@ -32,47 +32,47 @@ def main():
         shutil.copy2(project / "scripts/run-feasibility.sh", launcher)
         built = root / "Swift build products"
         built.mkdir()
-        shutil.copy2(products / "uTerm", built / "uTerm")
+        shutil.copy2(products / "Trellis", built / "Trellis")
         resources = built / "SwiftTerm_SwiftTerm.bundle"
         shutil.copytree(products / "SwiftTerm_SwiftTerm.bundle", resources)
-        theme_resources = built / "uTerm_UTermCore.bundle"
-        shutil.copytree(products / "uTerm_UTermCore.bundle", theme_resources)
+        theme_resources = built / "Trellis_TrellisCore.bundle"
+        shutil.copytree(products / "Trellis_TrellisCore.bundle", theme_resources)
         shader = resources / "Shaders.metal"
         shader.chmod(0o444)
-        source_hash = digest(built / "uTerm")
+        source_hash = digest(built / "Trellis")
         tools = root / "tools"
         tools.mkdir()
         (tools / "swift").write_text(
             '#!/bin/sh\nset -eu\n'
             'if [ "$*" = "build --configuration debug --show-bin-path" ]; then\n'
-            '  printf "%s\\n" "$UTERM_TEST_PRODUCTS"\n'
+            '  printf "%s\\n" "$TRELLIS_TEST_PRODUCTS"\n'
             'elif [ "$*" != "build --configuration debug" ]; then\n'
             '  exit 2\nfi\n'
         )
         (tools / "open").write_text(
-            '#!/bin/sh\nprintf "%s\\n" "$@" > "$UTERM_TEST_OPEN_LOG"\n'
+            '#!/bin/sh\nprintf "%s\\n" "$@" > "$TRELLIS_TEST_OPEN_LOG"\n'
         )
         for tool in tools.iterdir():
             tool.chmod(0o755)
         log = root / "open.log"
         env = dict(os.environ, PATH=str(tools) + ":" + os.environ["PATH"],
-                   UTERM_TEST_PRODUCTS=str(built), UTERM_TEST_OPEN_LOG=str(log))
-        destination = root / ".build/uTerm Feasibility.app"
-        executable = destination / "Contents/MacOS/uTerm"
+                   TRELLIS_TEST_PRODUCTS=str(built), TRELLIS_TEST_OPEN_LOG=str(log))
+        destination = root / ".build/Trellis.app"
+        executable = destination / "Contents/MacOS/Trellis"
         seal = destination / "Contents/_CodeSignature/CodeResources"
 
         def run(*arguments, success=True):
             result = subprocess.run(["sh", str(launcher), *arguments], env=env,
                                     capture_output=True, text=True)
             assert (result.returncode == 0) == success, result.stdout + result.stderr
-            assert not list((root / ".build").glob("uterm-feasibility.*")), "staging was not cleaned"
+            assert not list((root / ".build").glob("trellis-feasibility.*")), "staging was not cleaned"
 
         def verify():
             subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(destination)], check=True)
             assert seal.is_file(), "assembled app has no sealed resources"
-            assert digest(built / "uTerm") == source_hash, "signing changed the Swift build product"
+            assert digest(built / "Trellis") == source_hash, "signing changed the Swift build product"
             assert stat.S_IMODE(shader.stat().st_mode) == 0o444
-            assert (destination / "Contents/Resources/uTerm_UTermCore.bundle/Themes/example-minimal.theme.json").is_file()
+            assert (destination / "Contents/Resources/Trellis_TrellisCore.bundle/Themes/example-minimal.theme.json").is_file()
 
         run("--build-only")
         verify()

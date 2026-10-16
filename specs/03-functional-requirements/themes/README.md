@@ -4,7 +4,7 @@ Status: v1 validation, preview, and theme library management implemented in S015
 
 ## User experience
 
-Ship built-in **uTerm Dark** and **uTerm Light** themes. Settings → Appearance provides **System**, **Dark**, and **Light** modes. Light is the first-launch default for application chrome; terminal panes keep their dark palette. System follows macOS appearance changes; explicit Dark/Light modes remain fixed. Persist the user’s selected mode. Users select a theme separately for each appearance, so a custom dark theme can be paired with the built-in light theme.
+Ship built-in **Trellis Dark** and **Trellis Light** themes. Settings → Appearance provides **System**, **Dark**, and **Light** modes. Light is the first-launch default for application chrome; terminal panes keep their dark palette. System follows macOS appearance changes; explicit Dark/Light modes remain fixed. Persist the user’s selected mode. Users select a theme separately for each appearance, so a custom dark theme can be paired with the built-in light theme.
 
 **Chosen defaults:** Terminal panes use a dark background, light foreground, and Monaco in both built-in application themes. System/Light/Dark controls the application chrome; switching to light chrome does not turn the terminal background white. A custom JSON theme may explicitly override terminal colors. Monaco is a terminal setting, separate from color-only theme files; users can change it in terminal settings. Use Menlo or system monospace with a visible notice if Monaco is unavailable.
 
@@ -54,7 +54,7 @@ The [minimal example](example-minimal.theme.json) is also available as a standal
 
 ## Installation and persistence
 
-Store validated custom themes under `Application Support/<app-identity>/Themes/<id>.theme.json`; derive the filename only from the validated ID. Reserve the `uterm-` prefix for built-in IDs. Names are labels, not filenames. Imported files are copied into this directory; the application does not depend on the original source file remaining available.
+Store validated custom themes under `Application Support/<app-identity>/Themes/<id>.theme.json`; derive the filename only from the validated ID. Reserve the `trellis-` prefix for built-in IDs. Names are labels, not filenames. Imported files are copied into this directory; the application does not depend on the original source file remaining available.
 
 A duplicate ID requires an explicit “Replace theme” action in the UI or `replace: true` in an authorized API request. Replacement is atomic and preserves the previous valid version on failure. Export writes a portable theme document; “Export resolved” can include inherited values for exact reproduction. Changes to built-in fallback colors across application versions may affect themes that omit fields.
 

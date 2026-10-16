@@ -12,9 +12,9 @@ Date: 2026-10-16. Decision: **conditional candidate acceptance; manual acceptanc
 
 ## Architecture decision
 
-SwiftTerm supplies only terminal parsing/rendering/input behavior. [UTermTerminal](../../Sources/UTermTerminal/NativeTerminal.swift) contains engine-specific APIs. [TerminalAdapter](../../Sources/UTermCore/TerminalAdapter.swift) exposes engine-neutral data, size, retained text, and lifecycle operations.
+SwiftTerm supplies only terminal parsing/rendering/input behavior. [TrellisTerminal](../../Sources/TrellisTerminal/NativeTerminal.swift) contains engine-specific APIs. [TerminalAdapter](../../Sources/TrellisCore/TerminalAdapter.swift) exposes engine-neutral data, size, retained text, and lifecycle operations.
 
-The application owns PTY/process I/O and reaping through [PTYProcess](../../Sources/UTermTerminal/PTYProcess.swift), using SwiftTerm's small fork/exec helper for process creation. It deliberately avoids LocalProcess/LocalProcessTerminalView: observed source behavior conflates PTY EOF with running state, returns raw wait status, and complicates resource release while keeping the exited terminal view alive. Process state and I/O state are separate in the application wrapper. The eventual configurable/validated launch interface belongs to S003.
+The application owns PTY/process I/O and reaping through [PTYProcess](../../Sources/TrellisTerminal/PTYProcess.swift), using SwiftTerm's small fork/exec helper for process creation. It deliberately avoids LocalProcess/LocalProcessTerminalView: observed source behavior conflates PTY EOF with running state, returns raw wait status, and complicates resource release while keeping the exited terminal view alive. Process state and I/O state are separate in the application wrapper. The eventual configurable/validated launch interface belongs to S003.
 
 TERM is `xterm-256color`: system `infocmp xterm-256color` succeeded; ANSI rendering and alternate-screen round trips passed the fixture. This is a conservative startup choice, not a claim of complete xterm/iTerm2 compatibility. Extended protocols are outside this milestone.
 

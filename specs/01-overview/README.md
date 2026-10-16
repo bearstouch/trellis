@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build a focused native macOS terminal that makes many concurrent local and SSH sessions easy to organize and operate. uTerm should replace the user's everyday iTerm2 workflow through fast keyboard navigation, reliable terminal emulation, easy copy/paste, nested splits, reusable hosts, and first-class script and agent control.
+Build a focused native macOS terminal that makes many concurrent local and SSH sessions easy to organize and operate. Trellis should replace the user's everyday iTerm2 workflow through fast keyboard navigation, reliable terminal emulation, easy copy/paste, nested splits, reusable hosts, and first-class script and agent control.
 
 “Replace iTerm2” describes the intended daily workflow, not full compatibility with every iTerm2 feature or configuration format.
 
@@ -65,7 +65,7 @@ MVP exits only when every P0 requirement is demonstrated. No requirement is cons
 | Minimum macOS and CPU support | macOS 14+, Apple silicon and Intel | Build and dependency feasibility |
 | Default scrollback | 10,000 lines, bounded additionally by bytes | Memory measurements |
 | Agent authorization UX | User-created grants with resource scope | Automation UX review |
-| Application identity | uTerm working name | Before signing and release |
+| Application identity | Trellis working name | Before signing and release |
 
 ## Definition of done
 

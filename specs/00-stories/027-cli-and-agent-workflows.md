@@ -1,4 +1,4 @@
-# S027 — Ship a script-friendly uterm CLI
+# S027 — Ship a script-friendly trellis CLI
 
 Priority: P0 / MVP  
 Status: Planned — implementation and tests not started  

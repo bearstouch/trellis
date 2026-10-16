@@ -1,8 +1,8 @@
-# uTerm specifications
+# Trellis specifications
 
 Status: initial draft for review. Date: 2026-10-16. Implementation has not started.
 
-uTerm is a native Swift terminal application for macOS, intended to replace iTerm2 for everyday local and SSH work. Its organizing hierarchy is **managed window → tab → pane → terminal session**. A left sidebar lists managed windows; selecting one reveals its tabs and terminal layout.
+Trellis is a native Swift terminal application for macOS, intended to replace iTerm2 for everyday local and SSH work. Its organizing hierarchy is **managed window → tab → pane → terminal session**. A left sidebar lists managed windows; selecting one reveals its tabs and terminal layout.
 
 ## Specification index
 
@@ -32,7 +32,7 @@ uTerm is a native Swift terminal application for macOS, intended to replace iTer
 3. Distribution is a signed, notarized direct download. Mac App Store distribution is outside MVP.
 4. SwiftUI provides application chrome; an AppKit terminal view provides terminal interaction. SwiftTerm is the provisional engine, subject to a compatibility spike.
 5. Closing the application ends its local terminal processes. Reopening restores layouts as stopped sessions; it does not resurrect processes.
-6. Automation uses a local Unix-domain socket and an accompanying `uterm` CLI. Remote network control and a built-in AI agent are outside MVP.
+6. Automation uses a local Unix-domain socket and an accompanying `trellis` CLI. Remote network control and a built-in AI agent are outside MVP.
 
 Implementation order and unresolved decisions are maintained in [the overview](01-overview/README.md). Changes to defaults must update the affected requirements and API examples together.
 
