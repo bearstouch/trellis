@@ -493,7 +493,8 @@ struct TrellisMain {
             }
             Task {
                 await events.setDelivery { connection, data in control.push(data, to: connection) }
-                await grantStore.load()
+                // Once only: an early client may already have loaded (and since changed) the grants.
+                await grantStore.ensureLoaded()
                 // Revocation disconnects clients and ends their subscriptions at once.
                 await grantStore.onRevocation { grantID in
                     Task {

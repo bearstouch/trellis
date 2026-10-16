@@ -148,7 +148,16 @@ public actor GrantStore {
         self.url = url; self.secrets = secrets; self.now = now
     }
 
+    private var loaded = false
+
+    /// Loads once before the first authentication, so a client connecting during
+    /// app startup is never rejected (or rate limited) for an unloaded store.
+    public func ensureLoaded() {
+        if !loaded { load() }
+    }
+
     public func load() {
+        loaded = true
         guard let url else { return }
         do {
             guard let data = try OwnerOnlyFile.read(url, limit: 1_048_576) else { grants = []; loadFailed = false; return }
@@ -172,6 +181,8 @@ public actor GrantStore {
         }
         guard !capabilities.isEmpty else { throw .noCapabilities }
         guard lifetime.isFinite, (60...(90 * 86_400)).contains(lifetime) else { throw .invalidExpiry }
+        // Never publish a list built from an unloaded store: it would drop the saved grants.
+        ensureLoaded()
         guard !loadFailed else { throw .readOnly }
         let token = GrantToken.generate()
         let created = now()

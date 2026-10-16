@@ -1,7 +1,7 @@
 # S031 — Qualify capacity, responsiveness, and lifecycle reliability
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Blocked — qualification run complete; NFR-P07 flood throughput misses (5–7.6 of 10 MiB/s); UI-frame latency not certified  
 Delivery phase: 5  
 Depends on: [S008](008-pane-resize-focus-and-maximize.md), [S009](009-safe-session-close-and-restart.md), [S010](010-persistence-and-stopped-restore.md), [S013](013-scrollback-and-search.md), [S017](017-keyboard-and-accessibility.md), [S020](020-ssh-connections.md), [S025](025-automation-output-and-events.md), [S026](026-declarative-layout-automation.md), [S029](029-theme-control-api.md), [S030](030-terminal-security-and-diagnostics.md)  
 Requirements: `NFR-P01`, `NFR-P02`, `NFR-P03`, `NFR-P04`, `NFR-P05`, `NFR-P06`, `NFR-P07`, `NFR-R01`, `NFR-R04`, `NFR-R06`
@@ -34,7 +34,7 @@ Run real performance and descriptor/process measurements outside the debugger on
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S031 qualification evidence](../../docs/evidence/S031-qualification.md) and the generated [results](../../docs/evidence/S031-qualification-results.md). Blocker: flood throughput below 10 MiB/s, with a remediation plan; typing/switching are API proxies, not UI-frame measurements.
 
 ## Source specifications
 

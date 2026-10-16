@@ -318,6 +318,36 @@ final class GrantAuthorizationTests: XCTestCase {
         XCTAssertEqual(domain.executed, ["host.connect", "host.connect", "host.connect"])
     }
 
+    func testAuthenticationDuringStartupLoadsGrantsFirst() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tg-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("grants.json")
+        let token = try await GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
+            .create(name: "CI", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600).token
+        // A fresh app instance whose background load has not run yet.
+        let unloaded = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
+        let handler = AuthorizingControlHandler(grants: unloaded, domain: domain, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
+        let session = ControlSession(peerUID: geteuid(), handler: handler)
+        let reply = try await reply(session, request(1, "auth.authenticate", ["protocolVersion": .number(1), "token": .string(token)]))
+        XCTAssertNotNil(reply["result"], "Early clients authenticate instead of being rejected or rate limited")
+    }
+
+    func testCreateBeforeStartupLoadKeepsSavedGrants() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tg-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("grants.json")
+        let first = try await GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
+            .create(name: "Saved", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600).token
+        let unloaded = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
+        _ = try await unloaded.create(name: "New", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let reloaded = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
+        await reloaded.load()
+        let names = await reloaded.grants.map(\.name)
+        XCTAssertEqual(names, ["Saved", "New"])
+        let saved = await reloaded.activeGrant(token: first)
+        XCTAssertNotNil(saved)
+    }
+
     func testGrantFileStoresHashNotTokenAndSecretFailureCreatesNothing() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tg-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }

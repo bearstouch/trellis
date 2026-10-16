@@ -270,6 +270,7 @@ public actor AuthorizingControlHandler: ControlHandler {
     public func authenticate(_ params: JSONValue?, connectionID: UUID, peerUID: uid_t) async -> Result<(ControlIdentity, JSONValue), ControlError> {
         connections.removeValue(forKey: connectionID)
         guard peerUID == geteuid() else { return .failure(.authenticationFailed) }
+        await grants.ensureLoaded()
         guard !(await limiter.isLimited()) else { return .failure(.rateLimited) }
         guard params?["protocolVersion"] == .number(1) else {
             await limiter.recordFailure()

@@ -31,6 +31,7 @@ swift run Trellis --fixture                    # isolated fixed-shell demo works
 swift run Trellis --state-directory /abs/path  # separate dev workspace + theme library
 scripts/run-feasibility.sh [--build-only]      # assemble, ad-hoc sign, verify (and open) .app
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"
+python3 scripts/qualify.py [--quick]        # S031 release qualification (~5 min, opens isolated app windows)
 ```
 
 There is no SwiftLint/SwiftFormat binary; use the toolchain's `swift format` with the repo
