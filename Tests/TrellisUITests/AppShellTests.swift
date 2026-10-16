@@ -2,9 +2,35 @@ import AppKit
 import XCTest
 import TrellisCore
 import TrellisTerminal
+import SwiftTerm
 @testable import TrellisUI
 
 final class AppShellTests: XCTestCase {
+    @MainActor
+    func testTerminalGridStaysAgainstBottomAcrossResizeAndFontChanges() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        let terminal = try XCTUnwrap(native.view as? TerminalView)
+        let container = TerminalContainerView()
+        container.display(terminal)
+        for fontSize in [13.0, 19.0] {
+            var settings = AppearanceSettings()
+            settings.fontSize = fontSize
+            native.applyAppearance(settings)
+            for height in [401.0, 417.0, 503.0] {
+                container.frame = NSRect(x: 0, y: 0, width: 800, height: height)
+                terminal.frame = container.bounds
+                let rows = terminal.getTerminal().rows
+                container.layout()
+                XCTAssertEqual(terminal.frame.minY, container.bounds.minY)
+                XCTAssertEqual(terminal.frame.height, terminal.getOptimalFrameSize().height, accuracy: 0.002)
+                XCTAssertEqual(terminal.getTerminal().rows, rows)
+                container.layout()
+                XCTAssertEqual(terminal.getTerminal().rows, rows)
+            }
+        }
+    }
+
     func testEmptyStateProjection() {
         let projection = WorkspacePresentation(snapshot: WorkspaceSnapshot())
         XCTAssertTrue(projection.isEmpty)

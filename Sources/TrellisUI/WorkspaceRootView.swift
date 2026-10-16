@@ -1,6 +1,7 @@
 import SwiftUI
 import TrellisCore
 import TrellisTerminal
+import class SwiftTerm.TerminalView
 
 public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
@@ -214,13 +215,6 @@ public struct WorkspaceRootView: View {
                     .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
                 Divider().overlay(model.separatorOverlay)
-                HStack(spacing: 6) {
-                    Image(systemName: "folder")
-                    Text(model.defaultDirectory.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-                    Spacer()
-                    Text("Local")
-                }.font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 14).frame(height: 31)
-                Divider().overlay(model.separatorOverlay)
                 terminalCanvas
             }
         }
@@ -326,6 +320,19 @@ final class TerminalContainerView: NSView {
     private var wasFocused = false
     private var desiredTerminal: NSView?
 
+    override func layout() {
+        super.layout()
+        guard let terminal = subviews.first else { return }
+        terminal.frame = bounds
+        guard let grid = terminal as? TerminalView else { return }
+        let gridHeight = grid.getOptimalFrameSize().height
+        guard gridHeight > 0, gridHeight <= bounds.height else { return }
+        // Keep whole terminal rows against the bottom. A tiny rounding allowance
+        // prevents floating-point division from dropping the final row.
+        let height = min(bounds.height, gridHeight + 0.001)
+        terminal.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: height)
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         reconcileAfterTreeUpdate()
@@ -349,6 +356,7 @@ final class TerminalContainerView: NSView {
             }
         }
         wasFocused = focused
+        needsLayout = true
         reconcileAfterTreeUpdate()
     }
 
@@ -364,6 +372,7 @@ final class TerminalContainerView: NSView {
                 terminal.frame = self.bounds
                 terminal.autoresizingMask = [.width, .height]
                 self.addSubview(terminal)
+                self.needsLayout = true
                 if self.wasFocused, self.window?.isKeyWindow == true {
                     self.window?.makeFirstResponder(terminal)
                 }
