@@ -6,14 +6,17 @@ Guidance for Claude Code working in this repository.
 
 **Trellis** (formerly uTerm) is a native Swift terminal for macOS: light "Native calm" chrome,
 dark terminal panes, Monaco font, managed windows in a left sidebar, per-window renameable tabs,
-and nested splits. Saved SSH hosts and a local CLI/automation API are planned.
+and nested splits, plus saved SSH hosts and a local CLI/automation API. All 32 MVP stories are
+implemented; remaining qualification work is tracked in `docs/overview/status.md`.
 
-- Behavior contract: `specs/` (overview, architecture, functional/non-functional requirements,
-  API, integrations, macOS support). The specs win over assumptions; if a spec is ambiguous,
-  resolve it in both the spec and the affected story — never invent conflicting behavior.
-- Delivery plan: `specs/00-stories/NNN-*.md` (32 P0 stories) and the progress table in
-  `specs/00-stories/README.md`.
-- Per-story evidence: `docs/evidence/SNNN-*.md`.
+- Behavior contract: `docs/` (MkDocs site, nav in `mkdocs.yml`): overview, architecture,
+  features, automation API/CLI, integrations, macOS support, quality, development rules. The docs
+  win over assumptions; if a page is ambiguous, resolve it in the page — never invent conflicting
+  behavior. Requirement IDs (`FR-`, `NFR-`, `API-`, `INT-`, `MAC-`) are stable.
+- MVP story record (acceptance criteria, named unit tests): `docs/project/delivery-history.md`;
+  traceability in `docs/project/traceability.md`; backlog in `docs/project/roadmap.md`.
+- Per-story evidence: `docs/evidence/SNNN-*.md`. Contract fixtures read by tests:
+  `docs/api/example-layout.json`, `docs/themes/*.json` (must match bundled theme copies).
 
 ## Toolchain and commands
 
@@ -87,25 +90,25 @@ change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `Tre
 ## Tests
 
 - XCTest, one class per area. Story test names follow `testSNNN_UTnn_camelCaseName`
-  (e.g. `testS015_UT01_minimalThemeInheritsDefaults`); the four named unit tests from each story
-  file must exist with those IDs. Review-driven extras go in `*ReviewTests.swift`.
+  (e.g. `testS015_UT01_minimalThemeInheritsDefaults`); the four named unit tests from each MVP story
+  (see `docs/project/delivery-history.md`) must keep those IDs. Review-driven extras go in `*ReviewTests.swift`.
 - Assert observable behavior and failure safety (previous state retained on error).
 - Integration tests may spawn real PTYs; keep them isolated (temp dirs, `--state-directory`).
 
-## Story workflow (one story at a time, in order)
+## Change workflow (see `docs/development/workflow.md`)
 
-1. Read the story file, its dependencies, and the referenced spec sections.
-2. Set the story `Status:` to In progress; implement with the four named unit tests plus any
-   needed extra tests.
+1. Read the relevant docs pages. For behavior changes or new (P1/P2) features, update the
+   contract page first or alongside the code, adding new requirement IDs with acceptance checks.
+2. Implement with tests (observable behavior + failure safety).
 3. Format, lint, build, test — all clean.
-4. Launch an independent review agent (fresh eyes; correctness, acceptance-criteria gaps,
-   security, data loss, races, leaks, regressions, test gaps). It fixes crucial issues, then
-   formats, lints, builds and tests again.
-5. Record evidence in `docs/evidence/SNNN-<slug>.md` (behavior, review findings/fixes, test
-   counts, what was verified natively, and what remains pending). Update the story status, the
-   progress table in `specs/00-stories/README.md`, and `README.md` if user-visible.
-6. Commit on `master` (repo convention), one commit per story:
-   `feat(SNNN): <concise description>`; fixes use `fix(SNNN): …`.
+4. Launch an independent review agent (fresh eyes; correctness, acceptance gaps, security, data
+   loss, races, leaks, regressions, test gaps). It fixes crucial issues, then formats, lints,
+   builds and tests again.
+5. Record evidence: what was verified and what remains pending. Closing pending MVP work updates
+   the matching `docs/evidence/SNNN-*.md` and `docs/overview/status.md`. Update `README.md` /
+   `CHANGELOG.md` if user-visible.
+6. Commit on `master` (repo convention) with Conventional Commits: `feat(<scope>): …` / `fix(<scope>): …`, using the MVP story
+   ID as scope when the change belongs to one.
 
 Honesty rules: acceptance checkboxes stay unchecked unless actually observed. Manual checks that
 cannot be performed here (VoiceOver, real IME, keyboard layouts, older macOS/Intel, notarization)

@@ -30,7 +30,7 @@ final class LayoutAutomationTests: XCTestCase {
 
     private func example() throws -> Any {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        return try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("specs/05-api/example-layout.json")))
+        return try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("docs/api/example-layout.json")))
     }
 
     private func single(_ key: String, launch: [String: Any] = ["kind": "shell"]) -> [String: Any] {

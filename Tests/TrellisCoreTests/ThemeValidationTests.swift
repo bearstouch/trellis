@@ -89,7 +89,7 @@ final class ThemeValidationTests: XCTestCase {
     }
     func testCommittedExamplesMatchBundledCopiesAndSchemaFields() throws {
         let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("specs/03-functional-requirements/themes")
+            .appendingPathComponent("docs/themes")
         let schema = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: directory.appendingPathComponent("theme.schema.json"))) as? [String: Any])
         let properties = try XCTUnwrap(schema["properties"] as? [String: [String: Any]])
         for (group, fields) in [("terminal", Set(TerminalColorField.allCases.map(\.rawValue) + ["ansi"])), ("ui", Set(UIColorField.allCases.map(\.rawValue)))] {

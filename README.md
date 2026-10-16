@@ -4,7 +4,7 @@
 
 A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal panes, Monaco, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
-> **Status:** pre-release. All 32 MVP stories (S001–S032) are implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See the [story plan](specs/00-stories/README.md), the per-story [evidence](docs/evidence/), and the [changelog](CHANGELOG.md) (current version: 0.9.0).
+> **Status:** pre-release. All 32 MVP stories (S001–S032) are implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See [status and known limits](docs/overview/status.md), the [delivery history](docs/project/delivery-history.md), and the [changelog](CHANGELOG.md) (current version: 0.9.0).
 
 ## Features
 
@@ -95,7 +95,7 @@ An ordinary new workspace starts a login shell. Use Quit to close live sessions 
    swift run trellis-cli                      # prints the available nouns
    ```
 
-The packaged app ships this binary as `trellis` (see the [release guide](docs/release/README.md)). The protocol is specified in [`specs/05-api`](specs/05-api/README.md).
+The packaged app ships this binary as `trellis` (see the [release guide](docs/release/README.md)). The protocol is documented in [`docs/api`](docs/api/index.md).
 
 ### Other scripts
 
@@ -127,7 +127,7 @@ Sources/
   TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)
 Tests/               one XCTest target per module
 ThirdParty/SwiftTerm vendored SwiftTerm 1.20.0 + recorded patches
-specs/               behavior contract and story plan
+docs/                documentation site (behavior contract, architecture, API, contributor guide)
 docs/evidence/       per-story verification records
 docs/release/        packaging, install, upgrade and uninstall guide
 Design/AppIcon/      icon sources
@@ -140,7 +140,16 @@ Architecture in brief:
 - All mutations from the UI and the API go through a single `WorkspaceCommandService`.
 - PTY I/O runs off the main thread, and views update on `@MainActor`.
 
-The full design is in [`specs/02-architecture`](specs/02-architecture/README.md), and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules contributors must follow.
+The full design is in [the architecture docs](docs/architecture/index.md), and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules contributors must follow.
+
+## Documentation
+
+The [`docs/`](docs/index.md) folder is the behavior contract and contributor guide: product overview, architecture, features, the automation API and CLI, integrations, macOS support, quality requirements, and development rules. It's plain Markdown, laid out for [MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
+
+```sh
+python3 -m venv .venv-docs && .venv-docs/bin/pip install mkdocs-material
+.venv-docs/bin/mkdocs serve    # http://127.0.0.1:8000
+```
 
 ## Data and migration
 

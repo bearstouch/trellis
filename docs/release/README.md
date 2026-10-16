@@ -1,6 +1,6 @@
 # Trellis release guide
 
-Release decisions are recorded in [`release/manifest.json`](../../release/manifest.json) and checked by `testS032_UT01`.
+Release decisions are recorded in [`release/manifest.json`](https://github.com/layerx-labs/trellis/blob/master/release/manifest.json) and checked by `testS032_UT01`.
 
 | Decision | Value |
 | --- | --- |
@@ -9,7 +9,7 @@ Release decisions are recorded in [`release/manifest.json`](../../release/manife
 | CPU support | Universal 2: arm64 and x86_64, each built natively and combined with `lipo` |
 | Package format | Signed DMG containing `Trellis.app` |
 | Bundled CLI | `Trellis.app/Contents/Helpers/trellis` |
-| Terminal engine | SwiftTerm 1.20.0, MIT license, vendored with recorded patches ([PATCHES.md](../../ThirdParty/SwiftTerm/PATCHES.md)) |
+| Terminal engine | SwiftTerm 1.20.0, MIT license, vendored with recorded patches ([PATCHES.md](https://github.com/layerx-labs/trellis/blob/master/ThirdParty/SwiftTerm/PATCHES.md)) |
 | Updates | Manual signed upgrades. There is no automatic update service in MVP. |
 
 ## Building a release

@@ -4,15 +4,15 @@ Date: 2026-10-16. Scope: authoritative in-memory workspace domain and command bo
 
 ## Implementation
 
-- [Workspace models](../../Sources/TrellisCore/Workspace.swift): ordered windows/tabs, binary split layouts, active selection, panes, sessions, launch descriptors, stable UUIDs, lifecycle state, and revisions.
-- [Store and service](../../Sources/TrellisCore/WorkspaceStore.swift): actor-serialized copy/validate/commit mutations shared by future UI/API callers. Initial snapshots are validated before acceptance. Snapshot copies are values and cannot mutate the store externally.
+- [Workspace models](https://github.com/layerx-labs/trellis/blob/master/Sources/TrellisCore/Workspace.swift): ordered windows/tabs, binary split layouts, active selection, panes, sessions, launch descriptors, stable UUIDs, lifecycle state, and revisions.
+- [Store and service](https://github.com/layerx-labs/trellis/blob/master/Sources/TrellisCore/WorkspaceStore.swift): actor-serialized copy/validate/commit mutations shared by future UI/API callers. Initial snapshots are validated before acceptance. Snapshot copies are values and cannot mutate the store externally.
 - Existing windows require tabs; tabs require panes; split branches require exactly two children and finite valid ratios. References, ownership, selection, and resource IDs are checked globally; orphan resources are rejected. Empty application state is valid.
 - Launch requests are returned as effects after committing a starting session. No domain command starts a process. An external runner returns a matching attempt/outcome; a failed effect leaves a valid failed session in the same pane. Stale/duplicate attempt completions cannot overwrite it.
 - Runtime session state deliberately is not Codable: the safe stopped-restoration format belongs to S010 and must omit process handles, transient state, and secrets.
 
 ## Automated checks
 
-[WorkspaceStoreTests](../../Tests/TrellisCoreTests/WorkspaceStoreTests.swift) implements the four planned S002 unit cases and additional regression/contract checks:
+[WorkspaceStoreTests](https://github.com/layerx-labs/trellis/blob/master/Tests/TrellisCoreTests/WorkspaceStoreTests.swift) implements the four planned S002 unit cases and additional regression/contract checks:
 
 1. Dangling pane references reject atomically.
 2. Split branches with zero, one, or three children reject atomically.

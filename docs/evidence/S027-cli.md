@@ -91,7 +91,7 @@ The built app was launched with `--fixture --state-directory <scratch>`, with a 
 
 - Missing credentials exited 2 with guidance. A token passed as an argument was rejected without being echoed.
 - `window list --token-stdin --json` returned the fixture window.
-- `layout plan` and then `layout apply` of `specs/05-api/example-layout.json` were run twice. The first apply returned `changed: true` and the second `changed: false`. Both returned identical mapping IDs with 0 launches, which also covers S026's pending live demo.
+- `layout plan` and then `layout apply` of `docs/api/example-layout.json` were run twice. The first apply returned `changed: true` and the second `changed: false`. Both returned identical mapping IDs with 0 launches, which also covers S026's pending live demo.
 - `session execute` on an ID outside the grant returned `NOT_FOUND` (exit 3).
 - A scan of the state directory found no copy of the token.
 

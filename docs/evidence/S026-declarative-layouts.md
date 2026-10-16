@@ -75,7 +75,7 @@ Planning reconciles the document against the workspace snapshot using the namesp
 
 ## Tests
 
-- **`testS026_UT01_exampleApplyTwiceIsStable`:** applies `specs/05-api/example-layout.json` with `startNew`.
+- **`testS026_UT01_exampleApplyTwiceIsStable`:** applies `docs/api/example-layout.json` with `startNew`.
   - All three fixture-shell panes run, and the mapping, split ratio, and pane titles are correct.
   - The second apply returns an identical mapping, 0 launches, and `changed: false`, with an identical snapshot and PIDs.
   - A directory-less shell pane also reapplies without conflict.
