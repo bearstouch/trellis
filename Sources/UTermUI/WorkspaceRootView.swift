@@ -14,10 +14,10 @@ public struct WorkspaceRootView: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 sidebar.frame(width: 205).disabled(model.isRestoring || model.recoveryMessage != nil)
-                Divider().overlay(model.themeColor(.border))
+                Divider().overlay(model.separatorOverlay)
                 mainArea
             }
-            Divider().overlay(model.themeColor(.border))
+            Divider().overlay(model.separatorOverlay)
             HStack(spacing: 8) {
                 Text(model.presentation.selectedWindow?.name ?? "uTerm")
                 Spacer()
@@ -31,8 +31,8 @@ public struct WorkspaceRootView: View {
             .background(model.themeColor(.surface))
         }
         .foregroundStyle(model.themeColor(.foreground))
-        .background(model.themeColor(.background))
-        .tint(model.themeColor(.accent))
+        .background(model.usesNativeChrome ? model.themeColor(.surface) : model.themeColor(.background))
+        .tint(model.chromeTint)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
@@ -93,6 +93,7 @@ public struct WorkspaceRootView: View {
         return terminal.sessionState.rawValue.capitalized
     }
     private var sessionStatusColor: Color {
+        if model.usesNativeChrome { return .secondary }
         guard let terminal = model.activeTerminal else { return model.themeColor(.mutedForeground) }
         if terminal.sessionState == .failed || (terminal.sessionState == .exited && terminal.exitCode != 0) { return model.themeColor(.error) }
         return model.themeColor(terminal.sessionState == .running ? .success : .mutedForeground)
@@ -121,7 +122,7 @@ public struct WorkspaceRootView: View {
                         }
                         Text("\(window.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
                     }.padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(window.id == model.snapshot.activeWindowID ? model.themeColor(.activeTabBackground) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .background(window.id == model.snapshot.activeWindowID ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 6))
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel(window.name)
                     .accessibilityAddTraits(window.id == model.snapshot.activeWindowID ? [.isSelected] : [])
@@ -131,14 +132,14 @@ public struct WorkspaceRootView: View {
                             .disabled(model.snapshot.windows.first?.id == window.id)
                         Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
                             .disabled(model.snapshot.windows.last?.id == window.id)
-                        Divider().overlay(model.themeColor(.border))
+                        Divider().overlay(model.separatorOverlay)
                         Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
                     }
             }
             }
             }
             Spacer(minLength: 0)
-            Divider().overlay(model.themeColor(.border))
+            Divider().overlay(model.separatorOverlay)
             Button { model.openSettings?() } label: { Label("Settings", systemImage: "slider.horizontal.3") }
                 .buttonStyle(.plain).padding(.horizontal, 10).padding(.top, 6)
         }
@@ -177,21 +178,21 @@ public struct WorkspaceRootView: View {
                         HStack(spacing: 0) {
                             ForEach(model.presentation.visibleTabs) { tab in
                                 tabLabel(tab)
-                                Divider().overlay(model.themeColor(.border)).frame(height: 20)
+                                Divider().overlay(model.separatorOverlay).frame(height: 20)
                             }
                         }
                     }.scrollIndicators(.hidden)
                     Button { Task { await model.createTab() } } label: { Image(systemName: "plus") }
                         .buttonStyle(.plain).padding(.horizontal, 14).help("New Tab (⌘T)").accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
-                Divider().overlay(model.themeColor(.border))
+                Divider().overlay(model.separatorOverlay)
                 HStack(spacing: 6) {
                     Image(systemName: "folder")
                     Text(model.defaultDirectory.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
                     Spacer()
                     Text("Local")
                 }.font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 14).frame(height: 31)
-                Divider().overlay(model.themeColor(.border))
+                Divider().overlay(model.separatorOverlay)
                 terminalCanvas
             }
         }
@@ -234,7 +235,7 @@ public struct WorkspaceRootView: View {
                     .disabled(model.presentation.visibleTabs.first?.id == tab.id)
                 Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }
                     .disabled(model.presentation.visibleTabs.last?.id == tab.id)
-                Divider().overlay(model.themeColor(.border))
+                Divider().overlay(model.separatorOverlay)
                 Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
             }
     }

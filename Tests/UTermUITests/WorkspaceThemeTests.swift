@@ -6,6 +6,24 @@ import SwiftTerm
 
 @MainActor
 final class WorkspaceThemeTests: XCTestCase {
+    func testBuiltInChromeReturnsAfterCustomPreviewInBothAppearances() async throws {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        for slot in ThemeAppearance.allCases {
+            model.useTheme(ResolvedTheme.builtIn(slot).id)
+            XCTAssertTrue(model.usesNativeChrome)
+            XCTAssertNil(model.chromeTint)
+            let terminalPalette = model.effectiveTheme.terminal
+            let document = try ThemeValidator.validate(ThemeExamples.data(slot == .light ? .light : .dark))
+            model.previewThemeInWorkspace(document)
+            XCTAssertFalse(model.usesNativeChrome)
+            XCTAssertNotNil(model.chromeTint)
+            XCTAssertEqual(model.effectiveTheme, document.resolved())
+            model.cancelThemePreview()
+            XCTAssertTrue(model.usesNativeChrome)
+            XCTAssertEqual(model.effectiveTheme.terminal, terminalPalette)
+        }
+    }
     func testS016_UT03_cancelPreviewRestoresEffectivePalette() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("uterm-theme-ui-\(UUID())")
