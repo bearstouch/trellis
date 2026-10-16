@@ -3,7 +3,7 @@ import XCTest
 
 final class ThemeValidationTests: XCTestCase {
     private let minimal = ##"{"version":1,"id":"sample","name":"Sample","appearance":"light"}"##
-    func testS015_UT01_minimalThemeInheritsDefaults() throws {
+    func testMinimalThemeInheritsDefaults() throws {
         let document = try ThemeValidator.validate(ThemeExamples.data(.minimal))
         let resolved = document.resolved(), base = ResolvedTheme.builtIn(.dark)
         XCTAssertEqual(resolved.terminal.background, 0x101820)
@@ -18,7 +18,7 @@ final class ThemeValidationTests: XCTestCase {
         let lightTerminal = minimal.dropLast() + ",\"terminal\":{\"background\":\"#FFFFFF\",\"foreground\":\"#123456\"}}"
         XCTAssertEqual(try ThemeValidator.validate(Data(lightTerminal.utf8)).resolved().terminal.background, 0xFFFFFF)
     }
-    func testS015_UT02_rejectMalformedThemeVariants() throws {
+    func testRejectMalformedThemeVariants() throws {
         let extra = { (field: String) in self.minimal.dropLast() + "," + field + "}" }
         let variants: [(String, String, ThemeValidationError.Code)] = [
             ("{", "$", .malformedJSON), (minimal + "x", "$", .malformedJSON),
@@ -71,7 +71,7 @@ final class ThemeValidationTests: XCTestCase {
         let exact = minimal + String(repeating: " ", count: 65536 - minimal.utf8.count)
         XCTAssertNoThrow(try ThemeValidator.validate(Data(exact.utf8)))
     }
-    func testS015_UT04_contrastWarningsNamePairs() throws {
+    func testContrastWarningsNamePairs() throws {
         let json =
             ##"{"version":1,"id":"dim","name":"Dim","appearance":"dark","terminal":{"background":"#101010","foreground":"#101010","cursor":"#101010","cursorText":"#101010","selectionBackground":"#101010","selectionForeground":"#101010"}}"##
         let resolved = try ThemeValidator.validate(Data(json.utf8)).resolved()

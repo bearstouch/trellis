@@ -24,7 +24,7 @@ final class WorkspaceThemeTests: XCTestCase {
             XCTAssertEqual(model.effectiveTheme.terminal, terminalPalette)
         }
     }
-    func testS016_UT03_cancelPreviewRestoresEffectivePalette() async throws {
+    func testCancelPreviewRestoresEffectivePalette() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-theme-ui-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }

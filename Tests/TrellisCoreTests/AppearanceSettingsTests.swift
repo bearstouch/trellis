@@ -2,7 +2,7 @@ import XCTest
 @testable import TrellisCore
 
 final class AppearanceSettingsTests: XCTestCase {
-    func testS014_UT01_firstLaunchPalette() {
+    func testFirstLaunchPalette() {
         let settings = AppearanceSettings()
         XCTAssertEqual(settings.chromeMode, .light)
         XCTAssertEqual(settings.fontName, "Monaco")
@@ -11,7 +11,7 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(TerminalPalette.builtIn.ansi.count, 16)
         XCTAssertTrue(settings.isValid)
     }
-    func testS014_UT02_systemModeVsExplicitMode() {
+    func testSystemModeVsExplicitMode() {
         for dark in [false, true] {
             XCTAssertFalse(ChromeMode.light.isDark(systemIsDark: dark))
             XCTAssertTrue(ChromeMode.dark.isDark(systemIsDark: dark))
@@ -22,7 +22,7 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(settings.themeID(systemIsDark: false), "trellis-light")
         XCTAssertEqual(settings.themeID(systemIsDark: true), "trellis-dark")
     }
-    func testS014_UT03_missingMonacoFallback() {
+    func testMissingMonacoFallback() {
         let menlo = TerminalFontChoice.resolve("Monaco") { $0 == "Menlo" }
         XCTAssertEqual(menlo.name, "Menlo")
         XCTAssertTrue(menlo.notice?.contains("Monaco") == true)

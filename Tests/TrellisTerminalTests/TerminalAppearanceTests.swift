@@ -6,7 +6,7 @@ import TrellisCore
 
 final class TerminalAppearanceTests: XCTestCase {
     @MainActor
-    func testS014_UT04_appearanceHasNoSessionEffects() async throws {
+    func testAppearanceHasNoSessionEffects() async throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.requestTermination(force: true) }

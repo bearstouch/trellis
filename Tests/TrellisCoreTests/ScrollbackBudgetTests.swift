@@ -2,7 +2,7 @@ import XCTest
 @testable import TrellisCore
 
 final class ScrollbackBudgetTests: XCTestCase {
-    func testS013_UT01_evictByLineAndByteLimits() {
+    func testEvictByLineAndByteLimits() {
         XCTAssertEqual(ScrollbackBudget.standard.lineLimit, 10_000)
         XCTAssertEqual(ScrollbackBudget.standard.byteLimit, 16 * 1024 * 1024)
         let limits = ScrollbackBudget(lineLimit: 3, byteLimit: 10)

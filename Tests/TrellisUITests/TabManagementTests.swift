@@ -5,7 +5,7 @@ import TrellisCore
 
 final class TabManagementTests: XCTestCase {
     @MainActor
-    func testS006_UT01_renameCommitsWithoutRestart() async throws {
+    func testRenameCommitsWithoutRestart() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
@@ -25,7 +25,7 @@ final class TabManagementTests: XCTestCase {
     }
 
     @MainActor
-    func testS006_UT02_cancelAndEmptyRenamePreserveTitle() async throws {
+    func testCancelAndEmptyRenamePreserveTitle() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
@@ -40,7 +40,7 @@ final class TabManagementTests: XCTestCase {
         XCTAssertEqual(model.snapshot, original)
     }
 
-    func testS006_UT03_duplicateRemapsHierarchy() async throws {
+    func testDuplicateRemapsHierarchy() async throws {
         let initial = try await Self.splitFixture()
         let tab = try XCTUnwrap(initial.tabs.values.first)
         let store = try WorkspaceStore(snapshot: initial)
@@ -77,7 +77,7 @@ final class TabManagementTests: XCTestCase {
         try result.snapshot.validate()
     }
 
-    func testS006_UT04_tabOrderIsWindowLocal() async throws {
+    func testTabOrderIsWindowLocal() async throws {
         let store = try WorkspaceStore()
         let first = try await store.execute(.createWindow(name: "A"))
         let a = try XCTUnwrap(first.createdWindowID)

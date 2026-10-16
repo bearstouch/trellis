@@ -6,7 +6,7 @@ final class SSHConnectionArgumentTests: XCTestCase {
         SavedHost(id: UUID(), draft: try draft.validated(isRegularFile: keys.contains), revision: 1)
     }
 
-    func testS020_UT01_buildSshArgumentsSafely() throws {
+    func testBuildSshArgumentsSafely() throws {
         let key = "/Users/me/Key Files/id ed25519"
         let full = try host(HostDraft(name: "Prod", destination: "prod-api", user: "deploy", port: "2222", identityFile: key), keys: [key])
         XCTAssertEqual(
@@ -22,7 +22,7 @@ final class SSHConnectionArgumentTests: XCTestCase {
         XCTAssertEqual(arguments[arguments.count - 2], "--")
     }
 
-    func testS020_UT02_neverAddTrustBypass() throws {
+    func testNeverAddTrustBypass() throws {
         let key = "/k/id"
         let variants = [
             HostDraft(name: "a", destination: "h"),

@@ -6,7 +6,7 @@ import TrellisCore
 
 final class TerminalSearchTests: XCTestCase {
     @MainActor
-    func testS013_UT01_engineHistoryHonorsLineAndUTF8ByteBudgets() throws {
+    func testEngineHistoryHonorsLineAndUTF8ByteBudgets() throws {
         _ = NSApplication.shared
         let native = NativeTerminal(scrollbackBudget: ScrollbackBudget(lineLimit: 3, byteLimit: 24))
         defer { native.adapter.detach() }
@@ -25,7 +25,7 @@ final class TerminalSearchTests: XCTestCase {
     }
 
     @MainActor
-    func testS013_UT02_unicodeSearchNavigatesMatches() throws {
+    func testUnicodeSearchNavigatesMatches() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }
@@ -48,7 +48,7 @@ final class TerminalSearchTests: XCTestCase {
     }
 
     @MainActor
-    func testS013_UT03_searchIsPaneLocalAndAlternateScreenDoesNotMix() throws {
+    func testSearchIsPaneLocalAndAlternateScreenDoesNotMix() throws {
         _ = NSApplication.shared
         let a = NativeTerminal(), b = NativeTerminal()
         defer { a.adapter.detach(); b.adapter.detach() }
@@ -75,7 +75,7 @@ final class TerminalSearchTests: XCTestCase {
     }
 
     @MainActor
-    func testS013_UT04_evictionInvalidatesOldMatch() throws {
+    func testEvictionInvalidatesOldMatch() throws {
         _ = NSApplication.shared
         let native = NativeTerminal(scrollbackBudget: ScrollbackBudget(lineLimit: 2, byteLimit: 64))
         defer { native.adapter.detach() }
@@ -127,7 +127,7 @@ final class TerminalSearchTests: XCTestCase {
         for index in 0..<12_000 {
             native.adapter.receive(Data("line \(index)\r\n".utf8))
         }
-        print("S013 12000 individually delivered rows: \(start.duration(to: .now))")
+        print("12000 individually delivered rows: \(start.duration(to: .now))")
         XCTAssertLessThanOrEqual(view.scrollback.retainedHistoryRows, 10_000)
         XCTAssertLessThanOrEqual(view.scrollback.retainedHistoryBytes, 70_000)
         var count = 0, bytes = 0

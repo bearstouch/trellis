@@ -5,14 +5,14 @@ import TrellisTerminal
 @testable import TrellisUI
 
 final class AppShellTests: XCTestCase {
-    func testS004_UT01_emptyStateProjection() {
+    func testEmptyStateProjection() {
         let projection = WorkspacePresentation(snapshot: WorkspaceSnapshot())
         XCTAssertTrue(projection.isEmpty)
         XCTAssertTrue(projection.visibleTabs.isEmpty)
         XCTAssertNil(projection.activePane)
     }
 
-    func testS004_UT02_selectedWindowOwnsTabBar() async throws {
+    func testSelectedWindowOwnsTabBar() async throws {
         let store = try WorkspaceStore()
         let first = try await store.execute(.createWindow(name: "Project"))
         let second = try await store.execute(.createWindow(name: "Operations"))
@@ -24,7 +24,7 @@ final class AppShellTests: XCTestCase {
         XCTAssertFalse(projection.visibleTabs.contains { $0.windowID == second.createdWindowID })
     }
 
-    func testS004_UT03_constrainOffscreenGeometry() {
+    func testConstrainOffscreenGeometry() {
         let display = WindowRectangle(x: 0, y: 0, width: 1440, height: 900)
         let rect = WindowRectangle(x: -3000, y: 4000, width: 1800, height: 1200).constrained(to: [display])
         XCTAssertGreaterThanOrEqual(rect.x, display.x)
@@ -35,7 +35,7 @@ final class AppShellTests: XCTestCase {
         XCTAssertTrue([invalid.x, invalid.y, invalid.width, invalid.height].allSatisfy(\.isFinite))
     }
 
-    func testS004_UT04_smallCanvasRetainsLayout() {
+    func testSmallCanvasRetainsLayout() {
         let a = UUID(), b = UUID(), c = UUID()
         let tree = PaneLayout.split(
             id: UUID(), axis: .x, ratio: 0.25,

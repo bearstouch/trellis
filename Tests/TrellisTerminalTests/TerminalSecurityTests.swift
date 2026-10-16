@@ -6,7 +6,7 @@ import TrellisCore
 
 final class TerminalSecurityTests: XCTestCase {
     @MainActor
-    func testS030_UT01_osc52CannotReadOrWriteClipboard() throws {
+    func testOsc52CannotReadOrWriteClipboard() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }
@@ -53,7 +53,7 @@ final class TerminalSecurityTests: XCTestCase {
     }
 
     @MainActor
-    func testS030_UT02_validateUrlAndGesture() throws {
+    func testValidateUrlAndGesture() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }

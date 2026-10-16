@@ -3,7 +3,7 @@ import XCTest
 
 final class TerminalAdapterTests: XCTestCase {
     @MainActor
-    func testS001_UT01_adapterPreservesOutputOrder() async {
+    func testAdapterPreservesOutputOrder() async {
         var chunks: [Data] = []
         let adapter = TerminalAdapter(render: { chunks.append($0) }, write: { _ in }, resizePTY: { _ in }, readText: { "" }, cleanup: {})
         let input = [Data([0, 1]), Data([2]), Data([3, 4])]
@@ -12,7 +12,7 @@ final class TerminalAdapterTests: XCTestCase {
     }
 
     @MainActor
-    func testS001_UT02_adapterPropagatesResize() async throws {
+    func testAdapterPropagatesResize() async throws {
         var sizes: [TerminalSize] = []
         let adapter = TerminalAdapter(render: { _ in }, write: { _ in }, resizePTY: { sizes.append($0) }, readText: { "" }, cleanup: {})
         let size = try TerminalSize(columns: 100, rows: 30)
@@ -24,7 +24,7 @@ final class TerminalAdapterTests: XCTestCase {
     }
 
     @MainActor
-    func testS001_UT03_adapterDetachIsIdempotent() async throws {
+    func testAdapterDetachIsIdempotent() async throws {
         var cleanupCount = 0
         var writes = 0
         var renders = 0
@@ -40,7 +40,7 @@ final class TerminalAdapterTests: XCTestCase {
     }
 
     @MainActor
-    func testS001_UT04_unsupportedEngineCapabilityIsExplicit() async throws {
+    func testUnsupportedEngineCapabilityIsExplicit() async throws {
         let adapter = TerminalAdapter(render: { _ in }, write: { _ in }, resizePTY: { _ in }, readText: { "retained text" }, cleanup: {})
         XCTAssertEqual(try adapter.read(.retainedText), "retained text")
         XCTAssertThrowsError(try adapter.read(.commandExitStatus)) { error in

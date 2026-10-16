@@ -24,7 +24,7 @@ final class AutomationSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testS024_UT01_rejectUnapprovedLaunchDescriptor() async throws {
+    func testRejectUnapprovedLaunchDescriptor() async throws {
         let h = try Harness()
         try await h.grant("full")
         try await h.grant("starter", [.metadataRead, .sessionStart], scope: .all)
@@ -71,7 +71,7 @@ final class AutomationSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testS024_UT02_validateInputEncodingAndLimit() async throws {
+    func testValidateInputEncodingAndLimit() async throws {
         let h = try Harness()
         try await h.grant("full")
         let live = try await liveWindow(h, script: "stty raw -echo; printf 'READY\\n'; exec /bin/cat > /dev/null")
@@ -102,7 +102,7 @@ final class AutomationSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testS024_UT03_executeRequiresSubmit() async throws {
+    func testExecuteRequiresSubmit() async throws {
         let h = try Harness()
         try await h.grant("full")
         try await h.grant("input", [.metadataRead, .sessionInput])
@@ -126,7 +126,7 @@ final class AutomationSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testS024_UT04_disconnectDoesNotReplayOrClose() async throws {
+    func testDisconnectDoesNotReplayOrClose() async throws {
         let h = try Harness()
         try await h.grant("full")
         let token = try await h.grants.create(name: "socket", capabilities: Set(Capability.allCases), windowScope: .all, hostScope: .all, lifetime: 600).token

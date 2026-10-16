@@ -6,7 +6,7 @@ import XCTest
 
 final class ThemePaletteTests: XCTestCase {
     @MainActor
-    func testS015_UT03_paletteIndexesKeepOrder() throws {
+    func testPaletteIndexesKeepOrder() throws {
         _ = NSApplication.shared
         let values = (0..<16).map { UInt32(0x102030 + $0 * 0x010203) }
         let json: [String: Any] = [

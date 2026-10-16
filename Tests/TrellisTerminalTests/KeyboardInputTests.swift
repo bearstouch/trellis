@@ -8,7 +8,7 @@ final class KeyboardInputTests: XCTestCase {
     private let noReplacement = NSRange(location: NSNotFound, length: 0)
 
     @MainActor
-    func testS017_UT03_inputRoutingRespectsComposition() throws {
+    func testInputRoutingRespectsComposition() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }

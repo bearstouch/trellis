@@ -2,7 +2,7 @@ import XCTest
 @testable import TrellisCore
 
 final class OutputJournalTests: XCTestCase {
-    func testS025_UT01_cursorEvictionReportsGap() throws {
+    func testCursorEvictionReportsGap() throws {
         var journal = OutputJournal(budget: 100)
         let a = UUID(), b = UUID()
         journal.append(Data(repeating: 0x41, count: 60), session: a)
@@ -28,7 +28,7 @@ final class OutputJournalTests: XCTestCase {
         XCTAssertLessThanOrEqual(journal.retainedBytes, 100, "Eviction stays aligned after removing a session")
     }
 
-    func testS025_UT02_readLimitsAndBinaryBoundaries() throws {
+    func testReadLimitsAndBinaryBoundaries() throws {
         var journal = OutputJournal()
         let session = UUID()
         let bytes: [UInt8] = [0xC3] + [0xA9, 0x00, 0xFF, 0x1B, 0x5B] + Array(repeating: 0x7A, count: 70_000)

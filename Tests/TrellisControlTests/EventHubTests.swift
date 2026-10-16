@@ -27,7 +27,7 @@ final class EventHubTests: XCTestCase {
         WorkspaceEvent(type: type, resourceID: window, windowID: window, data: ["revision": "1"])
     }
 
-    func testS025_UT03_metadataReplayGap() async throws {
+    func testMetadataReplayGap() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
         let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
         let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
@@ -54,7 +54,7 @@ final class EventHubTests: XCTestCase {
         XCTAssertEqual(error.appCode, "INVALID_CURSOR")
     }
 
-    func testS025_UT04_slowOrRevokedSubscriberStops() async throws {
+    func testSlowOrRevokedSubscriberStops() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
         let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead, .sessionOutputRead], windowScope: .all, hostScope: .all, lifetime: 3600)
         let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })

@@ -30,7 +30,7 @@ final class PortableTransferTests: XCTestCase {
     }
 
     @MainActor
-    func testS028_UT01_exportOmitsSensitiveState() async throws {
+    func testExportOmitsSensitiveState() async throws {
         let h = try Harness()
         try await h.grant("full")
         defer {
@@ -73,7 +73,7 @@ final class PortableTransferTests: XCTestCase {
     }
 
     @MainActor
-    func testS028_UT02_interactiveImportRemapsIds() async throws {
+    func testInteractiveImportRemapsIds() async throws {
         let h = try Harness()
         defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
         let transfer = PortableTransfer(model: h.model, hosts: h.hosts)
@@ -103,7 +103,7 @@ final class PortableTransferTests: XCTestCase {
     }
 
     @MainActor
-    func testS028_UT03_hostCollisionNeedsPolicy() async throws {
+    func testHostCollisionNeedsPolicy() async throws {
         let h = try Harness()
         defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
         let existing = try await h.hosts.library.create(HostDraft(name: "Prod", destination: "prod", user: "ops"))
@@ -151,7 +151,7 @@ final class PortableTransferTests: XCTestCase {
     }
 
     @MainActor
-    func testS028_UT04_invalidImportIsAtomic() async throws {
+    func testInvalidImportIsAtomic() async throws {
         let h = try Harness()
         defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
         let kept = try await h.hosts.library.create(HostDraft(name: "Keep", destination: "keep"))

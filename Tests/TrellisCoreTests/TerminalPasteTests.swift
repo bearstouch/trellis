@@ -2,7 +2,7 @@ import XCTest
 @testable import TrellisCore
 
 final class TerminalPasteTests: XCTestCase {
-    func testS012_UT01_pasteReviewClassifiesControls() {
+    func testPasteReviewClassifiesControls() {
         let plain = TerminalPastePlan(input: .text("café 👩‍💻"), shell: "/bin/zsh")
         XCTAssertFalse(plain.requiresReview)
         XCTAssertEqual(plain.lineCount, 1)
@@ -20,7 +20,7 @@ final class TerminalPasteTests: XCTestCase {
     }
 
     @MainActor
-    func testS012_UT02_cancelOrStaleTargetWritesNothing() throws {
+    func testCancelOrStaleTargetWritesNothing() throws {
         let review = TerminalPasteReview()
         let a = TerminalPasteTarget(paneID: UUID(), sessionID: UUID())
         let b = TerminalPasteTarget(paneID: UUID(), sessionID: UUID())
@@ -49,14 +49,14 @@ final class TerminalPasteTests: XCTestCase {
         XCTAssertEqual(writes, [plan.text])
     }
 
-    func testS012_UT03_bracketedPastePreservesPayload() {
+    func testBracketedPastePreservesPayload() {
         let text = "a\r\n\tcafé 👋\u{1b}\u{0}"
         let plan = TerminalPastePlan(input: .text(text), shell: nil)
         XCTAssertEqual(plan.data(bracketed: false), Data(text.utf8))
         XCTAssertEqual(plan.data(bracketed: true), Data("\u{1b}[200~".utf8) + Data(text.utf8) + Data("\u{1b}[201~".utf8))
     }
 
-    func testS012_UT04_escapePathByShell() {
+    func testEscapePathByShell() {
         let path = "/tmp/a b's $HOME\nfile"
         for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
             let plan = TerminalPastePlan(input: .paths([path]), shell: shell)

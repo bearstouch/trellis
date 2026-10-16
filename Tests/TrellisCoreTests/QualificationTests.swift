@@ -14,7 +14,7 @@ struct SplitMix64: RandomNumberGenerator {
 }
 
 final class QualificationTests: XCTestCase {
-    func testS031_UT01_randomizedTreeOperationsKeepInvariants() async throws {
+    func testRandomizedTreeOperationsKeepInvariants() async throws {
         for seed in [1, 7, 42, 2026] as [UInt64] {
             var random = SplitMix64(state: seed)
             let store = try WorkspaceStore()
@@ -57,7 +57,7 @@ final class QualificationTests: XCTestCase {
         }
     }
 
-    func testS031_UT02_queuesRespectAllBudgets() async throws {
+    func testQueuesRespectAllBudgets() async throws {
         // Output journal: a 64 MiB flood across sessions stays within budget, oldest first.
         var journal = OutputJournal()
         let sessions = (0..<4).map { _ in UUID() }
@@ -72,11 +72,11 @@ final class QualificationTests: XCTestCase {
         let budget = ScrollbackBudget.standard
         XCTAssertEqual(budget.lineLimit, 10_000)
         XCTAssertLessThanOrEqual(budget.byteLimit, 16 * 1_048_576)
-        // Persisted state over 4 MiB is refused before decoding (event ring and outbox budgets are covered in S025's hub tests).
+        // Persisted state over 4 MiB is refused before decoding (event ring and outbox budgets are covered in EventHubTests).
         XCTAssertNil(try? WorkspaceSnapshotCodec.decode(Data(repeating: 0x20, count: 4_194_305)))
     }
 
-    func testS031_UT04_measurementSummaryCalculatesP95() {
+    func testMeasurementSummaryCalculatesP95() {
         let samples = (1...100).map(Double.init)
         XCTAssertEqual(MeasurementSummary.summarize(samples), .measured(p50: 50, p95: 95, max: 100, count: 100))
         XCTAssertEqual(MeasurementSummary.summarize(samples.reversed()), .measured(p50: 50, p95: 95, max: 100, count: 100), "Order does not matter")

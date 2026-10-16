@@ -8,7 +8,7 @@ final class ReleaseTests: XCTestCase {
         try JSONDecoder().decode(ReleaseManifest.self, from: Data(contentsOf: root.appendingPathComponent("release/manifest.json")))
     }
 
-    func testS032_UT01_manifestMatchesSupportPolicy() throws {
+    func testManifestMatchesSupportPolicy() throws {
         let manifest = try manifest()
         XCTAssertEqual(manifest.bundleIdentifier, "dev.trellis")
         XCTAssertEqual(Set(manifest.architectures), ["arm64", "x86_64"], "Universal 2")
@@ -33,7 +33,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertTrue(problems.contains { $0.contains("Helpers/trellis") })
     }
 
-    func testS032_UT02_cliLinkPlanIsUserLocal() {
+    func testCliLinkPlanIsUserLocal() {
         let home = "/Users/fixture", cli = "/Applications/Trellis.app/Contents/Helpers/trellis"
         XCTAssertEqual(
             CLILinkPlanner.install(directory: "~/.local/bin", home: home, cliPath: cli, existing: .nothing),
@@ -57,7 +57,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(CLILinkPlanner.remove(directory: "~/.local/bin", home: home, existing: .nothing), .nothingToRemove)
     }
 
-    func testS032_UT03_cleanupAllowlistProtectsUserFiles() {
+    func testCleanupAllowlistProtectsUserFiles() {
         let home = "/Users/fixture"
         let items = UninstallPlanner.items(home: home, cliLink: "/Users/fixture/.local/bin/trellis")
         XCTAssertEqual(items.count, 5)
@@ -79,7 +79,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertTrue(UninstallPlanner.isAllowed("/Users/fixture/Library/Application Support/dev.trellis", home: home))
     }
 
-    func testS032_UT04_releaseChecklistRejectsMissingEvidence() {
+    func testReleaseChecklistRejectsMissingEvidence() {
         var checklist = ReleaseChecklist()
         let empty = checklist.missing(requiredArchitectures: ["arm64", "x86_64"], minimumMacOS: "14.0")
         XCTAssertTrue(empty.contains("Tested matrix: no passing run on arm64."))
@@ -87,21 +87,22 @@ final class ReleaseTests: XCTestCase {
         XCTAssertTrue(empty.contains("Tested matrix: no passing run on the minimum macOS 14.0."))
         XCTAssertTrue(empty.contains("Notarization is not evidenced."))
         XCTAssertTrue(empty.contains("Gatekeeper check on a clean machine is not evidenced."))
-        XCTAssertTrue(empty.contains("S031 acceptance evidence is incomplete."))
+        XCTAssertTrue(empty.contains("Performance and reliability qualification is not evidenced."))
 
-        // Only arm64 on a newer OS, ad-hoc signing, and a blocked story: still not ready.
+        // Only arm64 on a newer OS, ad-hoc signing, and a failed qualification: still not ready.
         checklist.matrix = [ReleaseChecklist.MatrixEntry(macOS: "26.6.2", architecture: "arm64", passed: true)]
         checklist.signatureVerified = true
         checklist.hardenedRuntime = true
         checklist.licensesRecorded = true
         checklist.cliInstallVerified = true
-        checklist.completedStories = Set(ReleaseChecklist.requiredStories).subtracting(["S031"])
+        checklist.acceptanceChecksComplete = true
         let partial = checklist.missing(requiredArchitectures: ["arm64", "x86_64"], minimumMacOS: "14.0")
         XCTAssertEqual(
             partial,
             [
                 "Tested matrix: no passing run on x86_64.", "Tested matrix: no passing run on the minimum macOS 14.0.", "Notarization is not evidenced.",
-                "Stapled ticket is not evidenced.", "Gatekeeper check on a clean machine is not evidenced.", "S031 acceptance evidence is incomplete."
+                "Stapled ticket is not evidenced.", "Gatekeeper check on a clean machine is not evidenced.",
+                "Performance and reliability qualification is not evidenced."
             ])
         // The minimum OS matches by major release only.
         checklist.matrix.append(ReleaseChecklist.MatrixEntry(macOS: "140.1", architecture: "arm64", passed: true))
@@ -114,7 +115,7 @@ final class ReleaseTests: XCTestCase {
         checklist.notarized = true
         checklist.stapled = true
         checklist.gatekeeperOnCleanMachine = true
-        checklist.completedStories = Set(ReleaseChecklist.requiredStories)
+        checklist.qualificationPassed = true
         XCTAssertEqual(checklist.missing(requiredArchitectures: ["arm64", "x86_64"], minimumMacOS: "14.0"), [], "Ready only when every item is evidenced")
     }
 }

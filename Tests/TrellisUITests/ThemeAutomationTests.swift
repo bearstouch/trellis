@@ -19,7 +19,7 @@ final class ThemeAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS029_UT01_themePermissionMatrix() async throws {
+    func testThemePermissionMatrix() async throws {
         let h = try Harness(themeDirectory: themes)
         defer { h.discardPreferences() }
         try await h.grant("full")
@@ -49,7 +49,7 @@ final class ThemeAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS029_UT02_rejectWrongAppearanceSlot() async throws {
+    func testRejectWrongAppearanceSlot() async throws {
         let h = try Harness(themeDirectory: themes)
         defer { h.discardPreferences() }
         try await h.grant("full")
@@ -69,7 +69,7 @@ final class ThemeAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS029_UT03_protectBuiltInsAndRevision() async throws {
+    func testProtectBuiltInsAndRevision() async throws {
         let h = try Harness(themeDirectory: themes)
         defer { h.discardPreferences() }
         try await h.grant("full")
@@ -106,7 +106,7 @@ final class ThemeAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS029_UT04_appearanceEventHasNoProcessEffects() async throws {
+    func testAppearanceEventHasNoProcessEffects() async throws {
         let h = try Harness(themeDirectory: themes)
         defer {
             h.model.terminals.values.forEach {

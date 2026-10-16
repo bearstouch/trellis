@@ -14,7 +14,7 @@ final class TerminalCopyTests: XCTestCase {
     }
 
     @MainActor
-    func testS011_UT01_copyStripsControlsPreservesUnicode() throws {
+    func testCopyStripsControlsPreservesUnicode() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }
@@ -29,7 +29,7 @@ final class TerminalCopyTests: XCTestCase {
     }
 
     @MainActor
-    func testS011_UT02_cmdCWithoutSelectionDoesNotInterrupt() throws {
+    func testCmdCWithoutSelectionDoesNotInterrupt() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }
@@ -50,7 +50,7 @@ final class TerminalCopyTests: XCTestCase {
     }
 
     @MainActor
-    func testS011_UT03_ctrlCStillReachesTerminal() throws {
+    func testCtrlCStillReachesTerminal() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }
@@ -67,7 +67,7 @@ final class TerminalCopyTests: XCTestCase {
     }
 
     @MainActor
-    func testS011_UT04_copyUsesFocusedPane() throws {
+    func testCopyUsesFocusedPane() throws {
         _ = NSApplication.shared
         let first = NativeTerminal(), second = NativeTerminal()
         defer { first.adapter.detach(); second.adapter.detach() }

@@ -17,7 +17,7 @@ final class LifecycleCleanupTests: XCTestCase {
     }
 
     @MainActor
-    func testS031_UT03_repeatedCleanupReturnsToBaseline() async throws {
+    func testRepeatedCleanupReturnsToBaseline() async throws {
         let h = try Harness()
         try await h.grant("full")
         defer { h.discardPreferences() }

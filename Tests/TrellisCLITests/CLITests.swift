@@ -55,7 +55,7 @@ final class CLIHarness {
 }
 
 final class CLITests: XCTestCase {
-    func testS027_UT01_parseAndRejectAmbiguousArguments() throws {
+    func testParseAndRejectAmbiguousArguments() throws {
         let create = try CLIArguments.parse(["session", "start", "--pane", UUID().uuidString, "--process", "/bin/echo", "--arg", "a b", "--arg", "c", "--directory", "/tmp", "--json"])
         XCTAssertEqual(create.spec, "session.start")
         XCTAssertEqual(create.options["arg"], ["a b", "c"])
@@ -154,7 +154,7 @@ final class CLITests: XCTestCase {
         XCTAssertNil(try transport.nextNotification())
     }
 
-    func testS027_UT02_jsonAndExitCodeMapping() throws {
+    func testJsonAndExitCodeMapping() throws {
         let cases: [(String?, Int, Int32)] = [
             ("NOT_FOUND", -32000, 3), ("AUTH_REQUIRED", -32000, 4), ("PERMISSION_DENIED", -32000, 4), ("CONFLICT", -32000, 5),
             ("CONFIRMATION_REQUIRED", -32000, 5), ("LAUNCH_FAILED", -32000, 6), ("INVALID_STATE", -32000, 8), ("LIMIT_EXCEEDED", -32000, 8),
@@ -197,7 +197,7 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(plain.err, ["trellis: Nope. (NOT_FOUND)"])
     }
 
-    func testS027_UT03_launchOnlyWhenRequested() {
+    func testLaunchOnlyWhenRequested() {
         let absent = CLIHarness()
         absent.discovery = nil
         XCTAssertEqual(absent.run(["window", "list", "--json", "--token-stdin"]), 7)
@@ -222,7 +222,7 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(running.launches, 0, "An already running app is never relaunched")
     }
 
-    func testS027_UT04_credentialsNeverInArgumentsOrLogs() throws {
+    func testCredentialsNeverInArgumentsOrLogs() throws {
         let secret = "trl_STDIN_SECRET_123"
         for flag in ["--token", "--password"] {
             let h = CLIHarness()

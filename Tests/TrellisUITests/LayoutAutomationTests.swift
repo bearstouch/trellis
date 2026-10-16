@@ -52,7 +52,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT01_exampleApplyTwiceIsStable() async throws {
+    func testExampleApplyTwiceIsStable() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {
@@ -103,7 +103,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT02_schemaAndSemanticFailuresAreAtomic() async throws {
+    func testSchemaAndSemanticFailuresAreAtomic() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {
@@ -170,7 +170,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT03_stalePlanAndLiveChangesConflict() async throws {
+    func testStalePlanAndLiveChangesConflict() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {
@@ -253,7 +253,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     @MainActor
-    func testS026_UT04_partialLaunchFailureIsReported() async throws {
+    func testPartialLaunchFailureIsReported() async throws {
         let h = try await harness()
         defer {
             h.model.terminals.values.forEach {
