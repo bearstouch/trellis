@@ -42,7 +42,7 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S029 | Implemented/reviewed — 289 tests pass; installed-CLI live check pending | [S029 evidence](../../docs/evidence/S029-theme-control-api.md) |
 | S030 | Implemented/reviewed — 295 tests pass; native link/clipboard/diagnostics checks pending | [S030 evidence](../../docs/evidence/S030-terminal-security.md) |
 | S031 | **Blocked** — measured; flood throughput 5–7.6 of 10 MiB/s misses NFR-P07; other targets meet (typing/switch as proxies) | [S031 evidence](../../docs/evidence/S031-qualification.md) |
-| S032 | Planned | Stories below |
+| S032 | **Blocked for release** — Universal 2 packaging, CLI link, release gate, docs done (309 tests); notarization/Gatekeeper/matrix pending | [S032 evidence](../../docs/evidence/S032-packaging-release.md) |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 

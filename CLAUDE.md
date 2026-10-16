@@ -32,6 +32,7 @@ swift run Trellis --state-directory /abs/path  # separate dev workspace + theme 
 scripts/run-feasibility.sh [--build-only]      # assemble, ad-hoc sign, verify (and open) .app
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"
 python3 scripts/qualify.py [--quick]        # S031 release qualification (~5 min, opens isolated app windows)
+scripts/package-release.sh                  # Universal 2 DMG; ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE
 ```
 
 There is no SwiftLint/SwiftFormat binary; use the toolchain's `swift format` with the repo
@@ -48,6 +49,7 @@ Always run format + lint + build + test before committing.
 | `TrellisUI` | SwiftUI/AppKit views and `AppWorkspaceModel` (`@MainActor` `ObservableObject` bridging store ↔ views ↔ terminals). |
 | `TrellisControl` | Local automation: AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, auth-gated `ControlHandler`. |
 | `TrellisApp` | `AppMain.swift`: app entry, menus/commands, launch arguments. |
+| `TrellisRelease` | Release manifest checks, user-local CLI link planner, uninstall allow-list, release checklist. |
 | `TrellisCLI` / `TrellisCLIMain` | `trellis-cli` (installed as `trellis`): injected-effect CLI over the control socket; no token argv, no retries. |
 | Tests | `TrellisCoreTests`, `TrellisTerminalTests`, `TrellisUITests`, `TrellisControlTests`, `TrellisCLITests` (XCTest). |
 

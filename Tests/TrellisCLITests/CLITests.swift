@@ -2,6 +2,7 @@ import Darwin
 import XCTest
 @testable import TrellisCLI
 @testable import TrellisControl
+import TrellisRelease
 
 /// Scripted transport: replies by method and records every call.
 final class FakeTransport: CLITransport {
@@ -272,6 +273,59 @@ final class CLITests: XCTestCase {
         h.transport.replies["theme.validate"] = ["result": .object(["valid": .bool(false), "errors": .array([])])]
         XCTAssertEqual(h.run(["theme", "validate", "theme.json", "--token-stdin", "--json"]), 2, "An invalid theme is a schema error")
         XCTAssertTrue(h.out.last?.contains("INVALID_THEME") == true)
+    }
+
+    func testCLILinkCommandsAreExplicitAndUserLocal() {
+        let h = CLIHarness()
+        var created: [(String, String)] = [], removed: [String] = []
+        var existing: CLILinkPlanner.Existing = .nothing
+        var environment = h.environment
+        environment.home = "/Users/fixture"
+        environment.executablePath = "/Applications/Trellis.app/Contents/Helpers/trellis"
+        environment.linkState = { _ in existing }
+        environment.createLink = { created.append(($0, $1)) }
+        environment.removeLink = { removed.append($0) }
+        XCTAssertEqual(CLI.run(["cli", "install-link", "--json"], environment: environment), 0)
+        XCTAssertEqual(created.map(\.0), ["/Users/fixture/.local/bin/trellis"])
+        XCTAssertEqual(h.transport.calls.count, 0, "Local setup needs no app connection or credentials")
+        existing = .otherFile
+        XCTAssertEqual(CLI.run(["cli", "install-link", "--json"], environment: environment), 5, "An unrelated file is never overwritten")
+        XCTAssertEqual(CLI.run(["cli", "install-link", "--dir", "/usr/local/bin", "--json"], environment: environment), 2)
+        XCTAssertEqual(CLI.run(["cli", "remove-link", "--json"], environment: environment), 5)
+        XCTAssertEqual(removed, [])
+        existing = .symlink(to: "/Applications/Trellis.app/Contents/Helpers/trellis")
+        XCTAssertEqual(CLI.run(["cli", "remove-link", "--json"], environment: environment), 0)
+        XCTAssertEqual(removed, ["/Users/fixture/.local/bin/trellis"])
+        environment.executablePath = "/usr/local/bin/trellis-cli"
+        XCTAssertEqual(CLI.run(["cli", "install-link"], environment: environment), 2, "Only the app-bundled CLI links itself")
+        XCTAssertEqual(CLI.run(["cli", "uninstall-plan", "--json"], environment: environment), 0)
+        XCTAssertEqual(CLI.run(["cli", "uninstall-plan", "--dir", "~/.SSH", "--json"], environment: environment), 2)
+    }
+
+    func testCLILinkRefusesSymlinkedDirectoryOutsideHome() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tlink-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let home = root.appendingPathComponent("home"), outside = root.appendingPathComponent("outside")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: home.appendingPathComponent("bin"), withDestinationURL: outside)  // like ~/bin -> /usr/local/bin
+        let h = CLIHarness()
+        var environment = h.environment
+        var created: [String] = []
+        environment.home = home.path
+        environment.executablePath = "/Applications/Trellis.app/Contents/Helpers/trellis"
+        environment.createLink = { link, _ in created.append(link) }
+        environment.removeLink = { created.append($0) }
+        XCTAssertEqual(CLI.run(["cli", "install-link", "--dir", "~/bin", "--json"], environment: environment), 2)
+        XCTAssertEqual(CLI.run(["cli", "remove-link", "--dir", "~/bin", "--json"], environment: environment), 2)
+        XCTAssertEqual(created, [])
+        XCTAssertEqual(CLI.run(["cli", "install-link", "--dir", "~/.local/bin", "--json"], environment: environment), 0)
+        XCTAssertEqual(created, [home.path + "/.local/bin/trellis"])
+        // The live remover unlinks, and never deletes a directory recursively.
+        let directory = root.appendingPathComponent("dir")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try CLIEnvironment.live.removeLink(directory.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
     }
 
     func testRealSocketRoundTripThroughDiscovery() throws {

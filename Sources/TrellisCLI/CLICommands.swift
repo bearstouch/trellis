@@ -83,6 +83,12 @@ enum CLICommands {
             "export": spec("theme.export", ["id", "theme"], switches: ["resolved"]),
             "delete": spec("theme.delete", ["id", "theme"])
         ],
+        // Local setup commands: no app connection or credentials.
+        "cli": [
+            "install-link": CommandSpec(method: "local.installLink", options: ["dir"]),
+            "remove-link": CommandSpec(method: "local.removeLink", options: ["dir"]),
+            "uninstall-plan": CommandSpec(method: "local.uninstallPlan", options: ["dir"])
+        ],
         "appearance": [
             "get": spec("appearance.get"),
             "set": spec("appearance.set", ["mode", "light-theme", "dark-theme", "expected-revision"])

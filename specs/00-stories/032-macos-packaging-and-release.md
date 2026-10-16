@@ -1,7 +1,7 @@
 # S032 — Package and qualify the macOS-only release
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Blocked for release — tooling, Universal 2 packaging, CLI link, docs, and release gate done (309 tests); Developer ID notarization/Gatekeeper and matrix pending  
 Delivery phase: 5  
 Depends on: [S017](017-keyboard-and-accessibility.md), [S020](020-ssh-connections.md), [S027](027-cli-and-agent-workflows.md), [S028](028-portable-import-and-export.md), [S029](029-theme-control-api.md), [S030](030-terminal-security-and-diagnostics.md), [S031](031-performance-and-reliability-qualification.md)  
 Requirements: `MAC-01`, `MAC-02`, `MAC-03`, `MAC-08`, `MAC-09`, `MAC-10`, `MAC-11`, `MAC-12`
@@ -34,7 +34,7 @@ Perform real signature/notarization/Gatekeeper checks, install/upgrade/uninstall
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S032 packaging evidence](../../docs/evidence/S032-packaging-release.md) and the [release guide](../../docs/release/README.md). Blocked: Developer ID signing/notarization/clean-machine Gatekeeper, the macOS 14/15 and native Intel matrix, and outstanding P0 evidence (S031 and pending native checks).
 
 ## Scope notes
 
