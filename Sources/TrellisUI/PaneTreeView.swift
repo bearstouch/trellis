@@ -110,8 +110,6 @@ struct PaneTreeView: View {
                             }
                         }
                     }
-            }.overlay {
-                Rectangle().strokeBorder(focused ? model.themeColor(.focusRing) : .clear, lineWidth: model.increaseContrast ? 3 : 2).allowsHitTesting(false)
             }
         } else {
             model.terminalBackground

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-solarized-light",
+  "name": "Solarized Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#FDF6E3",
+    "foreground": "#51656C",
+    "cursor": "#00756D",
+    "cursorText": "#FDF6E3",
+    "selectionBackground": "#B9D3C3",
+    "selectionForeground": "#45565B",
+    "ansi": [
+      "#EEE8D5",
+      "#C42B29",
+      "#637500",
+      "#886600",
+      "#176DA5",
+      "#B52B70",
+      "#007F77",
+      "#51656C",
+      "#828C8A",
+      "#A72523",
+      "#546300",
+      "#745700",
+      "#145D8C",
+      "#9A255F",
+      "#006C65",
+      "#51656C"
+    ]
+  },
+  "ui": {
+    "background": "#FDF6E3",
+    "surface": "#F2EBD8",
+    "sidebarBackground": "#EEE8D5",
+    "foreground": "#51656C",
+    "mutedForeground": "#596263",
+    "accent": "#00756D",
+    "border": "#7E837B",
+    "activeTabBackground": "#B9D3C3",
+    "activeTabForeground": "#45565B",
+    "focusRing": "#00756D",
+    "success": "#5B6C00",
+    "warning": "#7D5E00",
+    "error": "#C42B29"
+  }
+}

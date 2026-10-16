@@ -6,6 +6,28 @@ import SwiftTerm
 
 @MainActor
 final class WorkspaceThemeTests: XCTestCase {
+    func testBundledThemeSelectionSurvivesReloadAndPreview() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = ThemeLibrary(directory: directory)
+        let suite = "trellis-bundled-themes-\(UUID())"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite) }
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, themeLibrary: library)
+        for theme in BundledThemes.all where theme.id != "trellis-light" && theme.id != "trellis-dark" {
+            model.useTheme(theme.id)
+            await model.reloadThemes()
+            XCTAssertEqual(model.effectiveTheme, theme)
+            XCTAssertFalse(model.usesNativeChrome)
+            let data = try await model.exportTheme(theme.id, resolved: false)
+            model.previewThemeInWorkspace(try ThemeValidator.validate(ThemeExamples.data(.minimal)))
+            model.cancelThemePreview()
+            XCTAssertEqual(model.effectiveTheme, theme)
+            XCTAssertEqual(try ThemeValidator.validate(data).resolved(), theme)
+        }
+    }
+
     func testBuiltInChromeReturnsAfterCustomPreviewInBothAppearances() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())

@@ -53,7 +53,7 @@ Changes apply live, without restarting sessions.
 
 - Every primary operation can be done from the keyboard, and the focus location stays visible in the terminal, tabs, sidebar and dialogs.
 - VoiceOver can identify sidebar items, tabs, terminal panes, their status, and action labels. `WorkspaceAccessibility` provides them, for example "Window Project, 2 tabs, new output", "Tab Build, 1 of 2", and "Terminal Server, Exited (7), focused".
-- Selection is shown by shape and weight as well as color: a semibold title, a tab underline and a 2 pt focus ring. Stopped, exited and failed panes show a text status. **Color is never the only signal.**
+- Selection is shown by shape and weight as well as color: a semibold pane title and a tab underline. Terminal panes have no surrounding focus border. Stopped, exited and failed panes show a text status. **Color is never the only signal.**
 - Trellis honors the system appearance, increased contrast, reduced motion and native text input.
 - While a tab name is being edited, terminal input is suspended, so keystrokes can't leak into a shell.
 - Trellis never requests Accessibility, event-tap or global-monitor permissions.

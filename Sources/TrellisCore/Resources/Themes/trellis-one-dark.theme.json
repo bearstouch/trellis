@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-one-dark",
+  "name": "One Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#282C34",
+    "foreground": "#ABB2BF",
+    "cursor": "#61AFEF",
+    "cursorText": "#282C34",
+    "selectionBackground": "#374F66",
+    "selectionForeground": "#B8BEC9",
+    "ansi": [
+      "#21252B",
+      "#E06C75",
+      "#98C379",
+      "#E5C07B",
+      "#61AFEF",
+      "#C678DD",
+      "#56B6C2",
+      "#ABB2BF",
+      "#7D838E",
+      "#E5828A",
+      "#A7CC8D",
+      "#E9C98F",
+      "#79BBF1",
+      "#CF8CE2",
+      "#6FC1CB",
+      "#ABB2BF"
+    ]
+  },
+  "ui": {
+    "background": "#282C34",
+    "surface": "#303641",
+    "sidebarBackground": "#21252B",
+    "foreground": "#ABB2BF",
+    "mutedForeground": "#9CA1AB",
+    "accent": "#61AFEF",
+    "border": "#7B7F88",
+    "activeTabBackground": "#374F66",
+    "activeTabForeground": "#B8BEC9",
+    "focusRing": "#61AFEF",
+    "success": "#98C379",
+    "warning": "#E5C07B",
+    "error": "#E4838A"
+  }
+}

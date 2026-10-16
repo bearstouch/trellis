@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-nord-dark",
+  "name": "Nord Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#2E3440",
+    "foreground": "#ECEFF4",
+    "cursor": "#88C0D0",
+    "cursorText": "#2E3440",
+    "selectionBackground": "#465A67",
+    "selectionForeground": "#ECEFF4",
+    "ansi": [
+      "#272D38",
+      "#BF616A",
+      "#A3BE8C",
+      "#EBCB8B",
+      "#81A1C1",
+      "#B48EAD",
+      "#8FBCBB",
+      "#ECEFF4",
+      "#AAAEB5",
+      "#C97980",
+      "#B1C89D",
+      "#EED39C",
+      "#94AFCA",
+      "#BF9FB9",
+      "#A0C6C5",
+      "#ECEFF4"
+    ]
+  },
+  "ui": {
+    "background": "#2E3440",
+    "surface": "#3B4252",
+    "sidebarBackground": "#272D38",
+    "foreground": "#ECEFF4",
+    "mutedForeground": "#BCC0C7",
+    "accent": "#88C0D0",
+    "border": "#8E929A",
+    "activeTabBackground": "#465A67",
+    "activeTabForeground": "#ECEFF4",
+    "focusRing": "#88C0D0",
+    "success": "#A3BE8C",
+    "warning": "#EBCB8B",
+    "error": "#D8A0A5"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-monokai-light",
+  "name": "Monokai Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#FAF9F3",
+    "foreground": "#383830",
+    "cursor": "#4B690A",
+    "cursorText": "#FAF9F3",
+    "selectionBackground": "#CBD2B4",
+    "selectionForeground": "#383830",
+    "ansi": [
+      "#E8E7DF",
+      "#BD1652",
+      "#50750E",
+      "#806500",
+      "#087D94",
+      "#7543B8",
+      "#147C70",
+      "#383830",
+      "#7C7C74",
+      "#A11346",
+      "#44630C",
+      "#6D5600",
+      "#076A7E",
+      "#63399C",
+      "#11695F",
+      "#383830"
+    ]
+  },
+  "ui": {
+    "background": "#FAF9F3",
+    "surface": "#F0EFE7",
+    "sidebarBackground": "#E8E7DF",
+    "foreground": "#383830",
+    "mutedForeground": "#686861",
+    "accent": "#4B690A",
+    "border": "#7F7E79",
+    "activeTabBackground": "#CBD2B4",
+    "activeTabForeground": "#383830",
+    "focusRing": "#4B690A",
+    "success": "#4A6C0D",
+    "warning": "#765D00",
+    "error": "#BD1652"
+  }
+}

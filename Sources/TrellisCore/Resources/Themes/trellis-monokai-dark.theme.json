@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-monokai-dark",
+  "name": "Monokai Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#272822",
+    "foreground": "#F8F8F2",
+    "cursor": "#A6E22E",
+    "cursorText": "#272822",
+    "selectionBackground": "#495A25",
+    "selectionForeground": "#F8F8F2",
+    "ansi": [
+      "#20211C",
+      "#F92672",
+      "#A6E22E",
+      "#E6DB74",
+      "#66D9EF",
+      "#AE81FF",
+      "#A1EFE4",
+      "#F8F8F2",
+      "#AFAFA9",
+      "#FA4787",
+      "#B3E64D",
+      "#EAE089",
+      "#7DDFF1",
+      "#BA94FF",
+      "#AFF1E8",
+      "#F8F8F2"
+    ]
+  },
+  "ui": {
+    "background": "#272822",
+    "surface": "#303129",
+    "sidebarBackground": "#20211C",
+    "foreground": "#F8F8F2",
+    "mutedForeground": "#C4C4BE",
+    "accent": "#A6E22E",
+    "border": "#858680",
+    "activeTabBackground": "#495A25",
+    "activeTabForeground": "#F8F8F2",
+    "focusRing": "#A6E22E",
+    "success": "#A6E22E",
+    "warning": "#E6DB74",
+    "error": "#F9649A"
+  }
+}

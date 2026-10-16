@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-github-dark",
+  "name": "GitHub Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#0D1117",
+    "foreground": "#E6EDF3",
+    "cursor": "#58A6FF",
+    "cursorText": "#0D1117",
+    "selectionBackground": "#213956",
+    "selectionForeground": "#E6EDF3",
+    "ansi": [
+      "#010409",
+      "#FF7B72",
+      "#7EE787",
+      "#D2A8FF",
+      "#79C0FF",
+      "#FF7BCA",
+      "#A5D6FF",
+      "#E6EDF3",
+      "#9AA0A6",
+      "#FF8F87",
+      "#91EB99",
+      "#D9B5FF",
+      "#8DC9FF",
+      "#FF8FD2",
+      "#B2DCFF",
+      "#E6EDF3"
+    ]
+  },
+  "ui": {
+    "background": "#0D1117",
+    "surface": "#161B22",
+    "sidebarBackground": "#010409",
+    "foreground": "#E6EDF3",
+    "mutedForeground": "#B0B6BC",
+    "accent": "#58A6FF",
+    "border": "#6F747A",
+    "activeTabBackground": "#213956",
+    "activeTabForeground": "#E6EDF3",
+    "focusRing": "#58A6FF",
+    "success": "#7EE787",
+    "warning": "#D2A8FF",
+    "error": "#FF7B72"
+  }
+}

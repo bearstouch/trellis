@@ -4,6 +4,27 @@ import TrellisCore
 
 @MainActor
 public enum NativeTerminalFont {
+    public static var installedNames: [String] {
+        let fonts = NSFontManager.shared.availableFonts.compactMap { NSFont(name: $0, size: 13) }
+            .filter { $0.isFixedPitch || $0.fontDescriptor.symbolicTraits.contains(.monoSpace) }
+        let families = Dictionary(grouping: fonts) { $0.familyName ?? $0.fontName }
+        return families.values.compactMap { faces in
+            faces.sorted { a, b in
+                func score(_ font: NSFont) -> Int {
+                    let traits = font.fontDescriptor.symbolicTraits
+                    return (traits.contains(.bold) ? 100 : 0) + (traits.contains(.italic) ? 100 : 0)
+                        + abs(NSFontManager.shared.weight(of: font) - 5)
+                }
+                let left = score(a), right = score(b)
+                return left == right ? a.fontName < b.fontName : left < right
+            }.first?.fontName
+        }.sorted { typefaceName(for: $0).localizedStandardCompare(typefaceName(for: $1)) == .orderedAscending }
+    }
+
+    public static func typefaceName(for name: String) -> String {
+        NSFont(name: name, size: 13)?.familyName ?? name
+    }
+
     public static func choice(for name: String) -> TerminalFontChoice {
         TerminalFontChoice.resolve(name) { candidate in
             guard let font = NSFont(name: candidate, size: 13) else { return false }

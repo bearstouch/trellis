@@ -12,11 +12,11 @@ The three examples are also bundled in `Sources/TrellisCore/Resources/Themes`. `
 
 ## User experience
 
-- Trellis ships **Trellis Dark** (`trellis-dark`) and **Trellis Light** (`trellis-light`).
+- Trellis ships **Trellis Dark** (`trellis-dark`) and **Trellis Light** (`trellis-light`), plus 10 editor-inspired families with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations with complete app and terminal palettes, available immediately without importing files.
 - **Settings → Appearance** offers **System**, **Dark** and **Light** chrome modes. Light is the first-launch default. System follows macOS, and an explicit Dark or Light stays fixed.
 - Users pick a theme separately for each appearance, so a custom dark theme can be paired with the built-in light one.
-- **Terminal panes stay dark** with a light foreground and Monaco in both built-in themes. Switching to light chrome never turns terminals white. A custom theme can override the terminal colors explicitly.
-- The font isn't part of a theme. Monaco is a terminal setting; if it's missing, Trellis uses Menlo or the system monospace font and shows a notice.
+- The original **Trellis Light** and **Trellis Dark** defaults keep terminal panes dark. The additional families use light terminal backgrounds in their light variants and dark backgrounds in their dark variants.
+- The font isn't part of a theme. **Settings → Appearance → Terminal font** lists locally installed monospace typefaces (one entry per family) and previews the selected font. Monaco is the default; if a saved font is missing or isn't monospaced, Trellis uses Menlo or the system monospace font and shows a notice. Choose **Apply Appearance** to save font changes.
 - The resolved theme colors the sidebar, tabs, split dividers, focus indicators, terminal background and foreground, cursor, selection and ANSI palette. System dialogs and standard controls follow the native appearance.
 - Changing the appearance updates every window and pane without restarting shells, changing terminal contents, or losing focus or selection.
 

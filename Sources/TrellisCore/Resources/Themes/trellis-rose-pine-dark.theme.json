@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-rose-pine-dark",
+  "name": "Rose Pine Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#191724",
+    "foreground": "#E0DEF4",
+    "cursor": "#C4A7E7",
+    "cursorText": "#191724",
+    "selectionBackground": "#473E59",
+    "selectionForeground": "#E0DEF4",
+    "ansi": [
+      "#151320",
+      "#EB6F92",
+      "#9CCFD8",
+      "#F6C177",
+      "#31748F",
+      "#C4A7E7",
+      "#EBBCBA",
+      "#E0DEF4",
+      "#9A98AB",
+      "#EE85A2",
+      "#ABD6DE",
+      "#F7CA8B",
+      "#5089A0",
+      "#CDB4EB",
+      "#EEC6C4",
+      "#E0DEF4"
+    ]
+  },
+  "ui": {
+    "background": "#191724",
+    "surface": "#1F1D2E",
+    "sidebarBackground": "#151320",
+    "foreground": "#E0DEF4",
+    "mutedForeground": "#AEACC0",
+    "accent": "#C4A7E7",
+    "border": "#737182",
+    "activeTabBackground": "#473E59",
+    "activeTabForeground": "#E0DEF4",
+    "focusRing": "#C4A7E7",
+    "success": "#9CCFD8",
+    "warning": "#F6C177",
+    "error": "#EB6F92"
+  }
+}

@@ -1,5 +1,6 @@
 import SwiftUI
 import TrellisCore
+import TrellisTerminal
 
 extension ChromeMode {
     var colorScheme: ColorScheme? {
@@ -111,19 +112,31 @@ struct AppearanceSettingsView: View {
     @ObservedObject var model: AppWorkspaceModel
     @State private var draft = AppearanceSettings()
     @State private var message: String?
+    @State private var fontNames: [String] = []
     var body: some View {
         Form {
             Picker("Application appearance", selection: $draft.chromeMode) {
                 ForEach(ChromeMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }.pickerStyle(.segmented)
-            Text("Built-in themes keep terminal backgrounds dark. Custom themes can change terminal colors.").font(.caption).foregroundStyle(.secondary)
+            Text("Choose matching light and dark palettes for the app and terminal.").font(.caption).foregroundStyle(.secondary)
             Picker("Light theme", selection: $draft.lightThemeID) {
                 ForEach(model.availableThemes(for: .light), id: \.id) { Text($0.name).tag($0.id) }
             }
             Picker("Dark theme", selection: $draft.darkThemeID) {
                 ForEach(model.availableThemes(for: .dark), id: \.id) { Text($0.name).tag($0.id) }
             }
-            TextField("Terminal font", text: $draft.fontName)
+            Picker("Terminal font", selection: $draft.fontName) {
+                if !fontNames.contains(draft.fontName) {
+                    Text("\(draft.fontName) (unavailable)").tag(draft.fontName)
+                }
+                ForEach(fontNames, id: \.self) { name in
+                    Text(NativeTerminalFont.typefaceName(for: name)).tag(name)
+                }
+            }
+            Text("Installed monospace typefaces on this Mac.").font(.caption).foregroundStyle(.secondary)
+            Text("The quick brown fox jumps over 0123456789")
+                .font(.custom(draft.fontName, size: draft.fontSize))
+                .lineLimit(1)
             Stepper("Font size: \(draft.fontSize, specifier: "%.0f") pt", value: $draft.fontSize, in: 8...48)
             Text("Use View → Zoom In / Zoom Out, or ⌘+ / ⌘−. Actual Size restores 13 pt.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -144,7 +157,13 @@ struct AppearanceSettingsView: View {
             }
         }
         .padding(16)
-        .onAppear { draft = model.appearance }
+        .onAppear {
+            draft = model.appearance
+            fontNames = NativeTerminalFont.installedNames
+            if let regular = fontNames.first(where: {
+                NativeTerminalFont.typefaceName(for: $0) == NativeTerminalFont.typefaceName(for: draft.fontName)
+            }) { draft.fontName = regular }
+        }
         .onChange(of: model.appearance) { _, value in draft = value }
     }
 }

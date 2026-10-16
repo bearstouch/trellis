@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-modern-light",
+  "name": "Modern Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#FFFFFF",
+    "foreground": "#333333",
+    "cursor": "#005FB8",
+    "cursorText": "#FFFFFF",
+    "selectionBackground": "#BAD4EC",
+    "selectionForeground": "#333333",
+    "ansi": [
+      "#ECECEC",
+      "#B52020",
+      "#237A35",
+      "#805E00",
+      "#005FB8",
+      "#8844AA",
+      "#007F83",
+      "#333333",
+      "#7A7A7A",
+      "#9A1B1B",
+      "#1E682D",
+      "#6D5000",
+      "#00519C",
+      "#743A90",
+      "#006C6F",
+      "#333333"
+    ]
+  },
+  "ui": {
+    "background": "#FFFFFF",
+    "surface": "#F3F3F3",
+    "sidebarBackground": "#ECECEC",
+    "foreground": "#333333",
+    "mutedForeground": "#666666",
+    "accent": "#005FB8",
+    "border": "#7F7F7F",
+    "activeTabBackground": "#BAD4EC",
+    "activeTabForeground": "#333333",
+    "focusRing": "#005FB8",
+    "success": "#237A35",
+    "warning": "#805E00",
+    "error": "#B52020"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "trellis-gruvbox-dark",
+  "name": "Gruvbox Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#282828",
+    "foreground": "#EBDBB2",
+    "cursor": "#FABD2F",
+    "cursorText": "#282828",
+    "selectionBackground": "#61502A",
+    "selectionForeground": "#EBDBB2",
+    "ansi": [
+      "#1D2021",
+      "#FB4934",
+      "#B8BB26",
+      "#FABD2F",
+      "#83A598",
+      "#D3869B",
+      "#8EC07C",
+      "#EBDBB2",
+      "#A79C82",
+      "#FC6452",
+      "#C3C547",
+      "#FBC74E",
+      "#96B2A7",
+      "#DA98AA",
+      "#9FC990",
+      "#EBDBB2"
+    ]
+  },
+  "ui": {
+    "background": "#282828",
+    "surface": "#32302F",
+    "sidebarBackground": "#1D2021",
+    "foreground": "#EBDBB2",
+    "mutedForeground": "#BAAE90",
+    "accent": "#FABD2F",
+    "border": "#807966",
+    "activeTabBackground": "#61502A",
+    "activeTabForeground": "#EBDBB2",
+    "focusRing": "#FABD2F",
+    "success": "#B8BB26",
+    "warning": "#FABD2F",
+    "error": "#FB7161"
+  }
+}
