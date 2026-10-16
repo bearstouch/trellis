@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "my-midnight",
+  "name": "My Midnight",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#101820",
+    "foreground": "#E8EEF4"
+  },
+  "ui": {
+    "accent": "#7CC7FF"
+  }
+}

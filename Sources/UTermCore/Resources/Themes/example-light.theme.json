@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "my-light",
+  "name": "My Light",
+  "appearance": "light",
+  "terminal": {
+    "background": "#141820",
+    "foreground": "#E8EEF4",
+    "cursor": "#B9DCFF",
+    "cursorText": "#141820",
+    "selectionBackground": "#354C6A",
+    "selectionForeground": "#FFFFFF",
+    "ansi": [
+      "#1B202A",
+      "#EF8585",
+      "#8DDAA4",
+      "#F2CC7A",
+      "#8BB8F0",
+      "#C6A0E8",
+      "#7FD5DD",
+      "#CFD7E2",
+      "#7C899C",
+      "#FFA4A4",
+      "#B3EFBC",
+      "#FFE3A3",
+      "#B9DCFF",
+      "#E4BDFF",
+      "#A7F2F5",
+      "#FFFFFF"
+    ]
+  },
+  "ui": {
+    "background": "#FFFFFF",
+    "surface": "#F2F5F9",
+    "sidebarBackground": "#E8EDF4",
+    "foreground": "#18212F",
+    "mutedForeground": "#4E5B6D",
+    "accent": "#185AA8",
+    "border": "#758397",
+    "activeTabBackground": "#C8DDF5",
+    "activeTabForeground": "#18212F",
+    "focusRing": "#2869B5",
+    "success": "#216B3B",
+    "warning": "#805400",
+    "error": "#B22D32"
+  }
+}

@@ -14,7 +14,7 @@ let package = Package(
         .package(path: "ThirdParty/SwiftTerm")
     ],
     targets: [
-        .target(name: "UTermCore"),
+        .target(name: "UTermCore", resources: [.copy("Resources/Themes")]),
         .target(name: "UTermPOSIX"),
         .target(name: "UTermTerminal", dependencies: ["UTermCore", "UTermPOSIX", "SwiftTerm"]),
         .target(name: "UTermUI", dependencies: ["UTermCore", "UTermTerminal"]),

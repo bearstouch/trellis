@@ -1,7 +1,7 @@
 # S015 — Define and validate simple JSON themes
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 171 tests and native preview checks pass  
 Delivery phase: 3  
 Depends on: [S014](014-appearance-and-monaco-defaults.md)  
 Requirements: `FR-TH02`, `FR-TH04`, `FR-TH06`, `FR-TH07`, `INT-10`
@@ -12,10 +12,10 @@ As a theme author, I want to create a theme by copying and editing a small JSON 
 
 ## Acceptance criteria
 
-- [ ] **S015-AC01:** Accept the v1 theme schema and supplied full/minimal examples; only version, id, name, and appearance are required.
-- [ ] **S015-AC02:** Resolve omitted fields against the matching built-in palette; an optional ANSI array replaces exactly 16 indexes. Custom terminal colors may override the dark defaults.
-- [ ] **S015-AC03:** Reject malformed JSON, duplicate keys, unknown fields, invalid IDs/colors, unsupported versions, wrong ANSI length, and files over 64 KiB before installation.
-- [ ] **S015-AC04:** Report field-path errors and advisory contrast warnings; preview text, selection, cursor, status, and ANSI colors. Theme files contain no scripts, remote includes, fonts, or executable content.
+- [x] **S015-AC01:** Accept the v1 theme schema and supplied full/minimal examples; only version, id, name, and appearance are required.
+- [x] **S015-AC02:** Resolve omitted fields against the matching built-in palette; an optional ANSI array replaces exactly 16 indexes. Custom terminal colors may override the dark defaults.
+- [x] **S015-AC03:** Reject malformed JSON, duplicate keys, unknown fields, invalid IDs/colors, unsupported versions, wrong ANSI length, and files over 64 KiB before installation.
+- [x] **S015-AC04:** Report field-path errors and advisory contrast warnings; preview text, selection, cursor, status, and ANSI colors. Theme files contain no scripts, remote includes, fonts, or executable content.
 
 ## Unit tests
 
@@ -34,7 +34,7 @@ Load both committed example files into the real preview and render all palette e
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S015 JSON theme evidence](../../docs/evidence/S015-json-themes.md) for implementation, passing tests, independent review fixes, native fixture/diagnostic checks, and the boundary with S016 theme installation.
 
 ## Source specifications
 

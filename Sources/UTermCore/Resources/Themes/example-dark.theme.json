@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "my-dark",
+  "name": "My Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#141820",
+    "foreground": "#E8EEF4",
+    "cursor": "#B9DCFF",
+    "cursorText": "#141820",
+    "selectionBackground": "#354C6A",
+    "selectionForeground": "#FFFFFF",
+    "ansi": [
+      "#1B202A",
+      "#EF8585",
+      "#8DDAA4",
+      "#F2CC7A",
+      "#8BB8F0",
+      "#C6A0E8",
+      "#7FD5DD",
+      "#CFD7E2",
+      "#7C899C",
+      "#FFA4A4",
+      "#B3EFBC",
+      "#FFE3A3",
+      "#B9DCFF",
+      "#E4BDFF",
+      "#A7F2F5",
+      "#FFFFFF"
+    ]
+  },
+  "ui": {
+    "background": "#141820",
+    "surface": "#202735",
+    "sidebarBackground": "#10141B",
+    "foreground": "#E8EEF4",
+    "mutedForeground": "#B0BAC9",
+    "accent": "#8BC7FF",
+    "border": "#66758B",
+    "activeTabBackground": "#354C6A",
+    "activeTabForeground": "#FFFFFF",
+    "focusRing": "#8BC7FF",
+    "success": "#8DDAA4",
+    "warning": "#F2CC7A",
+    "error": "#FFA4A4"
+  }
+}

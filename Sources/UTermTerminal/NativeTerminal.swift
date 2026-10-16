@@ -153,6 +153,12 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.cursorStyleChanged(source: terminalView.getTerminal(), newStyle: style)
         terminalView.needsDisplay = true
     }
+    /// Color-only application for preview/library integration. No parsing,
+    /// input, font, selection, or process lifecycle operation is performed.
+    public func applyPalette(_ palette: TerminalPalette) {
+        palette.apply(to: terminalView)
+        terminalView.needsDisplay = true
+    }
     public func paste(_ plan: TerminalPastePlan) throws {
         guard session.state == .running else { throw TerminalAdapterError.inputClosed }
         // Enqueue payload and negotiated framing together, preserving every byte.

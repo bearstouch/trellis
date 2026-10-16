@@ -42,6 +42,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 cp -R "$bin_path/SwiftTerm_SwiftTerm.bundle" "$bundle/Contents/Resources/"
+cp -R "$bin_path/uTerm_UTermCore.bundle" "$bundle/Contents/Resources/"
 # The SwiftPM command-line signature does not seal an app's Info.plist/resources.
 # Sign the completed development bundle; no certificate or account is required.
 /usr/bin/codesign --force --sign - --identifier dev.uterm.feasibility "$bundle"

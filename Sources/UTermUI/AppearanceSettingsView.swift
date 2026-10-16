@@ -14,6 +14,7 @@ public struct AppSettingsView: View {
         TabView {
             AppearanceSettingsView(model: model).tabItem { Text("Appearance") }
             LaunchSettingsView(model: model).tabItem { Text("Sessions") }
+            ThemePreviewView().tabItem { Text("Theme Preview") }
         }
         .padding(16)
         .preferredColorScheme(model.appearance.chromeMode.colorScheme)

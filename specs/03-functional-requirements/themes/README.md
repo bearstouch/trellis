@@ -1,6 +1,6 @@
 # Theme specification
 
-Status: proposed v1 format. All requirements here are P0. Theme files describe colors for the entire application and terminal; they do not contain executable code.
+Status: v1 validation and isolated native preview implemented in S015; theme installation and library management follow in S016. All requirements here are P0. Theme files describe colors for the entire application and terminal; they do not contain executable code.
 
 ## User experience
 
@@ -36,6 +36,8 @@ For example, this is a complete minimal theme file:
 ```
 
 The [JSON Schema](theme.schema.json) describes accepted fields. Full examples enumerate every supported color for discoverability; most authors only need to override a few colors. No theme inheritance chains, external includes, remote downloads, fonts, images, or scripts are supported in v1.
+
+The [minimal example](example-minimal.theme.json) is also available as a standalone file. Settings → Theme Preview loads any local JSON file or the three bundled examples, renders the palette in a sample terminal and application chrome, and reports validation errors or advisory contrast warnings. This preview does not install themes or alter working sessions. The import/save and library actions described here are S016.
 
 ## Format and resolution
 
