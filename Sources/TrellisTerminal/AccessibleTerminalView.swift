@@ -148,6 +148,14 @@ final class AccessibleTerminalView: TerminalView {
         super.mouseDown(with: event)
     }
 
+    var screenText: String {
+        let terminal = getTerminal()
+        var count = 0
+        while terminal.bufferLine(atRow: count) != nil { count += 1 }
+        guard count > 0 else { return "" }
+        return terminal.getText(start: Position(col: 0, row: max(0, count - terminal.rows)), end: Position(col: terminal.cols, row: count - 1))
+    }
+
     var retainedText: String {
         let terminal = getTerminal()
         var count = 0

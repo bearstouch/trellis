@@ -1,7 +1,7 @@
 # S025 — Read bounded output and subscribe to events
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 268 tests pass; multi-client manual checks pending  
 Delivery phase: 4  
 Depends on: [S013](013-scrollback-and-search.md), [S021](021-local-control-socket.md), [S022](022-automation-grants.md), [S023](023-automation-resource-commands.md)  
 Requirements: `FR-A05`, `API-05`, `NFR-P05`, `NFR-S06`
@@ -34,7 +34,7 @@ Flood a real terminal with output while a slow client subscribes. Verify respons
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S025 output and events evidence](../../docs/evidence/S025-automation-output-events.md) for journal/cursor, ring/gap, slow-client, redaction, and end-to-end PTY tests, review fixes, and pending multi-client checks.
 
 ## Source specifications
 

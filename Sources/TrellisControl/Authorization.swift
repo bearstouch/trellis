@@ -247,13 +247,14 @@ public actor AuthorizingControlHandler: ControlHandler {
     private let domain: any ControlDomain
     private let limiter: AuthenticationRateLimiter
     private let idempotency: IdempotencyCache
+    private let events: EventHub?
     private var connections: [UUID: UUID] = [:]
 
     public init(
         grants: GrantStore, domain: any ControlDomain, limiter: AuthenticationRateLimiter = AuthenticationRateLimiter(),
-        idempotency: IdempotencyCache = IdempotencyCache()
+        idempotency: IdempotencyCache = IdempotencyCache(), events: EventHub? = nil
     ) {
-        self.grants = grants; self.domain = domain; self.limiter = limiter; self.idempotency = idempotency
+        self.grants = grants; self.domain = domain; self.limiter = limiter; self.idempotency = idempotency; self.events = events
     }
 
     /// Connections currently authenticated with `grantID`, for revocation.
@@ -300,6 +301,9 @@ public actor AuthorizingControlHandler: ControlHandler {
         guard let requirement = AuthorizationPolicy.requirements[method] else { return .failure(.methodNotFound) }
         let access = GrantAccess(grant: grant, snapshot: await domain.snapshot())
         if case .failure(let error) = await authorize(requirement, params: params, access: access) { return .failure(error) }
+        if method == "events.subscribe" || method == "events.unsubscribe" {
+            return await subscription(method, params: params, grant: grant, connectionID: identity.connectionID)
+        }
         guard ControlMethods.isMutating(method), let keyValue = params?["idempotencyKey"] else {
             return await domain.execute(method, params: params, access: access)
         }
@@ -321,7 +325,54 @@ public actor AuthorizingControlHandler: ControlHandler {
         }
     }
 
-    public func disconnected(connectionID: UUID) async { connections.removeValue(forKey: connectionID) }
+    public func disconnected(connectionID: UUID) async {
+        connections.removeValue(forKey: connectionID)
+        await events?.removeConnection(connectionID)
+    }
+
+    private func subscription(_ method: String, params: JSONValue?, grant: AutomationGrant, connectionID: UUID) async -> Result<JSONValue, ControlError> {
+        guard let events else { return .failure(.methodNotFound) }
+        if method == "events.unsubscribe" {
+            guard case .string(let raw)? = params?["subscriptionId"], let id = UUID(uuidString: raw) else { return .failure(.invalidParams) }
+            return await events.unsubscribe(id, connectionID: connectionID) ? .success(.object(["unsubscribed": .bool(true)])) : .failure(.notFound)
+        }
+        guard case .array(let rawTopics)? = params?["topics"] else { return .failure(.invalidParams("topics must be an array.", fields: ["topics": "array"])) }
+        var topics = Set<String>()
+        for topic in rawTopics {
+            guard case .string(let name) = topic else { return .failure(.invalidParams("topics must be strings.", fields: ["topics": "array of strings"])) }
+            // Fine-grained names from the API catalog map onto hub topics.
+            let aliases = ["session.state": "session", "session.exit": "session", "session.output": "output", "resource": "resources"]
+            topics.insert(aliases[name] ?? name)
+        }
+        var resourceIDs = Set<UUID>()
+        switch params?["resourceIds"] {
+        case nil, .null?: break
+        case .array(let raw)?:
+            // A malformed ID must not silently widen the filter to everything.
+            for value in raw {
+                guard case .string(let text) = value, let id = UUID(uuidString: text) else {
+                    return .failure(.invalidParams("resourceIds must be UUID strings.", fields: ["resourceIds": "array of UUIDs"]))
+                }
+                resourceIDs.insert(id)
+            }
+        default: return .failure(.invalidParams("resourceIds must be an array.", fields: ["resourceIds": "array of UUIDs"]))
+        }
+        // Sequences belong to one app instance; replaying another's is an error.
+        if case .string(let instance)? = params?["instanceId"], UUID(uuidString: instance) != events.instanceID {
+            return .failure(.application("INVALID_CURSOR", "These sequences belong to a previous app instance. Resnapshot and subscribe without afterSequence."))
+        }
+        var after: UInt64?
+        switch params?["afterSequence"] {
+        case nil, .null?: after = nil
+        case .number(let value)? where value >= 0 && value.rounded() == value && value < 9e15: after = UInt64(value)
+        default: return .failure(.invalidParams("afterSequence must be a non-negative integer.", fields: ["afterSequence": "integer"]))
+        }
+        switch await events.subscribe(connectionID: connectionID, grant: grant, topics: topics, resourceIDs: resourceIDs, afterSequence: after) {
+        case .success(let (id, sequence)):
+            return .success(.object(["subscriptionId": .string(id.uuidString), "sequence": .number(Double(sequence)), "instanceId": .string(events.instanceID.uuidString)]))
+        case .failure(let error): return .failure(error)
+        }
+    }
 
     private func authorize(_ requirement: MethodRequirement, params: JSONValue?, access: GrantAccess) async -> Result<Void, ControlError> {
         // Visibility first: out-of-scope IDs look exactly like missing ones.

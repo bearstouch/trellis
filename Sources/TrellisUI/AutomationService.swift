@@ -83,6 +83,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             case "session.start": return try await startSession(p, access)
             case "session.restart": return try await restartSession(p, access)
             case "session.sendInput": return .success(try sendInput(p))
+            case "session.readOutput": return .success(try readOutput(p))
             case "session.execute": return .success(try execute(p))
             case "host.connect": return try await connect(p, access)
             case "host.list": return .success(.object(["hosts": .array(hostsVisible(access, query: try p.optionalString("query")).map(hostJSON))]))
@@ -417,6 +418,67 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         do { try await model.automationStartSession(paneID, launch: .host(hostID), environment: [:]) } catch { throw Self.map(error) }
         return launchResult(paneID, access)
     }
+
+    // MARK: - Output (S025)
+
+    static let defaultReadBytes = 65_536, maximumReadBytes = 262_144
+
+    /// Screen/scrollback are plain-text display snapshots; stream returns exact
+    /// raw PTY bytes from the bounded journal with an opaque cursor.
+    @MainActor private func readOutput(_ p: Params) throws -> JSONValue {
+        let sessionID = try p.uuid("id")
+        guard let terminal = model.terminals.values.first(where: { $0.sessionID == sessionID }) else { throw ControlError.notFound }
+        let maxBytes: Int
+        if let requested = try p.optionalDouble("maxBytes") {
+            guard requested.rounded() == requested, (1...Double(Self.maximumReadBytes)).contains(requested) else {
+                throw ControlError.invalidParams("maxBytes must be 1–262144.", fields: ["maxBytes": "1–262144"])
+            }
+            maxBytes = Int(requested)
+        } else {
+            maxBytes = Self.defaultReadBytes
+        }
+        let captured = ISO8601DateFormatter().string(from: Date())
+        switch try p.string("view") {
+        case "screen", "scrollback":
+            let view = try p.string("view")
+            let text = view == "screen" ? terminal.screenText : ((try? terminal.adapter.read(.retainedText)) ?? "")
+            // Keep the newest text within the byte limit, cut on a character boundary.
+            var kept = Substring(text)
+            while kept.utf8.count > maxBytes { kept = kept.dropFirst(max(1, (kept.utf8.count - maxBytes) / 4)) }
+            return .object([
+                "view": .string(view), "text": .string(String(kept)), "capturedAt": .string(captured), "truncated": .bool(kept.startIndex != text.startIndex),
+                "historyNotice": .string(terminal.historyNotice)
+            ])
+        case "stream":
+            var offset: UInt64?
+            if let token = try p.optionalString("cursor") {
+                guard let cursor = OutputCursor(token: token), cursor.instanceID == instanceID, cursor.sessionID == sessionID else {
+                    throw Self.invalidCursor
+                }
+                offset = cursor.offset
+            }
+            let journal = model.outputJournal
+            guard journal.contains(session: sessionID) else {
+                // No output yet: an empty read whose cursor starts at offset 0.
+                guard offset == nil || offset == 0 else { throw Self.invalidCursor }
+                return .object([
+                    "view": .string("stream"), "base64": .string(""), "nextCursor": .string(OutputCursor(instanceID: instanceID, sessionID: sessionID, offset: 0).token),
+                    "truncated": .bool(false), "gap": .bool(false), "capturedAt": .string(captured)
+                ])
+            }
+            let read: OutputJournal.Read
+            do { read = try journal.read(session: sessionID, from: offset, maxBytes: maxBytes) } catch { throw Self.invalidCursor }
+            return .object([
+                "view": .string("stream"), "base64": .string(read.data.base64EncodedString()),
+                "nextCursor": .string(OutputCursor(instanceID: instanceID, sessionID: sessionID, offset: read.next).token),
+                "truncated": .bool(read.truncated), "gap": .bool(read.gap), "capturedAt": .string(captured)
+            ])
+        default: throw ControlError.invalidParams("view must be screen, scrollback, or stream.", fields: ["view": "screen, scrollback, or stream"])
+        }
+    }
+
+    private static let invalidCursor = ControlError.application(
+        "INVALID_CURSOR", "This cursor belongs to another session, a restarted session, or another app instance. Read again without a cursor.")
 
     // MARK: - Projection
 

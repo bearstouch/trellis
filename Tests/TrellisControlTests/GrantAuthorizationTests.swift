@@ -71,7 +71,8 @@ final class GrantAuthorizationTests: XCTestCase {
     private let domain = FakeDomain()
     private lazy var store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
     private lazy var handler = AuthorizingControlHandler(
-        grants: store, domain: domain, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
+        grants: store, domain: domain, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }),
+        events: EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now }))
 
     private func reply(_ session: ControlSession, _ data: Data) async throws -> [String: Any] {
         let output = await session.receive(data).output
@@ -208,7 +209,8 @@ final class GrantAuthorizationTests: XCTestCase {
             let response = try await reply(scoped, request(index + 1, testCase.0, testCase.1))
             XCTAssertEqual(code(response), testCase.2, "\(testCase.0) \(testCase.1)")
         }
-        XCTAssertEqual(d.executed.count, cases.filter { $0.2 == "OK" }.count)
+        // Subscriptions are served by the event hub, not the domain.
+        XCTAssertEqual(d.executed.count, cases.filter { $0.2 == "OK" && !$0.0.hasPrefix("events.") }.count)
         let global = ControlSession(peerUID: geteuid(), handler: handler)
         _ = try await authenticate(global, token: globalToken)
         try await expect(try await reply(global, request(1, "appearance.set", ["mode": .string("dark")])), "OK", "Theme writes ignore window scope only when global")

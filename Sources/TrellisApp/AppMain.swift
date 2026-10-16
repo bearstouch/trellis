@@ -376,13 +376,25 @@ struct TrellisMain {
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory)))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
-            let handler = AuthorizingControlHandler(grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID))
+            let events = EventHub(instanceID: instanceID, grants: grantStore)
+            let handler = AuthorizingControlHandler(
+                grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
+            let forwarder = EventForwarder(hub: events, instanceID: instanceID)
+            model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
+            model.onSessionOutput = { [weak model] session, pane, data, next in
+                let window = model?.snapshot.panes[pane].flatMap { model?.snapshot.tabs[$0.tabID]?.windowID }
+                forwarder.send(.output(session: session, window: window, data: data, next: next))
+            }
             Task {
+                await events.setDelivery { connection, data in control.push(data, to: connection) }
                 await grantStore.load()
-                // Revocation disconnects every client authenticated with that grant.
+                // Revocation disconnects clients and ends their subscriptions at once.
                 await grantStore.onRevocation { grantID in
-                    Task { control.closeConnections(await handler.connections(for: grantID)) }
+                    Task {
+                        await events.removeGrant(grantID)
+                        control.closeConnections(await handler.connections(for: grantID))
+                    }
                 }
             }
             let delegate = AppDelegate(model: model, hosts: hosts, control: control, grants: GrantListModel(store: grantStore))

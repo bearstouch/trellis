@@ -269,6 +269,12 @@ public final class AppWorkspaceModel: ObservableObject {
     private var saveGeneration: UInt64 = 0
     public var openSettings: (() -> Void)?
     public var openHosts: (() -> Void)?
+    /// Metadata events derived from each published snapshot, in order.
+    public var onWorkspaceEvents: (([WorkspaceEvent]) -> Void)?
+    /// Raw output appended to the journal: session, pane, bytes, next offset.
+    public var onSessionOutput: ((UUID, UUID, Data, UInt64) -> Void)?
+    /// Bounded raw output for automation readers; memory only.
+    public internal(set) var outputJournal = OutputJournal()
     /// Reads the current saved host at spawn time, so reconnects use later edits.
     public var resolveHost: ((UUID) async -> SavedHost?)?
     /// Injected only by tests; connections always use the system OpenSSH client.
@@ -425,7 +431,14 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Async command replies can resume out of order; never regress visible state.
     func publish(_ next: WorkspaceSnapshot) {
         guard next.revision >= snapshot.revision else { return }
+        let previous = snapshot
         snapshot = next
+        // Replaced or closed sessions drop their output; their cursors become invalid.
+        for id in previous.sessions.keys where next.sessions[id] == nil { outputJournal.remove(session: id) }
+        if let onWorkspaceEvents {
+            let events = WorkspaceEvents.diff(previous, next)
+            if !events.isEmpty { onWorkspaceEvents(events) }
+        }
         if let pendingPaste, pendingPaste.target != currentPasteTarget { cancelPaste() }
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
@@ -592,6 +605,13 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
+        terminal.onOutputData = { [weak self, weak terminal] data in
+            // Late output from a closed or replaced session must not recreate its journal.
+            guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }
+            let session = terminal.sessionID
+            self.outputJournal.append(data, session: session)
+            self.onSessionOutput?(session, pane.id, data, self.outputJournal.end(session: session))
+        }
         terminal.onFocused = { [weak self] in
             // Clicking a terminal leaves an in-progress rename; Finder-style, keep the edit.
             if let self, let editing = self.editingTabID {

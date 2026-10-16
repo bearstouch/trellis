@@ -29,6 +29,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onStateChanged: ((SessionState) -> Void)?
     public var onFocused: (() -> Void)?
     public var onOutput: (() -> Void)?
+    /// Raw PTY bytes in arrival order, for bounded automation journaling.
+    public var onOutputData: ((Data) -> Void)?
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
@@ -67,7 +69,10 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
-            if !data.isEmpty { self?.onOutput?() }
+            if !data.isEmpty {
+                self?.onOutputData?(data)
+                self?.onOutput?()
+            }
         }
         session.onInputError = { [weak self] error in self?.onInputError?(error) }
         session.onExit = { [weak self] code in self?.processTerminated(exitCode: code) }
@@ -187,6 +192,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         // Enqueue payload and negotiated framing together, preserving every byte.
         try adapter.send(plan.data(bracketed: terminalView.getTerminal().bracketedPasteMode))
     }
+
+    /// Plain text of the visible screen only (no scrollback).
+    public var screenText: String { terminalView.screenText }
 
     public var historyNotice: String {
         if terminalView.getTerminal().isCurrentBufferAlternate { return "Current screen only · No scrollback" }

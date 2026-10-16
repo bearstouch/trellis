@@ -13,6 +13,7 @@ public final class ControlServer: @unchecked Sendable {
     private var listenFD: Int32 = -1
     private var clients = Set<Int32>()
     private var connectionFDs: [UUID: Int32] = [:]
+    private var outboxes: [UUID: Outbox] = [:]
     private var discovery: ControlDiscovery?
     private var runtimeDirectory: String?
 
@@ -84,6 +85,14 @@ public final class ControlServer: @unchecked Sendable {
         }
     }
 
+    /// Queues a server-initiated message (an event) for a connection. Returns
+    /// false when the connection is gone or its outbound queue exceeds 1 MiB,
+    /// in which case the slow client is disconnected.
+    public func push(_ data: Data, to connectionID: UUID) -> Bool {
+        guard let outbox = lock.withLock({ outboxes[connectionID] }) else { return false }
+        return outbox.enqueue(data)
+    }
+
     /// Test seam: stops listening but leaves the socket and discovery files,
     /// which is what a crashed instance leaves behind.
     func closeListenerOnly() {
@@ -117,33 +126,38 @@ public final class ControlServer: @unchecked Sendable {
                 continue
             }
             let session = ControlSession(peerUID: peerUID, expectedUID: endpoint.uid, handler: handler)
-            lock.withLock { connectionFDs[session.connectionID] = client }
-            let thread = Thread { [weak self] in self?.serve(client, session: session) }
+            let outbox = Outbox(fd: client)
+            lock.withLock {
+                connectionFDs[session.connectionID] = client
+                outboxes[session.connectionID] = outbox
+            }
+            let writer = Thread { outbox.drain() }
+            writer.name = "Trellis control writer"
+            writer.start()
+            let thread = Thread { [weak self] in self?.serve(client, session: session, outbox: outbox) }
             thread.name = "Trellis control connection"
             thread.start()
         }
     }
 
-    private func serve(_ fd: Int32, session: ControlSession) {
+    private func serve(_ fd: Int32, session: ControlSession, outbox: Outbox) {
         var buffer = [UInt8](repeating: 0, count: 65_536)
-        loop: while true {
+        while true {
             let count = read(fd, &buffer, buffer.count)
             if count < 0, errno == EINTR { continue }
             guard count > 0 else { break }
             let chunk = Data(buffer.prefix(count))
             let (output, shouldClose) = Self.wait { await session.receive(chunk) }
-            var offset = 0
-            while offset < output.count {
-                let written = output.withUnsafeBytes { write(fd, $0.baseAddress!.advanced(by: offset), output.count - offset) }
-                if written < 0, errno == EINTR { continue }
-                guard written > 0 else { break loop }
-                offset += written
-            }
+            // Replies share the outbox with events, preserving order and the budget.
+            guard output.isEmpty || outbox.enqueue(output) else { break }
             if shouldClose { break }
         }
+        outbox.finish()
+        outbox.waitUntilDrained()
         lock.withLock {
             clients.remove(fd)
             connectionFDs.removeValue(forKey: session.connectionID)
+            outboxes.removeValue(forKey: session.connectionID)
         }
         shutdown(fd, SHUT_RDWR)
         close(fd)
@@ -166,4 +180,85 @@ public final class ControlServer: @unchecked Sendable {
 
 private final class ResultBox<T>: @unchecked Sendable {
     var value: T?
+}
+
+/// Bounded per-connection outbound queue drained by its own writer thread, so
+/// a client that stops reading never blocks event producers or grows memory.
+final class Outbox: @unchecked Sendable {
+    static let limit = 1_048_576
+    private let fd: Int32
+    private let condition = NSCondition()
+    private var queue: [Data] = []
+    private var queued = 0
+    private var finishing = false
+    private var dead = false
+    private var drained = false
+
+    init(fd: Int32) { self.fd = fd }
+
+    /// False when the connection is closed or this message would exceed the
+    /// budget; the latter disconnects the client immediately.
+    func enqueue(_ data: Data) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        guard !dead, !finishing else { return false }
+        guard queued + data.count <= Self.limit else {
+            dead = true
+            queue.removeAll()
+            queued = 0
+            shutdown(fd, SHUT_RDWR)
+            condition.broadcast()
+            return false
+        }
+        queue.append(data)
+        queued += data.count
+        condition.broadcast()
+        return true
+    }
+
+    /// Flushes what is queued, then lets the writer exit.
+    func finish() {
+        condition.lock()
+        finishing = true
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    func waitUntilDrained() {
+        condition.lock()
+        while !drained { condition.wait() }
+        condition.unlock()
+    }
+
+    func drain() {
+        while true {
+            condition.lock()
+            while queue.isEmpty && !finishing && !dead { condition.wait() }
+            if dead || (queue.isEmpty && finishing) {
+                drained = true
+                condition.broadcast()
+                condition.unlock()
+                return
+            }
+            let next = queue.removeFirst()
+            queued -= next.count
+            condition.unlock()
+            var offset = 0
+            while offset < next.count {
+                let written = next.withUnsafeBytes { write(fd, $0.baseAddress!.advanced(by: offset), next.count - offset) }
+                if written < 0, errno == EINTR { continue }
+                guard written > 0 else {
+                    condition.lock()
+                    dead = true
+                    queue.removeAll()
+                    queued = 0
+                    condition.broadcast()
+                    condition.unlock()
+                    shutdown(fd, SHUT_RDWR)
+                    break
+                }
+                offset += written
+            }
+        }
+    }
 }
