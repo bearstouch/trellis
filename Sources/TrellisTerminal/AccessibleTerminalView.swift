@@ -11,6 +11,8 @@ final class AccessibleTerminalView: TerminalView {
     var onSearchRequested: (() -> Void)?
     var onContentsChanged: (() -> Void)?
     var scrollback = TerminalScrollback(budget: .standard)
+    /// The configurable Find chord; other ⌘ chords reach the menu bar.
+    var searchChord: KeyChord? = ShortcutMap.defaults[.findInPane]
     private var accessibilityUpdateScheduled = false
     @objc func showPaneSearch(_ sender: Any?) { onSearchRequested?() }
     var readClipboardText: () -> String? = { NSPasteboard.general.string(forType: .string) }
@@ -82,16 +84,22 @@ final class AccessibleTerminalView: TerminalView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // Consume Cmd-C even when Copy is disabled. It must never fall through
         // to a terminal keyboard protocol as interrupt/input bytes.
-        if window?.firstResponder === self,
-            event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
-        {
+        guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if modifiers == .command {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "c": copy(self); return true
             case "a": selectAllTerminalText(self); return true
             case "v": paste(self); return true
-            case "f": showPaneSearch(self); return true
             default: break
             }
+        }
+        if let chord = KeyChord(event: event), chord == searchChord { showPaneSearch(self); return true }
+        // SwiftTerm's keyDown toggles Option-as-Meta on any ⌘⌥(⌃)O without telling the
+        // app. Settings → Keyboard owns it: let a bound menu item run, never the toggle.
+        if event.modifierFlags.contains([.command, .option]), event.charactersIgnoringModifiers == "o" {
+            _ = NSApp.mainMenu?.performKeyEquivalent(with: event)
+            return true
         }
         return super.performKeyEquivalent(with: event)
     }

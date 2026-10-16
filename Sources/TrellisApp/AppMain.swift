@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var screenObserver: NSObjectProtocol?
     private var appearanceObserver: NSKeyValueObservation?
     private var settingsCloseObserver: NSObjectProtocol?
+    private var accessibilityObserver: NSObjectProtocol?
 
     init(model: AppWorkspaceModel) { self.model = model }
 
@@ -32,7 +33,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self?.model.systemAppearanceDidChange(isDark: app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
             }
         }
+        syncAccessibilityDisplayOptions()
+        accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncAccessibilityDisplayOptions() }
+        }
         buildMenus()
+        model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
@@ -64,7 +72,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Menus are rebuilt from the saved shortcut map, so every configurable
+    /// command shows its current chord where users look for it.
     private func buildMenus() {
+        let shortcuts = model.keyboard.shortcuts
+        func item(_ action: ShortcutAction) -> NSMenuItem {
+            let item = NSMenuItem(title: action.title, action: #selector(performShortcut(_:)), keyEquivalent: "")
+            item.representedObject = action.rawValue
+            item.target = self
+            if let chord = shortcuts[action] {
+                item.keyEquivalent = chord.keyEquivalent
+                item.keyEquivalentModifierMask = chord.modifierMask
+            }
+            return item
+        }
+        func submenu(_ title: String, _ entries: [ShortcutAction?]) -> NSMenuItem {
+            let parent = NSMenuItem()
+            parent.submenu = NSMenu(title: title)
+            for entry in entries { parent.submenu?.addItem(entry.map(item) ?? .separator()) }
+            return parent
+        }
         let menu = NSMenu()
         let app = NSMenuItem(); app.submenu = NSMenu(title: "Trellis")
         app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
@@ -72,57 +99,120 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         app.submenu?.addItem(withTitle: "Hide Trellis", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         app.submenu?.addItem(withTitle: "Quit Trellis", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(app)
-        let file = NSMenuItem(); file.submenu = NSMenu(title: "File")
-        file.submenu?.addItem(withTitle: "New Window", action: #selector(newWindow), keyEquivalent: "n")
-        file.submenu?.addItem(withTitle: "Save Workspace", action: #selector(saveWorkspace), keyEquivalent: "s")
-        file.submenu?.addItem(withTitle: "New Tab", action: #selector(newTab), keyEquivalent: "t")
-        file.submenu?.addItem(withTitle: "Rename Tab…", action: #selector(renameTab), keyEquivalent: "")
-        file.submenu?.addItem(withTitle: "Next Tab", action: #selector(nextTab), keyEquivalent: "]").keyEquivalentModifierMask = [.command, .shift]
-        file.submenu?.addItem(withTitle: "Previous Tab", action: #selector(previousTab), keyEquivalent: "[").keyEquivalentModifierMask = [.command, .shift]
-        file.submenu?.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        menu.addItem(file)
+        menu.addItem(
+            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .saveWorkspace]))
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
+        // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
+        // the terminal does not implement them, so they stay disabled there.
+        edit.submenu?.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.submenu?.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
+        edit.submenu?.addItem(.separator())
+        edit.submenu?.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         edit.submenu?.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.submenu?.addItem(withTitle: "Copy All Retained Text", action: NSSelectorFromString("copyAllRetainedText:"), keyEquivalent: "")
         edit.submenu?.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.submenu?.addItem(withTitle: "Paste Escaped Path", action: NSSelectorFromString("pasteEscapedPath:"), keyEquivalent: "")
         edit.submenu?.addItem(withTitle: "Select All", action: #selector(selectAllText(_:)), keyEquivalent: "a")
         edit.submenu?.addItem(.separator())
-        edit.submenu?.addItem(withTitle: "Find in Pane…", action: #selector(showPaneSearch), keyEquivalent: "f")
-        edit.submenu?.addItem(withTitle: "Find Next", action: #selector(findNextInPane), keyEquivalent: "g")
-        edit.submenu?.addItem(withTitle: "Find Previous", action: #selector(findPreviousInPane), keyEquivalent: "g").keyEquivalentModifierMask = [.command, .shift]
+        for action in [ShortcutAction.findInPane, .findNext, .findPrevious] { edit.submenu?.addItem(item(action)) }
         menu.addItem(edit)
-        let view = NSMenuItem(); view.submenu = NSMenu(title: "View")
-        view.submenu?.addItem(withTitle: "Zoom In", action: #selector(zoomIn), keyEquivalent: "+")
+        let view = submenu("View", [.zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
-        let zoomAlias = NSMenuItem(title: "Zoom In", action: #selector(zoomIn), keyEquivalent: "=")
-        zoomAlias.isHidden = true
-        zoomAlias.allowsKeyEquivalentWhenHidden = true
-        view.submenu?.addItem(zoomAlias)
-        view.submenu?.addItem(withTitle: "Zoom Out", action: #selector(zoomOut), keyEquivalent: "-")
-        view.submenu?.addItem(withTitle: "Actual Size", action: #selector(actualSize), keyEquivalent: "0")
-        menu.addItem(view)
-        let panes = NSMenuItem(); panes.submenu = NSMenu(title: "Pane")
-        for direction in PaneDirection.allCases {
-            let item = NSMenuItem(title: "Focus \(direction.rawValue.capitalized)", action: #selector(focusPane(_:)), keyEquivalent: arrowKey(direction))
-            item.representedObject = direction.rawValue
-            item.keyEquivalentModifierMask = [.command, .option]
-            panes.submenu?.addItem(item)
-            let resize = NSMenuItem(title: "Move Divider \(direction.rawValue.capitalized)", action: #selector(resizePane(_:)), keyEquivalent: arrowKey(direction))
-            resize.representedObject = direction.rawValue
-            resize.keyEquivalentModifierMask = [.command, .option, .shift]
-            panes.submenu?.addItem(resize)
+        if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
+            let alias = item(.zoomIn)
+            alias.keyEquivalent = "="
+            alias.isHidden = true
+            alias.allowsKeyEquivalentWhenHidden = true
+            view.submenu?.addItem(alias)
         }
-        panes.submenu?.addItem(.separator())
-        panes.submenu?.addItem(withTitle: "Maximize / Restore Pane", action: #selector(maximizePane), keyEquivalent: "\r").keyEquivalentModifierMask = [.command, .shift]
-        menu.addItem(panes)
-        let windows = NSMenuItem(); windows.submenu = NSMenu(title: "Window")
-        windows.submenu?.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windows.submenu?.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-        windows.submenu?.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "")
+        menu.addItem(view)
+        menu.addItem(
+            submenu(
+                "Pane",
+                [
+                    .splitLeftRight, .splitTopBottom, nil, .focusLeft, .focusRight, .focusUp, .focusDown, nil,
+                    .resizeLeft, .resizeRight, .resizeUp, .resizeDown, nil, .maximizePane
+                ]))
+        let windows = submenu(
+            "Window",
+            [
+                nil, .previousWindow, .nextWindow, .previousTab, .nextTab, nil,
+                .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectTab9
+            ])
+        windows.submenu?.insertItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "", at: 0)
+        windows.submenu?.insertItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "", at: 0)
+        windows.submenu?.insertItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m", at: 0)
         menu.addItem(windows)
         NSApp.windowsMenu = windows.submenu
         NSApp.mainMenu = menu
+    }
+
+    @objc private func performShortcut(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return }
+        // ⌘W/⌘⇧W close an auxiliary window (Settings) instead of workspace content.
+        if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window {
+            key.performClose(nil)
+            return
+        }
+        let presentation = model.presentation
+        if let index = action.tabIndex {
+            guard presentation.visibleTabs.indices.contains(index) else { return }
+            Task { await model.selectTab(presentation.visibleTabs[index].id) }
+            return
+        }
+        let pane = presentation.activePane?.id
+        switch action {
+        case .newWindow: newWindow()
+        case .newTab: Task { await model.createTab() }
+        case .renameTab: model.tabRenameRequest = UUID()
+        case .renameWindow: model.windowRenameRequest = UUID()
+        case .closePane: if let pane { Task { await model.closePane(pane) } }
+        case .closeTab: if let tab = presentation.selectedTab?.id { Task { await model.closeTab(tab) } }
+        case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
+        case .saveWorkspace: Task { await model.flushWorkspaceSave() }
+        case .findInPane: model.activeTerminal?.showSearch()
+        case .findNext: model.activeTerminal?.findInPane()
+        case .findPrevious: model.activeTerminal?.findInPane(forward: false)
+        case .zoomIn: model.zoomTerminalFont(by: 1)
+        case .zoomOut: model.zoomTerminalFont(by: -1)
+        case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
+        case .splitLeftRight, .splitTopBottom:
+            if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
+        case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
+        case .focusLeft: Task { await model.focusPane(.left) }
+        case .focusRight: Task { await model.focusPane(.right) }
+        case .focusUp: Task { await model.focusPane(.up) }
+        case .focusDown: Task { await model.focusPane(.down) }
+        case .resizeLeft: Task { await model.resizeFocusedPane(.left) }
+        case .resizeRight: Task { await model.resizeFocusedPane(.right) }
+        case .resizeUp: Task { await model.resizeFocusedPane(.up) }
+        case .resizeDown: Task { await model.resizeFocusedPane(.down) }
+        case .nextWindow: selectRelativeWindow(1)
+        case .previousWindow: selectRelativeWindow(-1)
+        case .nextTab: selectRelativeTab(1)
+        case .previousTab: selectRelativeTab(-1)
+        default: break
+        }
+    }
+
+    private func validateShortcut(_ action: ShortcutAction) -> Bool {
+        let presentation = model.presentation
+        if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
+        if [.newWindow, .saveWorkspace, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        // Workspace commands act on the main window only while it is key.
+        guard window?.isKeyWindow == true, !model.isRestoring, model.recoveryMessage == nil else { return false }
+        if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
+        switch action {
+        case .findInPane, .findNext, .findPrevious: return model.activeTerminal != nil
+        case .splitLeftRight, .splitTopBottom:
+            return presentation.activePane != nil && presentation.selectedTab.map { model.maximizedPanes[$0.id] == nil } == true
+        case .closePane, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
+            .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
+            return presentation.activePane != nil
+        case .nextWindow, .previousWindow: return model.snapshot.windows.count > 1
+        case .nextTab, .previousTab: return presentation.visibleTabs.count > 1
+        default: return presentation.selectedWindow != nil || action == .newTab
+        }
     }
 
     @objc private func newWindow() {
@@ -130,57 +220,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window?.makeKeyAndOrderFront(nil)
         Task { await model.createWindow() }
     }
-    @objc private func saveWorkspace() { Task { await model.flushWorkspaceSave() } }
     @objc private func selectAllText(_ sender: Any?) {
         if !NSApp.sendAction(NSSelectorFromString("selectAllTerminalText:"), to: nil, from: sender) {
             NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: sender)
         }
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if [#selector(showPaneSearch), #selector(findNextInPane), #selector(findPreviousInPane)].contains(menuItem.action) {
-            return window?.isKeyWindow == true && model.activeTerminal != nil
+        if menuItem.action == #selector(performShortcut(_:)) {
+            guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
+            return validateShortcut(action)
         }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
     }
-    @objc private func showPaneSearch() { if window?.isKeyWindow == true { model.activeTerminal?.showSearch() } }
-    @objc private func findNextInPane() { if window?.isKeyWindow == true { model.activeTerminal?.findInPane() } }
-    @objc private func findPreviousInPane() { if window?.isKeyWindow == true { model.activeTerminal?.findInPane(forward: false) } }
-    @objc private func newTab() { Task { await model.createTab() } }
-    @objc private func zoomIn() { model.zoomTerminalFont(by: 1) }
-    @objc private func zoomOut() { model.zoomTerminalFont(by: -1) }
-    @objc private func actualSize() { model.zoomTerminalFont(by: 0, reset: true) }
-    @objc private func renameTab() { model.tabRenameRequest = UUID() }
-    @objc private func nextTab() { selectRelativeTab(1) }
-    @objc private func previousTab() { selectRelativeTab(-1) }
+    private func selectRelativeWindow(_ offset: Int) {
+        let windows = model.snapshot.windows
+        guard let id = model.snapshot.activeWindowID, let index = windows.firstIndex(where: { $0.id == id }), !windows.isEmpty else { return }
+        let next = windows[(index + offset + windows.count) % windows.count].id
+        Task { await model.selectWindow(next) }
+    }
     private func selectRelativeTab(_ offset: Int) {
         let tabs = model.presentation.visibleTabs
         guard let id = model.presentation.selectedTab?.id, let index = tabs.firstIndex(where: { $0.id == id }), !tabs.isEmpty else { return }
         let next = tabs[(index + offset + tabs.count) % tabs.count].id
         Task { await model.selectTab(next) }
     }
-    private func arrowKey(_ direction: PaneDirection) -> String {
-        let code: Int
-        switch direction {
-        case .left: code = NSLeftArrowFunctionKey;
-        case .right: code = NSRightArrowFunctionKey;
-        case .up: code = NSUpArrowFunctionKey;
-        case .down: code = NSDownArrowFunctionKey
-        }
-        return String(UnicodeScalar(code)!)
-    }
-    @objc private func focusPane(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let direction = PaneDirection(rawValue: raw) else { return }
-        Task { await model.focusPane(direction) }
-    }
-    @objc private func resizePane(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let direction = PaneDirection(rawValue: raw) else { return }
-        Task { await model.resizeFocusedPane(direction) }
-    }
-    @objc private func maximizePane() {
-        guard let id = model.presentation.activePane?.id else { return }
-        Task { await model.toggleMaximize(id) }
+
+    private func syncAccessibilityDisplayOptions() {
+        let workspace = NSWorkspace.shared
+        model.accessibilityDisplayOptionsDidChange(
+            increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
     }
     @objc private func settingsAction() { showSettings() }
     private func showSettings() {

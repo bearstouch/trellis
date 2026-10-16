@@ -1,7 +1,7 @@
 # S017 — Support keyboard navigation and native accessibility
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 201 tests pass; VoiceOver/IME/layout manual checks pending  
 Delivery phase: 3  
 Depends on: [S004](004-native-application-shell.md), [S006](006-tabs-and-inline-renaming.md), [S008](008-pane-resize-focus-and-maximize.md), [S011](011-selection-and-copy.md), [S012](012-safe-paste-and-file-paths.md), [S014](014-appearance-and-monaco-defaults.md)  
 Requirements: `FR-U01`, `NFR-U01`, `NFR-U02`, `NFR-U03`, `NFR-U04`, `MAC-07`
@@ -34,7 +34,7 @@ Perform a keyboard-only daily workflow and VoiceOver reading/navigation. Test US
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S017 keyboard and accessibility evidence](../../docs/evidence/S017-keyboard-accessibility.md) for shortcut validation, rename input isolation, composition tests, review fixes, and the pending VoiceOver/IME/layout checks. Acceptance boxes stay unchecked until those native checks are observed.
 
 ## Source specifications
 

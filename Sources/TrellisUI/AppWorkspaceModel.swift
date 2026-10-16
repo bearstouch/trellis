@@ -149,11 +149,77 @@ public final class AppWorkspaceModel: ObservableObject {
             || previous.scrollbackLines != settings.scrollbackLines
         appearance = settings
         reconcileThemeSelections()
-        if terminalSettingsChanged { for terminal in terminals.values { terminal.applyAppearance(settings) } }
+        if terminalSettingsChanged { for terminal in terminals.values { terminal.applyAppearance(terminalAppearance) } }
         refreshEffectiveTheme()
         scheduleWorkspaceSave()
         return true
     }
+    /// Reduce Motion keeps the cursor steady without changing the saved preference.
+    var terminalAppearance: AppearanceSettings {
+        var settings = appearance
+        if reduceMotion { settings.cursorBlinks = false }
+        return settings
+    }
+
+    public func accessibilityDisplayOptionsDidChange(increaseContrast: Bool, reduceMotion: Bool) {
+        if self.increaseContrast != increaseContrast { self.increaseContrast = increaseContrast }
+        guard self.reduceMotion != reduceMotion else { return }
+        self.reduceMotion = reduceMotion
+        // applyAppearance resets the built-in palette; restore the selected theme colors.
+        for terminal in terminals.values {
+            terminal.applyAppearance(terminalAppearance)
+            terminal.applyPalette(effectiveTheme.terminal)
+        }
+    }
+
+    private static let keyboardKey = "keyboard.settings"
+
+    private static func loadKeyboardSettings(_ preferences: UserDefaults) -> (KeyboardSettings, String?) {
+        guard let data = preferences.data(forKey: keyboardKey) else { return (KeyboardSettings(), nil) }
+        guard let saved = try? JSONDecoder().decode(KeyboardSettings.self, from: data) else {
+            return (KeyboardSettings(), "Saved keyboard shortcuts could not be read. Using the defaults.")
+        }
+        // A conflicting stored map could silently disable a command; never apply it.
+        guard saved.shortcuts.issues().isEmpty else {
+            var fallback = KeyboardSettings()
+            fallback.optionAsMeta = saved.optionAsMeta
+            return (fallback, "Saved keyboard shortcuts conflict. Using the defaults.")
+        }
+        return (saved, nil)
+    }
+
+    /// Validates the complete map before saving. On any issue the previous
+    /// settings stay active and the issues are returned for display.
+    @discardableResult
+    public func saveKeyboardSettings(_ settings: KeyboardSettings) -> [ShortcutIssue] {
+        let issues = settings.shortcuts.issues()
+        guard issues.isEmpty else { return issues }
+        guard let data = try? JSONEncoder().encode(settings) else { return [] }
+        preferences.set(data, forKey: Self.keyboardKey)
+        keyboard = settings
+        keyboardNotice = nil
+        for terminal in terminals.values {
+            terminal.optionAsMeta = settings.optionAsMeta
+            terminal.searchShortcut = settings.shortcuts[.findInPane]
+        }
+        onKeyboardSettingsChanged?()
+        return []
+    }
+
+    public var accessibility: WorkspaceAccessibility {
+        WorkspaceAccessibility(
+            snapshot: snapshot,
+            live: terminals.mapValues { WorkspaceAccessibility.LiveSession(state: $0.sessionState, exitCode: $0.exitCode) },
+            windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys))
+    }
+
+    /// VoiceOver names each terminal by pane and status; its value stays the text.
+    private func refreshTerminalAccessibility() {
+        for pane in accessibility.panes {
+            terminals[pane.id]?.view.setAccessibilityLabel("\(pane.label), \(pane.value)")
+        }
+    }
+
     public func zoomTerminalFont(by delta: Double, reset: Bool = false) {
         var next = appearance
         next.fontSize = reset ? 13 : min(48, max(8, next.fontSize + delta))
@@ -179,6 +245,14 @@ public final class AppWorkspaceModel: ObservableObject {
     private var dividerResizeTask: Task<Void, Never>?
     private var canvasSizes: [UUID: CanvasDimensions] = [:]
     @Published public var tabRenameRequest: UUID?
+    @Published public var windowRenameRequest: UUID?
+    @Published public private(set) var editingTabID: UUID?
+    @Published public var tabRenameDraft = ""
+    @Published public private(set) var keyboard: KeyboardSettings
+    @Published public private(set) var keyboardNotice: String?
+    public var onKeyboardSettingsChanged: (() -> Void)?
+    @Published public private(set) var increaseContrast = false
+    @Published public private(set) var reduceMotion = false
     @Published public private(set) var isRestoring: Bool
     @Published public private(set) var recoveryMessage: String?
     @Published public private(set) var backupAvailable = false
@@ -206,6 +280,7 @@ public final class AppWorkspaceModel: ObservableObject {
         self.preferences = preferences
         defaultShell = preferences.string(forKey: "terminal.shell") ?? LocalLaunchConfiguration.loginShell().executable
         defaultDirectory = preferences.string(forKey: "terminal.directory") ?? FileManager.default.homeDirectoryForCurrentUser.path
+        (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
     }
@@ -349,6 +424,8 @@ public final class AppWorkspaceModel: ObservableObject {
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
+        if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
+        refreshTerminalAccessibility()
         scheduleWorkspaceSave()
     }
 
@@ -483,11 +560,18 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func attachTerminal(_ pane: WorkspacePane) {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
-        terminal.applyAppearance(appearance)
+        terminal.applyAppearance(terminalAppearance)
+        terminal.optionAsMeta = keyboard.optionAsMeta
+        terminal.searchShortcut = keyboard.shortcuts[.findInPane]
+        terminal.inputSuspended = editingTabID != nil
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
         terminal.onFocused = { [weak self] in
+            // Clicking a terminal leaves an in-progress rename; Finder-style, keep the edit.
+            if let self, let editing = self.editingTabID {
+                Task { await self.finishTabRename(editing, draft: self.tabRenameDraft, action: .commit) }
+            }
             self?.notePasteFocus(pane.id)
             Task { await self?.selectPane(pane.id) }
         }
@@ -660,9 +744,25 @@ public final class AppWorkspaceModel: ObservableObject {
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = "The tab could not be selected." }
     }
 
+    /// Native text editing of a tab title. Terminals stop receiving key input until
+    /// the edit ends, so Return/Escape only commit or cancel the title.
+    public func beginTabRename(_ id: UUID) async {
+        await selectTab(id)
+        guard let tab = presentation.selectedTab, tab.id == id else { return }
+        tabRenameDraft = tab.title
+        editingTabID = id
+        terminals.values.forEach { $0.inputSuspended = true }
+    }
+
     public func finishTabRename(_ id: UUID, draft: String, action: TabRenameAction) async {
+        if editingTabID == id { endTabRenameEditing() }
         guard case .commit = action else { return }
         await renameTab(id, title: draft)
+    }
+
+    private func endTabRenameEditing() {
+        editingTabID = nil
+        terminals.values.forEach { $0.inputSuspended = false }
     }
 
     public func renameTab(_ id: UUID, title: String) async {

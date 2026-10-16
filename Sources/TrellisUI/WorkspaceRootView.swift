@@ -6,8 +6,6 @@ public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
     @State private var windowToRename: ManagedWindow?
     @State private var windowName = ""
-    @State private var editingTabID: UUID?
-    @State private var tabDraft = ""
     @FocusState private var tabNameFocused: Bool
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
@@ -24,7 +22,7 @@ public struct WorkspaceRootView: View {
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
                 if let notice = model.themeNotice { Text(notice).lineLimit(1).help(notice) }
                 if let notice = model.appearanceNotice { Text(notice).lineLimit(1).help(notice) }
-                Text(sessionStatus).foregroundStyle(sessionStatusColor)
+                Text(model.accessibility.status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(model.accessibility.status)")
                 Text("·  UTF-8  ·  Local")
             }
             .font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 12).frame(height: 28)
@@ -37,13 +35,10 @@ public struct WorkspaceRootView: View {
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
-        .onChange(of: model.snapshot.activeWindowID) { _, _ in editingTabID = nil }
-        .onChange(of: model.presentation.selectedTab?.id) { _, selectedID in
-            // Beginning a rename selects an inactive tab first. That selection
-            // notification may arrive after the editor state has been installed.
-            if editingTabID != selectedID { editingTabID = nil }
+        .onChange(of: model.windowRenameRequest) { _, _ in
+            if let window = model.presentation.selectedWindow { beginWindowRename(window) }
         }
-        .onChange(of: editingTabID) { _, value in
+        .onChange(of: model.editingTabID) { _, value in
             if value == nil, let terminal = model.activeTerminal {
                 DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
             }
@@ -89,11 +84,6 @@ public struct WorkspaceRootView: View {
         }
     }
 
-    private var sessionStatus: String {
-        guard let terminal = model.activeTerminal else { return "No session" }
-        if terminal.sessionState == .exited, let code = terminal.exitCode { return "Exited (\(code))" }
-        return terminal.sessionState.rawValue.capitalized
-    }
     private var sessionStatusColor: Color {
         if model.usesNativeChrome { return .secondary }
         guard let terminal = model.activeTerminal else { return model.themeColor(.mutedForeground) }
@@ -105,48 +95,22 @@ public struct WorkspaceRootView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("WINDOWS").font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
+                    .accessibilityHidden(true)
                 Spacer()
                 Button {
                     Task { await model.createWindow() }
                 } label: {
                     Image(systemName: "plus")
                 }
-                .buttonStyle(.plain).help("New Window").accessibilityLabel("New Window")
+                .buttonStyle(.plain).help(shortcutHelp("New Window", .newWindow)).accessibilityLabel("New Window")
             }.padding(.horizontal, 10).padding(.bottom, 8)
             ScrollView {
+                let descriptors = model.accessibility.windows
                 VStack(spacing: 6) {
                     ForEach(model.snapshot.windows) { window in
-                        Button {
-                            Task { await model.selectWindow(window.id) }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
-                                Text(window.name).lineLimit(1)
-                                Spacer()
-                                if model.activity[window.id]?.hasExit == true {
-                                    Image(systemName: "stop.circle").help("A session exited").accessibilityLabel("Session exited")
-                                } else if model.activity[window.id]?.hasOutput == true {
-                                    Circle().fill(model.themeColor(.accent)).frame(width: 6, height: 6).help("New terminal output").accessibilityLabel("New output")
-                                }
-                                Text("\(window.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
-                            }.padding(.horizontal, 10).padding(.vertical, 8)
-                                .background(window.id == model.snapshot.activeWindowID ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 6))
-                                .contentShape(Rectangle())
-                        }.buttonStyle(.plain).accessibilityLabel(window.name)
-                            .accessibilityAddTraits(window.id == model.snapshot.activeWindowID ? [.isSelected] : [])
-                            .contextMenu {
-                                Button("Rename…") {
-                                    windowName = window.name; windowToRename = window
-                                }
-                                Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
-                                    .disabled(model.snapshot.windows.first?.id == window.id)
-                                Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
-                                    .disabled(model.snapshot.windows.last?.id == window.id)
-                                Divider().overlay(model.separatorOverlay)
-                                Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
-                            }
+                        windowRow(window, descriptor: descriptors.first { $0.id == window.id })
                     }
-                }
+                }.accessibilityElement(children: .contain).accessibilityLabel("Windows")
             }
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
@@ -155,10 +119,50 @@ public struct WorkspaceRootView: View {
             } label: {
                 Label("Settings", systemImage: "slider.horizontal.3")
             }
-            .buttonStyle(.plain).padding(.horizontal, 10).padding(.top, 6)
+            .buttonStyle(.plain).help("Settings (⌘,)").padding(.horizontal, 10).padding(.top, 6)
         }
         .font(.system(size: 12)).padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 14)
         .background(model.themeColor(.sidebarBackground))
+    }
+
+    private func windowRow(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
+        let selected = window.id == model.snapshot.activeWindowID
+        return Button {
+            Task { await model.selectWindow(window.id) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
+                Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
+                Spacer()
+                if model.activity[window.id]?.hasExit == true {
+                    Image(systemName: "stop.circle").help("A session exited")
+                } else if model.activity[window.id]?.hasOutput == true {
+                    Circle().fill(model.themeColor(.accent)).frame(width: 6, height: 6).help("New terminal output")
+                }
+                Text("\(window.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
+            }.padding(.horizontal, 10).padding(.vertical, 8)
+                .background(selected ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(descriptor?.label ?? window.name)
+        .accessibilityValue(descriptor?.value ?? "")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .accessibilityAction(named: "Rename") { beginWindowRename(window) }
+        .contextMenu {
+            Button("Rename…") { beginWindowRename(window) }
+            Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
+                .disabled(model.snapshot.windows.first?.id == window.id)
+            Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
+                .disabled(model.snapshot.windows.last?.id == window.id)
+            Divider().overlay(model.separatorOverlay)
+            Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+        }
+    }
+
+    private func beginWindowRename(_ window: ManagedWindow) {
+        windowName = window.name
+        windowToRename = window
     }
 
     private func rename(_ window: ManagedWindow) {
@@ -194,14 +198,14 @@ public struct WorkspaceRootView: View {
                                 tabLabel(tab)
                                 Divider().overlay(model.separatorOverlay).frame(height: 20)
                             }
-                        }
+                        }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
                     }.scrollIndicators(.hidden)
                     Button {
                         Task { await model.createTab() }
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .buttonStyle(.plain).padding(.horizontal, 14).help("New Tab (⌘T)").accessibilityLabel("New Tab")
+                    .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
                 Divider().overlay(model.separatorOverlay)
                 HStack(spacing: 6) {
@@ -217,16 +221,19 @@ public struct WorkspaceRootView: View {
     }
 
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "terminal").font(.system(size: 10))
-            if editingTabID == tab.id {
-                TextField("Tab name", text: $tabDraft)
+        let selected = tab.id == model.presentation.selectedTab?.id
+        let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
+        return HStack(spacing: 8) {
+            Image(systemName: "terminal").font(.system(size: 10)).accessibilityHidden(true)
+            if model.editingTabID == tab.id {
+                TextField("Tab name", text: $model.tabRenameDraft)
                     .textFieldStyle(.plain).focused($tabNameFocused)
+                    .accessibilityLabel("Tab name")
+                    .accessibilityHint("Return saves, Escape cancels")
                     .onAppear { tabNameFocused = true }
                     .onSubmit { commitTabRename(tab.id) }
                     .onExitCommand {
-                        editingTabID = nil
-                        Task { await model.finishTabRename(tab.id, draft: tabDraft, action: .cancel) }
+                        Task { await model.finishTabRename(tab.id, draft: model.tabRenameDraft, action: .cancel) }
                     }
             } else {
                 Text(tab.title).lineLimit(1)
@@ -239,17 +246,20 @@ public struct WorkspaceRootView: View {
                 Image(systemName: "xmark").font(.system(size: 9))
             }
             .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(tab.title)")
-        }.foregroundStyle(tab.id == model.presentation.selectedTab?.id ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
-            .font(.system(size: 12)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
-            .background(tab.id == model.presentation.selectedTab?.id ? model.themeColor(.activeTabBackground) : .clear)
+        }.foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
+            .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
+            .background(selected ? model.themeColor(.activeTabBackground) : .clear)
             .overlay(alignment: .bottom) {
-                if tab.id == model.presentation.selectedTab?.id { Rectangle().fill(model.themeColor(.accent)).frame(height: 2) }
+                if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
             .contentShape(Rectangle())
-            .onTapGesture { if editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
+            .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel("Tab \(tab.title)")
-            .accessibilityAddTraits(tab.id == model.presentation.selectedTab?.id ? [.isSelected] : [])
+            .accessibilityLabel(descriptor?.label ?? "Tab \(tab.title)")
+            .accessibilityValue(descriptor?.value ?? "")
+            .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
+            .accessibilityAction { Task { await model.selectTab(tab.id) } }
+            .accessibilityAction(named: "Rename") { beginTabRename(tab) }
             .contextMenu {
                 Button("Rename…") { beginTabRename(tab) }
                 Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
@@ -263,17 +273,14 @@ public struct WorkspaceRootView: View {
     }
 
     private func beginTabRename(_ tab: WorkspaceTab) {
-        Task {
-            await model.selectTab(tab.id)
-            guard model.presentation.selectedTab?.id == tab.id else { return }
-            tabDraft = tab.title
-            editingTabID = tab.id
-        }
+        Task { await model.beginTabRename(tab.id) }
     }
     private func commitTabRename(_ id: UUID) {
-        let draft = tabDraft
-        editingTabID = nil
+        let draft = model.tabRenameDraft
         Task { await model.finishTabRename(id, draft: draft, action: .commit) }
+    }
+    private func shortcutHelp(_ title: String, _ action: ShortcutAction) -> String {
+        model.keyboard.shortcuts[action].map { "\(title) (\($0))" } ?? title
     }
 
     private var terminalCanvas: some View {

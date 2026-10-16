@@ -27,7 +27,8 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S014 | Implemented — appearance review fixes, 154 tests, and native settings/zoom checks pass | [S014 evidence](../../docs/evidence/S014-appearance.md) |
 | S015 | Implemented/reviewed — 171 tests and native JSON preview checks pass | [S015 evidence](../../docs/evidence/S015-json-themes.md) |
 | S016 | Implemented/reviewed — 184 tests and native theme library checks pass | [S016 evidence](../../docs/evidence/S016-theme-library.md) |
-| S017–S032 | Planned | Stories below |
+| S017 | Implemented/reviewed — 201 tests pass; VoiceOver/IME/layout manual checks pending | [S017 evidence](../../docs/evidence/S017-keyboard-accessibility.md) |
+| S018–S032 | Planned | Stories below |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 

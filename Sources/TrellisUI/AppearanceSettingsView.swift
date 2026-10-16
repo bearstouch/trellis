@@ -18,6 +18,7 @@ public struct AppSettingsView: View {
         TabView {
             AppearanceSettingsView(model: model).disabled(model.previewedTheme != nil).tabItem { Text("Appearance") }
             LaunchSettingsView(model: model).tabItem { Text("Sessions") }
+            KeyboardSettingsView(model: model).tabItem { Text("Keyboard") }
             ThemePreviewView(workspace: model).tabItem { Text("Themes") }
         }
         .padding(16)

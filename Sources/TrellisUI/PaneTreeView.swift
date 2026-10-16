@@ -44,11 +44,21 @@ struct PaneTreeView: View {
 
     @ViewBuilder private func leaf(_ id: UUID, size: CGSize) -> some View {
         if let terminal = model.terminals[id] {
+            let focused = activePaneID == id
+            let descriptor = model.accessibility.panes.first { $0.id == id }
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Button(model.snapshot.panes[id]?.title ?? "Terminal") { Task { await model.selectPane(id) } }
-                        .buttonStyle(.plain).lineLimit(1)
+                        .buttonStyle(.plain).lineLimit(1).fontWeight(focused ? .semibold : .regular)
+                        .accessibilityLabel(descriptor?.label ?? "Terminal")
+                        .accessibilityValue(descriptor?.value ?? "")
+                        .accessibilityHint("Focuses this pane")
+                        .accessibilityAddTraits(focused ? [.isSelected] : [])
                     Spacer(minLength: 0)
+                    if terminal.sessionState != .running {
+                        // Text, not only color, reports stopped/exited/failed panes.
+                        Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)
+                    }
                     if terminal.sessionState == .exited || terminal.sessionState == .failed {
                         Button("Restart") { Task { await model.restartPane(id) } }
                             .help("Start a fresh session in this pane").accessibilityLabel("Restart Session")
@@ -79,7 +89,9 @@ struct PaneTreeView: View {
                     .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
                     .padding(.horizontal, 9).frame(height: 26).background(model.themeColor(.surface))
-                SearchableTerminalSurface(terminal: terminal, isFocused: activePaneID == id)
+                // A tab rename may select another tab first; its terminal host must not
+                // take first responder from the name field (its input is suspended).
+                SearchableTerminalSurface(terminal: terminal, isFocused: focused && model.editingTabID == nil)
                     .overlay {
                         if terminal.sessionState == .stopped {
                             VStack(spacing: 8) {
@@ -92,7 +104,9 @@ struct PaneTreeView: View {
                             }
                         }
                     }
-            }.overlay { Rectangle().strokeBorder(activePaneID == id ? model.themeColor(.focusRing) : .clear, lineWidth: 1).allowsHitTesting(false) }
+            }.overlay {
+                Rectangle().strokeBorder(focused ? model.themeColor(.focusRing) : .clear, lineWidth: model.increaseContrast ? 3 : 2).allowsHitTesting(false)
+            }
         } else {
             model.terminalBackground
         }
