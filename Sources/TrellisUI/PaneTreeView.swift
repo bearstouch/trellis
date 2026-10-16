@@ -139,8 +139,7 @@ struct PaneTreeView: View {
     }
 
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {
-        model.themeColor(.surface)
-            .overlay { Rectangle().fill(model.themeColor(.border)).frame(width: axis == .x ? 1 : nil, height: axis == .y ? 1 : nil).allowsHitTesting(false) }
+        model.themeColor(.border)
             .frame(
                 width: axis == .x ? CanvasDimensions.dividerThickness : nil,
                 height: axis == .y ? CanvasDimensions.dividerThickness : nil

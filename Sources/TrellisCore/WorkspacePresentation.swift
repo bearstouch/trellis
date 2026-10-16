@@ -11,7 +11,7 @@ public struct WorkspacePresentation: Sendable {
 }
 
 public struct CanvasDimensions: Equatable, Sendable {
-    public static let dividerThickness: Double = 5
+    public static let dividerThickness: Double = 1
     public var width: Double
     public var height: Double
     public init(width: Double, height: Double) { self.width = width; self.height = height }
