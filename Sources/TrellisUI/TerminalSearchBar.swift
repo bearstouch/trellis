@@ -46,7 +46,8 @@ struct SearchableTerminalSurface: View {
             // Opening/selecting a pane with an active find field must not let
             // the native terminal host steal that field's first responder.
             NativeTerminalSurface(terminal: terminal, isFocused: isFocused && !terminal.searchVisible)
-                .padding(8)
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
                 .background(background)
         }
     }
