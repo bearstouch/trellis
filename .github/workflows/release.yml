@@ -1,0 +1,129 @@
+name: Release
+
+# Push a tag matching the manifest version (e.g. v0.9.0) to build, sign and publish a
+# GitHub release. Manual runs build the DMG as a workflow artifact without publishing.
+#
+# Optional secrets for a distributable build (otherwise the build is ad-hoc signed and
+# the release is marked as a pre-release that Gatekeeper will block):
+#   MACOS_CERTIFICATE_P12       base64 Developer ID Application certificate (.p12)
+#   MACOS_CERTIFICATE_PASSWORD  password for the .p12
+#   MACOS_SIGN_IDENTITY         e.g. "Developer ID Application: Example (TEAMID)"
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   notarytool credentials (app-specific password)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    name: Package and publish
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          swift --version
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(python3 -c 'import json;print(json.load(open("release/manifest.json"))["version"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match release/manifest.json version $version"; exit 1
+          fi
+
+      - name: Test
+        run: swift test
+
+      - name: Import signing certificate
+        id: signing
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [ -z "$P12" ] || [ -z "$IDENTITY" ]; then
+            echo "::warning::No signing certificate configured; building an ad-hoc signed (non-distributable) release."
+            echo "signed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          keychain_password=$(uuidgen)
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "TRELLIS_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_PASSWORD" ]; then
+            xcrun notarytool store-credentials trellis-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$keychain"
+            echo "TRELLIS_NOTARY_PROFILE=trellis-notary" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Notary credentials not configured; the release will be signed but not notarized."
+          fi
+
+      - name: Package
+        run: scripts/package-release.sh
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 "Trellis-${{ steps.version.outputs.version }}.dmg" > "Trellis-${{ steps.version.outputs.version }}.dmg.sha256"
+          cat ./*.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Trellis-${{ steps.version.outputs.version }}
+          path: |
+            dist/Trellis-*.dmg
+            dist/Trellis-*.dmg.sha256
+            dist/release-evidence.json
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          # Release notes are the matching CHANGELOG.md section.
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found && /^\[[^]]+\]: / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if [ "$SIGNED" != true ]; then
+            printf '\n> **Note:** this build is ad-hoc signed and is not notarized. Gatekeeper will block it; build from source or wait for a signed release.\n' >> "$RUNNER_TEMP/notes.md"
+          fi
+          flags=(--title "Trellis $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag)
+          if [ "$SIGNED" != true ] || [[ "$VERSION" == 0.* ]] || [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
+            "dist/Trellis-$VERSION.dmg" "dist/Trellis-$VERSION.dmg.sha256" dist/release-evidence.json
+
+      - name: Clean up keychain
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true

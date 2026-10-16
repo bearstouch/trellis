@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master, develop]
+  push:
+    branches: [master, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-test:
+    name: Lint, build and test
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          swift --version
+
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'ThirdParty/SwiftTerm/Package.swift') }}-${{ github.sha }}
+          restore-keys: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'ThirdParty/SwiftTerm/Package.swift') }}-
+
+      - name: Lint
+        run: |
+          out=$(swift format lint --strict -r Sources Tests 2>&1)
+          if [ -n "$out" ]; then echo "$out"; echo "::error::swift format lint reported issues; run 'swift format -i -r Sources Tests'"; exit 1; fi
+
+      - name: Build
+        run: |
+          swift build 2>&1 | tee build.log
+          # Project sources must stay warning-free; the vendored engine is excluded.
+          if grep -E '/Sources/[^ ]*: warning:' build.log | grep -v '/ThirdParty/'; then
+            echo "::error::Build produced warnings in project sources"; exit 1
+          fi
+
+      - name: Test
+        run: swift test
+
+      - name: Launcher regression
+        run: python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"

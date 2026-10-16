@@ -1,5 +1,7 @@
 # Trellis
 
+[![CI](https://github.com/layerx-labs/trellis/actions/workflows/ci.yml/badge.svg)](https://github.com/layerx-labs/trellis/actions/workflows/ci.yml)
+
 A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal panes, Monaco, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
 > **Status:** pre-release. All 32 MVP stories (S001–S032) are implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See the [story plan](specs/00-stories/README.md), the per-story [evidence](docs/evidence/), and the [changelog](CHANGELOG.md) (current version: 0.9.0).
@@ -103,6 +105,13 @@ python3 scripts/qualify.py [--quick]          # release qualification, about 5 m
 scripts/package-release.sh                    # Universal 2 app + DMG (ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE)
 scripts/generate-app-icon.sh                  # regenerate icons from Design/AppIcon/*.svg (needs rsvg-convert)
 ```
+
+### CI and releases
+
+- [`ci.yml`](.github/workflows/ci.yml) runs lint, build (no new warnings in project sources), the full test suite and the launcher regression on `macos-26` with Xcode 26. It runs for every pull request to `master` or `develop`, and for every push to those branches.
+- [`release.yml`](.github/workflows/release.yml) runs when you push a tag `vX.Y.Z` that matches `release/manifest.json`. It tests, packages the Universal 2 DMG, and publishes a GitHub release whose notes come from the matching `CHANGELOG.md` section. Without signing secrets the build is ad-hoc signed and published as a pre-release. The secrets it uses are listed at the top of the workflow. A manual run builds the DMG as a workflow artifact without publishing anything.
+
+To cut a release, bump `release/manifest.json`, add the `CHANGELOG.md` section, commit, then run `git tag vX.Y.Z && git push --tags`.
 
 ## Project layout
 
