@@ -97,7 +97,9 @@ struct PaneTreeView: View {
                     .padding(.horizontal, 9).frame(height: 26).background(model.themeColor(.surface))
                 // A tab rename may select another tab first; its terminal host must not
                 // take first responder from the name field (its input is suspended).
-                SearchableTerminalSurface(terminal: terminal, isFocused: focused && model.editingTabID == nil)
+                SearchableTerminalSurface(
+                    terminal: terminal, isFocused: focused && model.editingTabID == nil,
+                    background: model.terminalBackground)
                     .overlay {
                         if terminal.sessionState == .stopped {
                             VStack(spacing: 8) {
