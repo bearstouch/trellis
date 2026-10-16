@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "windows": [
+    {
+      "key": "project",
+      "name": "Project",
+      "tabs": [
+        {
+          "key": "development",
+          "title": "Development",
+          "root": {
+            "type": "split",
+            "key": "main-split",
+            "axis": "x",
+            "ratio": 0.6,
+            "children": [
+              {
+                "type": "pane",
+                "key": "editor",
+                "title": "Editor",
+                "launch": {
+                  "kind": "shell",
+                  "directory": "~"
+                }
+              },
+              {
+                "type": "split",
+                "key": "tools-split",
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "type": "pane",
+                    "key": "server",
+                    "title": "Server",
+                    "launch": {
+                      "kind": "shell",
+                      "directory": "~"
+                    }
+                  },
+                  {
+                    "type": "pane",
+                    "key": "checks",
+                    "title": "Checks",
+                    "launch": {
+                      "kind": "shell",
+                      "directory": "~"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
