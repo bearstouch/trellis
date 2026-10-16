@@ -16,6 +16,7 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     public var processID: Int32? { session.processID }
     public var sessionState: SessionState { session.state }
     public var onStateChanged: ((SessionState) -> Void)?
+    public var onFocused: (() -> Void)?
     public var onOutput: (() -> Void)?
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
@@ -36,6 +37,7 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         surface.caretColor = .lightGray
         surface.setAccessibilityLabel("Terminal session")
         surface.terminalDelegate = self
+        surface.onFocused = { [weak self] in self?.onFocused?() }
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
             if !data.isEmpty { self?.onOutput?() }

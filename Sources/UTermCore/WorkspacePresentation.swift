@@ -16,10 +16,10 @@ public struct CanvasDimensions: Equatable, Sendable {
     public init(width: Double, height: Double) { self.width = width; self.height = height }
     public static func minimum(for layout: PaneLayout, cellWidth: Double = 8, cellHeight: Double = 18) -> Self {
         switch layout {
-        case .pane: return Self(width: cellWidth * 20, height: cellHeight * 5)
+        case .pane: return Self(width: cellWidth * 20, height: cellHeight * 5 + 26)
         case .split(_, let axis, let ratio, let children):
             guard children.count == 2, ratio.isFinite, (0.1...0.9).contains(ratio) else {
-                return Self(width: cellWidth * 20, height: cellHeight * 5)
+                return Self(width: cellWidth * 20, height: cellHeight * 5 + 26)
             }
             let first = minimum(for: children[0], cellWidth: cellWidth, cellHeight: cellHeight)
             let second = minimum(for: children[1], cellWidth: cellWidth, cellHeight: cellHeight)

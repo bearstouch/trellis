@@ -1,7 +1,7 @@
 # S007 — Create and close nested terminal splits
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented and independently reviewed — 81-test suite and native split checks passing  
 Delivery phase: 2  
 Depends on: [S002](002-domain-model-and-command-service.md), [S003](003-local-pty-session.md), [S006](006-tabs-and-inline-renaming.md)  
 Requirements: `FR-P01`, `FR-P03`, `FR-T03`
@@ -12,10 +12,10 @@ As a terminal user, I want to split any pane left/right or top/bottom while reta
 
 ## Acceptance criteria
 
-- [ ] **S007-AC01:** Offer Split Left/Right (axis x) and Split Top/Bottom (axis y) on every leaf, including nested leaves; preserve the existing pane as first child.
-- [ ] **S007-AC02:** Assign stable IDs to new branches/panes; create a distinct session per new pane and expose launch failure without invalidating the tree.
-- [ ] **S007-AC03:** Closing one leaf collapses its parent into the sibling while retaining surviving IDs; the last pane closes its tab and the last tab closes its window.
-- [ ] **S007-AC04:** Reject splits beyond depth 16, the total capacity of 100 panes, or available minimum cell dimensions; failure leaves the original state intact.
+- [x] **S007-AC01:** Offer Split Left/Right (axis x) and Split Top/Bottom (axis y) on every leaf, including nested leaves; preserve the existing pane as first child.
+- [x] **S007-AC02:** Assign stable IDs to new branches/panes; create a distinct session per new pane and expose launch failure without invalidating the tree.
+- [x] **S007-AC03:** Closing one leaf collapses its parent into the sibling while retaining surviving IDs; the last pane closes its tab and the last tab closes its window.
+- [x] **S007-AC04:** Reject splits beyond depth 16, the total capacity of 100 panes, or available minimum cell dimensions; failure leaves the original state intact.
 
 ## Unit tests
 
@@ -34,7 +34,7 @@ Interact independently with a mixed-axis three-pane layout and verify terminal r
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S007 implementation, review fixes, tests, and native evidence](../../docs/evidence/S007-nested-splits.md). All 81 tests pass. Native mixed-axis input, confirmed leaf closure, surviving view/process identity, and PTY resize after collapse passed. Prior physical platform qualification remains pending.
 
 ## Source specifications
 

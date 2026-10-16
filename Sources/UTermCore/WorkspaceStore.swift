@@ -25,6 +25,9 @@ public enum WorkspaceCommand: Sendable {
     case reorderWindows(ids: [UUID])
     case deleteWindow(id: UUID)
     case recordSessionExit(sessionID: UUID, code: Int32?)
+    case splitPane(id: UUID, axis: SplitAxis, availableSize: TerminalSize)
+    case deletePane(id: UUID)
+    case selectPane(id: UUID)
     case createTab(windowID: UUID)
     case selectTab(id: UUID)
     case reorderTabs(windowID: UUID, ids: [UUID])
@@ -41,6 +44,7 @@ public struct WorkspaceCommandResult: Equatable, Sendable {
     public let effects: [WorkspaceEffect]
     public let createdWindowID: UUID?
     public let createdTabID: UUID?
+    public let createdPaneID: UUID?
 }
 
 public actor WorkspaceStore {
@@ -69,6 +73,7 @@ public actor WorkspaceStore {
         var effects: [WorkspaceEffect] = []
         var createdWindowID: UUID?
         var createdTabID: UUID?
+        var createdPaneID: UUID?
         switch command {
         case .createWindow(let rawName):
             let name = try validatedName(rawName)
@@ -132,6 +137,38 @@ public actor WorkspaceStore {
             guard name != next.windows[index].name else { return unchanged() }
             next.windows[index].name = name
             next.windows[index].revision = next.revision
+        case .splitPane(let id, let axis, let available):
+            guard let pane = next.panes[id], var tab = next.tabs[pane.tabID] else { throw WorkspaceError.notFound }
+            guard available.columns >= (axis == .x ? 40 : 20), available.rows >= (axis == .y ? 10 : 5) else {
+                throw WorkspaceError.invalidState("Split requires at least 20 columns and 5 rows for each pane")
+            }
+            let newPaneID = makeID(), sessionID = makeID()
+            tab.root = tab.root.splitting(paneID: id, branchID: makeID(), newPaneID: newPaneID, axis: axis)
+            tab.activePaneID = newPaneID
+            tab.revision = next.revision
+            next.tabs[tab.id] = tab
+            next.panes[newPaneID] = WorkspacePane(id: newPaneID, tabID: tab.id, sessionID: sessionID, profileID: pane.profileID)
+            next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
+            createdPaneID = newPaneID
+        case .selectPane(let id):
+            guard let pane = next.panes[id], var tab = next.tabs[pane.tabID] else { throw WorkspaceError.notFound }
+            guard tab.activePaneID != id else { return unchanged() }
+            tab.activePaneID = id
+            tab.revision = next.revision
+            next.tabs[tab.id] = tab
+        case .deletePane(let id):
+            guard let pane = next.panes[id], var tab = next.tabs[pane.tabID], let session = next.sessions[pane.sessionID] else { throw WorkspaceError.notFound }
+            guard ![SessionState.starting, .running, .closing].contains(session.state) else { throw WorkspaceError.invalidTransition }
+            guard let root = tab.root.removing(paneID: id) else {
+                // The single leaf owns its tab; reuse the tab/window cascade below.
+                return try execute(.deleteTab(id: tab.id), expectedRevision: expectedRevision)
+            }
+            next.panes.removeValue(forKey: id)
+            next.sessions.removeValue(forKey: pane.sessionID)
+            if tab.activePaneID == id { tab.activePaneID = tab.root.siblingPaneID(whenRemoving: id) ?? root.paneIDs[0] }
+            tab.root = root
+            tab.revision = next.revision
+            next.tabs[tab.id] = tab
         case .createTab(let windowID):
             guard let index = next.windows.firstIndex(where: { $0.id == windowID }) else { throw WorkspaceError.notFound }
             let tabID = makeID(), paneID = makeID(), sessionID = makeID()
@@ -241,11 +278,11 @@ public actor WorkspaceStore {
         }
         try next.validate()
         state = next
-        return WorkspaceCommandResult(snapshot: next, effects: effects, createdWindowID: createdWindowID, createdTabID: createdTabID)
+        return WorkspaceCommandResult(snapshot: next, effects: effects, createdWindowID: createdWindowID, createdTabID: createdTabID, createdPaneID: createdPaneID)
     }
 
     private func unchanged() -> WorkspaceCommandResult {
-        WorkspaceCommandResult(snapshot: state, effects: [], createdWindowID: nil, createdTabID: nil)
+        WorkspaceCommandResult(snapshot: state, effects: [], createdWindowID: nil, createdTabID: nil, createdPaneID: nil)
     }
 
     private func validatedName(_ name: String) throws -> String {

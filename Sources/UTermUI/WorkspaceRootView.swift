@@ -203,45 +203,76 @@ public struct WorkspaceRootView: View {
 
     private var terminalCanvas: some View {
         GeometryReader { geometry in
-            if let tab = model.presentation.selectedTab, let terminal = model.activeTerminal {
+            if let tab = model.presentation.selectedTab {
                 let minimum = CanvasDimensions.minimum(for: tab.root)
                 let size = minimum.fitting(width: geometry.size.width, height: geometry.size.height)
                 ScrollView([.horizontal, .vertical]) {
-                    NativeTerminalSurface(terminal: terminal).frame(width: size.width, height: size.height)
+                    PaneTreeView(model: model, layout: tab.root, activePaneID: tab.activePaneID)
+                        .frame(width: size.width, height: size.height)
                 }.background(Color(red: 0.082, green: 0.09, blue: 0.098))
-                    .overlay(alignment: .center) {
-                        if terminal.sessionState == .stopped, let pane = model.presentation.activePane {
-                            Button("Start Session") { Task { await model.start(paneID: pane.id) } }.buttonStyle(.borderedProminent)
-                        }
-                    }
             } else { Color(red: 0.082, green: 0.09, blue: 0.098) }
         }
     }
 }
 
-private struct NativeTerminalSurface: NSViewRepresentable {
+struct NativeTerminalSurface: NSViewRepresentable {
     let terminal: NativeTerminal
+    var isFocused = true
     func makeNSView(context: Context) -> TerminalContainerView {
         let container = TerminalContainerView()
-        container.display(terminal.view)
+        container.display(terminal.view, focused: isFocused)
         return container
     }
-    func updateNSView(_ view: TerminalContainerView, context: Context) { view.display(terminal.view) }
+    func updateNSView(_ view: TerminalContainerView, context: Context) { view.display(terminal.view, focused: isFocused) }
 }
 
 /// SwiftUI retains representables across selection changes. Keep a stable host,
 /// but explicitly replace its terminal so input always reaches the selected pane.
 final class TerminalContainerView: NSView {
-    func display(_ terminal: NSView) {
-        guard subviews.first !== terminal else { return }
-        subviews.forEach { $0.removeFromSuperview() }
-        terminal.frame = bounds
-        terminal.autoresizingMask = [.width, .height]
-        addSubview(terminal)
-        DispatchQueue.main.async { [weak self, weak terminal] in
-            guard let self, let terminal, terminal.superview === self,
-                  self.window?.isKeyWindow == true else { return }
-            self.window?.makeFirstResponder(terminal)
+    private var wasFocused = false
+    private var desiredTerminal: NSView?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        reconcileAfterTreeUpdate()
+    }
+
+    func display(_ terminal: NSView, focused: Bool = true) {
+        desiredTerminal = terminal
+        let changed = subviews.first !== terminal
+        if changed {
+            subviews.forEach { $0.removeFromSuperview() }
+            terminal.frame = bounds
+            terminal.autoresizingMask = [.width, .height]
+            addSubview(terminal)
+        }
+        if focused && (changed || !wasFocused) {
+            DispatchQueue.main.async { [weak self, weak terminal] in
+                guard let self, let terminal, self.wasFocused, terminal.superview === self,
+                      self.window?.isKeyWindow == true else { return }
+                self.window?.makeFirstResponder(terminal)
+            }
+        }
+        wasFocused = focused
+        reconcileAfterTreeUpdate()
+    }
+
+    private func reconcileAfterTreeUpdate() {
+        // Collapsing a recursive SwiftUI split replaces several representable
+        // hosts in one transaction. An old host can update after the new host
+        // and temporarily reclaim its cached terminal. Reattach only from the
+        // surviving native host once that transaction has finished.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window != nil, let terminal = self.desiredTerminal else { return }
+            if terminal.superview !== self {
+                self.subviews.forEach { $0.removeFromSuperview() }
+                terminal.frame = self.bounds
+                terminal.autoresizingMask = [.width, .height]
+                self.addSubview(terminal)
+                if self.wasFocused, self.window?.isKeyWindow == true {
+                    self.window?.makeFirstResponder(terminal)
+                }
+            }
         }
     }
 }

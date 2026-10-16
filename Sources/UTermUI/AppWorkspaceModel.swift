@@ -30,6 +30,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
     private var closingWindowIDs = Set<UUID>()
     private var closingTabIDs = Set<UUID>()
+    private var closingPaneIDs = Set<UUID>()
     @Published public var tabRenameRequest: UUID?
     public var openSettings: (() -> Void)?
     private let service: WorkspaceCommandService
@@ -142,7 +143,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func isClosing(paneID: UUID) -> Bool {
         guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID] else { return false }
-        return closingWindowIDs.contains(tab.windowID) || closingTabIDs.contains(tab.id)
+        return closingWindowIDs.contains(tab.windowID) || closingTabIDs.contains(tab.id) || closingPaneIDs.contains(paneID)
     }
 
     public func recordActivity(paneID: UUID, exited: Bool = false) {
@@ -170,7 +171,47 @@ public final class AppWorkspaceModel: ObservableObject {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
+        terminal.onFocused = { [weak self] in Task { await self?.selectPane(pane.id) } }
         terminals[pane.id] = terminal
+    }
+
+    public func selectPane(_ id: UUID) async {
+        do { publish(try await service.execute(.selectPane(id: id)).snapshot) }
+        catch { errorMessage = "The pane could not be selected." }
+    }
+
+    public func splitPane(_ id: UUID, axis: SplitAxis, availableCanvas: CanvasDimensions? = nil, startSession: Bool = true) async {
+        guard !shuttingDown, !isClosing(paneID: id), let terminal = terminals[id] else { return }
+        if let canvas = availableCanvas {
+            let minimum = CanvasDimensions.minimum(for: .split(id: UUID(), axis: axis, ratio: 0.5, children: [.pane(UUID()), .pane(UUID())]))
+            guard canvas.width >= minimum.width, canvas.height >= minimum.height else {
+                errorMessage = "Enlarge this pane before splitting it."
+                return
+            }
+        }
+        let dimensions = terminal.getWindowSize()
+        guard let size = try? TerminalSize(columns: Int(dimensions.ws_col), rows: Int(dimensions.ws_row)) else { return }
+        pendingOperations += 1
+        defer { pendingOperations -= 1 }
+        do {
+            let result = try await service.execute(.splitPane(id: id, axis: axis, availableSize: size))
+            guard !shuttingDown else { return }
+            guard let newID = result.createdPaneID, let pane = result.snapshot.panes[newID] else { return }
+            attachTerminal(pane)
+            publish(result.snapshot)
+            // The store may have committed while a close operation began. Keep
+            // its surviving pane materialized, but do not launch a new process
+            // inside a hierarchy that is already closing.
+            if startSession, !isClosing(paneID: id), !isClosing(paneID: newID) { await start(paneID: newID) }
+        } catch { errorMessage = "This pane cannot be split further. Check its size and the layout limits." }
+    }
+
+    public func closePane(_ id: UUID) async {
+        guard !shuttingDown, !isClosing(paneID: id), let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID] else { return }
+        closingPaneIDs.insert(id)
+        defer { closingPaneIDs.remove(id) }
+        await closeResources(panes: [id], command: .deletePane(id: id))
+        if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
     }
 
     public func createTab(windowID: UUID? = nil, duplicate id: UUID? = nil, startSessions: Bool = true) async {
@@ -253,7 +294,10 @@ public final class AppWorkspaceModel: ObservableObject {
         guard !shuttingDown else { return }
         do {
             publish(try await service.execute(command).snapshot)
-            for pane in panes { terminals.removeValue(forKey: pane) }
+            // A split can commit while this close waits for its processes. Its
+            // stopped pane may belong to a deleted tab/window even though it
+            // was absent from the original resource set.
+            terminals = terminals.filter { snapshot.panes[$0.key] != nil }
         } catch { errorMessage = "The sessions could not be closed." }
     }
 

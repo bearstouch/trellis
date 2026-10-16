@@ -5,6 +5,12 @@ import SwiftTerm
 /// area interface here so assistive clients can read actual retained terminal text.
 @MainActor
 final class AccessibleTerminalView: TerminalView {
+    var onFocused: (() -> Void)?
+    override func mouseDown(with event: NSEvent) {
+        onFocused?()
+        super.mouseDown(with: event)
+    }
+
     var retainedText: String {
         let terminal = getTerminal()
         var count = 0
