@@ -257,7 +257,9 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var recoveryMessage: String?
     @Published public private(set) var backupAvailable = false
     @Published public private(set) var persistenceReadOnly = false
-    @Published public private(set) var unconfiguredPaneIDs = Set<UUID>()
+    @Published public internal(set) var unconfiguredPaneIDs = Set<UUID>()
+    /// Sessions that received API input: their late write failures never raise an alert (S024-AC04).
+    var automationInputSessionIDs = Set<UUID>()
     public private(set) var restoredWindowFrame: String?
     public var onRestoreWindowFrame: ((String) -> Void)?
     private let persistence: WorkspacePersistence?
@@ -459,7 +461,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// `quietly` (automation) reports failure through session state, never an alert.
-    public func start(paneID: UUID, fixture: Bool = false, quietly: Bool = false) async {
+    /// `environment` holds runtime-only overrides (automation); they are never persisted.
+    public func start(paneID: UUID, fixture: Bool = false, quietly: Bool = false, environment: [String: String] = [:]) async {
         guard !isRestoring, recoveryMessage == nil, !unconfiguredPaneIDs.contains(paneID),
             !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped
         else { return }
@@ -492,7 +495,10 @@ public final class AppWorkspaceModel: ObservableObject {
                     ).snapshot)
                 return
             }
-            terminal.onInputError = { [weak self] _ in self?.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste." }
+            terminal.onInputError = { [weak self] _ in
+                guard let self, !self.automationInputSessionIDs.contains(request.sessionID) else { return }
+                self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
+            }
             var launchCompleted = false
             terminal.onStateChanged = { [weak self, weak terminal] state in
                 if state != .running, self?.pendingPaste?.target.paneID == paneID { self?.cancelPaste() }
@@ -522,9 +528,10 @@ public final class AppWorkspaceModel: ObservableObject {
                 let configuration: LocalLaunchConfiguration
                 switch request.launch {
                 case .shell(let directory):
-                    configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory)
+                    configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory, environmentOverrides: environment)
                 case .process(let executable, let arguments, let directory):
-                    configuration = LocalLaunchConfiguration(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
+                    configuration = LocalLaunchConfiguration(
+                        executable: executable, arguments: arguments, directory: directory ?? defaultDirectory, environmentOverrides: environment)
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
                     // `.host(id)` so persistence and explicit reconnects re-read it.
@@ -543,7 +550,8 @@ public final class AppWorkspaceModel: ObservableObject {
                             ).snapshot)
                         return
                     }
-                    configuration = LocalLaunchConfiguration(executable: sshExecutable, arguments: arguments, directory: defaultDirectory)
+                    configuration = LocalLaunchConfiguration(
+                        executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: environment)
                 }
                 await terminal.start(configuration: configuration)
             }

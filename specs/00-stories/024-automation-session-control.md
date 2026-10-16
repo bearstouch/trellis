@@ -1,7 +1,7 @@
 # S024 — Start sessions and submit authorized input
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 257 tests pass; live agent/SSH checks pending  
 Delivery phase: 4  
 Depends on: [S003](003-local-pty-session.md), [S009](009-safe-session-close-and-restart.md), [S012](012-safe-paste-and-file-paths.md), [S020](020-ssh-connections.md), [S022](022-automation-grants.md), [S023](023-automation-resource-commands.md)  
 Requirements: `FR-A01`, `FR-A03`, `API-03`, `API-04`, `INT-06`
@@ -34,7 +34,7 @@ Run a dedicated fixture process with a known exit code and an interactive shell 
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S024 session control evidence](../../docs/evidence/S024-automation-session-control.md) for launch-descriptor, input-limit, execute, disconnect, and host.connect tests, review fixes, and pending live checks.
 
 ## Source specifications
 

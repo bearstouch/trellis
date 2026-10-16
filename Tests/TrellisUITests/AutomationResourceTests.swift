@@ -5,19 +5,19 @@ import TrellisControl
 import TrellisCore
 @testable import TrellisUI
 
-private final class Clock: @unchecked Sendable {
+final class Clock: @unchecked Sendable {
     private let lock = NSLock()
     private var value = Date(timeIntervalSince1970: 1_800_000_000)
     var now: Date { lock.withLock { value } }
     func advance(_ seconds: TimeInterval) { lock.withLock { value = value.addingTimeInterval(seconds) } }
 }
 
-private final class NoSecrets: GrantSecretStore, @unchecked Sendable {
+final class NoSecrets: GrantSecretStore, @unchecked Sendable {
     func store(_ token: String, grantID: UUID) throws {}
     func remove(grantID: UUID) {}
 }
 
-private final class MemoryHosts: HostStorage, @unchecked Sendable {
+final class MemoryHosts: HostStorage, @unchecked Sendable {
     var data: Data?
     func read() throws -> Data? { data }
     func write(_ data: Data) throws { self.data = data }
@@ -26,7 +26,7 @@ private final class MemoryHosts: HostStorage, @unchecked Sendable {
 
 /// An RPC client wired to a real model through the authorizing handler.
 @MainActor
-private final class Harness {
+final class Harness {
     let model: AppWorkspaceModel
     let hosts: HostListModel
     let grants: GrantStore
@@ -96,11 +96,11 @@ private final class Harness {
     }
 }
 
-private func result(_ response: [String: Any], file: StaticString = #filePath, line: UInt = #line) throws -> [String: Any] {
+func result(_ response: [String: Any], file: StaticString = #filePath, line: UInt = #line) throws -> [String: Any] {
     try XCTUnwrap(response["result"] as? [String: Any], "\(response)", file: file, line: line)
 }
 
-private func errorCode(_ response: [String: Any]) -> String? {
+func errorCode(_ response: [String: Any]) -> String? {
     ((response["error"] as? [String: Any])?["data"] as? [String: Any])?["code"] as? String
 }
 

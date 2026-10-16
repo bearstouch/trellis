@@ -52,6 +52,14 @@ public enum AuthorizationPolicy {
         return topics.contains { if case .string(let topic) = $0 { topic.lowercased().contains("output") } else { true } }
     }
 
+    private static let arbitraryLaunch: @Sendable (JSONValue?) -> Bool = { params in
+        switch params?["launch"] {
+        case nil, .null?: false
+        case .object(let launch)?: launch["kind"] != .string("host") || launch.count > 2
+        default: true
+        }
+    }
+
     /// Every method in the API catalog. Unknown methods are not dispatched.
     public static let requirements: [String: MethodRequirement] = [
         "system.info": needs(),
@@ -75,9 +83,11 @@ public enum AuthorizationPolicy {
         "pane.maximize": needs(.layoutWrite, resources: [(.pane, "id")]),
         "pane.close": needs(.layoutWrite, resources: [(.pane, "id")], conditional: [("allowRunning", .sessionClose), ("force", .sessionClose)]),
         "session.get": needs(.metadataRead, resources: [(.session, "id")]),
-        "session.start": needs(.sessionStart, resources: [(.pane, "paneId")], conditional: [("launch", .sessionExecute)]),
+        // A saved-host launch needs host access (checked by the domain), not execute;
+        // any other launch descriptor is arbitrary execution.
+        "session.start": needs(.sessionStart, resources: [(.pane, "paneId")], when: [(.sessionExecute, arbitraryLaunch)]),
         "session.restart": needs(
-            .sessionStart, resources: [(.pane, "paneId")], conditional: [("launch", .sessionExecute), ("allowRunning", .sessionClose)]),
+            .sessionStart, resources: [(.pane, "paneId")], conditional: [("allowRunning", .sessionClose)], when: [(.sessionExecute, arbitraryLaunch)]),
         "session.sendInput": needs(.sessionInput, resources: [(.session, "id")]),
         "session.execute": needs(.sessionExecute, resources: [(.session, "id")]),
         "session.readOutput": needs(.sessionOutputRead, resources: [(.session, "id")]),

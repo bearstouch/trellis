@@ -80,6 +80,11 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 return .success(.object(["paneId": .string(id.uuidString), "maximized": .bool(maximized)]))
             case "pane.close": return try await close(.deletePane(id: try p.uuid("id")), p, expecting: nil)
             case "session.get": return .success(try sessionJSON(try p.uuid("id"), access))
+            case "session.start": return try await startSession(p, access)
+            case "session.restart": return try await restartSession(p, access)
+            case "session.sendInput": return .success(try sendInput(p))
+            case "session.execute": return .success(try execute(p))
+            case "host.connect": return try await connect(p, access)
             case "host.list": return .success(.object(["hosts": .array(hostsVisible(access, query: try p.optionalString("query")).map(hostJSON))]))
             case "host.get":
                 guard let host = hosts.hosts.first(where: { $0.id == (try? p.uuid("id")) }) else { throw ControlError.notFound }
@@ -213,6 +218,204 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                     "CLOSE_PENDING", "Sessions are still closing. Retry later, or request force: true after two seconds.", retryable: true,
                     details: .object(["sessionIds": .array(ids.map { .string($0.uuidString) })])))
         }
+    }
+
+    // MARK: - Sessions (S024)
+
+    /// Exact decoded bytes accepted per input or execute call.
+    static let inputLimit = 65_536
+
+    @MainActor private func startSession(_ p: Params, _ access: GrantAccess) async throws -> Result<JSONValue, ControlError> {
+        let paneID = try p.uuid("paneId")
+        let (launch, environment) = try launchDescriptor(p, access)
+        if launch == nil { try requireHostAccess(forStoredLaunchOf: paneID, access) }
+        do { try await model.automationStartSession(paneID, launch: launch, environment: environment) } catch { throw Self.map(error) }
+        return launchResult(paneID, access)
+    }
+
+    @MainActor private func restartSession(_ p: Params, _ access: GrantAccess) async throws -> Result<JSONValue, ControlError> {
+        let paneID = try p.uuid("paneId")
+        let (launch, environment) = try launchDescriptor(p, access)
+        if launch == nil { try requireHostAccess(forStoredLaunchOf: paneID, access) }
+        let allowRunning = try p.optionalBool("allowRunning") == true, force = try p.optionalBool("force") == true
+        let outcome: AutomationCloseResult
+        do { outcome = try await model.automationRestart(paneID, allowRunning: allowRunning, force: force) } catch { throw Self.map(error) }
+        switch outcome {
+        case .closed: break
+        case .confirmationRequired(let ids):
+            return .failure(
+                .application(
+                    "CONFIRMATION_REQUIRED", "The session is running. Repeat with allowRunning: true (requires session.close).",
+                    details: .object(["sessionIds": .array(ids.map { .string($0.uuidString) })])))
+        case .closePending(let ids):
+            return .failure(
+                .application(
+                    "CLOSE_PENDING", "The session is still closing. Retry later, or request force: true after two seconds.", retryable: true,
+                    details: .object(["sessionIds": .array(ids.map { .string($0.uuidString) })])))
+        }
+        do { try await model.automationStartSession(paneID, launch: launch, environment: environment) } catch { throw Self.map(error) }
+        return launchResult(paneID, access)
+    }
+
+    /// A failed launch is an error that still carries the failed session record.
+    @MainActor private func launchResult(_ paneID: UUID, _ access: GrantAccess) -> Result<JSONValue, ControlError> {
+        guard let sessionID = model.snapshot.panes[paneID]?.sessionID, let record = try? sessionJSON(sessionID, access) else { return .failure(.notFound) }
+        if model.terminals[paneID]?.sessionState == .failed || model.snapshot.sessions[sessionID]?.state == .failed {
+            return .failure(.application("LAUNCH_FAILED", "The session could not be started. Check the executable, directory, and environment.", details: .object(["session": record])))
+        }
+        return .success(.object(["session": record]))
+    }
+
+    /// Parses an optional launch descriptor. Policy already required
+    /// session.execute for anything other than `{kind: "host", hostId}`.
+    @MainActor private func launchDescriptor(_ p: Params, _ access: GrantAccess) throws -> (SessionLaunch?, [String: String]) {
+        guard let raw = p.object["launch"], raw != .null else { return (nil, [:]) }
+        guard case .object(let object) = raw else { throw ControlError.invalidParams("launch must be an object.", fields: ["launch": "object"]) }
+        let launch = Params(raw)
+        func absolute(_ key: String) throws -> String {
+            let path = try launch.string(key)
+            guard path.hasPrefix("/"), !path.contains("\0"), path.utf8.count <= 4096 else {
+                throw ControlError.invalidParams("\(key) must be an absolute path.", fields: [key: "absolute path"])
+            }
+            return path
+        }
+        var environment: [String: String] = [:]
+        if let env = object["environment"], env != .null {
+            guard case .object(let values) = env, values.count <= 256 else {
+                throw ControlError.invalidParams("environment must be an object of strings.", fields: ["environment": "object"])
+            }
+            for (key, value) in values {
+                guard case .string(let text) = value, !key.isEmpty, !key.contains("="), !key.contains("\0"), !text.contains("\0"),
+                    key.utf8.count <= 256, text.utf8.count <= 32_768, !["TRELLIS_", "__TRELLIS_", "UTERM_", "__UTERM_"].contains(where: key.uppercased().hasPrefix)
+                else { throw ControlError.invalidParams("Invalid environment entry.", fields: ["environment": "string keys and values; TRELLIS_ names are reserved"]) }
+                environment[key] = text
+            }
+        }
+        switch try launch.string("kind") {
+        case "host":
+            let hostID = try launch.uuid("hostId")
+            switch access.hostAccess(hosts.hosts.first { $0.id == hostID }) {
+            case .allowed: return (.host(hostID), [:])
+            case .hidden: throw ControlError.notFound
+            case .needsReapproval: throw ControlError.application("PERMISSION_DENIED", "This host's connection changed after it was approved. Reapprove it in Settings → Automation.")
+            }
+        case "shell":
+            let directory = object["directory"] == nil || object["directory"] == .null ? nil : try absolute("directory")
+            return (.shell(directory: directory), environment)
+        case "process":
+            guard case .array(let values)? = object["arguments"] ?? .array([]), values.count <= 256 else {
+                throw ControlError.invalidParams("arguments must be an array of strings.", fields: ["arguments": "array of strings"])
+            }
+            let arguments = try values.map { value -> String in
+                guard case .string(let argument) = value, !argument.contains("\0"), argument.utf8.count <= 65_536 else {
+                    throw ControlError.invalidParams("arguments must be an array of strings.", fields: ["arguments": "array of strings"])
+                }
+                return argument
+            }
+            return (.process(executable: try absolute("executable"), arguments: arguments, directory: try absolute("directory")), environment)
+        default: throw ControlError.invalidParams("launch.kind must be shell, process, or host.", fields: ["launch.kind": "shell, process, or host"])
+        }
+    }
+
+    /// Starting a pane that already references a saved host still needs access to it.
+    @MainActor private func requireHostAccess(forStoredLaunchOf paneID: UUID, _ access: GrantAccess) throws {
+        guard let session = model.snapshot.panes[paneID].flatMap({ model.snapshot.sessions[$0.sessionID] }), case .host(let hostID) = session.launch else { return }
+        switch access.hostAccess(hosts.hosts.first { $0.id == hostID }) {
+        case .allowed: return
+        case .hidden: throw ControlError.application("PERMISSION_DENIED", "This pane connects to a saved host this grant cannot use.")
+        case .needsReapproval: throw ControlError.application("PERMISSION_DENIED", "This host's connection changed after it was approved. Reapprove it in Settings → Automation.")
+        }
+    }
+
+    @MainActor private func sendInput(_ p: Params) throws -> JSONValue {
+        let sessionID = try p.uuid("id")
+        let text = try p.optionalString("text"), encoded = try p.optionalString("base64")
+        guard (text == nil) != (encoded == nil) else {
+            throw ControlError.invalidParams("Send exactly one of text or base64.", fields: ["text": "exactly one of text/base64", "base64": "exactly one of text/base64"])
+        }
+        // Reject oversized input before decoding it.
+        if let encoded, encoded.utf8.count > (Self.inputLimit + 2) / 3 * 4 + 4 { throw Self.inputTooLarge }
+        guard let data = text.map({ Data($0.utf8) }) ?? encoded.flatMap({ Data(base64Encoded: $0) }) else {
+            throw ControlError.invalidParams("base64 is not valid.", fields: ["base64": "standard base64"])
+        }
+        guard !data.isEmpty else { throw ControlError.invalidParams("Input is empty.", fields: ["text": "non-empty"]) }
+        guard data.count <= Self.inputLimit else { throw Self.inputTooLarge }
+        let paste: Bool
+        switch try p.optionalString("mode") ?? "literal" {
+        case "literal": paste = false
+        case "paste":
+            // Paste must be text and cannot terminate bracketed paste early.
+            guard String(data: data, encoding: .utf8) != nil, data.range(of: Data("\u{1b}[201~".utf8)) == nil else {
+                throw ControlError.invalidParams("Paste input must be UTF-8 text without the bracketed-paste end marker.", fields: ["mode": "paste requires UTF-8 text"])
+            }
+            paste = true
+        default: throw ControlError.invalidParams("mode must be literal or paste.", fields: ["mode": "literal or paste"])
+        }
+        try send(sessionID, data, paste: paste)
+        return .object(["acceptedBytes": .number(Double(data.count)), "mode": .string(paste ? "paste" : "literal")])
+    }
+
+    @MainActor private func execute(_ p: Params) throws -> JSONValue {
+        let sessionID = try p.uuid("id")
+        guard try p.optionalBool("submit") == true else {
+            throw ControlError.invalidParams("session.execute requires submit: true; it sends the command plus Return.", fields: ["submit": "true"])
+        }
+        let command = try p.string("command")
+        guard !command.isEmpty, !command.unicodeScalars.contains(where: { $0.value == 0 || $0.value == 10 || $0.value == 13 }) else {
+            throw ControlError.invalidParams("command must be one non-empty line.", fields: ["command": "one line without CR/LF"])
+        }
+        let data = Data((command + "\r").utf8)
+        guard data.count <= Self.inputLimit else { throw Self.inputTooLarge }
+        try send(sessionID, data, paste: false)
+        // Acceptance means the bytes were queued, not that the command finished.
+        return .object(["acceptedBytes": .number(Double(data.count)), "submitted": .bool(true)])
+    }
+
+    @MainActor private func send(_ sessionID: UUID, _ data: Data, paste: Bool) throws {
+        do {
+            try model.automationSendInput(sessionID: sessionID, data: data, paste: paste)
+        } catch .notFound {
+            throw ControlError.notFound
+        } catch .notRunning {
+            throw ControlError.application("INVALID_STATE", "The session is not running.")
+        } catch .queueFull {
+            throw ControlError.application("LIMIT_EXCEEDED", "The terminal input queue is full. Wait and inspect the session before sending more.", retryable: true)
+        } catch {
+            throw ControlError.application("INVALID_STATE", "Input could not be sent to the session.")
+        }
+    }
+
+    private static let inputTooLarge = ControlError.application("LIMIT_EXCEEDED", "Input is limited to 64 KiB per call.")
+
+    @MainActor private func connect(_ p: Params, _ access: GrantAccess) async throws -> Result<JSONValue, ControlError> {
+        let hostID = try p.uuid("hostId"), windowID = try p.uuid("windowId")
+        guard let host = hosts.hosts.first(where: { $0.id == hostID }) else { throw ControlError.notFound }
+        let paneID: UUID
+        if let target = try p.optionalString("paneId") {
+            // A split target must be in the authorized window, never elsewhere.
+            guard let targetID = UUID(uuidString: target), let pane = model.snapshot.panes[targetID], model.snapshot.tabs[pane.tabID]?.windowID == windowID else {
+                throw ControlError.notFound
+            }
+            let axis: SplitAxis
+            switch try p.optionalString("axis") ?? "x" {
+            case "x": axis = .x
+            case "y": axis = .y
+            default: throw ControlError.invalidParams("axis must be \"x\" or \"y\".", fields: ["axis": "x or y"])
+            }
+            guard model.maximizedPanes[pane.tabID] == nil else {
+                throw ControlError.application("INVALID_STATE", "Restore the maximized pane before connecting in a split.")
+            }
+            guard let size = model.automationTerminalSize(targetID) else { throw ControlError.notFound }
+            guard let created = try await run(.splitPane(id: targetID, axis: axis, availableSize: size)).createdPaneID else { throw ControlError.internalError }
+            paneID = created
+        } else {
+            let title = host.name
+            let result = try await run(.createTab(windowID: windowID), then: { result in result.createdTabID.map { .renameTab(id: $0, title: title) } })
+            guard let tabID = result.createdTabID, let tab = model.snapshot.tabs[tabID] else { throw ControlError.internalError }
+            paneID = tab.activePaneID
+        }
+        do { try await model.automationStartSession(paneID, launch: .host(hostID), environment: [:]) } catch { throw Self.map(error) }
+        return launchResult(paneID, access)
     }
 
     // MARK: - Projection

@@ -163,4 +163,87 @@ extension AppWorkspaceModel {
     public func automationStart(_ paneIDs: [UUID]) async {
         for id in paneIDs { await start(paneID: id, quietly: true) }
     }
+
+    /// Starts one stopped pane, optionally reconfiguring its launch first.
+    /// Returns once the launch attempt resolves (running or failed).
+    public func automationStartSession(_ paneID: UUID, launch: SessionLaunch?, environment: [String: String]) async throws(AutomationModelError) {
+        try requireAvailable()
+        guard let pane = snapshot.panes[paneID], let terminal = terminals[paneID] else { throw .store(.notFound) }
+        guard !isClosing(paneID: paneID), terminal.sessionState == .stopped, snapshot.sessions[pane.sessionID]?.state == .stopped else {
+            throw .store(.invalidTransition)
+        }
+        if let launch {
+            _ = try await automationExecute(.configureStoppedSession(paneID: paneID, launch: launch))
+            // A fresh descriptor replaces a restored process that needed configuration.
+            unconfiguredPaneIDs.remove(paneID)
+        } else if unconfiguredPaneIDs.contains(paneID) {
+            throw .store(.invalidState("This restored pane needs a launch descriptor before it can start."))
+        }
+        await start(paneID: paneID, quietly: true, environment: environment)
+    }
+
+    /// Replaces a pane's session. A running session needs `allowRunning` and is
+    /// closed through the shared closure policy first; nothing is retried.
+    public func automationRestart(_ paneID: UUID, allowRunning: Bool, force: Bool) async throws(AutomationModelError) -> AutomationCloseResult {
+        try requireAvailable()
+        guard snapshot.panes[paneID] != nil, let terminal = terminals[paneID], !isClosing(paneID: paneID) else { throw .store(.notFound) }
+        if terminal.isRunning {
+            guard allowRunning else { return .confirmationRequired(sessionIDs: [terminal.sessionID]) }
+            var outcome = await closureCoordinator.close([terminal], allowRunning: true, force: force)
+            if case .closePending = outcome, !terminal.requiresTermination {
+                outcome = await closureCoordinator.close([terminal], allowRunning: true)
+            }
+            guard outcome == .closed else { return .closePending(sessionIDs: [terminal.sessionID]) }
+            // The exit is recorded asynchronously; let it reach the store first.
+            let deadline = ProcessInfo.processInfo.systemUptime + 2
+            while snapshot.panes[paneID].flatMap({ snapshot.sessions[$0.sessionID] }).map({ [.exited, .failed].contains($0.state) }) != true,
+                ProcessInfo.processInfo.systemUptime < deadline
+            {
+                await waitForUpdates()
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        guard terminal.sessionState == .exited || terminal.sessionState == .failed else { throw .store(.invalidTransition) }
+        pendingOperations += 1
+        defer { pendingOperations -= 1 }
+        await waitForUpdates()
+        guard !shuttingDown, !isClosing(paneID: paneID), terminals[paneID] === terminal else { throw .unavailable }
+        let result: WorkspaceCommandResult
+        do {
+            result = try await service.execute(.restartSession(paneID: paneID))
+        } catch let error as WorkspaceError {
+            throw .store(error)
+        } catch {
+            throw .store(.invalidTransition)
+        }
+        guard let pane = result.snapshot.panes[paneID] else { throw .store(.notFound) }
+        terminal.adapter.detach()
+        attachTerminal(pane)
+        publish(result.snapshot)
+        return .closed
+    }
+
+    public enum InputFailure: Error, Equatable, Sendable { case notFound, notRunning, queueFull, failed }
+
+    /// Writes bytes to a running session; `paste` applies negotiated bracketed framing.
+    /// Never blocks on UI review: the grant authorizes input.
+    public func automationSendInput(sessionID: UUID, data: Data, paste: Bool) throws(InputFailure) {
+        guard let terminal = terminals.values.first(where: { $0.sessionID == sessionID }) else { throw .notFound }
+        guard terminal.sessionState == .running else { throw .notRunning }
+        // Queued bytes can fail after the call returns (e.g. the process exits); the caller inspects state instead.
+        automationInputSessionIDs = automationInputSessionIDs.filter { snapshot.sessions[$0] != nil }.union([sessionID])
+        do {
+            if paste {
+                try terminal.paste(TerminalPastePlan(input: .text(String(decoding: data, as: UTF8.self)), shell: nil))
+            } else {
+                try terminal.adapter.send(data)
+            }
+        } catch TerminalAdapterError.inputQueueFull {
+            throw .queueFull
+        } catch TerminalAdapterError.inputClosed {
+            throw .notRunning
+        } catch {
+            throw .failed
+        }
+    }
 }
