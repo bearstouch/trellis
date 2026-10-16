@@ -35,6 +35,8 @@ def main():
         shutil.copy2(products / "uTerm", built / "uTerm")
         resources = built / "SwiftTerm_SwiftTerm.bundle"
         shutil.copytree(products / "SwiftTerm_SwiftTerm.bundle", resources)
+        theme_resources = built / "uTerm_UTermCore.bundle"
+        shutil.copytree(products / "uTerm_UTermCore.bundle", theme_resources)
         shader = resources / "Shaders.metal"
         shader.chmod(0o444)
         source_hash = digest(built / "uTerm")
@@ -70,6 +72,7 @@ def main():
             assert seal.is_file(), "assembled app has no sealed resources"
             assert digest(built / "uTerm") == source_hash, "signing changed the Swift build product"
             assert stat.S_IMODE(shader.stat().st_mode) == 0o444
+            assert (destination / "Contents/Resources/uTerm_UTermCore.bundle/Themes/example-minimal.theme.json").is_file()
 
         run("--build-only")
         verify()
@@ -86,6 +89,12 @@ def main():
         resources.rename(missing_resources)
         run("--build-only", success=False)
         missing_resources.rename(resources)
+        verify()
+        assert before == (digest(executable), digest(seal), log.read_bytes())
+        missing_themes = built / "missing-themes"
+        theme_resources.rename(missing_themes)
+        run("--build-only", success=False)
+        missing_themes.rename(theme_resources)
         verify()
         assert before == (digest(executable), digest(seal), log.read_bytes())
     print("PASS: sealed fresh bundles, repeat assembly, read-only resources, unchanged source, argument forwarding, build-only, and failed-build preservation")

@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var closingWindow = false
     private var startupTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
+    private var appearanceObserver: NSKeyValueObservation?
+    private var settingsCloseObserver: NSObjectProtocol?
 
     init(model: AppWorkspaceModel) { self.model = model }
 
@@ -25,6 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         model.onChromeModeChanged?(model.appearance.chromeMode)
+        appearanceObserver = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) { [weak self] app, _ in
+            MainActor.assumeIsolated {
+                self?.model.systemAppearanceDidChange(isDark: app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
+            }
+        }
         buildMenus()
         model.openSettings = { [weak self] in self?.showSettings() }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
@@ -177,6 +184,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.title = "Settings"
             panel.isReleasedWhenClosed = false
             panel.contentView = NSHostingView(rootView: AppSettingsView(model: model))
+            settingsCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.model.cancelThemePreview() }
+            }
             panel.center()
             settingsWindow = panel
         }
@@ -250,7 +260,8 @@ struct UTermMain {
                 directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                     .appendingPathComponent(Bundle.main.bundleIdentifier ?? "dev.uterm", isDirectory: true)
             }
-            let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
+            let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
+                                          themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
             let delegate = AppDelegate(model: model)
             app.delegate = delegate
             app.run()

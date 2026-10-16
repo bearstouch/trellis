@@ -4,7 +4,7 @@ Native Swift terminal for macOS. Product direction: light Native calm chrome, da
 
 Implementation is progressing one story at a time, with independent agent review, fixes, and a commit between stories; see the [story plan](specs/00-stories/README.md) and [evidence](docs/evidence/).
 
-S001 has a runnable terminal feasibility host with manual VoiceOver/IME acceptance still pending. S002’s authoritative workspace model is complete and reviewed. The user has directed continuing with S003 and subsequent stories while S001’s manual qualification remains recorded as pending; the full application UI is not built yet.
+Stories S001–S016 now provide the native workspace, local sessions, tabs/splits, clipboard, search, persistence, appearance settings, and JSON theme library. Manual VoiceOver/IME and the macOS/CPU release qualification remain pending as recorded in the story evidence.
 
 ## Development
 
@@ -19,7 +19,9 @@ scripts/run-feasibility.sh
 scripts/run-feasibility.sh --build-only
 ```
 
-`--fixture` runs a fixed, isolated shell demonstration and exits its child with code 7; the window remains inspectable. The ordinary host starts a new login shell in your home directory. Use Quit to close it with confirmation. Terminal output and typed input are not logged.
+`--fixture` runs a fixed, isolated shell demonstration on a new workspace and exits its child with code 7; the window remains inspectable. An ordinary new workspace starts a login shell; saved workspaces restore with sessions stopped. Use Quit to close live sessions with confirmation. Terminal output and typed input are not logged. Use `--state-directory /absolute/path` for a separate development workspace and theme library.
+
+Settings → Themes can load a JSON file or bundled example, preview it in the sample or temporarily in the workspace, and Save & Use it. Cancel Preview, leaving the Themes tab, or closing Settings restores the saved appearance. Existing IDs require the separate Replace Theme action. The same pane offers export, resolved export, deletion, Open Themes Folder, and Reload Themes. Invalid edits keep the last valid in-memory colors; missing selected themes fall back to the matching built-in theme with a notice. Appearance settings choose separate Light/Dark slots. Built-in exports keep reserved IDs; change their ID before importing as a custom copy.
 
 SwiftTerm 1.20.0 is vendored at revision `5d14406844143538cd8f8851d2d8a67c1fe443e5` with small font-change fixes. Its MIT license, provenance, and reproducible engine delta are in [ThirdParty/SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Engine-specific APIs stay inside UTermTerminal; UTermCore contains the engine-independent adapter.
 

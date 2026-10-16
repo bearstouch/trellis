@@ -8,8 +8,10 @@ public final class ThemePreviewModel: ObservableObject {
     @Published public private(set) var theme = ResolvedTheme.builtIn(.light)
     @Published public private(set) var validationMessage: String?
     @Published public private(set) var loading = false
+    @Published public private(set) var document: ThemeDocument?
     public let terminal = NativeTerminal()
     private var loadGeneration = UUID()
+    var contentGeneration: UUID { loadGeneration }
     public init() {
         terminal.view.setAccessibilityLabel("Theme preview terminal — sample output only")
         var sample = "uTerm color preview\r\ncafé e\u{301} 漢字 👩‍💻\r\n"
@@ -32,6 +34,7 @@ public final class ThemePreviewModel: ObservableObject {
             let resolved = document.resolved()
             terminal.applyPalette(resolved.terminal)
             theme = resolved
+            self.document = document
             validationMessage = nil
             return true
         } catch {

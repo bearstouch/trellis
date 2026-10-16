@@ -31,7 +31,7 @@ struct PaneTreeView: View {
                     }
                 }
             }
-        }.background(Color(nsColor: .separatorColor))
+        }.background(model.themeColor(.border))
             .coordinateSpace(name: layoutCoordinateSpace)
     }
 
@@ -60,14 +60,14 @@ struct PaneTreeView: View {
                         .help("Split Top/Bottom").accessibilityLabel("Split Top/Bottom").disabled(model.maximizedPanes[tabID] != nil)
                     Button { Task { await model.closePane(id) } } label: { Image(systemName: "xmark") }
                         .help("Close Pane").accessibilityLabel("Close Pane")
-                }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 9).frame(height: 26).background(Color(nsColor: .windowBackgroundColor))
+                }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
+                    .padding(.horizontal, 9).frame(height: 26).background(model.themeColor(.surface))
                 SearchableTerminalSurface(terminal: terminal, isFocused: activePaneID == id)
                     .overlay {
                         if terminal.sessionState == .stopped {
                             VStack(spacing: 8) {
                                 if model.unconfiguredPaneIDs.contains(id) {
-                                    Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(.white)
+                                    Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
                                     Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
                                 } else {
                                     Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
@@ -75,15 +75,15 @@ struct PaneTreeView: View {
                             }
                         }
                     }
-            }.overlay { Rectangle().strokeBorder(activePaneID == id ? Color.accentColor.opacity(0.65) : .clear, lineWidth: 1).allowsHitTesting(false) }
+            }.overlay { Rectangle().strokeBorder(activePaneID == id ? model.themeColor(.focusRing) : .clear, lineWidth: 1).allowsHitTesting(false) }
         } else {
-            Color(red: 0.082, green: 0.09, blue: 0.098)
+            model.terminalBackground
         }
     }
 
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {
-        Color(nsColor: .windowBackgroundColor)
-            .overlay { Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: axis == .x ? 1 : nil, height: axis == .y ? 1 : nil).allowsHitTesting(false) }
+        model.themeColor(.surface)
+            .overlay { Rectangle().fill(model.themeColor(.border)).frame(width: axis == .x ? 1 : nil, height: axis == .y ? 1 : nil).allowsHitTesting(false) }
             .frame(width: axis == .x ? CanvasDimensions.dividerThickness : nil,
                    height: axis == .y ? CanvasDimensions.dividerThickness : nil)
             .contentShape(Rectangle())

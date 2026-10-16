@@ -1,6 +1,6 @@
 # Theme specification
 
-Status: v1 validation and isolated native preview implemented in S015; theme installation and library management follow in S016. All requirements here are P0. Theme files describe colors for the entire application and terminal; they do not contain executable code.
+Status: v1 validation, preview, and theme library management implemented in S015/S016. All requirements here are P0. Theme files describe colors for the entire application and terminal; they do not contain executable code.
 
 ## User experience
 
@@ -14,7 +14,7 @@ Apply the resolved theme consistently to the sidebar, tabs, split dividers, focu
 
 1. Copy [example-dark.theme.json](example-dark.theme.json) or [example-light.theme.json](example-light.theme.json).
 2. Change `id`, `name`, and desired colors. Only `version`, `id`, `name`, and `appearance` are required; omitted colors inherit from the built-in theme matching `appearance`.
-3. Import the JSON in Appearance settings, preview it using sample terminal text and application chrome, then select “Save theme.”
+3. Open Settings → Themes and choose “Preview JSON…”. Inspect the sample or choose “Preview in Workspace”; “Cancel Preview” restores the saved appearance. Choose “Save & Use Theme” to install and activate it.
 4. Choose it for the corresponding Dark or Light appearance slot.
 
 For example, this is a complete minimal theme file:
@@ -37,7 +37,7 @@ For example, this is a complete minimal theme file:
 
 The [JSON Schema](theme.schema.json) describes accepted fields. Full examples enumerate every supported color for discoverability; most authors only need to override a few colors. No theme inheritance chains, external includes, remote downloads, fonts, images, or scripts are supported in v1.
 
-The [minimal example](example-minimal.theme.json) is also available as a standalone file. Settings → Theme Preview loads any local JSON file or the three bundled examples, renders the palette in a sample terminal and application chrome, and reports validation errors or advisory contrast warnings. This preview does not install themes or alter working sessions. The import/save and library actions described here are S016.
+The [minimal example](example-minimal.theme.json) is also available as a standalone file. Settings → Themes loads any local JSON file or the three bundled examples, renders the palette in a sample terminal and application chrome, and reports validation errors or advisory contrast warnings. Loading a sample does not install it or alter working sessions. Workspace preview changes colors temporarily; leaving Themes or closing Settings also cancels it. Separate Light/Dark theme choices are available in Appearance settings.
 
 ## Format and resolution
 

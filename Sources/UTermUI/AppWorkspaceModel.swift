@@ -17,14 +17,141 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var terminals: [UUID: NativeTerminal] = [:]
     @Published public var errorMessage: String?
     @Published public private(set) var appearance = AppearanceSettings()
+    @Published public private(set) var themeCatalog = ThemeLibrarySnapshot()
+    @Published public private(set) var effectiveTheme = ResolvedTheme.builtIn(.light)
+    @Published public private(set) var previewedTheme: ThemeDocument?
+    @Published public private(set) var themeNotice: String?
+    @Published public private(set) var themeBusy = false
+    @Published public private(set) var themeReplacementID: String?
+    private let themeLibrary: ThemeLibrary?
+    private var systemIsDark = false
+    public var themesDirectory: URL? { themeLibrary?.directory }
+    public var effectiveChromeMode: ChromeMode {
+        if let previewedTheme { return previewedTheme.appearance == .light ? .light : .dark }
+        return appearance.chromeMode
+    }
+    public var allThemes: [ResolvedTheme] {
+        ThemeAppearance.allCases.map(ResolvedTheme.builtIn) + themeCatalog.documents.values.map { $0.resolved() }.sorted { $0.id < $1.id }
+    }
+    public func availableThemes(for slot: ThemeAppearance) -> [ResolvedTheme] { allThemes.filter { $0.appearance == slot } }
+    public func systemAppearanceDidChange(isDark: Bool) {
+        guard systemIsDark != isDark else { return }
+        systemIsDark = isDark
+        if appearance.chromeMode == .system, previewedTheme == nil { refreshEffectiveTheme() }
+    }
+    private func refreshEffectiveTheme() {
+        let slot: ThemeAppearance = appearance.chromeMode.isDark(systemIsDark: systemIsDark) ? .dark : .light
+        let id = appearance.themeID(systemIsDark: systemIsDark)
+        effectiveTheme = previewedTheme?.resolved() ?? themeCatalog.documents[id]?.resolved() ?? .builtIn(slot)
+        onChromeModeChanged?(effectiveChromeMode)
+        for terminal in terminals.values { terminal.applyPalette(effectiveTheme.terminal) }
+    }
+    private func reconcileThemeSelections() {
+        guard themeLibrary != nil else { return }
+        var notices: [String] = []
+        for slot in ThemeAppearance.allCases {
+            let id = slot == .light ? appearance.lightThemeID : appearance.darkThemeID
+            let builtIn = ResolvedTheme.builtIn(slot)
+            if id != builtIn.id, themeCatalog.documents[id]?.appearance != slot {
+                if slot == .light { appearance.lightThemeID = builtIn.id } else { appearance.darkThemeID = builtIn.id }
+                notices.append("Theme '\(id)' is unavailable. Using \(builtIn.name).")
+            }
+        }
+        notices += themeCatalog.issues.map { "\($0.filename): \($0.message)" }
+        themeNotice = notices.isEmpty ? nil : notices.joined(separator: "\n")
+    }
+    public func previewThemeInWorkspace(_ document: ThemeDocument) {
+        guard !isRestoring, !themeBusy, !shuttingDown else { return }
+        previewedTheme = document
+        refreshEffectiveTheme()
+    }
+    public func cancelThemePreview() {
+        guard previewedTheme != nil else { return }
+        previewedTheme = nil
+        refreshEffectiveTheme()
+    }
+    public func useTheme(_ id: String) {
+        guard !isRestoring, !themeBusy, !shuttingDown, let theme = allThemes.first(where: { $0.id == id }) else { return }
+        var settings = appearance
+        if theme.appearance == .light { settings.lightThemeID = id; settings.chromeMode = .light }
+        else { settings.darkThemeID = id; settings.chromeMode = .dark }
+        previewedTheme = nil
+        commitThemeChoice(settings)
+    }
+    public func reloadThemes() async {
+        guard let themeLibrary, !themeBusy, !isRestoring, !shuttingDown else { return }
+        themeBusy = true
+        pendingOperations += 1
+        defer { themeBusy = false; pendingOperations -= 1 }
+        themeCatalog = await themeLibrary.reload()
+        reconcileThemeSelections()
+        refreshEffectiveTheme()
+        scheduleWorkspaceSave()
+    }
+    @discardableResult public func saveTheme(_ document: ThemeDocument, replace: Bool = false) async -> Bool {
+        guard let themeLibrary, !themeBusy, !isRestoring, !shuttingDown else { return false }
+        themeBusy = true
+        pendingOperations += 1
+        defer { themeBusy = false; pendingOperations -= 1 }
+        do {
+            themeCatalog = try await themeLibrary.install(document.encoded(), replace: replace)
+            themeReplacementID = nil
+            previewedTheme = nil
+            var settings = appearance
+            if document.appearance == .light { settings.lightThemeID = document.id; settings.chromeMode = .light }
+            else { settings.darkThemeID = document.id; settings.chromeMode = .dark }
+            commitThemeChoice(settings)
+            themeNotice = "Saved \(document.name)."
+            return true
+        } catch {
+            if case ThemeLibraryError.duplicateID(let id) = error { themeReplacementID = id }
+            themeNotice = error.localizedDescription
+            return false
+        }
+    }
+    public func deleteTheme(_ id: String) async {
+        guard let themeLibrary, !themeBusy, !isRestoring, !shuttingDown else { return }
+        themeBusy = true
+        pendingOperations += 1
+        defer { themeBusy = false; pendingOperations -= 1 }
+        do {
+            themeCatalog = try await themeLibrary.delete(id)
+            if previewedTheme?.id == id { previewedTheme = nil }
+            reconcileThemeSelections()
+            refreshEffectiveTheme()
+            scheduleWorkspaceSave()
+        } catch { themeNotice = error.localizedDescription }
+    }
+    public func exportTheme(_ id: String, resolved: Bool) async throws -> Data {
+        guard let themeLibrary else { throw ThemeLibraryError.notFound }
+        return try await themeLibrary.export(id, resolved: resolved)
+    }
+    public func openThemesFolder() async {
+        guard let themeLibrary else { return }
+        do {
+            let directory = try await themeLibrary.ensureDirectory()
+            if !NSWorkspace.shared.open(directory) { themeNotice = "The Themes folder could not be opened." }
+        } catch { themeNotice = error.localizedDescription }
+    }
+    private func commitThemeChoice(_ settings: AppearanceSettings) {
+        appearance = settings
+        reconcileThemeSelections()
+        refreshEffectiveTheme()
+        scheduleWorkspaceSave()
+    }
     public var onChromeModeChanged: ((ChromeMode) -> Void)?
     public var appearanceNotice: String? { NativeTerminalFont.choice(for: appearance.fontName).notice }
 
     public func applyAppearance(_ settings: AppearanceSettings) -> Bool {
         guard settings.isValid else { return false }
+        let previous = appearance
+        let terminalSettingsChanged = previous.fontName != settings.fontName || previous.fontSize != settings.fontSize
+            || previous.cursorShape != settings.cursorShape || previous.cursorBlinks != settings.cursorBlinks
+            || previous.scrollbackLines != settings.scrollbackLines
         appearance = settings
-        onChromeModeChanged?(settings.chromeMode)
-        for terminal in terminals.values { terminal.applyAppearance(settings) }
+        reconcileThemeSelections()
+        if terminalSettingsChanged { for terminal in terminals.values { terminal.applyAppearance(settings) } }
+        refreshEffectiveTheme()
         scheduleWorkspaceSave()
         return true
     }
@@ -72,7 +199,8 @@ public final class AppWorkspaceModel: ObservableObject {
     private var shuttingDown = false
     private var pendingOperations = 0
 
-    public init(store: WorkspaceStore, preferences: UserDefaults = .standard, persistence: WorkspacePersistence? = nil) {
+    public init(store: WorkspaceStore, preferences: UserDefaults = .standard, persistence: WorkspacePersistence? = nil, themeLibrary: ThemeLibrary? = nil) {
+        self.themeLibrary = themeLibrary
         self.persistence = persistence
         self.isRestoring = persistence != nil
         service = WorkspaceCommandService(store: store)
@@ -85,6 +213,11 @@ public final class AppWorkspaceModel: ObservableObject {
 
     /// Returns true for an existing document or recovery state, even if empty.
     public func loadWorkspace() async -> Bool {
+        if let themeLibrary {
+            themeCatalog = await themeLibrary.reload()
+            reconcileThemeSelections()
+            refreshEffectiveTheme()
+        }
         guard let persistence else { return false }
         isRestoring = true
         pendingOperations += 1
@@ -113,7 +246,8 @@ public final class AppWorkspaceModel: ObservableObject {
         try await service.store.restoreStoppedSnapshot(restored.snapshot)
         defaultShell = restored.settings.shell; defaultDirectory = restored.settings.directory
         appearance = restored.settings.appearance
-        onChromeModeChanged?(appearance.chromeMode)
+        reconcileThemeSelections()
+        refreshEffectiveTheme()
         restoredWindowFrame = restored.settings.windowFrame
         if !persistenceReadOnly {
             if let frame = restoredWindowFrame { preferences.set(frame, forKey: "app.windowFrame") }
@@ -334,6 +468,7 @@ public final class AppWorkspaceModel: ObservableObject {
     private func attachTerminal(_ pane: WorkspacePane) {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
         terminal.applyAppearance(appearance)
+        terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
         terminal.onFocused = { [weak self] in

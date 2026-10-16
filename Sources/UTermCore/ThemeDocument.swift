@@ -45,6 +45,16 @@ public struct ThemeDocument: Equatable, Sendable {
     /// Installation reserves this namespace; built-ins are constructed in code.
     public var hasReservedID: Bool { id.hasPrefix("uterm-") }
 
+    public func encoded(resolved: Bool = false) throws -> Data {
+        if resolved { return try self.resolved().encoded() }
+        var object: [String: Any] = ["version": 1, "id": id, "name": name, "appearance": appearance.rawValue]
+        var colors: [String: Any] = Dictionary(uniqueKeysWithValues: terminal.map { ($0.key.rawValue, $0.value.hex as Any) })
+        if let ansi { colors["ansi"] = ansi.map(\.hex) }
+        if !colors.isEmpty { object["terminal"] = colors }
+        if !ui.isEmpty { object["ui"] = Dictionary(uniqueKeysWithValues: ui.map { ($0.key.rawValue, $0.value.hex) }) }
+        return try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+    }
+
     public func resolved() -> ResolvedTheme {
         let base = ResolvedTheme.builtIn(appearance)
         let inherited = base.terminal
@@ -69,6 +79,14 @@ public struct ResolvedTheme: Equatable, Sendable {
     fileprivate var ui: [UIColorField: ThemeColor] { uiColors }
     fileprivate init(id: String, name: String, appearance: ThemeAppearance, terminal: TerminalPalette, ui: [UIColorField: ThemeColor]) {
         self.id = id; self.name = name; self.appearance = appearance; self.terminal = terminal; uiColors = ui
+    }
+    public func encoded() throws -> Data {
+        let colors: [String: Any] = ["background": ThemeColor(terminal.background).hex, "foreground": ThemeColor(terminal.foreground).hex,
+            "cursor": ThemeColor(terminal.cursor).hex, "cursorText": ThemeColor(terminal.cursorText).hex,
+            "selectionBackground": ThemeColor(terminal.selectionBackground).hex, "selectionForeground": ThemeColor(terminal.selectionForeground).hex,
+            "ansi": terminal.ansi.map { ThemeColor($0).hex }]
+        return try JSONSerialization.data(withJSONObject: ["version": 1, "id": id, "name": name, "appearance": appearance.rawValue,
+            "terminal": colors, "ui": Dictionary(uniqueKeysWithValues: uiColors.map { ($0.key.rawValue, $0.value.hex) })], options: [.prettyPrinted, .sortedKeys])
     }
     public static func builtIn(_ appearance: ThemeAppearance) -> Self {
         let light: [UInt32] = [0xFFFFFF, 0xF2F5F9, 0xE8EDF4, 0x18212F, 0x4E5B6D, 0x185AA8, 0x758397,

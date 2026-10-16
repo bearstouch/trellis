@@ -1,7 +1,7 @@
 # S016 — Import, preview, and maintain custom themes
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 184 tests and native library checks pass  
 Delivery phase: 3  
 Depends on: [S010](010-persistence-and-stopped-restore.md), [S015](015-json-theme-format.md)  
 Requirements: `FR-TH03`, `FR-TH04`, `FR-TH05`, `INT-10`
@@ -12,10 +12,10 @@ As a terminal user, I want to try and edit JSON themes without risking my workin
 
 ## Acceptance criteria
 
-- [ ] **S016-AC01:** Import validated files into the app-owned Themes directory using validated IDs; reserve uterm- IDs for built-ins and require explicit replacement of duplicates.
-- [ ] **S016-AC02:** Preview is reversible, Save installs atomically, and Cancel restores the prior effective appearance without touching sessions.
-- [ ] **S016-AC03:** Provide export, Export Resolved, Open Themes Folder, and Reload Themes; invalid edits retain the last valid in-memory palette with actionable errors.
-- [ ] **S016-AC04:** Deleting a selected custom theme or launching with a missing file falls back to the built-in palette for that slot with a notice; built-ins cannot be replaced/deleted.
+- [x] **S016-AC01:** Import validated files into the app-owned Themes directory using validated IDs; reserve uterm- IDs for built-ins and require explicit replacement of duplicates.
+- [x] **S016-AC02:** Preview is reversible, Save installs atomically, and Cancel restores the prior effective appearance without touching sessions.
+- [x] **S016-AC03:** Provide export, Export Resolved, Open Themes Folder, and Reload Themes; invalid edits retain the last valid in-memory palette with actionable errors.
+- [x] **S016-AC04:** Deleting a selected custom theme or launching with a missing file falls back to the built-in palette for that slot with a notice; built-ins cannot be replaced/deleted.
 
 ## Unit tests
 
@@ -34,7 +34,7 @@ Edit a theme with an external editor, reload, export/import it, and delete it wh
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S016 theme library evidence](../../docs/evidence/S016-theme-library.md) for atomic install/failure tests, preview restoration, review findings and fixes, native reload/export/delete checks, and remaining platform qualification scope.
 
 ## Source specifications
 

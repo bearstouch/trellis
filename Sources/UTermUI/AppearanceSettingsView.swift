@@ -12,12 +12,12 @@ public struct AppSettingsView: View {
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         TabView {
-            AppearanceSettingsView(model: model).tabItem { Text("Appearance") }
+            AppearanceSettingsView(model: model).disabled(model.previewedTheme != nil).tabItem { Text("Appearance") }
             LaunchSettingsView(model: model).tabItem { Text("Sessions") }
-            ThemePreviewView().tabItem { Text("Theme Preview") }
+            ThemePreviewView(workspace: model).tabItem { Text("Themes") }
         }
         .padding(16)
-        .preferredColorScheme(model.appearance.chromeMode.colorScheme)
+        .preferredColorScheme(model.effectiveChromeMode.colorScheme)
     }
 }
 
@@ -30,7 +30,13 @@ struct AppearanceSettingsView: View {
             Picker("Application appearance", selection: $draft.chromeMode) {
                 ForEach(ChromeMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }.pickerStyle(.segmented)
-            Text("Terminal backgrounds stay dark in every appearance.").font(.caption).foregroundStyle(.secondary)
+            Text("Built-in themes keep terminal backgrounds dark. Custom themes can change terminal colors.").font(.caption).foregroundStyle(.secondary)
+            Picker("Light theme", selection: $draft.lightThemeID) {
+                ForEach(model.availableThemes(for: .light), id: \.id) { Text($0.name).tag($0.id) }
+            }
+            Picker("Dark theme", selection: $draft.darkThemeID) {
+                ForEach(model.availableThemes(for: .dark), id: \.id) { Text($0.name).tag($0.id) }
+            }
             TextField("Terminal font", text: $draft.fontName)
             Stepper("Font size: \(draft.fontSize, specifier: "%.0f") pt", value: $draft.fontSize, in: 8...48)
             Text("Use View → Zoom In / Zoom Out, or ⌘+ / ⌘−. Actual Size restores 13 pt.")

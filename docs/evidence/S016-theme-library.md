@@ -1,0 +1,27 @@
+# S016 theme library and reversible workspace preview
+
+Date: 2026-10-16. Implemented with independent review and fixes, automated integration tests, and native library checks.
+
+## Behavior
+
+The app-owned `Themes/<id>.theme.json` library resides under the workspace support directory. Default launches use Application Support/<app identity>; `--state-directory` keeps development workspaces and themes separate. Imports are validated before installation, copied as portable color-only JSON, and independent of the source file. Built-in `uterm-` IDs cannot be installed over or deleted. A duplicate ID requires the separate Replace Theme action.
+
+Files are published from a sibling temporary file after a complete write and file sync. A hard link provides atomic no-replace installation, and rename provides atomic replacement. Failures before publication preserve the prior destination and catalog; no throwable operation follows successful publication. New files use mode 0600 and created directories use 0700. Reads reject symlinks/non-regular files, do not block on FIFOs, and are bounded to 64 KiB plus the validation sentinel byte. Filenames must match the validated document ID.
+
+Settings → Themes offers import/sample preview, Preview in Workspace, Cancel Preview, Save & Use, explicit replacement, Use Theme, ordinary/resolved export, deletion, Open Themes Folder, and Reload Themes. Workspace preview overlays the effective palette/native appearance without changing saved mode or slot IDs. Cancel, leaving the Themes tab, and closing Settings remove that overlay. Save & Use atomically installs the document, selects its slot, and activates its native appearance. Appearance settings retain separate Light/Dark theme selectors; System chooses the appropriate slot.
+
+Selected palettes apply to all existing/new terminal views and application/sidebar/tab colors, focus rings, dividers, and status labels. Font zoom reapplies the selected custom colors after the metrics change. Standard native controls/dialogs follow the effective AppKit appearance. Theme actions use the color-only terminal path, without lifecycle/input/font/history/cursor-setting changes, and preserve native view identity, selected text, and keyboard focus. Preview state is never persisted.
+
+Reload updates valid documents, preserves the last valid in-memory document for invalid edited files, and reports filename/field errors. Missing/deleted selected themes fall back to the matching built-in slot and show a notice, including at launch. A failed directory listing retains the existing catalog. Export preserves sparse overrides; Export Resolved writes every inherited color for exact reproduction. Built-in exports retain their reserved IDs and require a new ID before importing as a custom copy.
+
+## Review and verification
+
+Full suite: **184 tests passed, zero failures**. The final 22 theme/persistence/session checks passed after the UI guards, folder handling, and integration with the pending-operation shutdown gate. The development app builds and its ad-hoc signature verifies. The launcher regression passes, including bundled JSON resources and preservation of the prior signed app when theme-resource packaging fails.
+
+The four named story cases cover duplicate protection, injected atomic-write failure with unchanged bytes/catalog, preview cancellation with exact mode/slot/palette restoration and unchanged focus/Unicode selection, and invalid/missing reload behavior. Additional checks cover sparse/resolved export/import, namespace/path protection, selected-theme deletion and missing-file launch fallback, restored stopped sessions, System slot resolution, and custom colors surviving zoom. A live controlled child retains its PID/running state, negotiated cursor style, and bracketed-paste mode across Save/Use/slot changes.
+
+Independent review added four disk edge tests: concurrent no-replace publication across library instances, symlink/FIFO rejection, mismatched IDs retaining the prior document, and over-limit external edits. Review also caught theme selection overwriting an application's negotiated cursor style; Use/Save and mode/slot-only changes now apply colors without reapplying terminal settings. Initial reload issues are surfaced, and stale asynchronous picker results/errors cannot override a newer selection or import.
+
+Native verification in an isolated fixture workspace confirmed the library controls, minimal theme workspace preview/cancel, Save & Use, duplicate rejection with an explicit Replace Theme button, and persistence of `dark` / `my-midnight`. Editing the installed JSON externally changed its name to Edited Midnight and background to `#202010`; Reload updated the installed entry. Native Export produced a valid portable document with that exact ID/name/color. A malformed external edit reported `my-midnight.theme.json: $: Malformed JSON…` while retaining Edited Midnight. Deleting this already-exported verification theme showed the built-in Dark fallback notice and disabled deletion of the selected built-in entry. The exported file loaded back through the native JSON chooser as Edited Midnight; the core export/import tests verify its installation round trip. The workspace fixture remained exited and its original output was preserved.
+
+Older macOS/Intel/display, VoiceOver/IME, and release performance/distribution qualification remain tracked in S001/S031/S032. A manual real-OS System appearance toggle was not performed; deterministic tests exercise both System slot outcomes.

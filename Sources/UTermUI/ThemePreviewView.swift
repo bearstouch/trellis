@@ -3,6 +3,7 @@ import UTermCore
 
 struct ThemePreviewView: View {
     @StateObject private var model = ThemePreviewModel()
+    @ObservedObject var workspace: AppWorkspaceModel
     private func ui(_ field: UIColorField) -> Color { color(model.theme[field].rgb) }
     private func color(_ rgb: UInt32) -> Color {
         Color(.sRGB, red: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255,
@@ -11,6 +12,7 @@ struct ThemePreviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                ThemeLibraryControls(workspace: workspace, preview: model)
                 HStack {
                     Button("Preview JSON…") { model.chooseFile() }.disabled(model.loading)
                     Spacer()
@@ -18,7 +20,7 @@ struct ThemePreviewView: View {
                         Button(example.rawValue.capitalized) { model.example(example) }
                     }
                 }
-                Text("Preview only · Your workspace and sessions stay as they are.")
+                Text("The sample stays separate until you choose Preview in Workspace. Save & Use installs the theme.")
                     .font(.caption).foregroundStyle(.secondary)
                 if let error = model.validationMessage {
                     Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
@@ -35,6 +37,7 @@ struct ThemePreviewView: View {
                 }
             }.padding(16)
         }
+        .onDisappear { workspace.cancelThemePreview() }
     }
     private var sample: some View {
         VStack(spacing: 0) {
