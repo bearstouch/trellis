@@ -85,21 +85,23 @@ jobs:
             echo "::warning::Notary credentials not configured; the release will be signed but not notarized."
           fi
 
-      - name: Package
+      - name: Package Universal 2
         run: scripts/package-release.sh
+
+      - name: Package Apple silicon and Intel
+        run: scripts/package-thin-release.sh
 
       - name: Checksums
         run: |
           cd dist
-          shasum -a 256 "Trellis-${{ steps.version.outputs.version }}.dmg" > "Trellis-${{ steps.version.outputs.version }}.dmg.sha256"
-          cat ./*.sha256
+          shasum -a 256 Trellis-*.dmg | tee SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: Trellis-${{ steps.version.outputs.version }}
           path: |
             dist/Trellis-*.dmg
-            dist/Trellis-*.dmg.sha256
+            dist/SHA256SUMS.txt
             dist/release-evidence.json
 
       - name: Publish GitHub release
@@ -116,13 +118,17 @@ jobs:
             found && /^\[[^]]+\]: / { exit }
             found { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          printf '\n### Downloads\n\n- `Trellis-%s.dmg`: Universal 2, runs on Apple silicon and Intel (recommended)\n- `Trellis-%s-apple-silicon.dmg`: Apple silicon (arm64) only\n- `Trellis-%s-intel.dmg`: Intel (x86_64) only\n\nVerify with `shasum -a 256 -c SHA256SUMS.txt`. Requires macOS 14 or later.\n' "$VERSION" "$VERSION" "$VERSION" >> "$RUNNER_TEMP/notes.md"
           if [ "$SIGNED" != true ]; then
             printf '\n> **Note:** this build is ad-hoc signed and is not notarized. Gatekeeper will block it; build from source or wait for a signed release.\n' >> "$RUNNER_TEMP/notes.md"
           fi
           flags=(--title "Trellis $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag)
           if [ "$SIGNED" != true ] || [[ "$VERSION" == 0.* ]] || [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
-            "dist/Trellis-$VERSION.dmg" "dist/Trellis-$VERSION.dmg.sha256" dist/release-evidence.json
+            "dist/Trellis-$VERSION.dmg#Trellis $VERSION (Universal: Apple silicon + Intel)" \
+            "dist/Trellis-$VERSION-apple-silicon.dmg#Trellis $VERSION (Apple silicon)" \
+            "dist/Trellis-$VERSION-intel.dmg#Trellis $VERSION (Intel)" \
+            dist/SHA256SUMS.txt dist/release-evidence.json
 
       - name: Clean up keychain
         if: always() && steps.signing.outputs.signed == 'true'
