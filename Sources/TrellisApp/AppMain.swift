@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import SwiftUI
 import TrellisControl
 import TrellisCore
@@ -122,6 +123,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.addItem(app)
         menu.addItem(
             submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showHosts, .saveWorkspace]))
+        if let file = menu.items.last?.submenu {
+            file.addItem(.separator())
+            file.addItem(withTitle: "Export Workspace…", action: #selector(exportWorkspace), keyEquivalent: "")
+            file.addItem(withTitle: "Import Workspace…", action: #selector(importWorkspace), keyEquivalent: "")
+        }
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
         // the terminal does not implement them, so they stay disabled there.
@@ -275,6 +281,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
     }
     @objc private func settingsAction() { showSettings() }
+    /// Writes a portable export; credentials and runtime state are never included.
+    @objc private func exportWorkspace() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Trellis Workspace.trellis.json"
+        panel.message = "Exports windows, tabs, splits, and saved hosts. No output, passwords, keys, or tokens are included."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let transfer = PortableTransfer(model: model, hosts: hosts)
+        Task {
+            let (data, converted) = await transfer.exportData()
+            do {
+                try data.write(to: url, options: .atomic)
+                // Exports hold no secrets, but stay owner-only like other Trellis files.
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                if converted > 0 { model.errorMessage = "\(converted) custom command pane(s) were exported as plain shells; their commands are never exported." }
+            } catch { model.errorMessage = "The export could not be written. Check the location and try again." }
+        }
+    }
+
+    @objc private func importWorkspace() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.message = "Choose a Trellis export to review before importing."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let transfer = PortableTransfer(model: model, hosts: hosts)
+        Task {
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { model.errorMessage = "The file could not be read."; return }
+            switch await transfer.preview(data) {
+            case .failure(let error): model.errorMessage = error.message
+            case .success(let (parsed, preview)):
+                let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320), styleMask: [.titled], backing: .buffered, defer: false)
+                sheet.isReleasedWhenClosed = false
+                sheet.contentView = NSHostingView(
+                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak self, weak sheet] in
+                        guard let sheet else { return }
+                        self?.window.endSheet(sheet)
+                    })
+                window.beginSheet(sheet, completionHandler: nil)
+            }
+        }
+    }
+
     private func showHosts() {
         if hostsWindow == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 460), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)

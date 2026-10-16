@@ -1,7 +1,7 @@
 # S028 — Import and export layouts and saved hosts
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 284 tests pass; native export/import demo pending  
 Delivery phase: 4  
 Depends on: [S010](010-persistence-and-stopped-restore.md), [S018](018-saved-host-library.md), [S026](026-declarative-layout-automation.md)  
 Requirements: `FR-R02`, `INT-09`, `NFR-S03`, `NFR-S07`
@@ -34,7 +34,7 @@ Export from one clean test profile and import into another. Preview the summary,
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S028 portable transfer evidence](../../docs/evidence/S028-portable-import-export.md) for export redaction, fresh-ID import, collision-policy, and atomicity tests, review fixes, and the pending native demo.
 
 ## Source specifications
 

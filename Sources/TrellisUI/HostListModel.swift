@@ -8,7 +8,7 @@ public final class HostListModel: ObservableObject {
     @Published public private(set) var hosts: [SavedHost] = []
     @Published public var query = ""
     @Published public private(set) var loadFailed = false
-    private let library: HostLibrary
+    let library: HostLibrary
 
     public init(library: HostLibrary) { self.library = library }
 

@@ -175,6 +175,61 @@ public actor HostLibrary {
         return created
     }
 
+    /// A planned import: new hosts with pre-assigned IDs, and explicit replacements
+    /// of existing hosts (chosen by the user's collision policy, never by name alone).
+    public struct ImportChanges: Sendable {
+        public var creates: [(id: UUID, draft: HostDraft)] = []
+        public var replacements: [(id: UUID, draft: HostDraft, expectedRevision: UInt64)] = []
+        public init() {}
+    }
+
+    /// What an import changed, for `revertImport`.
+    public struct ImportUndo: Sendable {
+        let replaced: [SavedHost]
+        let created: Set<UUID>
+        let stamp: UInt64
+    }
+
+    /// Validates everything first, then commits all changes in one write.
+    public func applyImport(_ changes: ImportChanges) throws(HostLibraryError) -> ImportUndo {
+        var next = hosts, replaced: [SavedHost] = []
+        let stamp = revision + 1
+        for replacement in changes.replacements {
+            guard let index = next.firstIndex(where: { $0.id == replacement.id }) else { throw .notFound }
+            guard next[index].revision == replacement.expectedRevision else {
+                throw .conflict(expected: replacement.expectedRevision, actual: next[index].revision)
+            }
+            var host = SavedHost(id: replacement.id, draft: try validate(replacement.draft), revision: stamp)
+            if host.sameConnection(as: next[index]) { host.connectionRevision = next[index].connectionRevision }
+            replaced.append(next[index])
+            next[index] = host
+        }
+        for create in changes.creates {
+            guard !next.contains(where: { $0.id == create.id }) else { throw .conflict(expected: 0, actual: revision) }
+            next.append(SavedHost(id: create.id, draft: try validate(create.draft), revision: stamp))
+        }
+        let undo = ImportUndo(replaced: replaced, created: Set(changes.creates.map(\.id)), stamp: stamp)
+        if !changes.creates.isEmpty || !changes.replacements.isEmpty { try commit(next) }
+        return undo
+    }
+
+    /// Undoes only the import's own records when the rest of an import could not
+    /// be committed; hosts edited by someone else since then are left alone.
+    public func revertImport(_ undo: ImportUndo) throws(HostLibraryError) {
+        let untouched = { (id: UUID) in self.hosts.contains { $0.id == id && $0.revision == undo.stamp } }
+        let restore = undo.replaced.filter { untouched($0.id) }
+        let remove = undo.created.filter(untouched)
+        guard !restore.isEmpty || !remove.isEmpty else { return }
+        try commit(
+            hosts.compactMap { host in
+                if remove.contains(host.id) { return nil }
+                guard var restored = restore.first(where: { $0.id == host.id }) else { return host }
+                // Revisions only advance, so editors holding the imported revision see a conflict.
+                restored.revision = revision + 1
+                return restored
+            })
+    }
+
     /// `expectedRevision` is the host revision the editor started from.
     public func update(id: UUID, _ draft: HostDraft, expectedRevision: UInt64) throws(HostLibraryError) -> SavedHost {
         guard let index = hosts.firstIndex(where: { $0.id == id }) else { throw .notFound }
