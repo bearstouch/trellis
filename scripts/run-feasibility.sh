@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 swift build
 bundle=".build/uTerm Feasibility.app"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
-cp .build/debug/uTerm "$bundle/Contents/MacOS/uTerm"
+cp -f .build/debug/uTerm "$bundle/Contents/MacOS/uTerm"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -18,5 +18,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 </dict></plist>
 PLIST
-cp -R .build/debug/SwiftTerm_SwiftTerm.bundle "$bundle/Contents/Resources/"
+# SwiftPM resources can be read-only; replace existing files on repeat runs
+# rather than opening them for writing or changing the dependency permissions.
+cp -fR .build/debug/SwiftTerm_SwiftTerm.bundle "$bundle/Contents/Resources/"
 open -n "$bundle" --args "$@"

@@ -64,3 +64,11 @@ scripts/run-feasibility.sh
 ```
 
 The fixture creates its own child and exits it; the normal host creates a new local login shell. It never attaches to an existing terminal session. The temporary development bundle is not signed/notarized for distribution. Native chrome/sidebar/tabs are later stories; this host intentionally tests one terminal surface.
+
+## Follow-up: repeat-launch resource permissions
+
+The user reported a successful Swift build followed by `Permission denied` while copying `Shaders.metal` into an existing development bundle. SwiftPM's shader and its copied destination are read-only (0444); the original recursive copy attempted to overwrite the destination in place.
+
+Updated the launcher to use `cp -f` for the executable and `cp -fR` for the resource bundle. This replaces destination files through their writable parent directories while preserving dependency permissions.
+
+Verification: reproduced the original second-run failure in an isolated app fixture; the patched script then passed two repeated runs, including a read-only executable destination, exact resource contents, unchanged source permissions, and preserved `--fixture` launch arguments. The actual existing app resource bundle was also refreshed twice successfully without opening/closing user windows. Shell syntax check passed. A separate review agent reported no findings. Swift source was unchanged, so the Swift test suite was not rerun for this script-only fix. Manual VoiceOver/IME acceptance remains pending.
