@@ -5,9 +5,23 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public var shell: String
     public var directory: String
     public var windowFrame: String?
+    public var appearance: AppearanceSettings
     public init(shell: String = LocalLaunchConfiguration.loginShell().executable,
-                directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil) {
+                directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
+                appearance: AppearanceSettings = .init()) {
         self.shell = shell; self.directory = directory; self.windowFrame = windowFrame
+        self.appearance = appearance
+    }
+    private enum CodingKeys: String, CodingKey { case shell, directory, windowFrame, appearance }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        shell = try values.decode(String.self, forKey: .shell)
+        directory = try values.decode(String.self, forKey: .directory)
+        windowFrame = try values.decodeIfPresent(String.self, forKey: .windowFrame)
+        appearance = try values.decodeIfPresent(AppearanceSettings.self, forKey: .appearance) ?? .init()
+        guard appearance.isValid else {
+            throw DecodingError.dataCorruptedError(forKey: .appearance, in: values, debugDescription: "Invalid appearance settings")
+        }
     }
 }
 

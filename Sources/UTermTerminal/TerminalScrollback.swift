@@ -22,7 +22,9 @@ final class TerminalScrollback {
     private(set) var retainedHistoryBytes = 0
     private(set) var retainedHistoryRows = 0
 
-    init(budget: ScrollbackBudget) { self.budget = budget; engineCapacity = budget.lineLimit }
+    init(budget: ScrollbackBudget, historyEvicted: Bool = false) {
+        self.budget = budget; engineCapacity = budget.lineLimit; self.historyEvicted = historyEvicted
+    }
 
     func enforce(on view: AccessibleTerminalView) {
         let terminal = view.getTerminal()

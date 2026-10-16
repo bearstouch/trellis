@@ -11,7 +11,7 @@ let package = Package(
         .executable(name: "uTerm", targets: ["UTermApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.20.0")
+        .package(path: "ThirdParty/SwiftTerm")
     ],
     targets: [
         .target(name: "UTermCore"),

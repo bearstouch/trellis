@@ -22,13 +22,14 @@ public struct WorkspaceRootView: View {
                 Text(model.presentation.selectedWindow?.name ?? "uTerm")
                 Spacer()
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
+                if let notice = model.appearanceNotice { Text(notice).lineLimit(1).help(notice) }
                 Text(sessionStatus)
                 Text("·  UTF-8  ·  Local")
             }
             .font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 12).frame(height: 28)
             .background(Color(nsColor: .windowBackgroundColor))
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(model.appearance.chromeMode.colorScheme)
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
@@ -350,6 +351,6 @@ public struct LaunchSettingsView: View {
                     }
                 }.disabled(saving)
             }
-        }.padding(24).frame(width: 450).preferredColorScheme(.light)
+        }.padding(24).frame(width: 450)
     }
 }

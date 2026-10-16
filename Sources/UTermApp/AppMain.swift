@@ -17,7 +17,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
-        NSApp.appearance = NSAppearance(named: .aqua)
+        model.onChromeModeChanged = { mode in
+            switch mode {
+            case .light: NSApp.appearance = NSAppearance(named: .aqua)
+            case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+            case .system: NSApp.appearance = nil
+            }
+        }
+        model.onChromeModeChanged?(model.appearance.chromeMode)
         buildMenus()
         model.openSettings = { [weak self] in self?.showSettings() }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
@@ -78,6 +85,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(withTitle: "Find Next", action: #selector(findNextInPane), keyEquivalent: "g")
         edit.submenu?.addItem(withTitle: "Find Previous", action: #selector(findPreviousInPane), keyEquivalent: "g").keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(edit)
+        let view = NSMenuItem(); view.submenu = NSMenu(title: "View")
+        view.submenu?.addItem(withTitle: "Zoom In", action: #selector(zoomIn), keyEquivalent: "+")
+        // Also accept the unshifted key on keyboards where '+' shares '='.
+        let zoomAlias = NSMenuItem(title: "Zoom In", action: #selector(zoomIn), keyEquivalent: "=")
+        zoomAlias.isHidden = true
+        zoomAlias.allowsKeyEquivalentWhenHidden = true
+        view.submenu?.addItem(zoomAlias)
+        view.submenu?.addItem(withTitle: "Zoom Out", action: #selector(zoomOut), keyEquivalent: "-")
+        view.submenu?.addItem(withTitle: "Actual Size", action: #selector(actualSize), keyEquivalent: "0")
+        menu.addItem(view)
         let panes = NSMenuItem(); panes.submenu = NSMenu(title: "Pane")
         for direction in PaneDirection.allCases {
             let item = NSMenuItem(title: "Focus \(direction.rawValue.capitalized)", action: #selector(focusPane(_:)), keyEquivalent: arrowKey(direction))
@@ -124,6 +141,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func findNextInPane() { if window?.isKeyWindow == true { model.activeTerminal?.findInPane() } }
     @objc private func findPreviousInPane() { if window?.isKeyWindow == true { model.activeTerminal?.findInPane(forward: false) } }
     @objc private func newTab() { Task { await model.createTab() } }
+    @objc private func zoomIn() { model.zoomTerminalFont(by: 1) }
+    @objc private func zoomOut() { model.zoomTerminalFont(by: -1) }
+    @objc private func actualSize() { model.zoomTerminalFont(by: 0, reset: true) }
     @objc private func renameTab() { model.tabRenameRequest = UUID() }
     @objc private func nextTab() { selectRelativeTab(1) }
     @objc private func previousTab() { selectRelativeTab(-1) }
@@ -153,10 +173,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func settingsAction() { showSettings() }
     private func showSettings() {
         if settingsWindow == nil {
-            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 230), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 570, height: 490), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             panel.title = "Settings"
             panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(rootView: LaunchSettingsView(model: model))
+            panel.contentView = NSHostingView(rootView: AppSettingsView(model: model))
             panel.center()
             settingsWindow = panel
         }

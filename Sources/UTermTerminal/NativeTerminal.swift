@@ -13,6 +13,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     @Published public private(set) var searchStatus = ""
     @Published public private(set) var searchFocusRequest = UUID()
     private var hasSearchMatch = false
+    private var applyingAppearance = false
     private let paneSearch = PaneTextSearch()
     public let view: NSView
     private let terminalView: AccessibleTerminalView
@@ -43,9 +44,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         self.process = process
         session = LocalSessionController(id: sessionID, transport: process)
         super.init()
-        surface.nativeBackgroundColor = NSColor(srgbRed: 0.082, green: 0.09, blue: 0.098, alpha: 1)
-        surface.nativeForegroundColor = NSColor(srgbRed: 0.87, green: 0.88, blue: 0.90, alpha: 1)
-        surface.caretColor = .lightGray
+        TerminalPalette.builtIn.apply(to: surface)
         surface.setAccessibilityLabel("Terminal session")
         surface.terminalDelegate = self
         surface.onFocused = { [weak self] in self?.onFocused?() }
@@ -110,13 +109,49 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
 
     public func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         terminalView.scrollback.enforce(on: terminalView)
-        invalidateSearchForOutput()
+        if !applyingAppearance { invalidateSearchForOutput() }
         guard let size = try? TerminalSize(columns: newCols, rows: newRows) else { return }
         try? adapter.resize(size)
     }
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
         do { try adapter.send(Data(data)) }
         catch { onInputError?(error) }
+    }
+    /// Mutate the stable native view. No session lifecycle or input operation is
+    /// involved; a metrics change only updates the PTY's dimensions.
+    public func applyAppearance(_ settings: AppearanceSettings) {
+        guard settings.isValid else { return }
+        applyingAppearance = true
+        defer { applyingAppearance = false }
+        let bookmark = TerminalSelectionBookmark(terminalView)
+        let font = NativeTerminalFont.font(NativeTerminalFont.choice(for: settings.fontName), size: settings.fontSize)
+        if terminalView.font != font {
+            terminalView.getTerminal().reflowCursorLine = true
+            terminalView.font = font
+            terminalView.getTerminal().reflowCursorLine = false
+            paneSearch.reset()
+        }
+        if terminalView.scrollback.budget.lineLimit != settings.scrollbackLines {
+            let old = terminalView.scrollback
+            let evicted = old.historyEvicted || old.retainedHistoryRows > settings.scrollbackLines
+            terminalView.scrollback = TerminalScrollback(budget: ScrollbackBudget(lineLimit: settings.scrollbackLines), historyEvicted: evicted)
+            terminalView.changeScrollback(settings.scrollbackLines)
+            terminalView.scrollback.enforce(on: terminalView)
+        }
+        bookmark?.restore(in: terminalView)
+        TerminalPalette.builtIn.apply(to: terminalView)
+        let style: CursorStyle
+        switch (settings.cursorShape, settings.cursorBlinks) {
+        case (.block, false): style = .steadyBlock
+        case (.block, true): style = .blinkBlock
+        case (.underline, false): style = .steadyUnderline
+        case (.underline, true): style = .blinkUnderline
+        case (.bar, false): style = .steadyBar
+        case (.bar, true): style = .blinkBar
+        }
+        terminalView.getTerminal().options.cursorStyle = style
+        terminalView.cursorStyleChanged(source: terminalView.getTerminal(), newStyle: style)
+        terminalView.needsDisplay = true
     }
     public func paste(_ plan: TerminalPastePlan) throws {
         guard session.state == .running else { throw TerminalAdapterError.inputClosed }

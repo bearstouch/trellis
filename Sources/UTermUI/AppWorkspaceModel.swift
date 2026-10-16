@@ -16,6 +16,23 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var snapshot = WorkspaceSnapshot()
     @Published public private(set) var terminals: [UUID: NativeTerminal] = [:]
     @Published public var errorMessage: String?
+    @Published public private(set) var appearance = AppearanceSettings()
+    public var onChromeModeChanged: ((ChromeMode) -> Void)?
+    public var appearanceNotice: String? { NativeTerminalFont.choice(for: appearance.fontName).notice }
+
+    public func applyAppearance(_ settings: AppearanceSettings) -> Bool {
+        guard settings.isValid else { return false }
+        appearance = settings
+        onChromeModeChanged?(settings.chromeMode)
+        for terminal in terminals.values { terminal.applyAppearance(settings) }
+        scheduleWorkspaceSave()
+        return true
+    }
+    public func zoomTerminalFont(by delta: Double, reset: Bool = false) {
+        var next = appearance
+        next.fontSize = reset ? 13 : min(48, max(8, next.fontSize + delta))
+        _ = applyAppearance(next)
+    }
     @Published public private(set) var pendingPaste: PendingTerminalPaste?
     private let pasteReview = TerminalPasteReview()
     private var pasteFocusPaneID: UUID?
@@ -95,6 +112,8 @@ public final class AppWorkspaceModel: ObservableObject {
     private func applyRestored(_ restored: RestoredWorkspace) async throws {
         try await service.store.restoreStoppedSnapshot(restored.snapshot)
         defaultShell = restored.settings.shell; defaultDirectory = restored.settings.directory
+        appearance = restored.settings.appearance
+        onChromeModeChanged?(appearance.chromeMode)
         restoredWindowFrame = restored.settings.windowFrame
         if !persistenceReadOnly {
             if let frame = restoredWindowFrame { preferences.set(frame, forKey: "app.windowFrame") }
@@ -175,7 +194,7 @@ public final class AppWorkspaceModel: ObservableObject {
     private func saveWorkspaceNow() async -> Bool {
         guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
         let settings = WorkspaceSettings(shell: defaultShell, directory: defaultDirectory,
-                                         windowFrame: preferences.string(forKey: "app.windowFrame"))
+                                         windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance)
         do { try await persistence.save(snapshot, settings: settings, sequence: saveGeneration); return true }
         catch { errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false }
     }
@@ -314,6 +333,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func attachTerminal(_ pane: WorkspacePane) {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
+        terminal.applyAppearance(appearance)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
         terminal.onFocused = { [weak self] in

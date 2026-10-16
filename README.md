@@ -21,7 +21,7 @@ scripts/run-feasibility.sh --build-only
 
 `--fixture` runs a fixed, isolated shell demonstration and exits its child with code 7; the window remains inspectable. The ordinary host starts a new login shell in your home directory. Use Quit to close it with confirmation. Terminal output and typed input are not logged.
 
-SwiftTerm is pinned to 1.20.0, with the exact revision in Package.resolved. Its MIT license notice is included in ThirdParty. Engine-specific APIs stay inside UTermTerminal; UTermCore contains the engine-independent adapter.
+SwiftTerm 1.20.0 is vendored at revision `5d14406844143538cd8f8851d2d8a67c1fe443e5` with small font-change fixes. Its MIT license, provenance, and reproducible engine delta are in [ThirdParty/SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Engine-specific APIs stay inside UTermTerminal; UTermCore contains the engine-independent adapter.
 
 The launcher assembles a fresh development app, applies a local ad-hoc signature, verifies the completed bundle, then opens it. `--build-only` packages and verifies without opening a window. This local signature does not require an Apple account; distribution signing/notarization remains S032.
 
