@@ -1,10 +1,33 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-swift build
-bundle=".build/uTerm Feasibility.app"
+launch=true
+if [ "${1:-}" = "--build-only" ]; then
+    launch=false
+    shift
+fi
+swift build --configuration debug
+bin_path=$(swift build --configuration debug --show-bin-path)
+destination="$PWD/.build/uTerm Feasibility.app"
+staging=$(mktemp -d "$PWD/.build/uterm-feasibility.XXXXXX")
+bundle="$staging/uTerm Feasibility.app"
+previous="$staging/previous.app"
+cleanup() {
+    status=$?
+    # Restore the previous bundle if publishing the new one failed.
+    if [ "$status" -ne 0 ] && [ -d "$previous" ] && [ ! -e "$destination" ]; then
+        mv "$previous" "$destination"
+    fi
+    rm -rf "$staging"
+}
+trap cleanup 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
-cp -f .build/debug/uTerm "$bundle/Contents/MacOS/uTerm"
+# Always assemble fresh files: do not overwrite a running executable or merge
+# into an old read-only resource tree or stale signature.
+cp "$bin_path/uTerm" "$bundle/Contents/MacOS/uTerm"
+chmod u+x "$bundle/Contents/MacOS/uTerm"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -18,7 +41,17 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 </dict></plist>
 PLIST
-# SwiftPM resources can be read-only; replace existing files on repeat runs
-# rather than opening them for writing or changing the dependency permissions.
-cp -fR .build/debug/SwiftTerm_SwiftTerm.bundle "$bundle/Contents/Resources/"
-open -n "$bundle" --args "$@"
+cp -R "$bin_path/SwiftTerm_SwiftTerm.bundle" "$bundle/Contents/Resources/"
+# The SwiftPM command-line signature does not seal an app's Info.plist/resources.
+# Sign the completed development bundle; no certificate or account is required.
+/usr/bin/codesign --force --sign - --identifier dev.uterm.feasibility "$bundle"
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$bundle"
+if [ -e "$destination" ]; then
+    mv "$destination" "$previous"
+fi
+mv "$bundle" "$destination"
+if [ "$launch" = true ]; then
+    open -n "$destination" --args "$@"
+else
+    printf 'Built and verified: %s\n' "$destination"
+fi

@@ -63,7 +63,7 @@ scripts/run-feasibility.sh --fixture
 scripts/run-feasibility.sh
 ```
 
-The fixture creates its own child and exits it; the normal host creates a new local login shell. It never attaches to an existing terminal session. The temporary development bundle is not signed/notarized for distribution. Native chrome/sidebar/tabs are later stories; this host intentionally tests one terminal surface.
+The fixture creates its own child and exits it; the normal host creates a new local login shell. It never attaches to an existing terminal session. The temporary development bundle is locally ad-hoc signed and is not notarized for distribution. Native chrome/sidebar/tabs are later stories; this host intentionally tests one terminal surface.
 
 ## Follow-up: repeat-launch resource permissions
 
@@ -72,3 +72,13 @@ The user reported a successful Swift build followed by `Permission denied` while
 Updated the launcher to use `cp -f` for the executable and `cp -fR` for the resource bundle. This replaces destination files through their writable parent directories while preserving dependency permissions.
 
 Verification: reproduced the original second-run failure in an isolated app fixture; the patched script then passed two repeated runs, including a read-only executable destination, exact resource contents, unchanged source permissions, and preserved `--fixture` launch arguments. The actual existing app resource bundle was also refreshed twice successfully without opening/closing user windows. Shell syntax check passed. A separate review agent reported no findings. Swift source was unchanged, so the Swift test suite was not rerun for this script-only fix. Manual VoiceOver/IME acceptance remains pending.
+
+## Follow-up: native launch rejected after successful build
+
+The user reported Launch Services `RBSRequestErrorDomain Code=5` with underlying POSIX 162. Local inspection found the generated app failed `codesign --verify --deep --strict` with “code has no resources but signature indicates they must be present,” while the standalone SwiftPM executable verified successfully. The copied executable retained its command-line signature instead of a signature sealing the assembled app.
+
+The launcher now assembles executable, Info.plist, and resources in a fresh staging directory, signs the completed bundle ad hoc with the development bundle identifier, and strictly verifies it before publishing. It uses SwiftPM’s reported bin path, preserves the prior bundle on pre-publication failures, and cleans staging artifacts. Fresh assembly also covers the earlier read-only-resource case without rewriting an executable in place. `--build-only` permits packaging/signature verification without UI launch.
+
+Verification: a real build-only run succeeded, followed by a successful `--fixture` native launch; accessibility inspection showed the fixture terminal output. The normal launch command also succeeded; a process check confirmed the newly launched app remained running with its own `/bin/zsh` child. The installed app passes strict signature verification. The isolated regression in [test-feasibility-launcher.py](../../scripts/test-feasibility-launcher.py) passed real signing/seal verification, repeated assembly with a fresh executable inode, read-only shader preservation, unchanged Swift build product, argument forwarding with spaces, build-only behavior, and preservation of the previous signed app after a missing-resource packaging failure. Swift/open are stubbed only inside this isolated regression; real native launch was checked separately. Independent review found no actionable issues. Swift source was unchanged.
+
+Signing follows Apple’s requirement to seal the final bundle contents, described in [Understanding the Code Signature](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/AboutCS/AboutCS.html). This is local development signing, not the distribution qualification scheduled for S032. Manual VoiceOver/IME acceptance remains pending.
