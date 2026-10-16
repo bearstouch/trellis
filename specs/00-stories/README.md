@@ -11,8 +11,9 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | Item | State | Evidence |
 | --- | --- | --- |
 | Specification baseline | Committed | `ee471f6` |
-| S001 | Implemented and reviewed; manual feasibility checks pending | [S001 evidence](../../docs/evidence/S001-terminal-feasibility.md) |
-| S002–S032 | Planned | Stories below |
+| S001 (`f8ecff0`) | Implemented and reviewed; manual feasibility checks pending | [S001 evidence](../../docs/evidence/S001-terminal-feasibility.md) |
+| S002 | Done — reviewed and fixed; full 30-test suite passing | [S002 evidence](../../docs/evidence/S002-workspace-model.md) |
+| S003–S032 | Planned; terminal-dependent work waits for the S001 manual gate | Stories below |
 
 ## Agreed product direction
 

@@ -2,7 +2,9 @@
 
 Native Swift terminal for macOS. Product direction: light Native calm chrome, dark terminal panes, Monaco, sidebar windows and independent renameable tabs with nested splits.
 
-Implementation is progressing one story at a time; see the [story plan](specs/00-stories/README.md) and [evidence](docs/evidence/).
+Implementation is progressing one story at a time, with independent agent review, fixes, and a commit between stories; see the [story plan](specs/00-stories/README.md) and [evidence](docs/evidence/).
+
+S001 has a runnable terminal feasibility host with manual VoiceOver/IME acceptance still pending. S002’s authoritative workspace model is complete and reviewed. S003 and later implementation remain gated by S001; the full application UI is not built yet.
 
 ## Development
 
