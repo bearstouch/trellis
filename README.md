@@ -4,7 +4,7 @@ Native Swift terminal for macOS. Product direction: light Native calm chrome, da
 
 Implementation is progressing one story at a time, with independent agent review, fixes, and a commit between stories; see the [story plan](specs/00-stories/README.md) and [evidence](docs/evidence/).
 
-S001 has a runnable terminal feasibility host with manual VoiceOver/IME acceptance still pending. S002’s authoritative workspace model is complete and reviewed. S003 and later implementation remain gated by S001; the full application UI is not built yet.
+S001 has a runnable terminal feasibility host with manual VoiceOver/IME acceptance still pending. S002’s authoritative workspace model is complete and reviewed. The user has directed continuing with S003 and subsequent stories while S001’s manual qualification remains recorded as pending; the full application UI is not built yet.
 
 ## Development
 

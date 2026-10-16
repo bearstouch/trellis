@@ -6,12 +6,34 @@ import UTermCore
 
 final class PTYProcessTests: XCTestCase {
     @MainActor
+    func testChildDoesNotInheritApplicationDescriptors() async throws {
+        let descriptor = open("/dev/null", O_RDWR)
+        XCTAssertGreaterThanOrEqual(descriptor, 3)
+        guard descriptor >= 3 else { return }
+        defer { _ = close(descriptor) }
+        XCTAssertEqual(fcntl(descriptor, F_SETFD, 0), 0)
+        let process = PTYProcess()
+        let exited = expectation(description: "descriptor probe exits")
+        var output = Data()
+        process.onOutput = { output.append($0) }
+        process.onExit = { _ in exited.fulfill() }
+        // Perl can probe a numeric descriptor without opening/reusing it.
+        let probe = "if (open(my $copy, '<&=\(descriptor)')) { print 'LEAKED' } else { print 'CLOSED' }"
+        try await process.start(executable: "/usr/bin/perl", arguments: ["-e", probe],
+                                environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
+                                size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
+        await fulfillment(of: [exited], timeout: 5)
+        XCTAssertEqual(String(decoding: output, as: UTF8.self), "CLOSED")
+        XCTAssertGreaterThanOrEqual(fcntl(descriptor, F_GETFD), 0, "the parent retains ownership")
+    }
+
+    @MainActor
     func testCanTerminateChildAfterPTYEOF() async throws {
         let process = PTYProcess()
         let exited = expectation(description: "closed-stdio child is reaped")
         var code: Int32?
         process.onExit = { code = $0; exited.fulfill() }
-        try process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "exec /usr/bin/perl -e 'close STDIN; close STDOUT; close STDERR; sleep 30'"],
+        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "exec /usr/bin/perl -e 'close STDIN; close STDOUT; close STDERR; sleep 30'"],
                           environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
                           size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let deadline = Date().addingTimeInterval(2)
@@ -32,7 +54,7 @@ final class PTYProcessTests: XCTestCase {
         var received = Data()
         process.onOutput = { received.append($0) }
         process.onExit = { _ in exited.fulfill() }
-        try process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "printf 'final bytes'; exit 7"],
+        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "printf 'final bytes'; exit 7"],
                           environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
                           size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let fd = process.descriptor
@@ -68,7 +90,7 @@ final class PTYProcessTests: XCTestCase {
         process.onOutput = { output.append($0) }
         process.onExit = { _ in exited.fulfill() }
         let script = #"stty raw -echo; printf READY; exec /usr/bin/perl -e '$n=0; $bad=0; while ($n<131072) { $r=sysread(STDIN,$b,131072-$n); last unless $r; $n+=$r; $bad=1 if $b =~ /[^x]/; } print "RECEIVED:$n:BAD:$bad"'"#
-        try process.start(executable: "/bin/zsh", arguments: ["-f", "-c", script],
+        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", script],
                           environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
                           size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let deadline = Date().addingTimeInterval(3)
@@ -82,7 +104,7 @@ final class PTYProcessTests: XCTestCase {
     }
 
     @MainActor
-    func testBackpressuredShutdownClosesBothSourceDescriptorsAndReportsOverload() async throws {
+    func testBackpressuredShutdownClosesChannelDescriptorAndReportsOverload() async throws {
         let process = PTYProcess()
         XCTAssertThrowsError(try process.send(Data([1]))) {
             XCTAssertEqual($0 as? TerminalAdapterError, .inputClosed)
@@ -91,7 +113,7 @@ final class PTYProcessTests: XCTestCase {
         var output = Data()
         process.onOutput = { output.append($0) }
         process.onExit = { _ in exited.fulfill() }
-        try process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "stty raw -echo; printf READY; exec /bin/sleep 30"],
+        try await process.start(executable: "/bin/zsh", arguments: ["-f", "-c", "stty raw -echo; printf READY; exec /bin/sleep 30"],
                           environment: ["PATH=/usr/bin:/bin"], directory: "/tmp",
                           size: winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0))
         let readyDeadline = Date().addingTimeInterval(3)
@@ -102,9 +124,6 @@ final class PTYProcessTests: XCTestCase {
         try process.send(Data(repeating: 120, count: PTYProcess.inputQueueLimit))
         XCTAssertGreaterThan(process.pendingInputCount, 0)
         let readFD = process.descriptor
-        let writeFD = process.writeDescriptor
-        XCTAssertGreaterThanOrEqual(writeFD, 0)
-        XCTAssertNotEqual(readFD, writeFD)
         let pendingBefore = process.pendingInputCount
         XCTAssertThrowsError(try process.send(Data(repeating: 120, count: PTYProcess.inputQueueLimit))) {
             XCTAssertEqual($0 as? TerminalAdapterError, .inputQueueFull)
@@ -113,11 +132,10 @@ final class PTYProcessTests: XCTestCase {
         process.signalGroup(SIGKILL)
         await fulfillment(of: [exited], timeout: 5)
         let closeDeadline = Date().addingTimeInterval(2)
-        while (fcntl(readFD, F_GETFD) >= 0 || fcntl(writeFD, F_GETFD) >= 0), Date() < closeDeadline {
+        while fcntl(readFD, F_GETFD) >= 0, Date() < closeDeadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(fcntl(readFD, F_GETFD), -1)
-        XCTAssertEqual(fcntl(writeFD, F_GETFD), -1)
         XCTAssertEqual(process.pendingInputCount, 0)
         XCTAssertThrowsError(try process.send(Data([1]))) {
             XCTAssertEqual($0 as? TerminalAdapterError, .inputClosed)

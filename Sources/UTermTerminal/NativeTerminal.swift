@@ -9,9 +9,12 @@ import UTermCore
 public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegate {
     public let view: NSView
     private let terminalView: AccessibleTerminalView
-    private let process = PTYProcess()
+    private let process: PTYProcess
     public private(set) var adapter: TerminalAdapter!
-    public private(set) var isRunning = false
+    private let session: LocalSessionController
+    public var isRunning: Bool { [.starting, .running, .closing].contains(session.state) }
+    public var sessionState: SessionState { session.state }
+    public var onStateChanged: ((SessionState) -> Void)?
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
     private var closing = false
@@ -22,26 +25,26 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
                                    font: NSFont(name: "Monaco", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
         terminalView = surface
         view = surface
+        let process = PTYProcess()
+        self.process = process
+        session = LocalSessionController(transport: process)
         super.init()
         surface.nativeBackgroundColor = NSColor(srgbRed: 0.082, green: 0.09, blue: 0.098, alpha: 1)
         surface.nativeForegroundColor = NSColor(srgbRed: 0.87, green: 0.88, blue: 0.90, alpha: 1)
         surface.caretColor = .lightGray
         surface.setAccessibilityLabel("Terminal session")
         surface.terminalDelegate = self
-        process.onOutput = { [weak self] data in self?.adapter.receive(data) }
-        process.onInputError = { [weak self] error in self?.onInputError?(error) }
-        process.onExit = { [weak self] code in self?.processTerminated(exitCode: code) }
+        session.onOutput = { [weak self] data in self?.adapter.receive(data) }
+        session.onInputError = { [weak self] error in self?.onInputError?(error) }
+        session.onExit = { [weak self] code in self?.processTerminated(exitCode: code) }
+        session.onStateChanged = { [weak self] in self?.onStateChanged?($0) }
         adapter = TerminalAdapter(
             render: { [weak self] data in self?.terminalView.display(data) },
             write: { [weak self] data in
                 guard let self else { throw TerminalAdapterError.inputClosed }
-                try self.process.send(data)
+                try self.session.send(data)
             },
-            resizePTY: { [weak self] size in
-                guard let self, self.process.isRunning else { return }
-                var dimensions = winsize(ws_row: UInt16(size.rows), ws_col: UInt16(size.columns), ws_xpixel: 0, ws_ypixel: 0)
-                _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: self.process.descriptor, windowSize: &dimensions)
-            },
+            resizePTY: { [weak self] size in self?.session.resize(size) },
             readText: { [weak self] in
                 guard let self else { return "" }
                 return self.terminalView.retainedText
@@ -50,25 +53,30 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         )
     }
 
-    /// Feasibility host only. The validated configurable launch service is S003.
+    /// Start a user-configured local shell/process after asynchronous validation.
+    public func start(configuration: LocalLaunchConfiguration) async {
+        guard !adapter.isDetached else { return }
+        let size = getWindowSize()
+        guard let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) else { return }
+        await session.start(configuration, size: dimensions)
+        if session.state == .failed {
+            adapter.receive(Data("Unable to start the terminal session. Check its executable, directory, and environment.\r\n".utf8))
+        }
+    }
+
     public func start(fixture: Bool = false) {
-        guard !isRunning, !adapter.isDetached, !closing else { return }
-        let fixtureScript = "printf '\\033[32mPTY ready\\033[0m — café 漢字 👋\\n'; stty size; printf '\\033[?1049hAlternate screen\\r\\n'; sleep 0.1; printf '\\033[?1049l'; printf 'Fixture complete\\n'; exit 7"
-        start(arguments: fixture ? ["-f", "-c", fixtureScript] : ["-l"])
+        if fixture {
+            let script = "printf '\\033[32mPTY ready\\033[0m — café 漢字 👋\\n'; stty size; printf '\\033[?1049hAlternate screen\\r\\n'; sleep 0.1; printf '\\033[?1049l'; printf 'Fixture complete\\n'; exit 7"
+            start(arguments: ["-f", "-c", script])
+        } else {
+            Task { await start(configuration: .loginShell()) }
+        }
     }
 
     func start(arguments: [String]) {
-        guard !isRunning, !adapter.isDetached, !closing else { return }
-        let environment = ["TERM=xterm-256color", "COLORTERM=truecolor", "PATH=/usr/bin:/bin:/usr/sbin:/sbin",
-                           "HOME=\(FileManager.default.homeDirectoryForCurrentUser.path)", "LANG=en_US.UTF-8"]
-        do {
-            try process.start(executable: "/bin/zsh", arguments: arguments, environment: environment,
-                              directory: FileManager.default.homeDirectoryForCurrentUser.path, size: getWindowSize())
-            isRunning = true
-        } catch {
-            adapter.receive(Data("Unable to start the terminal session.\r\n".utf8))
-            onExit?(nil)
-        }
+        let configuration = LocalLaunchConfiguration(executable: "/bin/zsh", arguments: arguments,
+                            directory: FileManager.default.homeDirectoryForCurrentUser.path)
+        Task { await start(configuration: configuration) }
     }
 
     /// Keep process ownership and reaping active independently of terminal EOF.
@@ -82,7 +90,7 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
     }
 
     private func signalOwnedProcessGroup(_ signal: Int32) {
-        process.signalGroup(signal)
+        session.stop(signal: signal)
     }
 
     public func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
@@ -98,7 +106,6 @@ public final class NativeTerminal: NSObject, @preconcurrency TerminalViewDelegat
         return winsize(ws_row: UInt16(clamping: terminal.rows), ws_col: UInt16(clamping: terminal.cols), ws_xpixel: 0, ws_ypixel: 0)
     }
     private func processTerminated(exitCode: Int32?) {
-        isRunning = false
         closing = false
         killTimer?.invalidate()
         killTimer = nil

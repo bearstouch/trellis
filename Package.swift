@@ -14,7 +14,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "UTermCore"),
-        .target(name: "UTermTerminal", dependencies: ["UTermCore", "SwiftTerm"]),
+        .target(name: "UTermPOSIX"),
+        .target(name: "UTermTerminal", dependencies: ["UTermCore", "UTermPOSIX", "SwiftTerm"]),
         .executableTarget(name: "UTermApp", dependencies: ["UTermTerminal"]),
         .testTarget(name: "UTermCoreTests", dependencies: ["UTermCore"]),
         .testTarget(name: "UTermTerminalTests", dependencies: ["UTermTerminal"])

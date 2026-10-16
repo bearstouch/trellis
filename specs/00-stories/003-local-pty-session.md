@@ -1,7 +1,7 @@
 # S003 — Launch and operate local PTY sessions
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Done — reviewed and fixed; 43 tests passing
 Delivery phase: 1  
 Depends on: [S001](001-terminal-engine-feasibility.md), [S002](002-domain-model-and-command-service.md)  
 Requirements: `FR-S01`, `FR-S03`, `FR-S05`, `INT-01`, `MAC-08`, `NFR-S08`
@@ -12,10 +12,10 @@ As a terminal user, I want to run my shell or an explicitly configured process i
 
 ## Acceptance criteria
 
-- [ ] **S003-AC01:** Launch the configured login shell with a controlling PTY, owned process group, initial dimensions, working directory, and allowed environment overrides.
-- [ ] **S003-AC02:** Validate executable and directory before spawn, preserve argument boundaries, and remove application control secrets from child environments.
-- [ ] **S003-AC03:** Report starting/running/exited/failed states and process exit status; a live interactive shell does not imply prompt readiness or command success.
-- [ ] **S003-AC04:** Handle ordered asynchronous output, terminal input, resize notifications, child reaping, and descriptor cleanup without blocking the main actor.
+- [x] **S003-AC01:** Launch the configured login shell with a controlling PTY, owned process group, initial dimensions, working directory, and allowed environment overrides.
+- [x] **S003-AC02:** Validate executable and directory before spawn, preserve argument boundaries, and remove application control secrets from child environments.
+- [x] **S003-AC03:** Report starting/running/exited/failed states and process exit status; a live interactive shell does not imply prompt readiness or command success.
+- [x] **S003-AC04:** Handle ordered asynchronous output, terminal input, resize notifications, child reaping, and descriptor cleanup without blocking the main actor.
 
 ## Unit tests
 
@@ -33,6 +33,8 @@ These are test specifications to implement with the story, not executed tests. N
 On real zsh and bash verify Ctrl-C, Ctrl-D, job control, resize, a dedicated process exiting with code 7, and reaping. Never run test commands in the user’s existing sessions.
 
 ## Completion evidence
+
+See [S003 evidence](../../docs/evidence/S003-local-sessions.md) for the implementation, real shell checks, reviewer fixes, and remaining platform qualification boundaries.
 
 Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
 
