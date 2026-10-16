@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-17
+
+This release adds new themes and font choices, refines the terminal layout, and makes closing shells smoother.
+
+### Added
+
+- 10 editor-inspired theme families, each with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox and Rose Pine. They are Trellis adaptations with complete app and terminal palettes, available without importing files. Their light variants use light terminal backgrounds; the original Trellis Light and Trellis Dark themes keep terminal panes dark.
+- Settings → Appearance → Terminal font is now a picker that lists the monospace typefaces installed on your Mac (one entry per family) and previews the selected font. A saved font that is no longer installed is shown as unavailable.
+- Trellis → About Trellis, showing the version, copyright and license.
+
+### Changed
+
+- Settings now use sidebar navigation in a wider panel.
+- Trellis runs as a single app instance per user. Opening it again, including with a different `--state-directory`, brings the existing window forward. The instance lock is released automatically when the app quits or crashes.
+- The terminal scrollbar stays hidden while idle. It appears when you hover over its track or when scrolling moves the viewport, and fades out one second later. Incoming output alone does not reveal it, and showing it never changes the terminal grid width.
+- Terminal layout refinements: the pane border is gone, terminal content has subtle padding, the terminal toolbar rows are merged into one, the gap below the terminal grid is removed, and pane dividers are one pixel wide.
+- `scripts/qualify.py` writes its report to `.build/` by default.
+- The contributor documentation moved from `specs/` to an MkDocs site under `docs/`.
+
+### Fixed
+
+- Closing a running interactive shell no longer asks you to force-stop it. Trellis now sends SIGHUP, like a terminal hangup, instead of SIGTERM, which shells such as zsh ignore. Force (SIGKILL) is still a separate, explicit step.
+
 ## [0.9.0] - 2026-10-16
 
 This is the first public release of Trellis, previously named uTerm. It is a native Swift terminal for macOS 14 and later, built for Apple silicon and Intel (Universal 2). This release delivers the full MVP. It is a pre-1.0 release, and some platform checks are still pending; see [Known issues](#known-issues).
@@ -139,5 +162,6 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/layerx-labs/trellis/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/layerx-labs/trellis/releases/tag/v0.9.0
