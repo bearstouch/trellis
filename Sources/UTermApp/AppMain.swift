@@ -34,10 +34,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             MainActor.assumeIsolated { self?.constrainWindow() }
         }
         window.makeKeyAndOrderFront(nil)
+        model.onRestoreWindowFrame = { [weak self] frame in
+            guard let self else { return }
+            window.setFrame(NSRectFromString(frame), display: true)
+            constrainWindow()
+        }
         startupTask = Task {
+            let restored = await model.loadWorkspace()
             await model.refresh()
             guard !Task.isCancelled else { return }
-            if model.snapshot.windows.isEmpty {
+            if !restored, model.snapshot.windows.isEmpty {
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
         }
@@ -54,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(app)
         let file = NSMenuItem(); file.submenu = NSMenu(title: "File")
         file.submenu?.addItem(withTitle: "New Window", action: #selector(newWindow), keyEquivalent: "n")
+        file.submenu?.addItem(withTitle: "Save Workspace", action: #selector(saveWorkspace), keyEquivalent: "s")
         file.submenu?.addItem(withTitle: "New Tab", action: #selector(newTab), keyEquivalent: "t")
         file.submenu?.addItem(withTitle: "Rename Tab…", action: #selector(renameTab), keyEquivalent: "")
         file.submenu?.addItem(withTitle: "Next Tab", action: #selector(nextTab), keyEquivalent: "]").keyEquivalentModifierMask = [.command, .shift]
@@ -93,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
         Task { await model.createWindow() }
     }
+    @objc private func saveWorkspace() { Task { await model.flushWorkspaceSave() } }
     @objc private func newTab() { Task { await model.createTab() } }
     @objc private func renameTab() { model.tabRenameRequest = UUID() }
     @objc private func nextTab() { selectRelativeTab(1) }
@@ -144,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func windowDidMove(_ notification: Notification) { saveGeometry() }
     func windowDidResize(_ notification: Notification) { saveGeometry() }
-    private func saveGeometry() { if let window { UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: "app.windowFrame") } }
+    private func saveGeometry() { if let window { model.updateWindowFrame(NSStringFromRect(window.frame)) } }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window?.deminiaturize(nil)
         window?.makeKeyAndOrderFront(nil)
@@ -178,8 +186,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.stopAll()
         Task {
             let closed = await model.shutdown()
-            if !closed { terminationPending = false }
-            NSApp.reply(toApplicationShouldTerminate: closed)
+            let saved = closed ? await model.flushWorkspaceSave() : false
+            if !saved { terminationPending = false; model.cancelShutdown() }
+            NSApp.reply(toApplicationShouldTerminate: saved)
         }
         return .terminateLater
     }
@@ -192,7 +201,14 @@ struct UTermMain {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         do {
-            let model = AppWorkspaceModel(store: try WorkspaceStore())
+            let directory: URL
+            if let index = CommandLine.arguments.firstIndex(of: "--state-directory"), CommandLine.arguments.indices.contains(index + 1) {
+                directory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
+            } else {
+                directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent(Bundle.main.bundleIdentifier ?? "dev.uterm", isDirectory: true)
+            }
+            let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
             let delegate = AppDelegate(model: model)
             app.delegate = delegate
             app.run()

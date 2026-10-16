@@ -65,7 +65,14 @@ struct PaneTreeView: View {
                 NativeTerminalSurface(terminal: terminal, isFocused: activePaneID == id)
                     .overlay {
                         if terminal.sessionState == .stopped {
-                            Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
+                            VStack(spacing: 8) {
+                                if model.unconfiguredPaneIDs.contains(id) {
+                                    Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(.white)
+                                    Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
+                                } else {
+                                    Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
+                                }
+                            }
                         }
                     }
             }.overlay { Rectangle().strokeBorder(activePaneID == id ? Color.accentColor.opacity(0.65) : .clear, lineWidth: 1).allowsHitTesting(false) }

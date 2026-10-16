@@ -13,7 +13,7 @@ public struct WorkspaceRootView: View {
     public var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                sidebar.frame(width: 205)
+                sidebar.frame(width: 205).disabled(model.isRestoring || model.recoveryMessage != nil)
                 Divider()
                 mainArea
             }
@@ -21,6 +21,7 @@ public struct WorkspaceRootView: View {
             HStack(spacing: 8) {
                 Text(model.presentation.selectedWindow?.name ?? "uTerm")
                 Spacer()
+                if model.persistenceReadOnly { Text("Changes won’t be saved") }
                 Text(sessionStatus)
                 Text("·  UTF-8  ·  Local")
             }
@@ -119,7 +120,18 @@ public struct WorkspaceRootView: View {
     }
 
     @ViewBuilder private var mainArea: some View {
-        if model.presentation.isEmpty {
+        if model.isRestoring {
+            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let message = model.recoveryMessage {
+            VStack(spacing: 16) {
+                Text("Recover Workspace").font(.title2)
+                Text(message).multilineTextAlignment(.center).frame(maxWidth: 430)
+                if model.backupAvailable {
+                    Button("Use Backup") { Task { await model.recoverWorkspace(useBackup: true) } }
+                }
+                Button("Start Empty") { Task { await model.recoverWorkspace(useBackup: false) } }
+            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.presentation.isEmpty {
             VStack(spacing: 14) {
                 Image(systemName: "terminal").font(.system(size: 34, weight: .light)).foregroundStyle(.secondary)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))

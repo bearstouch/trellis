@@ -32,6 +32,18 @@ public final class AppWorkspaceModel: ObservableObject {
     private var dividerResizeTask: Task<Void, Never>?
     private var canvasSizes: [UUID: CanvasDimensions] = [:]
     @Published public var tabRenameRequest: UUID?
+    @Published public private(set) var isRestoring: Bool
+    @Published public private(set) var recoveryMessage: String?
+    @Published public private(set) var backupAvailable = false
+    @Published public private(set) var persistenceReadOnly = false
+    @Published public private(set) var unconfiguredPaneIDs = Set<UUID>()
+    public private(set) var restoredWindowFrame: String?
+    public var onRestoreWindowFrame: ((String) -> Void)?
+    private let persistence: WorkspacePersistence?
+    private var recoveryBackup: RestoredWorkspace?
+    private var recoveryReason: WorkspacePersistenceError?
+    private var pendingSaveTask: Task<Void, Never>?
+    private var saveGeneration: UInt64 = 0
     public var openSettings: (() -> Void)?
     private let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
@@ -39,13 +51,129 @@ public final class AppWorkspaceModel: ObservableObject {
     private var shuttingDown = false
     private var pendingOperations = 0
 
-    public init(store: WorkspaceStore, preferences: UserDefaults = .standard) {
+    public init(store: WorkspaceStore, preferences: UserDefaults = .standard, persistence: WorkspacePersistence? = nil) {
+        self.persistence = persistence
+        self.isRestoring = persistence != nil
         service = WorkspaceCommandService(store: store)
         self.preferences = preferences
         defaultShell = preferences.string(forKey: "terminal.shell") ?? LocalLaunchConfiguration.loginShell().executable
         defaultDirectory = preferences.string(forKey: "terminal.directory") ?? FileManager.default.homeDirectoryForCurrentUser.path
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
+    }
+
+    /// Returns true for an existing document or recovery state, even if empty.
+    public func loadWorkspace() async -> Bool {
+        guard let persistence else { return false }
+        isRestoring = true
+        pendingOperations += 1
+        defer { isRestoring = false; pendingOperations -= 1 }
+        let result = await persistence.load()
+        // Restoring never starts a process. Finish it even if startup was
+        // cancelled by Quit, so shutdown cannot replace saved state with an
+        // uninitialized empty snapshot.
+        switch result {
+        case .missing: return false
+        case .loaded(let restored):
+            do { try await applyRestored(restored); return true }
+            catch { recoveryMessage = "The saved workspace could not be restored."; return true }
+        case .recovery(let reason, let backup):
+            recoveryReason = reason; recoveryBackup = backup; backupAvailable = backup != nil
+            if case .unsupportedVersion = reason {
+                recoveryMessage = "This workspace was saved by a newer application version. It will remain unchanged. Recovery opens a temporary workspace."
+            } else {
+                recoveryMessage = "The saved workspace could not be read. Recover the backup or start empty; the original file will be preserved."
+            }
+            return true
+        }
+    }
+
+    private func applyRestored(_ restored: RestoredWorkspace) async throws {
+        try await service.store.restoreStoppedSnapshot(restored.snapshot)
+        defaultShell = restored.settings.shell; defaultDirectory = restored.settings.directory
+        restoredWindowFrame = restored.settings.windowFrame
+        if !persistenceReadOnly {
+            if let frame = restoredWindowFrame { preferences.set(frame, forKey: "app.windowFrame") }
+
+            preferences.set(defaultShell, forKey: "terminal.shell")
+            preferences.set(defaultDirectory, forKey: "terminal.directory")
+        }
+        if let frame = restoredWindowFrame { onRestoreWindowFrame?(frame) }
+        for pane in restored.snapshot.panes.values { attachTerminal(pane) }
+        unconfiguredPaneIDs = restored.unconfiguredPaneIDs
+        publish(restored.snapshot)
+    }
+
+    public func recoverWorkspace(useBackup: Bool) async {
+        guard let persistence, recoveryMessage != nil, !isRestoring else { return }
+        guard !useBackup || recoveryBackup != nil else { return }
+        isRestoring = true
+        if case .unsupportedVersion = recoveryReason { persistenceReadOnly = true }
+        else {
+            do { try await persistence.authorizeRecovery() }
+            catch { persistenceReadOnly = true }
+        }
+        do {
+            if useBackup, let backup = recoveryBackup { try await applyRestored(backup) }
+            recoveryMessage = nil; recoveryBackup = nil; backupAvailable = false
+        } catch { errorMessage = "The backup could not be restored." }
+        isRestoring = false
+        if !persistenceReadOnly, recoveryMessage == nil { _ = await flushWorkspaceSave() }
+    }
+
+    public func startRestoredShell(_ paneID: UUID) async {
+        guard unconfiguredPaneIDs.contains(paneID), !isClosing(paneID: paneID), !shuttingDown,
+              let pane = snapshot.panes[paneID], let session = snapshot.sessions[pane.sessionID] else { return }
+        pendingOperations += 1
+        defer { pendingOperations -= 1 }
+        let directory: String?
+        if case .process(_, _, let path) = session.launch { directory = path } else { directory = nil }
+        do {
+            let result = try await service.execute(.configureStoppedSession(paneID: paneID, launch: .shell(directory: directory)))
+            unconfiguredPaneIDs.remove(paneID)
+            publish(result.snapshot)
+            if !isClosing(paneID: paneID), !shuttingDown { await start(paneID: paneID) }
+        } catch { errorMessage = "A new shell could not be configured." }
+    }
+
+    private func scheduleWorkspaceSave() {
+        guard persistence != nil, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return }
+        if saveGeneration < UInt64.max { saveGeneration += 1 }
+        let generation = saveGeneration
+        pendingSaveTask?.cancel()
+        pendingSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            guard let self, !Task.isCancelled, generation == saveGeneration else { return }
+            pendingSaveTask = nil
+            _ = await saveWorkspaceNow()
+        }
+    }
+
+    public func updateWindowFrame(_ frame: String) {
+        preferences.set(frame, forKey: "app.windowFrame")
+        scheduleWorkspaceSave()
+    }
+
+    /// A failed shutdown save cancels Quit; allow the remaining workspace to
+    /// continue accepting commands while the user resolves the storage error.
+    public func cancelShutdown() { shuttingDown = false }
+
+    @discardableResult
+    public func flushWorkspaceSave() async -> Bool {
+        // Capture the final dragged divider and ordered session callbacks before
+        // taking the snapshot used by an explicit Save or shutdown.
+        await dividerResizeTask?.value
+        await waitForUpdates()
+        pendingSaveTask?.cancel(); pendingSaveTask = nil
+        return await saveWorkspaceNow()
+    }
+
+    private func saveWorkspaceNow() async -> Bool {
+        guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
+        let settings = WorkspaceSettings(shell: defaultShell, directory: defaultDirectory,
+                                         windowFrame: preferences.string(forKey: "app.windowFrame"))
+        do { try await persistence.save(snapshot, settings: settings, sequence: saveGeneration); return true }
+        catch { errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false }
     }
 
     public var presentation: WorkspacePresentation { WorkspacePresentation(snapshot: snapshot) }
@@ -60,11 +188,13 @@ public final class AppWorkspaceModel: ObservableObject {
         snapshot = next
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
+        unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
+        scheduleWorkspaceSave()
     }
 
     public func createWindow(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async {
-        guard !shuttingDown, !Task.isCancelled else { return }
+        guard !isRestoring, recoveryMessage == nil, !shuttingDown, !Task.isCancelled else { return }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
@@ -87,7 +217,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func start(paneID: UUID, fixture: Bool = false) async {
-        guard !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped else { return }
+        guard !isRestoring, recoveryMessage == nil, !unconfiguredPaneIDs.contains(paneID),
+              !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled, let terminal = terminals[paneID], terminal.sessionState == .stopped else { return }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
@@ -477,6 +608,7 @@ public final class AppWorkspaceModel: ObservableObject {
             defaultShell = shell; defaultDirectory = directory
             preferences.set(shell, forKey: "terminal.shell")
             preferences.set(directory, forKey: "terminal.directory")
+            scheduleWorkspaceSave()
             return true
         } catch { return false }
     }
@@ -503,7 +635,7 @@ public final class AppWorkspaceModel: ObservableObject {
             terminals.removeAll()
             activity.removeAll()
             shuttingDown = false
-            return true
+            return await flushWorkspaceSave()
         } catch { errorMessage = "The workspaces could not be closed."; shuttingDown = false; return false }
     }
 }

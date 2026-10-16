@@ -27,6 +27,7 @@ public enum WorkspaceCommand: Sendable {
     case recordSessionExit(sessionID: UUID, code: Int32?)
     case markSessionClosing(sessionID: UUID)
     case restartSession(paneID: UUID)
+    case configureStoppedSession(paneID: UUID, launch: SessionLaunch)
     case splitPane(id: UUID, axis: SplitAxis, availableSize: TerminalSize)
     case deletePane(id: UUID)
     case selectPane(id: UUID)
@@ -62,6 +63,12 @@ public actor WorkspaceStore {
         self.state = snapshot
         self.makeID = makeID
         self.now = now
+    }
+
+    public func restoreStoppedSnapshot(_ snapshot: WorkspaceSnapshot) throws {
+        guard state.windows.isEmpty, snapshot.sessions.values.allSatisfy({ $0.state == .stopped }) else { throw WorkspaceError.invalidTransition }
+        try snapshot.validate()
+        state = snapshot
     }
 
     public func snapshot() -> WorkspaceSnapshot { state }
@@ -131,6 +138,11 @@ public actor WorkspaceStore {
             guard session.state == .running else { throw WorkspaceError.invalidTransition }
             session.state = .closing
             next.sessions[id] = session
+        case .configureStoppedSession(let paneID, let launch):
+            guard let pane = next.panes[paneID], var session = next.sessions[pane.sessionID] else { throw WorkspaceError.notFound }
+            guard session.state == .stopped else { throw WorkspaceError.invalidTransition }
+            session.launch = launch
+            next.sessions[session.id] = session
         case .restartSession(let paneID):
             guard var pane = next.panes[paneID], let old = next.sessions[pane.sessionID] else { throw WorkspaceError.notFound }
             guard old.state == .exited || old.state == .failed else { throw WorkspaceError.invalidTransition }
