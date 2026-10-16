@@ -1,39 +1,155 @@
 # Trellis
 
-Previously named uTerm. On first launch, Trellis copies an existing default workspace and theme library into its new Application Support directory, preserving the original files. Existing Trellis data takes priority. Saved built-in theme IDs are upgraded when loaded. During this default-directory migration, custom themes using the newly reserved `trellis-` prefix receive new IDs and their saved selections are updated.
+A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal panes, Monaco, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
-Explicit `--state-directory` paths are used directly. For an older custom library at such a path, change any custom theme IDs beginning with `trellis-` (including their filenames and saved selections) before using Trellis; other custom IDs continue to work unchanged.
+> **Status:** pre-release. All 32 MVP stories (S001–S032) are implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See the [story plan](specs/00-stories/README.md), the per-story [evidence](docs/evidence/), and the [changelog](CHANGELOG.md) (current version: 0.9.0).
 
-Native Swift terminal for macOS. Product direction: light Native calm chrome, dark terminal panes, Monaco, sidebar windows and independent renameable tabs with nested splits.
+## Features
 
-Implementation is progressing one story at a time, with independent agent review, fixes, and a commit between stories; see the [story plan](specs/00-stories/README.md) and [evidence](docs/evidence/).
+- **Workspace:** managed windows in a left sidebar, renameable tabs, nested horizontal/vertical splits. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
+- **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Includes scrollback search, safe paste review, copy, and Cmd-click links (http/https/mailto only).
+- **Appearance:** separate Light/Dark theme slots and a JSON theme library with live preview (Settings → Themes).
+- **Keyboard and accessibility:** rebindable menu shortcuts (conflicts are rejected before saving), Option-as-Meta toggle, and accessibility labels throughout.
+- **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust.
+- **Automation:** an owner-only local JSON-RPC socket (no TCP) with scoped, expiring grants created in Settings → Automation. Covers windows, tabs, panes, sessions, input, output cursors, events, declarative layouts, themes and appearance.
+- **Portability:** export and import workspaces with a review step (File → Export/Import Workspace…).
+- **Privacy:** no telemetry. Terminal output and typed input are never logged or persisted. Help → Export Diagnostics… previews an allow-listed report before saving.
 
-Stories S001–S032 are implemented and provide the native workspace, local sessions, tabs/splits, clipboard, search, persistence, appearance settings, JSON theme library, configurable keyboard shortcuts with accessibility labels, and a saved SSH host library (File → Hosts…; metadata only, stored in `hosts.json`) with read-only discovery of literal aliases from `~/.ssh/config`. Hosts connect in a new tab or split through `/usr/bin/ssh` (argument array, no trust bypass); failures stay visible and reconnect only on request. A local owner-only JSON-RPC socket is published via `control.json` (no token, no TCP); clients authenticate with scoped, expiring grants created in Settings → Automation (token shown once, secret in Keychain, hash on disk). Window/tab/pane/host methods, `session.get`, and `system.info` are available with revision conflicts and idempotency keys; API-created panes stay stopped unless explicitly started. Scripts can start/restart sessions, send literal or paste input (64 KiB per call), submit shell commands, and connect saved hosts, each under its own capability. With output permission they can read screen/scrollback text or exact raw output through cursors (8 MiB in-memory budget), and subscribe to ordered workspace events. Declarative v1 layouts can be validated, planned, applied by namespace/key with stable IDs (new panes stay stopped unless `startNew`), and exported. File → Export/Import Workspace… exchanges portable layouts and host metadata with a review step, fresh IDs, stopped panes, and an explicit host-collision choice. Themes and appearance are scriptable too (`theme.*`, `appearance.*`, `trellis theme|appearance …`) under theme-read and global theme-write grants, without touching sessions. Terminal output cannot use the clipboard or local files (OSC 52 and Kitty file transfers are refused), links open only on Cmd-click for http/https/mailto, and Help → Export Diagnostics… previews an allow-listed report before saving. There is no telemetry.
-
-`scripts/qualify.py` measures the release build (launch, idle cost, capacity, flood, cleanup) on isolated temporary state; see the [S031 results](docs/evidence/S031-qualification-results.md). The 10 MiB/s flood target currently misses and is tracked as a blocker. Release packaging (`scripts/package-release.sh`: Universal 2 app with bundled `trellis` CLI, hardened runtime, DMG, optional notarization) and install/upgrade/uninstall guidance are in the [release guide](docs/release/README.md); Developer ID notarization and the full OS/CPU matrix are still outstanding. Settings → Keyboard rebinds menu shortcuts (conflicts are rejected before saving) and toggles Option-as-Meta (off by default so Option composes layout characters). Manual VoiceOver/IME and the macOS/CPU release qualification remain pending as recorded in the story evidence.
-
-## Development
-
-Requires Xcode 26 / Swift 6.2, provisionally macOS 14 or later. This is a feasibility host, not the finished application.
+## Quick start
 
 ```sh
+git clone https://github.com/layerx-labs/trellis.git
+cd trellis
 swift build
-swift test
-swift run Trellis
-swift run Trellis --fixture
-swift run trellis-cli window list --token-stdin --json < token.txt   # installed as `trellis` in S032
-scripts/run-feasibility.sh
-scripts/run-feasibility.sh --build-only
+swift run Trellis --state-directory "$PWD/.build/dev-state"
 ```
 
-`--fixture` runs a fixed, isolated shell demonstration on a new workspace and exits its child with code 7; the window remains inspectable. An ordinary new workspace starts a login shell; saved workspaces restore with sessions stopped. Use Quit to close live sessions with confirmation. Terminal output and typed input are not logged. Use `--state-directory /absolute/path` for a separate development workspace and theme library.
+`--state-directory` keeps your development workspace and themes separate from your real `~/Library/Application Support/dev.trellis/` data. Use it whenever you hack on Trellis.
 
-Settings → Themes can load a JSON file or bundled example, preview it in the sample or temporarily in the workspace, and Save & Use it. Cancel Preview, leaving the Themes tab, or closing Settings restores the saved appearance. Existing IDs require the separate Replace Theme action. The same pane offers export, resolved export, deletion, Open Themes Folder, and Reload Themes. Invalid edits keep the last valid in-memory colors; missing selected themes fall back to the matching built-in theme with a notice. Appearance settings choose separate Light/Dark slots. Built-in exports keep reserved IDs; change their ID before importing as a custom copy.
+## Development setup
 
-SwiftTerm 1.20.0 is vendored at revision `5d14406844143538cd8f8851d2d8a67c1fe443e5` with small font-change fixes. Its MIT license, provenance, and reproducible engine delta are in [ThirdParty/SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Engine-specific APIs stay inside TrellisTerminal; TrellisCore contains the engine-independent adapter.
+### Prerequisites
 
-The launcher assembles a fresh development app, applies a local ad-hoc signature, verifies the completed bundle, then opens it. `--build-only` packages and verifies without opening a window. This local signature does not require an Apple account; distribution signing/notarization remains S032.
+| Requirement | Version | Notes |
+| --- | --- | --- |
+| macOS | 14 Sonoma or later | Development is done on recent macOS on Apple silicon |
+| Xcode | 26 | Provides Swift 6.2 and `swift format`. Run `sudo xcode-select -s /Applications/Xcode.app` if `xcode-select -p` points at the Command Line Tools |
+| Python 3 | Any recent version | Only for `scripts/qualify.py` and the launcher test |
+| `librsvg` | Optional | `brew install librsvg`, only to regenerate app icons |
 
-The app icon sources live in `Design/AppIcon` (`Trellis.svg` for 64 px and up, `Trellis-small.svg` for 16–32 px, `Trellis-menubar.svg` as a menu bar template). Run `scripts/generate-app-icon.sh` (needs `rsvg-convert`) to regenerate the PNGs, iconset and the `AppIcon.icns` the launcher bundles.
+Check your toolchain:
 
-After building, run the isolated launcher regression with `python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"`. It uses real signature verification and does not open windows.
+```sh
+swift --version        # Apple Swift version 6.2 or later
+swift format --version
+```
+
+You don't need an Apple Developer account, Homebrew packages, or a package manager bootstrap. SwiftTerm is vendored under `ThirdParty/SwiftTerm`, so `swift build` works offline.
+
+### Editors
+
+- **Xcode:** `open Package.swift`. Choose the `Trellis` scheme to run the app and `Trellis-Package` to run tests. To pass launch arguments such as `--state-directory /abs/path`, edit the scheme (Product → Scheme → Edit Scheme… → Arguments).
+- **VS Code / Cursor:** install the [Swift extension](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode). It reads `Package.swift` directly and uses SourceKit-LSP.
+
+### Everyday commands
+
+```sh
+swift build                                   # build (must stay warning-free)
+swift test                                    # full XCTest suite, about 20 s
+swift test --filter TrellisUITests.TabManagementTests   # one test class
+swift test --filter 'S017_UT'                 # one story's named tests
+swift format -i -r Sources Tests              # format in place
+swift format lint --strict -r Sources Tests   # lint: must print nothing
+```
+
+Before every commit, run this one-liner:
+
+```sh
+swift format -i -r Sources Tests && swift format lint --strict -r Sources Tests && swift build && swift test
+```
+
+Formatting uses the toolchain's `swift format` with the repo [`.swift-format`](.swift-format) (4-space indent, 220 columns). The repo has no SwiftLint or SwiftFormat dependency.
+
+### Running the app
+
+| Command | What it does |
+| --- | --- |
+| `swift run Trellis` | Runs against your **real** workspace in Application Support |
+| `swift run Trellis --state-directory /abs/path` | Uses a separate workspace and theme library (recommended for development) |
+| `swift run Trellis --fixture` | Starts an isolated, fixed-shell demo window whose child exits with code 7. The window stays open for inspection |
+| `scripts/run-feasibility.sh` | Assembles `.build/Trellis.app`, ad-hoc signs and verifies it, then opens it. Use this when you need a real bundle (icon, Info.plist, resources) |
+| `scripts/run-feasibility.sh --build-only` | Same as above without opening a window |
+
+An ordinary new workspace starts a login shell. Use Quit to close live sessions with confirmation.
+
+### Using the CLI against a dev build
+
+1. Run the app, open **Settings → Automation**, and create a grant. The token is shown only once.
+2. Save the token to a file that only you can read, for example `.build/token.txt`. Never pass a token as an argument.
+3. Call the CLI:
+
+   ```sh
+   swift run trellis-cli window list --token-stdin --json < .build/token.txt
+   swift run trellis-cli                      # prints the available nouns
+   ```
+
+The packaged app ships this binary as `trellis` (see the [release guide](docs/release/README.md)). The protocol is specified in [`specs/05-api`](specs/05-api/README.md).
+
+### Other scripts
+
+```sh
+python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"  # launcher regression, no windows
+python3 scripts/qualify.py [--quick]          # release qualification, about 5 min; opens isolated app windows
+scripts/package-release.sh                    # Universal 2 app + DMG (ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE)
+scripts/generate-app-icon.sh                  # regenerate icons from Design/AppIcon/*.svg (needs rsvg-convert)
+```
+
+## Project layout
+
+```
+Sources/
+  TrellisCore/       engine-independent domain: WorkspaceStore, command service, persistence, themes
+  TrellisPOSIX/      small C target for PTY / process-group spawning
+  TrellisTerminal/   all SwiftTerm-specific code (the only place SwiftTerm is imported)
+  TrellisUI/         SwiftUI/AppKit views and AppWorkspaceModel
+  TrellisControl/    local JSON-RPC server, framing, auth-gated handler
+  TrellisApp/        app entry point, menus, launch arguments
+  TrellisRelease/    release manifest checks, CLI link planner, uninstall allow-list
+  TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)
+Tests/               one XCTest target per module
+ThirdParty/SwiftTerm vendored SwiftTerm 1.20.0 + recorded patches
+specs/               behavior contract and story plan
+docs/evidence/       per-story verification records
+docs/release/        packaging, install, upgrade and uninstall guide
+Design/AppIcon/      icon sources
+scripts/             launcher, qualification, packaging, icon tooling
+```
+
+Architecture in brief:
+
+- **Window → Tabs → `SplitNode` tree → Pane → Session.**
+- All mutations from the UI and the API go through a single `WorkspaceCommandService`.
+- PTY I/O runs off the main thread, and views update on `@MainActor`.
+
+The full design is in [`specs/02-architecture`](specs/02-architecture/README.md), and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules contributors must follow.
+
+## Data and migration
+
+User data lives in `~/Library/Application Support/dev.trellis/`. Files there are owner-only and written atomically, with last-known-good backups. Newer or corrupt state opens in recovery mode and is never overwritten.
+
+Trellis was previously named **uTerm**. On first launch it copies an existing uTerm workspace and theme library into the new directory and leaves the originals untouched. Existing Trellis data takes priority. Theme IDs that begin with `trellis-` are reserved for built-in themes. During the default-directory migration, any custom theme that uses this prefix gets a new ID, and its saved selections are updated to match. Paths passed with `--state-directory` are used as-is. If an older custom library at such a path has theme IDs that begin with `trellis-`, rename those IDs yourself, along with their filenames and saved selections.
+
+## Troubleshooting
+
+- **`swift format` not found:** `xcode-select -p` points at the Command Line Tools. Switch it to Xcode 26.
+- **Concurrency errors on build:** you're on an older toolchain. The package requires Swift 6.2 in Swift 6 language mode.
+- **The app opens my real workspace:** pass `--state-directory /absolute/path` (the path must be absolute).
+- **The ad-hoc `.app` is blocked by Gatekeeper when copied to another Mac:** this is expected. Only Developer ID–signed, notarized builds can be distributed.
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, code style, test conventions and how to report security issues.
+
+## License
+
+Trellis is released under the [MIT License](LICENSE). The vendored SwiftTerm is also MIT-licensed. Its license, provenance and patch set are in [`ThirdParty/SwiftTerm`](ThirdParty/SwiftTerm/PATCHES.md).

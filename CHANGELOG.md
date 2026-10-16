@@ -1,0 +1,143 @@
+# Changelog
+
+All notable changes to Trellis are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.9.0] - 2026-10-16
+
+This is the first public release of Trellis, previously named uTerm. It is a native Swift terminal for macOS 14 and later, built for Apple silicon and Intel (Universal 2). This release delivers the full MVP, stories S001 to S032. It is a pre-1.0 release, and some platform checks are still pending; see [Known issues](#known-issues).
+
+### Added
+
+#### Terminal and sessions
+
+- A native terminal built on SwiftTerm 1.20.0, which is vendored with recorded patches. All engine-specific code is kept behind an adapter.
+- Local sessions run your configured login shell in a real PTY that owns its process group. Sessions take an initial size, a working directory and allowed environment overrides. Application control secrets are removed from the child environment.
+- Session states are shown throughout: stopped, starting, running, exited or failed. Exit status is reported, and the output of an exited session stays inspectable until you restart it.
+- Safe closing: closing running sessions shows a summary of what will be affected, and cancelling sends no signal. If you confirm, Trellis terminates the process group gracefully and waits up to 2 s before offering an explicit force option. Trellis never signals a reused PID.
+- Restart creates a fresh session in the same pane.
+
+#### Windows, tabs and splits
+
+- Managed windows in a left sidebar. You can create, rename, reorder, select and delete them. Each window keeps its own active tab and pane, and inactive windows show activity and exit indicators.
+- A tab bar for each window with inline renaming (double-click or Rename; Enter commits, Escape cancels). You can reorder, duplicate (which copies the layout into fresh sessions, without output or typed history) and close tabs.
+- Nested splits: Split Left/Right and Split Top/Bottom on any pane, up to depth 16 and 100 panes. Closing a pane collapses its parent split into the remaining sibling.
+- Pane resizing by dragging or with the keyboard (each pane keeps at least 20 × 5 cells), directional focus navigation with a visible focus ring, and temporary maximize that restores the exact layout afterwards.
+- One native application window with a menu bar, Dock behavior, full-screen and multi-monitor support, and an empty state. Automatic macOS window tabbing is disabled.
+
+#### Persistence and recovery
+
+- Atomic, versioned workspace saves (debounced, and flushed on quit) of names, order, split ratios, selection and settings. Files are owner-only (`0600`/`0700`).
+- Restored workspaces open with every session **stopped**. Live processes are never resurrected and typed input is never replayed.
+- A last-known-good backup and corrupt-file preservation, with a recovery choice of restoring the backup or starting an empty workspace. A newer, unsupported format opens in read-only recovery and is never overwritten.
+- Terminal output, input transcripts, tokens and secret environment values are never persisted.
+- Automatic migration from uTerm. On first launch Trellis copies existing uTerm data into `~/Library/Application Support/dev.trellis/` and leaves the originals untouched.
+
+#### Copy, paste and search
+
+- Selection by drag, word or line, plus Select All, Copy and Copy All Retained Text. Text is copied as plain Unicode. Cmd-C with no selection does not send SIGINT.
+- Safe paste: pasting multiline text or text with control characters opens a review first, showing the line count, visible control characters and the target pane. Cancelling sends nothing. Bracketed paste is used only when the shell negotiates it.
+- Paste Escaped Path, for pasting file paths into supported shells.
+- Scrollback of 10,000 lines per pane by default, with a 16 MiB cap per pane. Per-pane search runs forward and backward and shows the current match, and Trellis tells you when older history has been evicted.
+
+#### Appearance and themes
+
+- Light "Native calm" application chrome with dark terminal panes and Monaco as the default font. Menlo is used as a fallback, with a notice.
+- Light, Dark and System chrome modes, with separate Light and Dark theme slots.
+- Font family and size, zoom, cursor style and scrollback settings. Changes apply live without restarting sessions.
+- A JSON theme format (v1). A minimal theme needs only `version`, `id`, `name` and `appearance`, and anything omitted inherits from the matching built-in theme. Validation is strict: malformed JSON, duplicate keys, unknown fields, bad colors and files over 64 KiB are rejected, errors point to the exact field, and you get advisory contrast warnings.
+- A theme library in Settings → Themes:
+  - load a file or a bundled example;
+  - preview it in a sample terminal, or temporarily across the whole workspace;
+  - save it with Save & Use, or replace an existing theme with Replace Theme;
+  - export a theme, either as written or with every value resolved (Export Resolved);
+  - delete themes, open the Themes folder, or reload themes from disk.
+  Cancelling a preview restores your exact prior appearance.
+
+#### Keyboard and accessibility
+
+- Rebindable menu shortcuts for windows, tabs, splits and search. Conflicting bindings are rejected before they are saved.
+- A configurable Option-as-Meta setting, off by default so the Option key still types characters for your keyboard layout.
+- Accessibility labels, roles, selected states and focus indicators across the sidebar, tab bar, rename fields, panes, dialogs and status text. Trellis never needs blanket Accessibility permission to work.
+
+#### SSH hosts
+
+- A saved host library (File → Hosts…). Each host has a display name, an alias or hostname, and optionally a user, a port, an identity-file path and tags. Hosts are searchable and validated. Only metadata is stored, in `hosts.json`; passwords and key contents are never saved.
+- Read-only discovery of literal host aliases from `~/.ssh/config`, previewed before anything is added. Wildcard and `Match` sections are never materialized or executed, and Trellis never edits your SSH files.
+- Connections run through `/usr/bin/ssh` with a validated argument array, in a new tab or a split. Host-key and authentication prompts are left to OpenSSH, and Trellis never adds options that bypass trust checks. Failures stay visible, and Trellis reconnects only when you ask.
+
+#### Automation API
+
+- A local control socket: newline-framed JSON-RPC 2.0 over an owner-only Unix socket, discovered through `control.json`. The discovery file contains no token, and the API never listens on TCP. Peer UIDs are checked, symlinked endpoints are rejected, and requests are limited to 1 MiB.
+- Automation grants, created in Settings → Automation. Grants are scoped, expiring and revocable. The token is shown once, the secret is stored in the Keychain, only a hash is written to disk, and failed attempts are rate-limited.
+- Separate capabilities control metadata, layout, start, input, execute, output, close, host and theme access.
+- Resource methods for windows, tabs, panes and hosts, plus `session.get` and `system.info`. They support `expectedRevision` conflict checks and idempotency keys. Panes created through the API stay stopped unless you explicitly ask to start them.
+- Session control:
+  - `session.start` and `session.restart`;
+  - `session.sendInput`, which sends literal or paste input of up to 64 KiB per call;
+  - `session.execute`, which submits a shell command;
+  - `host.connect`.
+  Each needs its own capability, and input is never retried automatically.
+- Output and events: plain-text screen and scrollback snapshots, raw output deltas read through cursors (8 MiB global budget), and ordered workspace events (a 1,000-event ring, with replay-gap signalling). Slow clients are disconnected once their outbound queue reaches 1 MiB.
+- Declarative v1 layouts that you can validate, plan and apply by namespace and key, with stable IDs, and then export. New panes stay stopped unless you set `startNew`.
+- Theme and appearance control: `theme.list`, `get`, `validate`, `import`, `export` and `delete`, plus `appearance.get` and `appearance.set`, behind the `theme.read` capability and a global `theme.write` capability. Theme changes never start or restart sessions.
+
+#### `trellis` CLI
+
+- Commands for appearance, cli, events, host, layout, pane, session, system, tab, theme and window, using explicit UUIDs.
+- Credentials come only from `--token-stdin` or `--keychain-grant`, never from a token argument.
+- `--json` writes a stable `ok`/`result`/`error` envelope to stdout and sends diagnostics to stderr. Exit statuses are documented, and commands are never retried automatically.
+- `--launch` lets the CLI start the app. Without it, the CLI reports that the app is unavailable.
+- `trellis cli install-link` creates a single symlink in a user-local directory (`~/.local/bin` by default). It never edits shell startup files or system directories.
+
+#### Import and export
+
+- File → Export Workspace… writes portable, versioned layout and host JSON. Runtime IDs, buffers, transcripts, keys, tokens and secret environment values are left out.
+- File → Import Workspace… shows a review first, with counts, launch references and collisions. Imported resources get fresh IDs and stopped panes. Host collisions require an explicit policy, and host imports commit atomically.
+
+#### Security and diagnostics
+
+- Terminal output cannot use the clipboard (OSC 52 is refused) or write local files (Kitty file transfer is refused).
+- Links open only on Cmd-click, and only for `http`, `https` and `mailto`.
+- Logs and errors never contain tokens, typed input, terminal output, passwords or key contents.
+- Help → Export Diagnostics… previews an allow-listed report before saving it.
+- No telemetry and no clipboard history.
+
+#### Release and tooling
+
+- A Universal 2 (arm64 + x86_64) `Trellis.app` that bundles the CLI at `Contents/Helpers/trellis`. Both are signed with the hardened runtime and request no entitlements, root helpers or blanket privacy permissions.
+- `scripts/package-release.sh` builds the DMG, optionally notarizes and staples it, and writes `dist/release-evidence.json`.
+- `scripts/qualify.py` runs release-build performance and reliability qualification on isolated temporary state.
+- `scripts/run-feasibility.sh` builds and launches an ad-hoc-signed development bundle.
+- A release guide covering install, upgrade, backup, downgrade and uninstall (including the Keychain cleanup allow-list).
+
+### Performance
+
+Measured on the release build on an Apple M1 Pro running macOS 26.6. Full results are in [S031 results](docs/evidence/S031-qualification-results.md).
+
+| Target | Result |
+| --- | --- |
+| Cold launch ≤ 2 s (p95) | 348 ms |
+| Typing echo ≤ 50 ms (p95, API proxy) | 0.4 ms |
+| Tab switch ≤ 100 ms (p95, API proxy, 100 live panes) | 11 ms |
+| 10 windows / 50 tabs / 100 sessions | Met |
+| App memory ≤ 300 MiB with 10 idle panes | 73 MiB |
+| Idle CPU < 2 % of one core | 0.38 % |
+| 100 create/close cycles leave no file descriptors or child processes behind | Met |
+| 10 MiB/s output flood for 60 s | **5.15 MiB/s (missed)** |
+
+### Known issues
+
+- Output throughput under a sustained flood reaches about 5 MiB/s, short of the 10 MiB/s target. Navigation stays responsive during a flood, and memory stays bounded.
+- Echo and tab-switch latency were measured through the control API. These measurements leave out on-screen frame rendering.
+- Manual VoiceOver, IME, dead-key and keyboard-layout checks are pending.
+- Only one machine has been qualified. Older macOS versions and Intel hardware have not been tested yet.
+- Developer ID signing and notarization are not configured yet. Ad-hoc builds are for local testing only and are blocked by Gatekeeper on other Macs.
+- The bundle identifier `dev.trellis` is provisional.
+- MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
+
+[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/layerx-labs/trellis/releases/tag/v0.9.0
