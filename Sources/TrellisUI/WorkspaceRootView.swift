@@ -400,6 +400,6 @@ public struct LaunchSettingsView: View {
                     }
                 }.disabled(saving)
             }
-        }.padding(24).frame(width: 450)
+        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -13,23 +13,97 @@ extension ChromeMode {
 
 public struct AppSettingsView: View {
     @ObservedObject var model: AppWorkspaceModel
+    @State private var selection: SettingsSection = .appearance
     private let grants: GrantListModel?
     private let hosts: HostListModel?
     public init(model: AppWorkspaceModel, grants: GrantListModel? = nil, hosts: HostListModel? = nil) {
         self.model = model; self.grants = grants; self.hosts = hosts
     }
     public var body: some View {
-        TabView {
-            AppearanceSettingsView(model: model).disabled(model.previewedTheme != nil).tabItem { Text("Appearance") }
-            LaunchSettingsView(model: model).tabItem { Text("Sessions") }
-            KeyboardSettingsView(model: model).tabItem { Text("Keyboard") }
-            ThemePreviewView(workspace: model).tabItem { Text("Themes") }
-            if let grants, let hosts {
-                AutomationSettingsView(grants: grants, workspace: model, hosts: hosts).tabItem { Text("Automation") }
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("SETTINGS")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(model.themeColor(.mutedForeground))
+                    .padding(.horizontal, 12).padding(.top, 24).padding(.bottom, 12)
+                ForEach(SettingsSection.allCases.filter { $0 != .automation || (grants != nil && hosts != nil) }) { section in
+                    Button {
+                        if selection == .themes { model.cancelThemePreview() }
+                        selection = section
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: section.symbol).frame(width: 18)
+                            Text(section.rawValue)
+                            Spacer()
+                        }
+                        .font(.system(size: 13, weight: selection == section ? .semibold : .regular))
+                        .padding(.horizontal, 12).padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                        .foregroundStyle(model.themeColor(selection == section ? .activeTabForeground : .foreground))
+                        .background(selection == section ? model.themeColor(.activeTabBackground) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == section ? .isSelected : [])
+                }
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 12)
+            .frame(width: 200)
+            .background(model.themeColor(.sidebarBackground))
+            Rectangle().fill(model.themeColor(.border)).frame(width: 1)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(selection.rawValue).font(.system(size: 22, weight: .semibold))
+                    Text(selection.detail).font(.callout).foregroundStyle(model.themeColor(.mutedForeground))
+                }
+                .padding(28)
+                Divider().padding(.horizontal, 28)
+                Group {
+                    switch selection {
+                    case .appearance:
+                        ScrollView { AppearanceSettingsView(model: model).disabled(model.previewedTheme != nil) }
+                    case .sessions:
+                        ScrollView { LaunchSettingsView(model: model) }
+                    case .keyboard:
+                        KeyboardSettingsView(model: model)
+                    case .themes:
+                        ThemePreviewView(workspace: model)
+                    case .automation:
+                        if let grants, let hosts { AutomationSettingsView(grants: grants, workspace: model, hosts: hosts) }
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .foregroundStyle(model.themeColor(.foreground))
+            .background(model.themeColor(.background))
         }
-        .padding(16)
+        .frame(minWidth: 860, minHeight: 620)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
+    }
+}
+
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case appearance = "Appearance", sessions = "Sessions", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
+    var id: Self { self }
+    var symbol: String {
+        switch self {
+        case .appearance: "paintbrush"
+        case .sessions: "terminal"
+        case .keyboard: "keyboard"
+        case .themes: "swatchpalette"
+        case .automation: "bolt"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .appearance: "Customize the window, terminal text, and cursor."
+        case .sessions: "Choose how new local sessions start."
+        case .keyboard: "Set your shortcuts and terminal key behavior."
+        case .themes: "Browse, preview, and manage your color themes."
+        case .automation: "Manage access for scripts and agents."
+        }
     }
 }
 
