@@ -204,12 +204,16 @@ public struct WorkspaceRootView: View {
     private var terminalCanvas: some View {
         GeometryReader { geometry in
             if let tab = model.presentation.selectedTab {
-                let minimum = CanvasDimensions.minimum(for: tab.root)
-                let size = minimum.fitting(width: geometry.size.width, height: geometry.size.height)
+                let fullSize = CanvasDimensions.minimum(for: tab.root).fitting(width: geometry.size.width, height: geometry.size.height)
+                let visible = model.maximizedPanes[tab.id].map(PaneLayout.pane) ?? tab.root
+                let size = CanvasDimensions.minimum(for: visible).fitting(width: geometry.size.width, height: geometry.size.height)
                 ScrollView([.horizontal, .vertical]) {
-                    PaneTreeView(model: model, layout: tab.root, activePaneID: tab.activePaneID)
+                    PaneTreeView(model: model, layout: visible, activePaneID: tab.activePaneID, tabID: tab.id)
                         .frame(width: size.width, height: size.height)
                 }.background(Color(red: 0.082, green: 0.09, blue: 0.098))
+                    .onAppear { model.setCanvasSize(fullSize, tabID: tab.id) }
+                    .onChange(of: tab.id) { _, _ in model.setCanvasSize(fullSize, tabID: tab.id) }
+                    .onChange(of: fullSize) { _, next in model.setCanvasSize(next, tabID: tab.id) }
             } else { Color(red: 0.082, green: 0.09, blue: 0.098) }
         }
     }

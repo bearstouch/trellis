@@ -28,6 +28,7 @@ public enum WorkspaceCommand: Sendable {
     case splitPane(id: UUID, axis: SplitAxis, availableSize: TerminalSize)
     case deletePane(id: UUID)
     case selectPane(id: UUID)
+    case resizeSplit(tabID: UUID, splitID: UUID, ratio: Double, canvas: CanvasDimensions)
     case createTab(windowID: UUID)
     case selectTab(id: UUID)
     case reorderTabs(windowID: UUID, ids: [UUID])
@@ -150,6 +151,20 @@ public actor WorkspaceStore {
             next.panes[newPaneID] = WorkspacePane(id: newPaneID, tabID: tab.id, sessionID: sessionID, profileID: pane.profileID)
             next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
             createdPaneID = newPaneID
+        case .resizeSplit(let tabID, let splitID, let ratio, let canvas):
+            guard var tab = next.tabs[tabID] else { throw WorkspaceError.notFound }
+            guard ratio.isFinite, (0.1...0.9).contains(ratio), canvas.width.isFinite, canvas.height.isFinite,
+                  canvas.width > 0, canvas.height > 0 else { throw WorkspaceError.invalidState("Invalid divider allocation") }
+            guard PaneGeometry(layout: tab.root, canvas: canvas).branches[splitID] != nil else { throw WorkspaceError.notFound }
+            let root = tab.root.resizing(splitID: splitID, ratio: ratio)
+            let minimum = CanvasDimensions.minimum(for: root)
+            guard canvas.width + 0.001 >= minimum.width, canvas.height + 0.001 >= minimum.height else {
+                throw WorkspaceError.invalidState("Divider allocation would make a pane smaller than 20 columns by 5 rows")
+            }
+            guard root != tab.root else { return unchanged() }
+            tab.root = root
+            tab.revision = next.revision
+            next.tabs[tabID] = tab
         case .selectPane(let id):
             guard let pane = next.panes[id], var tab = next.tabs[pane.tabID] else { throw WorkspaceError.notFound }
             guard tab.activePaneID != id else { return unchanged() }

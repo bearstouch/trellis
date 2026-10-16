@@ -1,7 +1,7 @@
 # S008 — Resize, focus, and maximize panes
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented and independently reviewed — 89 tests and native interaction checks pass
 Delivery phase: 2  
 Depends on: [S004](004-native-application-shell.md), [S007](007-nested-split-tree.md)  
 Requirements: `FR-P02`, `FR-P04`, `MAC-06`, `NFR-U01`
@@ -12,10 +12,10 @@ As a terminal user, I want to navigate and resize my split layout with a clear f
 
 ## Acceptance criteria
 
-- [ ] **S008-AC01:** Drag or keyboard-resize split dividers using a finite ratio between 0.1 and 0.9 while maintaining at least 20 columns by 5 rows per pane.
-- [ ] **S008-AC02:** Map directional navigation to pane geometry and retain a visible focus indicator; terminal input goes to one focused pane.
-- [ ] **S008-AC03:** Maximize a pane temporarily and restore the exact saved split tree/ratios without restarting hidden sessions.
-- [ ] **S008-AC04:** Save the active pane per tab and use a deterministic surviving neighbor when a focused pane closes.
+- [x] **S008-AC01:** Drag or keyboard-resize split dividers using a finite ratio between 0.1 and 0.9 while maintaining at least 20 columns by 5 rows per pane.
+- [x] **S008-AC02:** Map directional navigation to pane geometry and retain a visible focus indicator; terminal input goes to one focused pane.
+- [x] **S008-AC03:** Maximize a pane temporarily and restore the exact saved split tree/ratios without restarting hidden sessions.
+- [x] **S008-AC04:** Save the active pane per tab and use a deterministic surviving neighbor when a focused pane closes.
 
 ## Unit tests
 
@@ -34,7 +34,7 @@ Resize via mouse and keyboard while a full-screen terminal program runs; verify 
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S008 implementation, review fixes, and native evidence](../../docs/evidence/S008-pane-interaction.md). The full 89-test suite passes. Native mouse/keyboard resizing, directional focus, maximize/restore, and full-screen terminal-editor interaction passed. Physical display/scale and native-window full-screen qualification remain pending.
 
 ## Source specifications
 

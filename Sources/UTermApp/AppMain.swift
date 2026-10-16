@@ -65,6 +65,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         edit.submenu?.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.submenu?.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         menu.addItem(edit)
+        let panes = NSMenuItem(); panes.submenu = NSMenu(title: "Pane")
+        for direction in PaneDirection.allCases {
+            let item = NSMenuItem(title: "Focus \(direction.rawValue.capitalized)", action: #selector(focusPane(_:)), keyEquivalent: arrowKey(direction))
+            item.representedObject = direction.rawValue
+            item.keyEquivalentModifierMask = [.command, .option]
+            panes.submenu?.addItem(item)
+            let resize = NSMenuItem(title: "Move Divider \(direction.rawValue.capitalized)", action: #selector(resizePane(_:)), keyEquivalent: arrowKey(direction))
+            resize.representedObject = direction.rawValue
+            resize.keyEquivalentModifierMask = [.command, .option, .shift]
+            panes.submenu?.addItem(resize)
+        }
+        panes.submenu?.addItem(.separator())
+        panes.submenu?.addItem(withTitle: "Maximize / Restore Pane", action: #selector(maximizePane), keyEquivalent: "\r").keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(panes)
         let windows = NSMenuItem(); windows.submenu = NSMenu(title: "Window")
         windows.submenu?.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windows.submenu?.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
@@ -88,6 +102,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let id = model.presentation.selectedTab?.id, let index = tabs.firstIndex(where: { $0.id == id }), !tabs.isEmpty else { return }
         let next = tabs[(index + offset + tabs.count) % tabs.count].id
         Task { await model.selectTab(next) }
+    }
+    private func arrowKey(_ direction: PaneDirection) -> String {
+        let code: Int
+        switch direction { case .left: code = NSLeftArrowFunctionKey; case .right: code = NSRightArrowFunctionKey; case .up: code = NSUpArrowFunctionKey; case .down: code = NSDownArrowFunctionKey }
+        return String(UnicodeScalar(code)!)
+    }
+    @objc private func focusPane(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let direction = PaneDirection(rawValue: raw) else { return }
+        Task { await model.focusPane(direction) }
+    }
+    @objc private func resizePane(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let direction = PaneDirection(rawValue: raw) else { return }
+        Task { await model.resizeFocusedPane(direction) }
+    }
+    @objc private func maximizePane() {
+        guard let id = model.presentation.activePane?.id else { return }
+        Task { await model.toggleMaximize(id) }
     }
     @objc private func settingsAction() { showSettings() }
     private func showSettings() {

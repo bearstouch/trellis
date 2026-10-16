@@ -11,6 +11,7 @@ public struct WorkspacePresentation: Sendable {
 }
 
 public struct CanvasDimensions: Equatable, Sendable {
+    public static let dividerThickness: Double = 5
     public var width: Double
     public var height: Double
     public init(width: Double, height: Double) { self.width = width; self.height = height }
@@ -24,8 +25,8 @@ public struct CanvasDimensions: Equatable, Sendable {
             let first = minimum(for: children[0], cellWidth: cellWidth, cellHeight: cellHeight)
             let second = minimum(for: children[1], cellWidth: cellWidth, cellHeight: cellHeight)
             return axis == .x
-                ? Self(width: max(first.width / ratio, second.width / (1 - ratio)) + 1, height: max(first.height, second.height))
-                : Self(width: max(first.width, second.width), height: max(first.height / ratio, second.height / (1 - ratio)) + 1)
+                ? Self(width: max(first.width / ratio, second.width / (1 - ratio)) + dividerThickness, height: max(first.height, second.height))
+                : Self(width: max(first.width, second.width), height: max(first.height / ratio, second.height / (1 - ratio)) + dividerThickness)
         }
     }
     public func fitting(width: Double, height: Double) -> Self {

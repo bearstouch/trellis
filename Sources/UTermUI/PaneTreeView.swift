@@ -5,29 +5,38 @@ struct PaneTreeView: View {
     @ObservedObject var model: AppWorkspaceModel
     let layout: PaneLayout
     let activePaneID: UUID
+    let tabID: UUID
+    @State private var dragStartRatio: Double?
 
     var body: some View {
         GeometryReader { geometry in
             switch layout {
             case .pane(let id): leaf(id, size: geometry.size)
-            case .split(_, let axis, let ratio, let children):
+            case .split(let id, let axis, let ratio, let children):
                 if children.count == 2 {
                     if axis == .x {
-                        HStack(spacing: 1) {
-                            PaneTreeView(model: model, layout: children[0], activePaneID: activePaneID)
-                                .frame(width: max(0, geometry.size.width - 1) * ratio)
-                            PaneTreeView(model: model, layout: children[1], activePaneID: activePaneID)
+                        HStack(spacing: 0) {
+                            PaneTreeView(model: model, layout: children[0], activePaneID: activePaneID, tabID: tabID)
+                                .frame(width: max(0, geometry.size.width - CanvasDimensions.dividerThickness) * ratio)
+                            divider(id, axis: axis, ratio: ratio, size: geometry.size)
+                            PaneTreeView(model: model, layout: children[1], activePaneID: activePaneID, tabID: tabID)
                         }
                     } else {
-                        VStack(spacing: 1) {
-                            PaneTreeView(model: model, layout: children[0], activePaneID: activePaneID)
-                                .frame(height: max(0, geometry.size.height - 1) * ratio)
-                            PaneTreeView(model: model, layout: children[1], activePaneID: activePaneID)
+                        VStack(spacing: 0) {
+                            PaneTreeView(model: model, layout: children[0], activePaneID: activePaneID, tabID: tabID)
+                                .frame(height: max(0, geometry.size.height - CanvasDimensions.dividerThickness) * ratio)
+                            divider(id, axis: axis, ratio: ratio, size: geometry.size)
+                            PaneTreeView(model: model, layout: children[1], activePaneID: activePaneID, tabID: tabID)
                         }
                     }
                 }
             }
         }.background(Color(nsColor: .separatorColor))
+            .coordinateSpace(name: layoutCoordinateSpace)
+    }
+
+    private var layoutCoordinateSpace: UUID {
+        switch layout { case .pane(let id): return id; case .split(let id, _, _, _): return id }
     }
 
     @ViewBuilder private func leaf(_ id: UUID, size: CGSize) -> some View {
@@ -37,10 +46,14 @@ struct PaneTreeView: View {
                     Button(model.snapshot.panes[id]?.title ?? "Terminal") { Task { await model.selectPane(id) } }
                         .buttonStyle(.plain).lineLimit(1)
                     Spacer(minLength: 0)
+                    Button { Task { await model.toggleMaximize(id) } } label: {
+                        Image(systemName: model.maximizedPanes[tabID] == id ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                    }.help(model.maximizedPanes[tabID] == id ? "Restore Panes" : "Maximize Pane")
+                        .accessibilityLabel(model.maximizedPanes[tabID] == id ? "Restore Panes" : "Maximize Pane")
                     Button { split(id, axis: .x, size: size) } label: { Image(systemName: "rectangle.split.2x1") }
-                        .help("Split Left/Right").accessibilityLabel("Split Left/Right")
+                        .help("Split Left/Right").accessibilityLabel("Split Left/Right").disabled(model.maximizedPanes[tabID] != nil)
                     Button { split(id, axis: .y, size: size) } label: { Image(systemName: "rectangle.split.1x2") }
-                        .help("Split Top/Bottom").accessibilityLabel("Split Top/Bottom")
+                        .help("Split Top/Bottom").accessibilityLabel("Split Top/Bottom").disabled(model.maximizedPanes[tabID] != nil)
                     Button { Task { await model.closePane(id) } } label: { Image(systemName: "xmark") }
                         .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
@@ -51,10 +64,39 @@ struct PaneTreeView: View {
                             Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
                         }
                     }
-            }.overlay { Rectangle().strokeBorder(activePaneID == id ? Color.accentColor.opacity(0.65) : .clear, lineWidth: 1) }
+            }.overlay { Rectangle().strokeBorder(activePaneID == id ? Color.accentColor.opacity(0.65) : .clear, lineWidth: 1).allowsHitTesting(false) }
         } else {
             Color(red: 0.082, green: 0.09, blue: 0.098)
         }
+    }
+
+    private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {
+        Color(nsColor: .windowBackgroundColor)
+            .overlay { Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: axis == .x ? 1 : nil, height: axis == .y ? 1 : nil).allowsHitTesting(false) }
+            .frame(width: axis == .x ? CanvasDimensions.dividerThickness : nil,
+                   height: axis == .y ? CanvasDimensions.dividerThickness : nil)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(id)).onChanged { value in
+                if dragStartRatio == nil { dragStartRatio = ratio }
+                updateDivider(id, axis: axis, size: size, translation: value.translation)
+            }.onEnded { value in
+                updateDivider(id, axis: axis, size: size, translation: value.translation)
+                dragStartRatio = nil
+            })
+            .accessibilityLabel(axis == .x ? "Left/right divider" : "Top/bottom divider")
+            .accessibilityValue("\(Int(ratio * 100)) percent")
+            .accessibilityAdjustableAction { direction in
+                let delta = direction == .increment ? 0.05 : -0.05
+                Task { await model.resizeSplit(id, ratio: ratio + delta, tabID: tabID) }
+            }
+    }
+
+    private func updateDivider(_ id: UUID, axis: SplitAxis, size: CGSize, translation: CGSize) {
+        guard let initial = dragStartRatio else { return }
+        let length = (axis == .x ? size.width : size.height) - CanvasDimensions.dividerThickness
+        guard length > 0 else { return }
+        let delta = (axis == .x ? translation.width : translation.height) / length
+        model.queueDividerResize(id, ratio: initial + delta, tabID: tabID)
     }
 
     private func split(_ id: UUID, axis: SplitAxis, size: CGSize) {

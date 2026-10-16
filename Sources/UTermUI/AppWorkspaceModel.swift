@@ -31,6 +31,10 @@ public final class AppWorkspaceModel: ObservableObject {
     private var closingWindowIDs = Set<UUID>()
     private var closingTabIDs = Set<UUID>()
     private var closingPaneIDs = Set<UUID>()
+    @Published public private(set) var maximizedPanes: [UUID: UUID] = [:]
+    private var pendingDividerResize: (splitID: UUID, ratio: Double, tabID: UUID)?
+    private var dividerResizeTask: Task<Void, Never>?
+    private var canvasSizes: [UUID: CanvasDimensions] = [:]
     @Published public var tabRenameRequest: UUID?
     public var openSettings: (() -> Void)?
     private let service: WorkspaceCommandService
@@ -56,6 +60,8 @@ public final class AppWorkspaceModel: ObservableObject {
     func publish(_ next: WorkspaceSnapshot) {
         guard next.revision >= snapshot.revision else { return }
         snapshot = next
+        maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
+        canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
     }
 
@@ -175,9 +181,69 @@ public final class AppWorkspaceModel: ObservableObject {
         terminals[pane.id] = terminal
     }
 
-    public func selectPane(_ id: UUID) async {
-        do { publish(try await service.execute(.selectPane(id: id)).snapshot) }
-        catch { errorMessage = "The pane could not be selected." }
+    public func setCanvasSize(_ size: CanvasDimensions, tabID: UUID) {
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { return }
+        canvasSizes[tabID] = size
+    }
+
+    public func toggleMaximize(_ paneID: UUID) async {
+        guard !shuttingDown, let pane = snapshot.panes[paneID], !isClosing(paneID: paneID) else { return }
+        guard await selectPane(paneID), !shuttingDown, !isClosing(paneID: paneID),
+              presentation.selectedTab?.id == pane.tabID,
+              snapshot.tabs[pane.tabID]?.activePaneID == paneID else { return }
+        if maximizedPanes[pane.tabID] == paneID { maximizedPanes.removeValue(forKey: pane.tabID) }
+        else { maximizedPanes[pane.tabID] = paneID }
+    }
+
+    public func focusPane(_ direction: PaneDirection) async {
+        guard let tab = presentation.selectedTab, let canvas = canvasSizes[tab.id],
+              let next = PaneGeometry(layout: tab.root, canvas: canvas).neighbor(of: tab.activePaneID, direction: direction) else { return }
+        let wasMaximized = maximizedPanes[tab.id] != nil
+        guard await selectPane(next), !shuttingDown, !isClosing(paneID: next),
+              presentation.selectedTab?.id == tab.id,
+              snapshot.tabs[tab.id]?.activePaneID == next else { return }
+        if wasMaximized, maximizedPanes[tab.id] != nil { maximizedPanes[tab.id] = next }
+    }
+
+    /// Coalesce rapid pointer events while preserving the final requested position.
+    public func queueDividerResize(_ splitID: UUID, ratio: Double, tabID: UUID) {
+        pendingDividerResize = (splitID, ratio, tabID)
+        guard dividerResizeTask == nil else { return }
+        dividerResizeTask = Task { [weak self] in
+            guard let self else { return }
+            while let request = pendingDividerResize {
+                pendingDividerResize = nil
+                await resizeSplit(request.splitID, ratio: request.ratio, tabID: request.tabID, quietly: true)
+            }
+            dividerResizeTask = nil
+        }
+    }
+
+    public func resizeSplit(_ splitID: UUID, ratio: Double, tabID: UUID, quietly: Bool = false) async {
+        guard !shuttingDown, maximizedPanes[tabID] == nil, let canvas = canvasSizes[tabID] else { return }
+        do { publish(try await service.execute(.resizeSplit(tabID: tabID, splitID: splitID, ratio: ratio, canvas: canvas)).snapshot) }
+        catch { if !quietly { errorMessage = "This divider would make a pane too small." } }
+    }
+
+    public func resizeFocusedPane(_ direction: PaneDirection) async {
+        guard let tab = presentation.selectedTab else { return }
+        let axis: SplitAxis = direction == .left || direction == .right ? .x : .y
+        guard let split = tab.root.enclosingSplit(paneID: tab.activePaneID, axis: axis) else { return }
+        let delta = direction == .left || direction == .up ? -0.05 : 0.05
+        await resizeSplit(split.id, ratio: split.ratio + delta, tabID: tab.id)
+    }
+
+    @discardableResult
+    public func selectPane(_ id: UUID) async -> Bool {
+        guard !shuttingDown, !isClosing(paneID: id), snapshot.panes[id] != nil else { return false }
+        do {
+            publish(try await service.execute(.selectPane(id: id)).snapshot)
+            guard let pane = snapshot.panes[id], !isClosing(paneID: id) else { return false }
+            return snapshot.tabs[pane.tabID]?.activePaneID == id
+        } catch {
+            if snapshot.panes[id] != nil, !isClosing(paneID: id) { errorMessage = "The pane could not be selected." }
+            return false
+        }
     }
 
     public func splitPane(_ id: UUID, axis: SplitAxis, availableCanvas: CanvasDimensions? = nil, startSession: Bool = true) async {

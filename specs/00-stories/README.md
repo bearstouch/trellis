@@ -18,7 +18,8 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S005 | Implemented with review fixes — 64 tests pass; native interaction qualification pending | [S005 evidence](../../docs/evidence/S005-managed-windows.md) |
 | S006 | Implemented/reviewed — 72 tests and native tab checks pass | [S006 evidence](../../docs/evidence/S006-tabs.md) |
 | S007 | Implemented/reviewed — 81 tests and native split checks pass | [S007 evidence](../../docs/evidence/S007-nested-splits.md) |
-| S008–S032 | Planned | Stories below |
+| S008 | Implemented/reviewed — 89 tests and native pane interaction checks pass | [S008 evidence](../../docs/evidence/S008-pane-interaction.md) |
+| S009–S032 | Planned | Stories below |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 
