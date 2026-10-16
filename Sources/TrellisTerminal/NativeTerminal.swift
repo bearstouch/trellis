@@ -61,6 +61,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         super.init()
         TerminalPalette.builtIn.apply(to: surface)
         surface.optionAsMetaKey = false
+        // Engine diagnostics can echo sequence contents; never print them, in any build.
+        surface.getTerminal().silentLog = true
         surface.setAccessibilityLabel("Terminal session")
         surface.terminalDelegate = self
         surface.onFocused = { [weak self] in self?.onFocused?() }
@@ -242,7 +244,16 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     // OSC 52 clipboard access is denied; native selection copy/paste remains in the view.
     public func clipboardCopy(source: TerminalView, content: Data) {}
     public func clipboardRead(source: TerminalView) -> Data? { nil }
-    public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
+    /// Opens a vetted URL; injected by tests.
+    public var openURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    var now: () -> Date = { Date() }
+
+    /// Output can request any link; only clicked http/https/mailto links open.
+    public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+        guard let url = LinkPolicy.mayOpen(link, lastGesture: terminalView.lastUserGesture, now: now()) else { return }
+        terminalView.lastUserGesture = nil
+        _ = openURL(url)
+    }
     public func setTerminalTitle(source: TerminalView, title: String) {}
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
     public func scrolled(source: TerminalView, position: Double) {}

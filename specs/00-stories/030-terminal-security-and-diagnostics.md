@@ -1,7 +1,7 @@
 # S030 — Protect terminal interactions and private diagnostics
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed (engine patch), 295 tests pass; native link/clipboard/diagnostics checks pending  
 Delivery phase: 5  
 Depends on: [S003](003-local-pty-session.md), [S011](011-selection-and-copy.md), [S012](012-safe-paste-and-file-paths.md), [S022](022-automation-grants.md), [S025](025-automation-output-and-events.md)  
 Requirements: `NFR-S03`, `NFR-S05`, `NFR-S08`, `NFR-S09`, `NFR-U05`, `INT-08`
@@ -34,7 +34,7 @@ Feed hostile terminal escape/link fixtures in a controlled session; inspect NSPa
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S030 terminal security evidence](../../docs/evidence/S030-terminal-security.md) for clipboard, link, Kitty-file, redaction, and diagnostics tests, review fixes, and pending native checks.
 
 ## Source specifications
 

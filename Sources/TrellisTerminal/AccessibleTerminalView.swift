@@ -148,6 +148,16 @@ final class AccessibleTerminalView: TerminalView {
         super.mouseDown(with: event)
     }
 
+    /// Set only while a click is being handled; links open only during one.
+    var lastUserGesture: Date?
+
+    override func mouseUp(with event: NSEvent) {
+        // SwiftTerm requests link opening from mouseUp; the gesture ends with this click.
+        lastUserGesture = Date()
+        defer { lastUserGesture = nil }
+        super.mouseUp(with: event)
+    }
+
     var screenText: String {
         let terminal = getTerminal()
         var count = 0

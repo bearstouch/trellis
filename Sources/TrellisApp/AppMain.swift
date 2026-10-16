@@ -170,6 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         windows.submenu?.insertItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "", at: 0)
         windows.submenu?.insertItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m", at: 0)
         menu.addItem(windows)
+        let help = NSMenuItem(); help.submenu = NSMenu(title: "Help")
+        help.submenu?.addItem(withTitle: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: "")
+        menu.addItem(help)
+        NSApp.helpMenu = help.submenu
         NSApp.windowsMenu = windows.submenu
         NSApp.mainMenu = menu
     }
@@ -281,6 +285,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
     }
     @objc private func settingsAction() { showSettings() }
+    /// Explicit, previewed diagnostics; nothing is written on Cancel.
+    @objc private func exportDiagnostics() {
+        let exporter = DiagnosticsExporter(model: model, hosts: hosts, grants: grants) { [control] in control.isRunning }
+        Task {
+            await exporter.export(
+                present: { [weak self] text in
+                    guard let self else { return nil }
+                    return await withCheckedContinuation { continuation in
+                        // The continuation body runs synchronously on the calling main actor.
+                        MainActor.assumeIsolated {
+                            let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 330), styleMask: [.titled], backing: .buffered, defer: false)
+                            sheet.isReleasedWhenClosed = false
+                            var resumed = false
+                            @MainActor func finish(_ url: URL?) {
+                                guard !resumed else { return }
+                                resumed = true
+                                self.window.endSheet(sheet)
+                                continuation.resume(returning: url)
+                            }
+                            sheet.contentView = NSHostingView(
+                                rootView: DiagnosticsPreviewView(
+                                    text: text,
+                                    save: {
+                                        let panel = NSSavePanel()
+                                        panel.nameFieldStringValue = "Trellis Diagnostics.txt"
+                                        finish(panel.runModal() == .OK ? panel.url : nil)
+                                    },
+                                    cancel: { finish(nil) }))
+                            self.window.beginSheet(sheet, completionHandler: nil)
+                        }
+                    }
+                },
+                write: { data, url in
+                    try data.write(to: url, options: .atomic)
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                })
+        }
+    }
+
     /// Writes a portable export; credentials and runtime state are never included.
     @objc private func exportWorkspace() {
         let panel = NSSavePanel()

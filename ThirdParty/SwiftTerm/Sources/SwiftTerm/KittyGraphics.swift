@@ -634,12 +634,10 @@ extension Terminal {
                 return (nil, "EINVAL: bad payload")
             }
             return (payload, nil)
-        case "f":
-            return loadKittyFilePayload(control: control, base64Payload: base64Payload, temporary: false)
-        case "t":
-            return loadKittyFilePayload(control: control, base64Payload: base64Payload, temporary: true)
-        case "s":
-            return loadKittySharedMemoryPayload(control: control, base64Payload: base64Payload)
+        case "f", "t", "s":
+            // Trellis: output is untrusted; it may not make the app read, probe, or unlink
+            // local files or shared memory. Clients fall back to direct transmission.
+            return (nil, "ENOTSUP: unsupported transmission")
         default:
             return (nil, "ENOTSUP: unsupported transmission")
         }

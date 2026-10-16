@@ -40,7 +40,8 @@ Implement stories in order. For each story: implement, run the relevant checks, 
 | S027 | Implemented/reviewed — 280 tests and live CLI demo pass; Keychain/installed-CLI checks pending | [S027 evidence](../../docs/evidence/S027-cli.md) |
 | S028 | Implemented/reviewed — 284 tests pass; native export/import demo pending | [S028 evidence](../../docs/evidence/S028-portable-import-export.md) |
 | S029 | Implemented/reviewed — 289 tests pass; installed-CLI live check pending | [S029 evidence](../../docs/evidence/S029-theme-control-api.md) |
-| S030–S032 | Planned | Stories below |
+| S030 | Implemented/reviewed — 295 tests pass; native link/clipboard/diagnostics checks pending | [S030 evidence](../../docs/evidence/S030-terminal-security.md) |
+| S031–S032 | Planned | Stories below |
 
 On 2026-10-16 the user explicitly directed continuing to the next stories after successful app launch. Continue implementation and per-story review/commits while retaining S001’s unperformed interaction checks as outstanding qualification; this instruction does not establish that VoiceOver/IME or the older-OS runtime matrix passed.
 

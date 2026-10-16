@@ -85,6 +85,9 @@ public final class ControlServer: @unchecked Sendable {
         }
     }
 
+    /// Whether the listener is currently accepting connections.
+    public var isRunning: Bool { lock.withLock { listenFD >= 0 } }
+
     /// Queues a server-initiated message (an event) for a connection. Returns
     /// false when the connection is gone or its outbound queue exceeds 1 MiB,
     /// in which case the slow client is disconnected.

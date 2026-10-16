@@ -15,7 +15,11 @@ public struct WindowActivity: Equatable, Sendable {
 public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var snapshot = WorkspaceSnapshot()
     @Published public internal(set) var terminals: [UUID: NativeTerminal] = [:]
-    @Published public var errorMessage: String?
+    @Published public var errorMessage: String? {
+        // Diagnostics record only that an error was shown, never its text.
+        didSet { if errorMessage != nil { diagnosticCodes = Array((diagnosticCodes + ["UI_ERROR"]).suffix(20)) } }
+    }
+    public private(set) var diagnosticCodes: [String] = []
     @Published public private(set) var appearance = AppearanceSettings()
     /// Advances once per committed settings change; API `expectedRevision` uses it.
     public private(set) var appearanceRevision: UInt64 = 0
