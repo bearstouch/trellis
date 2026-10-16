@@ -162,7 +162,9 @@ struct AppearanceSettingsView: View {
             fontNames = NativeTerminalFont.installedNames
             if let regular = fontNames.first(where: {
                 NativeTerminalFont.typefaceName(for: $0) == NativeTerminalFont.typefaceName(for: draft.fontName)
-            }) { draft.fontName = regular }
+            }) {
+                draft.fontName = regular
+            }
         }
         .onChange(of: model.appearance) { _, value in draft = value }
     }

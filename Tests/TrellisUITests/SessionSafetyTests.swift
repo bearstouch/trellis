@@ -24,8 +24,12 @@ final class SessionSafetyTests: XCTestCase {
         }
         XCTAssertTrue(try terminal.adapter.read(.retainedText).contains("READY"))
         var closePrompts = 0, forcePrompts = 0
-        model.confirmCloseSessions = { _ in closePrompts += 1; return true }
-        model.confirmForceSessions = { _ in forcePrompts += 1; return false }
+        model.confirmCloseSessions = { _ in
+            closePrompts += 1; return true
+        }
+        model.confirmForceSessions = { _ in
+            forcePrompts += 1; return false
+        }
         await model.closePane(pane.id)
         XCTAssertEqual(closePrompts, 1)
         XCTAssertEqual(forcePrompts, 0)

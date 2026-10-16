@@ -298,10 +298,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     @objc private func aboutAction() {
         let credits = NSMutableAttributedString(string: "Released under the ", attributes: [.font: NSFont.systemFont(ofSize: 12)])
-        credits.append(NSAttributedString(string: "MIT License", attributes: [
-            .font: NSFont.systemFont(ofSize: 12),
-            .link: URL(string: "https://github.com/layerx-labs/trellis/blob/main/LICENSE")!
-        ]))
+        credits.append(
+            NSAttributedString(
+                string: "MIT License",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 12),
+                    .link: URL(string: "https://github.com/layerx-labs/trellis/blob/main/LICENSE")!
+                ]))
         credits.append(NSAttributedString(string: ".", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Trellis",

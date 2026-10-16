@@ -106,19 +106,20 @@ struct PaneTreeView: View {
                 // take first responder from the name field (its input is suspended).
                 SearchableTerminalSurface(
                     terminal: terminal, isFocused: focused && model.editingTabID == nil,
-                    background: model.terminalBackground)
-                    .overlay {
-                        if terminal.sessionState == .stopped {
-                            VStack(spacing: 8) {
-                                if model.unconfiguredPaneIDs.contains(id) {
-                                    Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
-                                    Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
-                                } else {
-                                    Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
-                                }
+                    background: model.terminalBackground
+                )
+                .overlay {
+                    if terminal.sessionState == .stopped {
+                        VStack(spacing: 8) {
+                            if model.unconfiguredPaneIDs.contains(id) {
+                                Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
+                                Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
+                            } else {
+                                Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
                             }
                         }
                     }
+                }
             }
         } else {
             model.terminalBackground
