@@ -12,6 +12,7 @@ public struct HostLibraryView: View {
     @State private var message: String?
     @State private var saving = false
     @State private var confirmingDelete = false
+    @State private var discovering = false
     public init(model: HostListModel) { self.model = model }
 
     private var editing: SavedHost? { selection.flatMap { id in model.hosts.first { $0.id == id } } }
@@ -45,6 +46,12 @@ public struct HostLibraryView: View {
                     Label("New Host", systemImage: "plus")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    discovering = true
+                } label: {
+                    Label("Discover SSH Aliases…", systemImage: "doc.text.magnifyingglass")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).disabled(model.loadFailed)
             }
             .padding(12).frame(width: 240)
             Divider()
@@ -57,6 +64,7 @@ public struct HostLibraryView: View {
             if host == nil || host?.draft != draft { load(host) }
         }
         .task { await model.load() }
+        .sheet(isPresented: $discovering) { AliasDiscoveryView(model: model) }
         .confirmationDialog("Delete “\(editing?.name ?? "")”?", isPresented: $confirmingDelete) {
             Button("Delete Host", role: .destructive) { delete() }
         } message: {

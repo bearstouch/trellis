@@ -30,6 +30,9 @@ def main():
         (root / ".build").mkdir()
         launcher = root / "scripts/run-feasibility.sh"
         shutil.copy2(project / "scripts/run-feasibility.sh", launcher)
+        icon = root / "Design/AppIcon/AppIcon.icns"
+        icon.parent.mkdir(parents=True)
+        shutil.copy2(project / "Design/AppIcon/AppIcon.icns", icon)
         built = root / "Swift build products"
         built.mkdir()
         shutil.copy2(products / "Trellis", built / "Trellis")
@@ -73,6 +76,7 @@ def main():
             assert digest(built / "Trellis") == source_hash, "signing changed the Swift build product"
             assert stat.S_IMODE(shader.stat().st_mode) == 0o444
             assert (destination / "Contents/Resources/Trellis_TrellisCore.bundle/Themes/example-minimal.theme.json").is_file()
+            assert digest(destination / "Contents/Resources/AppIcon.icns") == digest(icon)
 
         run("--build-only")
         verify()

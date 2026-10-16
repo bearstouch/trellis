@@ -187,9 +187,11 @@ final class HostLibraryTests: XCTestCase {
 final class MemoryHostStorage: HostStorage, @unchecked Sendable {
     var data: Data?
     var failWrites = false
+    var writeCount = 0
     func read() throws -> Data? { data }
     func write(_ data: Data) throws {
         if failWrites { throw CocoaError(.fileWriteUnknown) }
+        writeCount += 1
         self.data = data
     }
     func preserveUnreadable() throws {}

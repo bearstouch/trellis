@@ -8,7 +8,7 @@ Native Swift terminal for macOS. Product direction: light Native calm chrome, da
 
 Implementation is progressing one story at a time, with independent agent review, fixes, and a commit between stories; see the [story plan](specs/00-stories/README.md) and [evidence](docs/evidence/).
 
-Stories S001–S018 now provide the native workspace, local sessions, tabs/splits, clipboard, search, persistence, appearance settings, JSON theme library, configurable keyboard shortcuts with accessibility labels, and a saved SSH host library (File → Hosts…; metadata only, stored in `hosts.json`). Settings → Keyboard rebinds menu shortcuts (conflicts are rejected before saving) and toggles Option-as-Meta (off by default so Option composes layout characters). Manual VoiceOver/IME and the macOS/CPU release qualification remain pending as recorded in the story evidence.
+Stories S001–S019 now provide the native workspace, local sessions, tabs/splits, clipboard, search, persistence, appearance settings, JSON theme library, configurable keyboard shortcuts with accessibility labels, and a saved SSH host library (File → Hosts…; metadata only, stored in `hosts.json`) with read-only discovery of literal aliases from `~/.ssh/config`. Settings → Keyboard rebinds menu shortcuts (conflicts are rejected before saving) and toggles Option-as-Meta (off by default so Option composes layout characters). Manual VoiceOver/IME and the macOS/CPU release qualification remain pending as recorded in the story evidence.
 
 ## Development
 
@@ -30,5 +30,7 @@ Settings → Themes can load a JSON file or bundled example, preview it in the s
 SwiftTerm 1.20.0 is vendored at revision `5d14406844143538cd8f8851d2d8a67c1fe443e5` with small font-change fixes. Its MIT license, provenance, and reproducible engine delta are in [ThirdParty/SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Engine-specific APIs stay inside TrellisTerminal; TrellisCore contains the engine-independent adapter.
 
 The launcher assembles a fresh development app, applies a local ad-hoc signature, verifies the completed bundle, then opens it. `--build-only` packages and verifies without opening a window. This local signature does not require an Apple account; distribution signing/notarization remains S032.
+
+The app icon sources live in `Design/AppIcon` (`Trellis.svg` for 64 px and up, `Trellis-small.svg` for 16–32 px, `Trellis-menubar.svg` as a menu bar template). Run `scripts/generate-app-icon.sh` (needs `rsvg-convert`) to regenerate the PNGs, iconset and the `AppIcon.icns` the launcher bundles.
 
 After building, run the isolated launcher regression with `python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"`. It uses real signature verification and does not open windows.

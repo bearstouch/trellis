@@ -163,10 +163,16 @@ public actor HostLibrary {
     public func search(_ query: String) -> [SavedHost] { SavedHost.search(hosts, query: query) }
 
     public func create(_ draft: HostDraft) throws(HostLibraryError) -> SavedHost {
-        let valid = try validate(draft)
-        let host = SavedHost(id: makeID(), draft: valid, revision: revision + 1)
-        try commit(hosts + [host])
-        return host
+        try createAll([draft])[0]
+    }
+
+    /// Validates every draft before a single commit.
+    public func createAll(_ drafts: [HostDraft]) throws(HostLibraryError) -> [SavedHost] {
+        var created: [SavedHost] = []
+        for draft in drafts { created.append(SavedHost(id: makeID(), draft: try validate(draft), revision: revision + 1)) }
+        guard !created.isEmpty else { return [] }
+        try commit(hosts + created)
+        return created
     }
 
     /// `expectedRevision` is the host revision the editor started from.

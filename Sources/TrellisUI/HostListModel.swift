@@ -53,6 +53,30 @@ public final class HostListModel: ObservableObject {
         loadFailed = await library.loadFailed
     }
 
+    /// Injected for tests; production reads the user's ~/.ssh/config read-only.
+    public var sshConfigURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh/config")
+    public var readSSHConfig: @Sendable (URL) throws -> Data? = SSHConfigDiscovery.readConfig
+
+    public func discoverAliases() async -> Result<SSHConfigDiscovery.Result, SSHConfigDiscovery.Failure> {
+        let url = sshConfigURL, read = readSSHConfig
+        return await Task.detached { SSHConfigDiscovery.discover(url, read: read) }.value
+    }
+
+    public func importAliases(_ aliases: [String]) async -> HostLibraryError? {
+        var failure: HostLibraryError?
+        do { _ = try await library.importAliases(aliases) } catch { failure = error }
+        await refresh()
+        return failure
+    }
+
+    public static func message(for failure: SSHConfigDiscovery.Failure) -> String {
+        switch failure {
+        case .missing: "No ~/.ssh/config file was found. Add aliases manually with New Host."
+        case .unreadable(let reason):
+            "~/.ssh/config could not be read (\(reason)). Nothing was changed. Check the file’s permissions and try again, or add aliases manually."
+        }
+    }
+
     public static func message(for error: HostLibraryError) -> String {
         switch error {
         case .invalid: "Check the highlighted fields."

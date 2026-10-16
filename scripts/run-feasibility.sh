@@ -35,6 +35,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>dev.trellis</string>
 <key>CFBundleName</key><string>Trellis</string>
 <key>CFBundleExecutable</key><string>Trellis</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>NSHighResolutionCapable</key><true/>
@@ -43,6 +44,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 PLIST
 cp -R "$bin_path/SwiftTerm_SwiftTerm.bundle" "$bundle/Contents/Resources/"
 cp -R "$bin_path/Trellis_TrellisCore.bundle" "$bundle/Contents/Resources/"
+cp Design/AppIcon/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 # The SwiftPM command-line signature does not seal an app's Info.plist/resources.
 # Sign the completed development bundle; no certificate or account is required.
 /usr/bin/codesign --force --sign - --identifier dev.trellis "$bundle"

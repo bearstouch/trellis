@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Trellis</title>
+  <defs>
+    <radialGradient id="screen" cx="50%" cy="46%" r="72%">
+      <stop offset="0" stop-color="#16240E"/>
+      <stop offset="0.7" stop-color="#050605"/>
+      <stop offset="1" stop-color="#010101"/>
+    </radialGradient>
+    <radialGradient id="bloom" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#9CFF62" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#9CFF62" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bezel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1C1D21"/>
+      <stop offset="1" stop-color="#0B0C0E"/>
+    </linearGradient>
+    <pattern id="scan" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="3" fill="#000000" fill-opacity="0.24"/>
+    </pattern>
+    <clipPath id="glass"><rect x="168" y="168" width="688" height="688" rx="126"/></clipPath>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="16" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+  <rect x="100" y="112" width="824" height="824" rx="185" fill="#000000" fill-opacity="0.45" filter="url(#shadow)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bezel)"/>
+  <rect x="104" y="104" width="816" height="816" rx="181" fill="none" stroke="#FFFFFF" stroke-opacity="0.09" stroke-width="6"/>
+  <rect x="152" y="152" width="720" height="720" rx="140" fill="#000000"/>
+  <rect x="168" y="168" width="688" height="688" rx="126" fill="url(#screen)"/>
+  <ellipse cx="512" cy="540" rx="320" ry="250" fill="url(#bloom)"/>
+  <g filter="url(#glow)">
+    <path d="M367 450 L487 540 L367 630" fill="none" stroke="#9CFF62" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="547" y="440" width="110" height="200" rx="6" fill="#9CFF62"/>
+  </g>
+  <rect x="168" y="168" width="688" height="688" rx="126" fill="url(#scan)"/>
+  <ellipse cx="380" cy="280" rx="260" ry="80" transform="rotate(-16 380 280)" fill="#FFFFFF" fill-opacity="0.045" clip-path="url(#glass)"/>
+  <rect x="168" y="168" width="688" height="688" rx="126" fill="none" stroke="#000000" stroke-opacity="0.6" stroke-width="10"/>
+</svg>

@@ -1,7 +1,7 @@
 # S019 — Discover SSH aliases without changing SSH configuration
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 220 tests pass; native fixture demo pending  
 Delivery phase: 3  
 Depends on: [S018](018-saved-host-library.md)  
 Requirements: `FR-H03`, `INT-04`
@@ -34,7 +34,7 @@ Use an isolated SSH config fixture and compare connecting by the original alias.
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S019 alias discovery evidence](../../docs/evidence/S019-ssh-alias-discovery.md) for parser, read-only/bounded file handling, atomic import tests, review fixes, and the pending native fixture demo.
 
 ## Source specifications
 
