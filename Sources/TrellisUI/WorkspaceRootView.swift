@@ -115,6 +115,12 @@ public struct WorkspaceRootView: View {
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
             Button {
+                model.openHosts?()
+            } label: {
+                Label("Hosts", systemImage: "server.rack")
+            }
+            .buttonStyle(.plain).help("Saved SSH hosts").padding(.horizontal, 10).padding(.top, 6)
+            Button {
                 model.openSettings?()
             } label: {
                 Label("Settings", systemImage: "slider.horizontal.3")

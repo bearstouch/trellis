@@ -43,7 +43,7 @@ public struct KeyChord: Codable, Hashable, Sendable, CustomStringConvertible {
 public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view, pane, window }
 
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
-    case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace
+    case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts
     case findInPane, findNext, findPrevious
     case zoomIn, zoomOut, actualSize
     case splitLeftRight, splitTopBottom, maximizePane
@@ -62,6 +62,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .closeTab: "Close Tab"
         case .deleteWindow: "Delete Window…"
         case .saveWorkspace: "Save Workspace"
+        case .showHosts: "Hosts…"
         case .findInPane: "Find in Pane…"
         case .findNext: "Find Next"
         case .findPrevious: "Find Previous"
@@ -95,7 +96,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
 
     public var menu: ShortcutMenu {
         switch self {
-        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace: .file
+        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts: .file
         case .findInPane, .findNext, .findPrevious: .edit
         case .zoomIn, .zoomOut, .actualSize: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
@@ -133,7 +134,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .previousWindow: KeyChord("[", [.command, .control])
         case .nextTab: KeyChord("]", [.command, .shift])
         case .previousTab: KeyChord("[", [.command, .shift])
-        case .renameTab, .renameWindow, .deleteWindow: nil
+        case .renameTab, .renameWindow, .deleteWindow, .showHosts: nil
         default: KeyChord(String(tabIndex! + 1))
         }
     }

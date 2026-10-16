@@ -1,7 +1,7 @@
 # S018 — Maintain a searchable saved-host library
 
 Priority: P0 / MVP  
-Status: Planned — implementation and tests not started  
+Status: Implemented — independently reviewed, 211 tests pass; native persistence/search demo pending  
 Delivery phase: 3  
 Depends on: [S002](002-domain-model-and-command-service.md), [S004](004-native-application-shell.md), [S010](010-persistence-and-stopped-restore.md)  
 Requirements: `FR-H01`, `INT-03`, `NFR-S03`, `MAC-12`
@@ -34,7 +34,7 @@ Create local fixture hosts, restart, and verify persistence/search. Confirm host
 
 ## Completion evidence
 
-Link the implementation and passing relevant tests; record the acceptance demo and any required real-platform results. A story is complete only when its criteria and verification evidence pass. Document blockers rather than marking unavailable checks as passed.
+See [S018 saved-host evidence](../../docs/evidence/S018-saved-hosts.md) for validation, revision, persistence, deletion-safety tests, review fixes, and the pending native demo.
 
 ## Source specifications
 

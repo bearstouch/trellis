@@ -266,6 +266,7 @@ public final class AppWorkspaceModel: ObservableObject {
     private var pendingSaveTask: Task<Void, Never>?
     private var saveGeneration: UInt64 = 0
     public var openSettings: (() -> Void)?
+    public var openHosts: (() -> Void)?
     private let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
     private let preferences: UserDefaults

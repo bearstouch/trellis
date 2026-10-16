@@ -8,7 +8,7 @@ Native Swift terminal for macOS. Product direction: light Native calm chrome, da
 
 Implementation is progressing one story at a time, with independent agent review, fixes, and a commit between stories; see the [story plan](specs/00-stories/README.md) and [evidence](docs/evidence/).
 
-Stories S001–S017 now provide the native workspace, local sessions, tabs/splits, clipboard, search, persistence, appearance settings, JSON theme library, and configurable keyboard shortcuts with accessibility labels. Settings → Keyboard rebinds menu shortcuts (conflicts are rejected before saving) and toggles Option-as-Meta (off by default so Option composes layout characters). Manual VoiceOver/IME and the macOS/CPU release qualification remain pending as recorded in the story evidence.
+Stories S001–S018 now provide the native workspace, local sessions, tabs/splits, clipboard, search, persistence, appearance settings, JSON theme library, configurable keyboard shortcuts with accessibility labels, and a saved SSH host library (File → Hosts…; metadata only, stored in `hosts.json`). Settings → Keyboard rebinds menu shortcuts (conflicts are rejected before saving) and toggles Option-as-Meta (off by default so Option composes layout characters). Manual VoiceOver/IME and the macOS/CPU release qualification remain pending as recorded in the story evidence.
 
 ## Development
 

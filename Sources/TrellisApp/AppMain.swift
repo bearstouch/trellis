@@ -6,6 +6,8 @@ import TrellisUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     private let model: AppWorkspaceModel
+    private let hosts: HostListModel
+    private var hostsWindow: NSWindow?
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
     private var terminationPending = false
@@ -16,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
 
-    init(model: AppWorkspaceModel) { self.model = model }
+    init(model: AppWorkspaceModel, hosts: HostListModel) { self.model = model; self.hosts = hosts }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -42,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
+        model.openHosts = { [weak self] in self?.showHosts() }
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 660),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -100,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         app.submenu?.addItem(withTitle: "Quit Trellis", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(app)
         menu.addItem(
-            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .saveWorkspace]))
+            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showHosts, .saveWorkspace]))
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
         // the terminal does not implement them, so they stay disabled there.
@@ -170,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .closeTab: if let tab = presentation.selectedTab?.id { Task { await model.closeTab(tab) } }
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
+        case .showHosts: showHosts()
         case .findInPane: model.activeTerminal?.showSearch()
         case .findNext: model.activeTerminal?.findInPane()
         case .findPrevious: model.activeTerminal?.findInPane(forward: false)
@@ -198,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if [.newWindow, .saveWorkspace, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true, !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
@@ -253,6 +257,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
     }
     @objc private func settingsAction() { showSettings() }
+    private func showHosts() {
+        if hostsWindow == nil {
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 460), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            panel.title = "Hosts"
+            panel.isReleasedWhenClosed = false
+            panel.contentView = NSHostingView(rootView: HostLibraryView(model: hosts))
+            panel.center()
+            hostsWindow = panel
+        }
+        hostsWindow?.makeKeyAndOrderFront(nil)
+    }
     private func showSettings() {
         if settingsWindow == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 570, height: 490), styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -340,7 +355,8 @@ struct TrellisMain {
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
-            let delegate = AppDelegate(model: model)
+            let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory)))
+            let delegate = AppDelegate(model: model, hosts: hosts)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}
