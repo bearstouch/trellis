@@ -157,6 +157,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(withTitle: "Select All", action: #selector(selectAllText(_:)), keyEquivalent: "a")
         edit.submenu?.addItem(.separator())
         for action in [ShortcutAction.findInPane, .findNext, .findPrevious] { edit.submenu?.addItem(item(action)) }
+        edit.submenu?.addItem(.separator())
+        for action in [ShortcutAction.previousPrompt, .nextPrompt] { edit.submenu?.addItem(item(action)) }
         menu.addItem(edit)
         let view = submenu("View", [.zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
@@ -220,6 +222,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .findInPane: model.activeTerminal?.showSearch()
         case .findNext: model.activeTerminal?.findInPane()
         case .findPrevious: model.activeTerminal?.findInPane(forward: false)
+        case .previousPrompt: model.activeTerminal?.scrollToPrompt(forward: false)
+        case .nextPrompt: model.activeTerminal?.scrollToPrompt(forward: true)
         case .zoomIn: model.zoomTerminalFont(by: 1)
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
@@ -251,6 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
         case .findInPane, .findNext, .findPrevious: return model.activeTerminal != nil
+        // ⌘↑/⌘↓ stay text navigation while a field (rename, search) is editing.
+        case .previousPrompt, .nextPrompt: return model.activeTerminal != nil && !(window?.firstResponder is NSText)
         case .splitLeftRight, .splitTopBottom:
             return presentation.activePane != nil && presentation.selectedTab.map { model.maximizedPanes[$0.id] == nil } == true
         case .closePane, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,

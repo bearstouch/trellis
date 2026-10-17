@@ -173,6 +173,33 @@ final class AutomationResourceTests: XCTestCase {
     }
 
     @MainActor
+    func testTabUpdateSetsAndClearsColorAtomically() async throws {
+        let h = try Harness()
+        try await h.grant("full")
+        let created = try result(try await h.call("window.create", ["name": "One"]))
+        let tabID = try XCTUnwrap(created["tabId"] as? String), id = try XCTUnwrap(UUID(uuidString: tabID))
+        defer { h.model.terminals.values.forEach { $0.adapter.detach() } }
+        let colored = try result(try await h.call("tab.update", ["id": tabID, "color": "blue"]))
+        XCTAssertEqual(colored["color"] as? String, "blue")
+        XCTAssertEqual(h.model.snapshot.tabs[id]?.color, .blue)
+        let both = try result(try await h.call("tab.update", ["id": tabID, "title": "Deploy", "color": "orange"]))
+        XCTAssertEqual(both["title"] as? String, "Deploy")
+        XCTAssertEqual(both["color"] as? String, "orange")
+        let committed = h.model.snapshot
+        let badColor = try await h.call("tab.update", ["id": tabID, "title": "Other", "color": "teal"])
+        XCTAssertEqual((badColor["error"] as? [String: Any])?["code"] as? Int, -32602)
+        let badTitle = try await h.call("tab.update", ["id": tabID, "title": "  ", "color": "red"])
+        XCTAssertNotNil(badTitle["error"])
+        let neither = try await h.call("tab.update", ["id": tabID])
+        XCTAssertEqual((neither["error"] as? [String: Any])?["code"] as? Int, -32602)
+        XCTAssertEqual(h.model.snapshot, committed, "A rejected update applies neither the title nor the color")
+        let cleared = try result(try await h.call("tab.update", ["id": tabID, "color": NSNull()]))
+        XCTAssertNil(cleared["color"])
+        XCTAssertNil(h.model.snapshot.tabs[id]?.color)
+        XCTAssertEqual(h.model.snapshot.tabs[id]?.title, "Deploy")
+    }
+
+    @MainActor
     func testIdempotencyKeyScopeAndExpiry() async throws {
         let h = try Harness()
         try await h.grant("full")

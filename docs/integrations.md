@@ -12,7 +12,12 @@ Trellis relies on the system and on existing tools rather than reimplementing th
 - Basic use must never depend on shell integration.
 - Without shell integration, Trellis knows only the *initial* working directory. It must not claim to know the shell's current directory, the active command, or whether a command completed.
 
-**INT-02 (P1).** Planned: opt-in zsh and bash integration that reports prompt readiness, the local current directory, command start and end, and exit status. The integration protocol will be versioned, and authenticated integration messages must be distinguishable from ordinary output. Remote commands are observable only if the integration is installed on the remote host too.
+**INT-02 (P1).** zsh, bash and fish integration reports prompt readiness, the local current directory, command start and end, and exit status. See [Shell integration](features/shell-integration.md).
+
+- It's on by default, can be turned off in Settings, and never requires editing dotfiles.
+- The protocol is versioned (`TRELLIS_SHELL_INTEGRATION=1`). Every mark that changes Trellis state carries a per-session nonce, so integration messages are distinguishable from ordinary output.
+- Unsupported shells, SSH sessions and custom processes keep the INT-01 rule: no claims about their directory or commands.
+- Remote shells aren't covered in v1.
 
 ## SSH and saved hosts
 

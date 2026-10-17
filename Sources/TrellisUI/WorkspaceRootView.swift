@@ -224,7 +224,8 @@ public struct WorkspaceRootView: View {
         let selected = tab.id == model.presentation.selectedTab?.id
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
         return HStack(spacing: 8) {
-            Image(systemName: "terminal").font(.system(size: 10)).accessibilityHidden(true)
+            Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
+                .accessibilityHidden(true)
             if model.editingTabID == tab.id {
                 TextField("Tab name", text: $model.tabRenameDraft)
                     .textFieldStyle(.plain).focused($tabNameFocused)
@@ -237,32 +238,53 @@ public struct WorkspaceRootView: View {
                     }
             } else {
                 // Simultaneous double-tap: an exclusive one delays every single click by the double-click interval.
-                Text(tab.title).lineLimit(1)
+                Text(model.displayTitle(tab)).lineLimit(1)
                     .onTapGesture { Task { await model.selectTab(tab.id) } }
                     .simultaneousGesture(TapGesture(count: 2).onEnded { beginTabRename(tab) })
+            }
+            if let code = tab.root.paneIDs.lazy.compactMap(model.failedCommandExit(paneID:)).first {
+                // A symbol plus spoken text; never color alone (FR-SI04).
+                Image(systemName: "exclamationmark.circle").font(.system(size: 10))
+                    .help(WorkspaceAccessibility.commandFailureText(code))
+                    .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
             }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
                 Image(systemName: "xmark").font(.system(size: 9))
             }
-            .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(tab.title)")
+            .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(model.displayTitle(tab))")
         }.foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
             .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
+            // The tint sits above the opaque active background, so a selected tab keeps it.
+            .background(tab.color.map { $0.swatchColor.opacity(selected ? 0.2 : 0.12) } ?? .clear)
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
+            .overlay(alignment: .top) {
+                if let color = tab.color { Rectangle().fill(color.swatchColor).frame(height: 3).help("\(color.displayName) label") }
+            }
             .overlay(alignment: .bottom) {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
             .contentShape(Rectangle())
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(descriptor?.label ?? "Tab \(tab.title)")
+            .accessibilityLabel(descriptor?.label ?? "Tab \(model.displayTitle(tab))")
             .accessibilityValue(descriptor?.value ?? "")
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
             .contextMenu {
                 Button("Rename…") { beginTabRename(tab) }
+                Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
+                    Text("None").tag(TabColor?.none)
+                    ForEach(TabColor.allCases, id: \.self) { color in
+                        Label {
+                            Text(color.displayName)
+                        } icon: {
+                            color.swatchImage
+                        }.tag(TabColor?.some(color))
+                    }
+                }
                 Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
                 Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
                     .disabled(model.presentation.visibleTabs.first?.id == tab.id)
@@ -301,6 +323,31 @@ public struct WorkspaceRootView: View {
                 model.terminalBackground
             }
         }
+    }
+}
+
+extension TabColor {
+    /// Adaptive system colors, so labels stay distinct in light and dark chrome.
+    var nsColor: NSColor {
+        switch self {
+        case .red: .systemRed
+        case .orange: .systemOrange
+        case .yellow: .systemYellow
+        case .green: .systemGreen
+        case .blue: .systemBlue
+        case .purple: .systemPurple
+        case .gray: .systemGray
+        }
+    }
+    var swatchColor: Color { Color(nsColor: nsColor) }
+    /// Menus render symbols as templates and drop their tint; a drawn, non-template image keeps the color.
+    var swatchImage: Image {
+        let color = nsColor
+        let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+            color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill(); return true
+        }
+        image.isTemplate = false
+        return Image(nsImage: image)
     }
 }
 
@@ -388,17 +435,57 @@ public struct LaunchSettingsView: View {
     @State private var directory: String
     @State private var message = ""
     @State private var saving = false
+    @State private var customShell: Bool
+    private let shells: [ShellOption]
+    private static let customTag = ""
     public init(model: AppWorkspaceModel) {
         self.model = model
+        let shells = ShellCatalog.options(current: model.defaultShell)
+        self.shells = shells
         _shell = State(initialValue: model.defaultShell)
         _directory = State(initialValue: model.defaultDirectory)
+        _customShell = State(initialValue: !shells.contains { $0.path == model.defaultShell })
+    }
+    private var shellSelection: Binding<String> {
+        Binding(
+            get: { customShell ? Self.customTag : shell },
+            set: { selected in
+                customShell = selected == Self.customTag
+                if !customShell { shell = selected }
+            })
+    }
+    /// Spoken and visible, not color-only: whether the chosen shell gets integration (FR-SI01).
+    private var integrationNote: String {
+        let name = (shell as NSString).lastPathComponent
+        guard ShellIntegrationKind(executable: shell) != nil else {
+            return "\(name.isEmpty ? "This shell" : name) has no shell integration: Trellis won't track its directory or commands."
+        }
+        return model.shellIntegrationEnabled ? "\(name) supports shell integration." : "\(name) supports shell integration; it's turned off below."
     }
     public var body: some View {
         Form {
-            TextField("Shell executable", text: $shell)
+            Picker("Shell", selection: shellSelection) {
+                ForEach(shells) { option in
+                    Text(option.integration == nil ? "\(option.name)  —  \(option.path)" : "\(option.name)  —  \(option.path)  ·  Shell integration")
+                        .tag(option.path)
+                }
+                Divider()
+                Text("Other…").tag(Self.customTag)
+            }.accessibilityIdentifier("settings.shell")
+            if customShell {
+                TextField("Shell executable", text: $shell).accessibilityIdentifier("settings.shellPath")
+            }
+            Text(integrationNote).font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+                .accessibilityIdentifier("settings.shellIntegrationNote")
             TextField("Working directory", text: $directory)
             Text("Applies to new local sessions. Use absolute paths.").font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             if !message.isEmpty { Text(message).font(.caption).accessibilityIdentifier("settings.result") }
+            Toggle(
+                "Shell integration (zsh, bash, fish)",
+                isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
+            ).accessibilityIdentifier("settings.shellIntegration")
+            Text("Tracks the current directory, command status and prompts without editing your dotfiles. Applies to new sessions.")
+                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             HStack {
                 Spacer()
                 Button("Save") {

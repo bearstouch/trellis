@@ -24,8 +24,14 @@ public struct WorkspaceAccessibility: Sendable {
     public struct LiveSession: Equatable, Sendable {
         public var state: SessionState
         public var exitCode: Int32?
-        public init(state: SessionState, exitCode: Int32? = nil) { self.state = state; self.exitCode = exitCode }
+        /// Exit status of the shell's last command, from shell integration; nil when unknown or zero.
+        public var failedCommandExit: Int32?
+        public init(state: SessionState, exitCode: Int32? = nil, failedCommandExit: Int32? = nil) {
+            self.state = state; self.exitCode = exitCode; self.failedCommandExit = failedCommandExit
+        }
     }
+
+    public static func commandFailureText(_ code: Int32) -> String { "Last command failed (exit \(code))" }
 
     public let windows: [AccessibilityDescriptor]
     public let tabs: [AccessibilityDescriptor]
@@ -37,7 +43,7 @@ public struct WorkspaceAccessibility: Sendable {
     /// keyed by pane ID. Window attention sets come from activity tracking.
     public init(
         snapshot: WorkspaceSnapshot, live: [UUID: LiveSession] = [:],
-        windowsWithOutput: Set<UUID> = [], windowsWithExit: Set<UUID> = []
+        windowsWithOutput: Set<UUID> = [], windowsWithExit: Set<UUID> = [], titles: [UUID: String] = [:]
     ) {
         let presentation = WorkspacePresentation(snapshot: snapshot)
         func session(_ pane: WorkspacePane) -> LiveSession? {
@@ -51,16 +57,19 @@ public struct WorkspaceAccessibility: Sendable {
         let visible = presentation.visibleTabs
         tabs = visible.enumerated().map { index, tab in
             AccessibilityDescriptor(
-                id: tab.id, label: "Tab \(tab.title)", value: "\(index + 1) of \(visible.count)",
+                // The label is spoken too, so it never relies on color alone.
+                id: tab.id, label: "Tab \(titles[tab.id] ?? tab.title)",
+                value: "\(index + 1) of \(visible.count)" + (tab.color.map { ", \($0.displayName.lowercased()) label" } ?? ""),
                 isSelected: tab.id == presentation.selectedTab?.id)
         }
         let paneIDs = presentation.selectedTab?.root.paneIDs ?? []
         panes = paneIDs.enumerated().compactMap { index, id in
             guard let pane = snapshot.panes[id] else { return nil }
-            let state = session(pane).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"
+            var state = session(pane).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"
+            if let code = live[pane.id]?.failedCommandExit { state += ", " + Self.commandFailureText(code) }
             let focused = id == presentation.selectedTab?.activePaneID
             return AccessibilityDescriptor(
-                id: id, label: "Terminal \(pane.title ?? "pane \(index + 1)")",
+                id: id, label: "Terminal \(pane.title ?? titles[id] ?? "pane \(index + 1)")",
                 value: focused && paneIDs.count > 1 ? "\(state), focused" : state, isSelected: focused)
         }
         status = presentation.activePane.flatMap(session).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"

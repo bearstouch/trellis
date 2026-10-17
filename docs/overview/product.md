@@ -39,7 +39,7 @@ Structural rules:
 | Priority | Features |
 | --- | --- |
 | P0 (MVP) | Sidebar windows; tabs; nested left/right and top/bottom splits; local shells; SSH hosts; native selection and clipboard; built-in dark and light themes plus custom JSON themes; terminal search; keyboard navigation; saved layouts; local CLI and API; explicit automation grants; bounded output reading; import and export of layouts and hosts |
-| P1 | Multiple native windows; dragging tabs between windows; multiple profiles; opt-in shell integration with command-completion events; richer host import; a signed update mechanism; an optional MCP adapter |
+| P1 | Multiple native windows; dragging tabs between windows; multiple profiles; shell integration (zsh, bash, fish; command-completion events for automation still to come); richer host import; a signed update mechanism; an optional MCP adapter |
 | P2 | A session broker so sessions survive application exit; tmux awareness; richer terminal protocols; plugins |
 
 Out of scope for the MVP: Windows, Linux or iOS support; cloud sync; a web UI; a remote API server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import; and replaying arbitrary commands on restore.

@@ -38,6 +38,8 @@ public enum WorkspaceCommand: Sendable {
     case duplicateTab(id: UUID)
     case deleteTab(id: UUID)
     case renameTab(id: UUID, title: String)
+    /// nil removes the label.
+    case setTabColor(id: UUID, color: TabColor?)
     case replaceTabLayout(id: UUID, root: PaneLayout)
     case startSession(paneID: UUID, resolvedLaunch: SessionLaunch? = nil)
     case completeLaunch(sessionID: UUID, attemptID: UUID, outcome: LaunchOutcome)
@@ -118,7 +120,7 @@ public actor WorkspaceStore {
             let windowID = makeID(), tabID = makeID(), paneID = makeID(), sessionID = makeID()
             let window = ManagedWindow(id: windowID, name: name, tabIDs: [tabID], activeTabID: tabID, revision: next.revision)
             next.windows.append(window)
-            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: "Terminal", root: .pane(paneID), activePaneID: paneID, revision: next.revision)
+            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
             next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
             next.activeWindowID = windowID
@@ -247,7 +249,7 @@ public actor WorkspaceStore {
         case .createTab(let windowID):
             guard let index = next.windows.firstIndex(where: { $0.id == windowID }) else { throw WorkspaceError.notFound }
             let tabID = makeID(), paneID = makeID(), sessionID = makeID()
-            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: "Terminal", root: .pane(paneID), activePaneID: paneID, revision: next.revision)
+            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
             next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
             next.windows[index].tabIDs.append(tabID)
@@ -287,7 +289,7 @@ public actor WorkspaceStore {
             }
             let root = try clone(original.root)
             guard let activePane = mapping[original.activePaneID] else { throw WorkspaceError.notFound }
-            next.tabs[newTabID] = WorkspaceTab(id: newTabID, windowID: original.windowID, title: original.title, root: root, activePaneID: activePane, revision: next.revision)
+            next.tabs[newTabID] = WorkspaceTab(id: newTabID, windowID: original.windowID, title: original.title, color: original.color, root: root, activePaneID: activePane, revision: next.revision)
             let position = next.windows[index].tabIDs.firstIndex(of: id) ?? next.windows[index].tabIDs.count - 1
             next.windows[index].tabIDs.insert(newTabID, at: position + 1)
             next.windows[index].activeTabID = newTabID
@@ -318,6 +320,12 @@ public actor WorkspaceStore {
             let title = try validatedName(rawTitle)
             guard title != tab.title else { return unchanged() }
             tab.title = title
+            tab.revision = next.revision
+            next.tabs[id] = tab
+        case .setTabColor(let id, let color):
+            guard var tab = next.tabs[id] else { throw WorkspaceError.notFound }
+            guard color != tab.color else { return unchanged() }
+            tab.color = color
             tab.revision = next.revision
             next.tabs[id] = tab
         case .replaceTabLayout(let id, let root):

@@ -7,14 +7,17 @@ public struct LocalLaunchConfiguration: Equatable, Sendable {
     public var directory: String
     public var inheritedEnvironment: [String: String]
     public var environmentOverrides: [String: String]
+    /// Trusted, app-planned rewrite; never derived from automation input.
+    public var shellIntegration: ShellIntegrationInjection?
 
     public init(
         executable: String, arguments: [String] = [], directory: String,
         inheritedEnvironment: [String: String] = ProcessInfo.processInfo.environment,
-        environmentOverrides: [String: String] = [:]
+        environmentOverrides: [String: String] = [:], shellIntegration: ShellIntegrationInjection? = nil
     ) {
         self.executable = executable; self.arguments = arguments; self.directory = directory
         self.inheritedEnvironment = inheritedEnvironment; self.environmentOverrides = environmentOverrides
+        self.shellIntegration = shellIntegration
     }
 
     public static func loginShell(
@@ -51,6 +54,11 @@ public enum LocalLaunchError: Error, Equatable, Sendable {
 public protocol LaunchFileAccess: Sendable {
     func isExecutableFile(_ path: String) -> Bool
     func isAccessibleDirectory(_ path: String) -> Bool
+    func isReadableFile(_ path: String) -> Bool
+}
+
+extension LaunchFileAccess {
+    public func isReadableFile(_ path: String) -> Bool { FileManager.default.isReadableFile(atPath: path) }
 }
 
 public struct SystemLaunchFileAccess: LaunchFileAccess {
@@ -102,8 +110,17 @@ public struct LocalLaunchValidator: Sendable {
         environment["TERM_PROGRAM"] = "Trellis"
         environment.removeValue(forKey: "ITERM_SESSION_ID")
         environment.removeValue(forKey: "TERM_SESSION_ID")
+        var arguments = configuration.arguments
+        // A missing script launches the plain shell: basic use never depends on integration (INT-01).
+        if let injection = configuration.shellIntegration, injection.kind == ShellIntegrationKind(executable: configuration.executable),
+            files.isReadableFile(injection.scriptPath), injection.environment.allSatisfy(valid),
+            injection.arguments.allSatisfy({ !$0.contains("\0") })
+        {
+            environment.merge(injection.environment) { _, injected in injected }
+            arguments = injection.arguments
+        }
         return ValidatedLocalLaunch(
-            executable: configuration.executable, arguments: configuration.arguments,
+            executable: configuration.executable, arguments: arguments,
             directory: configuration.directory, environment: environment)
     }
 

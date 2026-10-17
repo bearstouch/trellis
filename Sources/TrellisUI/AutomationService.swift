@@ -53,8 +53,18 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 return .success(tabJSON(tab, access, tree: true))
             case "tab.create": return .success(try await createTab(p, access))
             case "tab.update":
-                let id = try p.uuid("id"), title = try p.string("title")
-                let result = try await run(.renameTab(id: id, title: title), expecting: try p.revision().map { .tab(id, revision: $0) })
+                let id = try p.uuid("id"), title = try p.optionalString("title"), color = try p.tabColor()
+                let expecting = try p.revision().map { ResourceExpectation.tab(id, revision: $0) }
+                // Title and color change together or not at all.
+                let colorCommand = color.map { WorkspaceCommand.setTabColor(id: id, color: $0) }
+                let result: WorkspaceCommandResult
+                if let title {
+                    result = try await run(.renameTab(id: id, title: title), expecting: expecting, then: { _ in colorCommand })
+                } else if let colorCommand {
+                    result = try await run(colorCommand, expecting: expecting)
+                } else {
+                    throw ControlError.invalidParams("Pass title, color or both.", fields: ["title": "string", "color": "color name or null"])
+                }
                 return .success(tabJSON(try existing(result.snapshot.tabs[id]), access, tree: false))
             case "tab.reorder":
                 let windowID = try p.uuid("windowId")
@@ -794,6 +804,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             "revision": revision(tab.revision), "activePaneId": .string(tab.activePaneID.uuidString),
             "paneIds": .array(tab.root.paneIDs.map { .string($0.uuidString) })
         ]
+        if let color = tab.color { object["color"] = .string(color.rawValue) }
         if tree { object["layout"] = layoutJSON(tab.root) }
         if let maximized = model.maximizedPanes[tab.id] { object["maximizedPaneId"] = .string(maximized.uuidString) }
         return .object(object)
@@ -835,6 +846,13 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         if let code = terminal?.exitCode ?? session.exitCode { object["exitCode"] = .number(Double(code)) }
         if let started = session.startedAt { object["startedAt"] = .string(ISO8601DateFormatter().string(from: started)) }
         if let message = session.failureMessage { object["failureMessage"] = .string(message) }
+        // Present only after an authenticated mark; never includes command text (FR-SI04).
+        if terminal?.sessionID == id, let state = model.shellStates[pane.id] {
+            var shell: [String: JSONValue] = ["commandRunning": .bool(state.commandRunning)]
+            if let code = state.lastExitCode { shell["lastExitStatus"] = .number(Double(code)) }
+            if access.allows(.sessionExecute), let directory = state.currentDirectory { shell["currentDirectory"] = .string(directory) }
+            object["shellIntegration"] = .object(shell)
+        }
         // Launch details only with execute (paths/arguments) or host-read (host identity).
         switch session.launch {
         case .shell(let directory):
@@ -947,6 +965,15 @@ struct Params {
         case nil, .null?: return nil
         case .string(let value)?: return value
         default: throw invalid(key, "string")
+        }
+    }
+    /// nil when `color` is absent; `.some(nil)` when it is null, which clears the label.
+    func tabColor() throws -> TabColor?? {
+        switch object["color"] {
+        case nil: return nil
+        case .null?: return .some(nil)
+        case .string(let raw)? where TabColor(rawValue: raw) != nil: return .some(TabColor(rawValue: raw))
+        default: throw invalid("color", TabColor.allCases.map(\.rawValue).joined(separator: ", ") + " or null")
         }
     }
     func uuid(_ key: String) throws -> UUID {

@@ -40,6 +40,7 @@ enum CLICommands {
             "get": spec("tab.get", ["tab"]),
             "create": spec("tab.create", ["window", "title"], switches: ["start"]),
             "rename": spec("tab.update", ["tab", "title", "expected-revision"]),
+            "color": spec("tab.update", ["tab", "color", "expected-revision"]),
             "reorder": spec("tab.reorder", ["window", "ids", "expected-revision"]),
             "focus": spec("tab.focus", ["tab"]),
             "close": spec("tab.close", ["tab", "expected-revision"], switches: ["allow-running", "force"])

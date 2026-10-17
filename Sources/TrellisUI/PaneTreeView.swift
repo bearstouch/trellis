@@ -49,7 +49,7 @@ struct PaneTreeView: View {
             let context = sessionContext(id)
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Button(model.snapshot.panes[id]?.title ?? "Terminal") { Task { await model.selectPane(id) } }
+                    Button(model.paneTitle(id)) { Task { await model.selectPane(id) } }
                         .buttonStyle(.plain).lineLimit(1).fontWeight(focused ? .semibold : .regular)
                         .accessibilityLabel(descriptor?.label ?? "Terminal")
                         .accessibilityValue(descriptor?.value ?? "")
@@ -61,6 +61,12 @@ struct PaneTreeView: View {
                             .help(directory)
                     }
                     Spacer(minLength: 0)
+                    if let code = model.failedCommandExit(paneID: id) {
+                        // Visible text and a symbol, not color alone (FR-SI04).
+                        Label("Exit \(code)", systemImage: "exclamationmark.circle").lineLimit(1)
+                            .help(WorkspaceAccessibility.commandFailureText(code))
+                            .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
+                    }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.
@@ -131,7 +137,8 @@ struct PaneTreeView: View {
         let directory: String
         switch launch {
         case .host: return (nil, "SSH")
-        case .shell(let path), .process(_, _, let path): directory = path ?? model.defaultDirectory
+        // Shell integration reports the live directory; otherwise show where the session started (INT-01).
+        case .shell(let path), .process(_, _, let path): directory = model.currentDirectory(paneID: id) ?? path ?? model.defaultDirectory
         case nil: directory = model.defaultDirectory
         }
         let home = FileManager.default.homeDirectoryForCurrentUser.path

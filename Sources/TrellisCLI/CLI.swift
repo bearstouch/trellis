@@ -370,6 +370,8 @@ public enum CLI {
         case "tab.get", "tab.update", "tab.focus", "tab.close":
             try tab("id")
             set("title", "title"); flag("allowRunning", "allow-running"); flag("force", "force")
+            // `none` removes the label; the app validates color names.
+            if let color = command.value("color") { params["color"] = color == "none" ? .null : .string(color) }
         case "pane.split":
             try uuid("paneId", "pane"); set("axis", "axis"); try number("ratio", "ratio"); flag("start", "start")
         case "pane.resize": try uuid("branchId", "branch"); try number("ratio", "ratio")

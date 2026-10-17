@@ -18,7 +18,7 @@ let package = Package(
         .package(path: "ThirdParty/SwiftTerm")
     ],
     targets: [
-        .target(name: "TrellisCore", resources: [.copy("Resources/Themes"), .copy("Resources/Fonts")]),
+        .target(name: "TrellisCore", resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration")]),
         .target(name: "TrellisPOSIX"),
         .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "SwiftTerm"]),
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),

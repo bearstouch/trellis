@@ -163,6 +163,20 @@
      /**
       * Returns the active buffer (either the normal buffer or the alternative buffer)
       */
+@@ -1180,6 +1186,13 @@
+     {
+         parser.oscHandlers [code] = handler
+     }
++
++    /// Runs the built-in OSC 133 semantic-prompt handling, so an embedder that
++    /// registers its own 133 handler can observe marks without losing prompt state.
++    public func handleSemanticPrompt (_ data: ArraySlice<UInt8>)
++    {
++        oscSemanticPrompt(data)
++    }
+     
+     func cmdSet8BitControls ()
+     {
 --- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
 +++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
 @@ -1527 +1527 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,

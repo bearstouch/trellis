@@ -34,6 +34,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
+    /// Authenticated shell-integration marks only (FR-SI02); forged output never reaches this.
+    public var onShellIntegrationEvent: ((ShellIntegrationEvent) -> Void)?
     /// True while a native text field (such as tab renaming) owns editing keys.
     /// Keyboard and mouse-report bytes are dropped instead of reaching the PTY.
     public var inputSuspended = false
@@ -99,6 +101,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard !adapter.isDetached else { return }
         let size = getWindowSize()
         guard let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) else { return }
+        if session.state == .stopped, let nonce = configuration.shellIntegration?.nonce { observeShellIntegration(nonce: nonce) }
         await session.start(configuration, size: dimensions)
         if session.state == .failed {
             adapter.receive(Data("Unable to start the terminal session. Check its executable, directory, and environment.\r\n".utf8))
@@ -244,6 +247,35 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     }
     private func processTerminated(exitCode: Int32?) {
         onExit?(exitCode)
+    }
+
+    /// Every 133 mark keeps upstream prompt handling; only marks with this session's
+    /// nonce become events. The nonce lives only in memory for this session.
+    private func observeShellIntegration(nonce: String) {
+        let terminal = terminalView.getTerminal()
+        terminal.registerOscHandler(code: 133) { [weak self, weak terminal] data in
+            terminal?.handleSemanticPrompt(data)
+            guard let self, let event = ShellIntegrationEvent.parse(data, nonce: nonce) else { return }
+            self.onShellIntegrationEvent?(event)
+        }
+    }
+
+    /// Scrolls to the previous or next shell prompt marked through OSC 133 (FR-SI06).
+    @discardableResult
+    public func scrollToPrompt(forward: Bool) -> Bool {
+        let terminal = terminalView.getTerminal()
+        guard !terminal.isCurrentBufferAlternate else { return false }
+        let top = terminal.getTopVisibleRow()
+        var row = forward ? top + 1 : top - 1
+        while row >= 0, terminal.bufferLine(atRow: row) != nil {
+            if terminal.semanticRowKind(at: row) == .initial {
+                terminalView.scrollTo(row: row)
+                return true
+            }
+            row += forward ? 1 : -1
+        }
+        if forward { terminalView.scrollTo(row: .max) }
+        return false
     }
     // OSC 52 clipboard access is denied; native selection copy/paste remains in the view.
     public func clipboardCopy(source: TerminalView, content: Data) {}
