@@ -47,4 +47,4 @@ These were decided during the MVP. Reopening one needs a docs change and a revie
 | Distribution | A direct-download DMG, without App Sandbox or the Mac App Store | `MAC-09` |
 | Sessions on quit | Closing the app ends local processes. Relaunch restores layouts as stopped sessions. | [Persistence](../architecture/persistence.md#restoring-stopped-sessions) |
 | Automation transport | A local Unix socket plus the `trellis` CLI. No TCP or remote control. | [Automation API](../api/index.md) |
-| Visual direction | "Native calm": light chrome, dark terminals, Monaco | [Product overview](../overview/product.md#primary-interaction) |
+| Visual direction | "Native calm": light chrome, dark terminals, bundled Roboto Mono | [Product overview](../overview/product.md#primary-interaction) |

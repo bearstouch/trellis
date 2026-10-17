@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 import SwiftUI
 import TrellisControl
 import TrellisCore
+import TrellisTerminal
 import TrellisUI
 
 @MainActor
@@ -484,6 +485,7 @@ struct TrellisMain {
     @MainActor static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
+        NativeTerminalFont.registerBundledFonts()
         do {
             let lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("dev.trellis-\(getuid()).instance.lock")
             let instanceLock: ApplicationInstanceLock

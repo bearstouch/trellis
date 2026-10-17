@@ -5,7 +5,7 @@ final class AppearanceSettingsTests: XCTestCase {
     func testFirstLaunchPalette() {
         let settings = AppearanceSettings()
         XCTAssertEqual(settings.chromeMode, .light)
-        XCTAssertEqual(settings.fontName, "Monaco")
+        XCTAssertEqual(settings.fontName, "RobotoMono-Regular")
         XCTAssertEqual(settings.fontSize, 13)
         XCTAssertEqual(TerminalPalette.builtIn.background, 0x151719)
         XCTAssertEqual(TerminalPalette.builtIn.ansi.count, 16)

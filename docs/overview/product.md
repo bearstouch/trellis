@@ -51,7 +51,7 @@ The visual direction is **Native calm**.
 - The left sidebar lists managed windows. Selecting one shows that window's own tab bar above its terminal area.
 - Selecting a tab restores its split layout and its last focused pane.
 - The tab bar has visible separators, a new-tab button and a rename action. Double-clicking a tab label edits it inline: Enter commits, Escape cancels, and an empty name keeps the previous title. Renaming never restarts a session or changes an ID.
-- Light application chrome is the first-launch default; Dark and System are available. The sidebar, title bar and tab bar stay light by default, while terminal panes stay dark and use Monaco in every appearance.
+- Light application chrome is the first-launch default; Dark and System are available. The sidebar, title bar and tab bar stay light by default, while terminal panes stay dark and use bundled Roboto Mono by default in every appearance.
 - **Hosts** opens a searchable list with connect and edit actions. Connecting opens a new tab by default, with an explicit option to open a split instead.
 
 Menus say **Split Left/Right** and **Split Top/Bottom**. In the API, `axis: x` means left/right and `axis: y` means top/bottom. This avoids the ambiguous term "vertical split".

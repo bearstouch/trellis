@@ -5,7 +5,7 @@
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-U01 | Discoverable, configurable keyboard shortcuts with conflict warnings. | Menus show the shortcuts. A conflict can't silently disable a critical command. |
-| FR-U02 | Readable terminal settings. | Monaco is the default terminal font, with Menlo or the system monospace font and a visible notice if it's missing. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
+| FR-U02 | Readable terminal settings. | Roboto Mono, bundled with the app, is the default terminal font, with Menlo or the system monospace font and a visible notice if it's missing. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
 
 ## Default shortcuts
 
@@ -42,7 +42,7 @@ Rules for shortcuts:
 | Setting | Default | Range |
 | --- | --- | --- |
 | Chrome mode | Light | System, Dark, Light |
-| Terminal font | Monaco 13 | Sizes 8–48, with zoom |
+| Terminal font | Roboto Mono 13 (bundled) | Sizes 8–48, with zoom |
 | Cursor | Block, not blinking | |
 | Scrollback | 10,000 lines | 0–50,000, plus a 16 MiB cap |
 | Light / dark theme | `trellis-light` / `trellis-dark` | Any installed theme for that appearance |

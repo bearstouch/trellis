@@ -18,12 +18,12 @@ let package = Package(
         .package(path: "ThirdParty/SwiftTerm")
     ],
     targets: [
-        .target(name: "TrellisCore", resources: [.copy("Resources/Themes")]),
+        .target(name: "TrellisCore", resources: [.copy("Resources/Themes"), .copy("Resources/Fonts")]),
         .target(name: "TrellisPOSIX"),
         .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "SwiftTerm"]),
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),
         .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
-        .executableTarget(name: "TrellisApp", dependencies: ["TrellisUI", "TrellisControl"]),
+        .executableTarget(name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl"]),
         .target(name: "TrellisRelease"),
         .target(name: "TrellisCLI", dependencies: ["TrellisControl", "TrellisRelease"]),
         .executableTarget(name: "TrellisCLIMain", dependencies: ["TrellisCLI"]),

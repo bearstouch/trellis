@@ -15,7 +15,8 @@ public enum TerminalCursorShape: String, Codable, CaseIterable, Sendable { case 
 
 public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var chromeMode: ChromeMode = .light
-    public var fontName = "Monaco"
+    public static let defaultFontName = "RobotoMono-Regular"
+    public var fontName = Self.defaultFontName
     public var fontSize: Double = 13
     public var cursorShape: TerminalCursorShape = .block
     public var cursorBlinks = false

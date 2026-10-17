@@ -1,6 +1,6 @@
 # Trellis documentation
 
-Trellis is a native Swift terminal for macOS. It has light "Native calm" application chrome, dark terminal panes and Monaco as the default font. Managed windows sit in a left sidebar, each window has its own renameable tabs, and every tab holds a tree of nested splits. Saved SSH hosts, JSON themes and a local automation API with a `trellis` CLI are built in.
+Trellis is a native Swift terminal for macOS. It has light "Native calm" application chrome, dark terminal panes and bundled Roboto Mono as the default terminal font. Managed windows sit in a left sidebar, each window has its own renameable tabs, and every tab holds a tree of nested splits. Saved SSH hosts, JSON themes and a local automation API with a `trellis` CLI are built in.
 
 These pages are the behavior contract for Trellis and the guide for anyone working on it. When the code and these docs disagree, treat it as a bug in one of them. Fix the code, or update the docs in the same change if the behavior is meant to change.
 

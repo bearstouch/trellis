@@ -50,7 +50,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard) {
         let surface = AccessibleTerminalView(
             frame: NSRect(x: 0, y: 0, width: 900, height: 520),
-            font: NSFont(name: "Monaco", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
+            font: NativeTerminalFont.font(NativeTerminalFont.choice(for: AppearanceSettings.defaultFontName), size: 13))
         terminalView = surface
         surface.scrollback = TerminalScrollback(budget: scrollbackBudget)
         surface.changeScrollback(scrollbackBudget.lineLimit)

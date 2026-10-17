@@ -100,3 +100,5 @@ Only these combinations have been run. Nothing else is claimed.
 ## Licenses
 
 SwiftTerm is MIT-licensed. Its license ships as `Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt`. Its provenance and Trellis's changes to it are in `ThirdParty/SwiftTerm/`.
+
+The bundled Roboto Mono font (version 3.001, from `googlefonts/RobotoMono`) is licensed under the SIL Open Font License 1.1. Its license ships as `Trellis.app/Contents/Resources/RobotoMono-OFL.txt`. The unmodified font files and a second copy of the license are in `Trellis.app/Contents/Resources/Trellis_TrellisCore.bundle/Fonts`.

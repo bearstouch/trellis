@@ -4,9 +4,21 @@ import TrellisCore
 
 @MainActor
 public enum NativeTerminalFont {
+    private static var registered = false
+    /// Process-scoped so the bundled faces never leak into the user's font library.
+    /// Idempotent; a missing or damaged face falls back through `TerminalFontChoice`.
+    public static func registerBundledFonts() {
+        guard !registered else { return }
+        registered = true
+        // Synchronous per-URL registration: the batch API registers asynchronously,
+        // so the first terminal would otherwise resolve the fallback font.
+        for url in BundledFonts.urls() { CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil) }
+    }
+
     public static var installedNames: [String] {
+        registerBundledFonts()
         let fonts = NSFontManager.shared.availableFonts.compactMap { NSFont(name: $0, size: 13) }
-            .filter { $0.isFixedPitch || $0.fontDescriptor.symbolicTraits.contains(.monoSpace) }
+            .filter(isMonospaced)
         let families = Dictionary(grouping: fonts) { $0.familyName ?? $0.fontName }
         return families.values.compactMap { faces in
             faces.sorted { a, b in
@@ -26,10 +38,21 @@ public enum NativeTerminalFont {
     }
 
     public static func choice(for name: String) -> TerminalFontChoice {
-        TerminalFontChoice.resolve(name) { candidate in
-            guard let font = NSFont(name: candidate, size: 13) else { return false }
-            return font.isFixedPitch || font.fontDescriptor.symbolicTraits.contains(.monoSpace)
+        registerBundledFonts()
+        return TerminalFontChoice.resolve(name) { candidate in
+            NSFont(name: candidate, size: 13).map(isMonospaced) ?? false
         }
+    }
+    /// Some monospace faces, including bundled Roboto Mono 3.001, leave the fixed-pitch
+    /// flags unset, so uniform advances across narrow and wide glyphs also qualify.
+    static func isMonospaced(_ font: NSFont) -> Bool {
+        if font.isFixedPitch || font.fontDescriptor.symbolicTraits.contains(.monoSpace) { return true }
+        let characters = Array("iIl.W@m0 ".utf16)
+        var glyphs = [CGGlyph](repeating: 0, count: characters.count)
+        guard CTFontGetGlyphsForCharacters(font, characters, &glyphs, characters.count) else { return false }
+        var advances = [CGSize](repeating: .zero, count: glyphs.count)
+        CTFontGetAdvancesForGlyphs(font, .horizontal, glyphs, &advances, glyphs.count)
+        return advances[0].width > 0 && advances.allSatisfy { abs($0.width - advances[0].width) < 0.01 }
     }
     static func font(_ choice: TerminalFontChoice, size: Double) -> NSFont {
         choice.name.flatMap { NSFont(name: $0, size: size) }
