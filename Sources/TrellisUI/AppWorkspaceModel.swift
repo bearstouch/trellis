@@ -225,8 +225,12 @@ public final class AppWorkspaceModel: ObservableObject {
     public var accessibility: WorkspaceAccessibility {
         WorkspaceAccessibility(
             snapshot: snapshot,
-            live: terminals.mapValues { WorkspaceAccessibility.LiveSession(state: $0.sessionState, exitCode: $0.exitCode) },
-            windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys))
+            live: terminals.reduce(into: [:]) { live, entry in
+                live[entry.key] = WorkspaceAccessibility.LiveSession(
+                    state: entry.value.sessionState, exitCode: entry.value.exitCode, failedCommandExit: failedCommandExit(paneID: entry.key))
+            },
+            windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys),
+            titles: automaticTitles)
     }
 
     /// VoiceOver names each terminal by pane and status; its value stays the text.
@@ -248,6 +252,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var defaultShell: String
     @Published public private(set) var defaultDirectory: String
     @Published public private(set) var activity: [UUID: WindowActivity] = [:]
+    /// Applies to sessions started after a change (FR-SI06).
+    @Published public private(set) var shellIntegrationEnabled: Bool
+    /// Runtime-only, per pane, from authenticated marks; never persisted or logged.
+    @Published public private(set) var shellStates: [UUID: ShellIntegrationState] = [:]
+    /// Injected by tests; nil disables integration.
+    var shellIntegrationDirectory: String? = BundledShellIntegration.directory()
     public var confirmCloseSessions: (Int) -> Bool = { _ in true }
     public var confirmForceSessions: (Int) -> Bool = { _ in false }
     private var closeSummary: [String] = []
@@ -312,6 +322,7 @@ public final class AppWorkspaceModel: ObservableObject {
         self.preferences = preferences
         defaultShell = preferences.string(forKey: "terminal.shell") ?? LocalLaunchConfiguration.loginShell().executable
         defaultDirectory = preferences.string(forKey: "terminal.directory") ?? FileManager.default.homeDirectoryForCurrentUser.path
+        shellIntegrationEnabled = preferences.object(forKey: "terminal.shellIntegration") as? Bool ?? true
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
@@ -461,6 +472,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let pendingPaste, pendingPaste.target != currentPasteTarget { cancelPaste() }
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
+        if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
@@ -551,19 +563,24 @@ public final class AppWorkspaceModel: ObservableObject {
                                 ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
                 self.closureCoordinator.forget(sessionID: request.sessionID)
+                if self.terminals[paneID] === terminal { self.shellStates.removeValue(forKey: paneID) }
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
             }
             if fixture {
                 await terminal.startFixture()
             } else {
-                let configuration: LocalLaunchConfiguration
+                var configuration: LocalLaunchConfiguration
                 switch request.launch {
                 case .shell(let directory):
                     configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory, environmentOverrides: environment)
+                    configuration.shellIntegration = shellIntegration(for: configuration)
                 case .process(let executable, let arguments, let directory):
                     configuration = LocalLaunchConfiguration(
                         executable: executable, arguments: arguments, directory: directory ?? defaultDirectory, environmentOverrides: environment)
+                    // `.shell` is frozen to `.process(shell, ["-l"])` before launch. Any frozen login shell qualifies, so
+                    // panes started before the default shell changed keep integration on restart and restore.
+                    if arguments == ["-l"] { configuration.shellIntegration = shellIntegration(for: configuration) }
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
                     // `.host(id)` so persistence and explicit reconnects re-read it.
@@ -588,6 +605,77 @@ public final class AppWorkspaceModel: ObservableObject {
                 await terminal.start(configuration: configuration)
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
+    }
+
+    /// The default login shell with bundled scripts only; other processes, SSH and fixtures never reach this (FR-SI01).
+    private func shellIntegration(for configuration: LocalLaunchConfiguration) -> ShellIntegrationInjection? {
+        guard shellIntegrationEnabled, let directory = shellIntegrationDirectory, let kind = ShellIntegrationKind(executable: configuration.executable) else {
+            return nil
+        }
+        // Plan against the final environment so a pane's own ZDOTDIR/XDG_DATA_DIRS override is the one restored.
+        return .plan(
+            kind: kind, arguments: configuration.arguments,
+            inheritedEnvironment: configuration.inheritedEnvironment.merging(configuration.environmentOverrides) { $1 },
+            resourceDirectory: directory, nonce: ShellIntegrationInjection.makeNonce())
+    }
+
+    public func setShellIntegrationEnabled(_ enabled: Bool) {
+        guard enabled != shellIntegrationEnabled else { return }
+        shellIntegrationEnabled = enabled
+        preferences.set(enabled, forKey: "terminal.shellIntegration")
+    }
+
+    /// The shell's reported directory; nil without integration (INT-01).
+    public func currentDirectory(paneID: UUID) -> String? { shellStates[paneID]?.currentDirectory }
+
+    /// A renamed tab keeps its title; the default title follows the active pane (FR-SI05).
+    public func displayTitle(_ tab: WorkspaceTab) -> String {
+        guard tab.title == WorkspaceTab.defaultTitle else { return tab.title }
+        return automaticTitle(paneID: tab.activePaneID) ?? tab.title
+    }
+
+    /// Non-zero exit of the pane's last finished command (FR-SI04).
+    public func failedCommandExit(paneID: UUID) -> Int32? {
+        guard let state = shellStates[paneID], state.lastCommandFailed else { return nil }
+        return state.lastExitCode
+    }
+
+    private var automaticTitles: [UUID: String] {
+        var titles: [UUID: String] = [:]
+        for id in shellStates.keys { if let title = automaticTitle(paneID: id) { titles[id] = title } }
+        for tab in snapshot.tabs.values where tab.title == WorkspaceTab.defaultTitle { titles[tab.id] = automaticTitle(paneID: tab.activePaneID) }
+        return titles
+    }
+
+    public func paneTitle(_ id: UUID) -> String {
+        snapshot.panes[id]?.title ?? automaticTitle(paneID: id) ?? WorkspaceTab.defaultTitle
+    }
+
+    private func automaticTitle(paneID: UUID) -> String? {
+        guard let state = shellStates[paneID] else { return nil }
+        if let name = state.commandName { return name }
+        guard let directory = state.currentDirectory else { return nil }
+        if directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
+        let name = (directory as NSString).lastPathComponent
+        return name.isEmpty ? directory : name
+    }
+
+    private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
+        var state = shellStates[paneID] ?? ShellIntegrationState()
+        state.apply(event, at: Date())
+        guard state != shellStates[paneID] else { return }
+        shellStates[paneID] = state
+        refreshTerminalAccessibility()
+    }
+
+    /// New panes start in the source pane's reported directory when it is still accessible.
+    private func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
+        guard let directory = sourcePaneID.flatMap(currentDirectory(paneID:)), SystemLaunchFileAccess().isAccessibleDirectory(directory),
+            let pane = snapshot.panes[paneID], case .shell(nil)? = snapshot.sessions[pane.sessionID]?.launch
+        else { return }
+        if let result = try? await service.execute(.configureStoppedSession(paneID: paneID, launch: .shell(directory: directory))) {
+            publish(result.snapshot)
+        }
     }
 
     func isClosing(paneID: UUID) -> Bool {
@@ -624,6 +712,11 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
+        shellStates.removeValue(forKey: pane.id)
+        terminal.onShellIntegrationEvent = { [weak self, weak terminal] event in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.applyShellEvent(event, paneID: pane.id)
+        }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.
             guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }
@@ -766,7 +859,10 @@ public final class AppWorkspaceModel: ObservableObject {
             // The store may have committed while a close operation began. Keep
             // its surviving pane materialized, but do not launch a new process
             // inside a hierarchy that is already closing.
-            if startSession, !isClosing(paneID: id), !isClosing(paneID: newID) { await start(paneID: newID) }
+            if startSession, !isClosing(paneID: id), !isClosing(paneID: newID) {
+                await inheritDirectory(from: id, into: newID)
+                await start(paneID: newID)
+            }
             return newID
         } catch {
             errorMessage = "This pane cannot be split further. Check its size and the layout limits."
@@ -834,6 +930,11 @@ public final class AppWorkspaceModel: ObservableObject {
         if let id {
             guard snapshot.tabs[id]?.windowID == windowID, !closingTabIDs.contains(id) else { return nil }
         }
+        // A new (not duplicated) tab starts where the window's focused shell is.
+        let sourcePaneID =
+            id == nil
+            ? snapshot.windows.first { $0.id == windowID }
+                .flatMap { snapshot.tabs[$0.activeTabID]?.activePaneID } : nil
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
@@ -844,6 +945,7 @@ public final class AppWorkspaceModel: ObservableObject {
             }
             publish(result.snapshot)
             if startSessions {
+                if let sourcePaneID, let paneID = tab.root.paneIDs.first { await inheritDirectory(from: sourcePaneID, into: paneID) }
                 for paneID in tab.root.paneIDs { await start(paneID: paneID) }
             }
             return tabID

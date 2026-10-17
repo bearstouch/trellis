@@ -835,6 +835,13 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         if let code = terminal?.exitCode ?? session.exitCode { object["exitCode"] = .number(Double(code)) }
         if let started = session.startedAt { object["startedAt"] = .string(ISO8601DateFormatter().string(from: started)) }
         if let message = session.failureMessage { object["failureMessage"] = .string(message) }
+        // Present only after an authenticated mark; never includes command text (FR-SI04).
+        if terminal?.sessionID == id, let state = model.shellStates[pane.id] {
+            var shell: [String: JSONValue] = ["commandRunning": .bool(state.commandRunning)]
+            if let code = state.lastExitCode { shell["lastExitStatus"] = .number(Double(code)) }
+            if access.allows(.sessionExecute), let directory = state.currentDirectory { shell["currentDirectory"] = .string(directory) }
+            object["shellIntegration"] = .object(shell)
+        }
         // Launch details only with execute (paths/arguments) or host-read (host identity).
         switch session.launch {
         case .shell(let directory):

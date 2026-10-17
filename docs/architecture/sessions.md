@@ -68,4 +68,4 @@ A saved host is launched as `/usr/bin/ssh [-p port] [-l user] [-i identity] -- d
 
 ## What Trellis doesn't know
 
-Without shell integration (P1), Trellis knows the initial working directory, but not the shell's current directory, the active command, or whether a command finished. A process's exit status means **the launched process** exited. It doesn't say whether the last command typed into an interactive shell succeeded.
+Without [shell integration](../features/shell-integration.md) (local zsh, bash and fish only), Trellis knows the initial working directory, but not the shell's current directory, the active command, or whether a command finished. A process's exit status means **the launched process** exited. It doesn't say whether the last command typed into an interactive shell succeeded.

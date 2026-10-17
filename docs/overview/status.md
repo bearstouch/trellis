@@ -55,4 +55,5 @@ Only these combinations have been run.
 - **Windows:** there's one native terminal window. Managed windows live in its sidebar; multiple native windows are P1.
 - **Updates:** upgrades are manual. There's no automatic update service.
 - **Sessions don't survive quitting.** Closing the app ends its local processes, and relaunching restores layouts as stopped sessions.
-- **Shell knowledge:** without shell integration (P1), Trellis doesn't know a shell's current directory, the active command, or whether a command succeeded. `session.execute` submits input; it doesn't report a command result.
+- **Shell knowledge:** [shell integration](../features/shell-integration.md) reports the directory, the running command and exit status for local zsh, bash and fish. Other shells, SSH sessions and disabled integration report none of this. `session.execute` still submits input without waiting for a command result, and command-completion events aren't published to automation yet.
+- **Shell integration checks pending:** fish on a Mac with fish installed (its PTY test skips without it), VoiceOver reading of the failed-command indicator, and prompt themes such as powerlevel10k and starship.

@@ -1186,6 +1186,13 @@ open class Terminal {
     {
         parser.oscHandlers [code] = handler
     }
+
+    /// Runs the built-in OSC 133 semantic-prompt handling, so an embedder that
+    /// registers its own 133 handler can observe marks without losing prompt state.
+    public func handleSemanticPrompt (_ data: ArraySlice<UInt8>)
+    {
+        oscSemanticPrompt(data)
+    }
     
     func cmdSet8BitControls ()
     {

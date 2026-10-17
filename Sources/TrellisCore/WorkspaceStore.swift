@@ -118,7 +118,7 @@ public actor WorkspaceStore {
             let windowID = makeID(), tabID = makeID(), paneID = makeID(), sessionID = makeID()
             let window = ManagedWindow(id: windowID, name: name, tabIDs: [tabID], activeTabID: tabID, revision: next.revision)
             next.windows.append(window)
-            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: "Terminal", root: .pane(paneID), activePaneID: paneID, revision: next.revision)
+            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
             next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
             next.activeWindowID = windowID
@@ -247,7 +247,7 @@ public actor WorkspaceStore {
         case .createTab(let windowID):
             guard let index = next.windows.firstIndex(where: { $0.id == windowID }) else { throw WorkspaceError.notFound }
             let tabID = makeID(), paneID = makeID(), sessionID = makeID()
-            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: "Terminal", root: .pane(paneID), activePaneID: paneID, revision: next.revision)
+            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
             next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
             next.windows[index].tabIDs.append(tabID)

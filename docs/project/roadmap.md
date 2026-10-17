@@ -20,7 +20,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | --- | --- | --- |
 | P1 | Multiple native windows and moving tabs between them | `MAC-13`, [macOS support](../platform/macos.md#deferred-multiple-native-windows) |
 | P1 | Multiple profiles | [Product overview](../overview/product.md#scope) |
-| P1 | Opt-in zsh/bash shell integration: prompt readiness, current directory, command start, end and exit | `INT-02`, [Integrations](../integrations.md#shells-and-local-tools) |
+| P1 | Shell-integration events for automation: command-completion events and `session.execute` waiting for the exit status | `INT-02`, [Shell integration](../features/shell-integration.md) |
 | P1 | Richer SSH host import | [SSH hosts](../features/ssh-hosts.md) |
 | P1 | Signed automatic updates | `MAC-11` |
 | P1 | Optional MCP adapter over the existing command service | `INT-07`, [Integrations](../integrations.md#scripts-and-agents) |

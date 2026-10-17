@@ -20,7 +20,7 @@ Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and t
 | `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset | Zooming mustn't reset live parser state such as cursor mode and attributes |
 | `Buffer.swift` | Opt-in `reflowCursorLine` for normal-buffer cursor-line reflow | Keeps the cursor and selections correct across font changes |
 | `KittyGraphics.swift` | Refuses file (`t=f`), temp-file (`t=t`) and shared-memory (`t=s`) transmission with `ENOTSUP` | Terminal output is untrusted and must never make the app read or unlink local files |
-| `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes | |
+| `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes, and a public `handleSemanticPrompt(_:)` forwarder to the built-in OSC 133 handler | Trellis's own 133 handler authenticates [shell-integration](../features/shell-integration.md) marks and still keeps prompt navigation state |
 
 To update SwiftTerm:
 

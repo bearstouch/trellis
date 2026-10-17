@@ -40,7 +40,7 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `pane.resize` | `branchId`, `ratio`, `expectedRevision?` | Updated branch, with geometry constraints enforced |
 | `pane.focus`, `pane.close` | `id`, plus close flags | Selection / close result |
 | `pane.maximize` | `id`, `maximized` | Temporary presentation state |
-| `session.get` | `id` | State and exit status. Launch details only with execute permission. |
+| `session.get` | `id` | State and exit status. Launch details only with execute permission. With [shell integration](../features/shell-integration.md), `shellIntegration: {commandRunning, lastExitStatus?, currentDirectory?}`; the directory needs execute permission, and command text is never included. |
 | `session.start` | `paneId`, `launch?` | New or stopped session ID and the launch status |
 | `session.restart` | `paneId`, `allowRunning?`, `launch?` | Replaces the session after any required termination. The new session gets a new UUID. |
 | `session.sendInput` | `id`, `text` or `base64`, `mode: literal\|paste` | Accepted byte count. Acceptance doesn't mean the input has been processed. |

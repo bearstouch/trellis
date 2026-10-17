@@ -49,6 +49,7 @@ nav:
   - Features:
       - Windows, tabs and panes: features/workspace.md
       - Terminal: features/terminal.md
+      - Shell integration: features/shell-integration.md
       - SSH hosts: features/ssh-hosts.md
       - Themes: features/themes.md
       - Keyboard and accessibility: features/keyboard-accessibility.md

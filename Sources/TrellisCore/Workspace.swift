@@ -40,6 +40,8 @@ public struct ManagedWindow: Identifiable, Equatable, Codable, Sendable {
 }
 
 public struct WorkspaceTab: Identifiable, Equatable, Codable, Sendable {
+    /// A tab with this title shows an automatic title from shell integration (FR-SI05).
+    public static let defaultTitle = "Terminal"
     public let id: UUID
     public let windowID: UUID
     public var title: String
