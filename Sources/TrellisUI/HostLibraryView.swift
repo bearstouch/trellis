@@ -6,6 +6,7 @@ import TrellisCore
 /// separate action; editing here only changes metadata for future connections.
 public struct HostLibraryView: View {
     @ObservedObject private var model: HostListModel
+    @ObservedObject private var workspace: AppWorkspaceModel
     @State private var selection: UUID?
     @State private var draft = HostDraft()
     @State private var errors: [HostField: String] = [:]
@@ -13,51 +14,71 @@ public struct HostLibraryView: View {
     @State private var saving = false
     @State private var confirmingDelete = false
     @State private var discovering = false
-    public init(model: HostListModel) { self.model = model }
+    @FocusState private var listFocused: Bool
+    public init(model: HostListModel, workspace: AppWorkspaceModel) { self.model = model; self.workspace = workspace }
 
     private var editing: SavedHost? { selection.flatMap { id in model.hosts.first { $0.id == id } } }
 
     public var body: some View {
+        // Mirrors AppSettingsView: themed sidebar, 1 px border, titled content pane.
         HStack(spacing: 0) {
-            VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("HOSTS")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(workspace.themeColor(.mutedForeground))
+                    .padding(.horizontal, 12).padding(.top, 24).padding(.bottom, 6)
                 TextField("Search hosts", text: $model.query)
                     .textFieldStyle(.roundedBorder).accessibilityLabel("Search hosts")
                     .accessibilityHint("Matches names, destinations, users, and tags")
-                List(model.visibleHosts, selection: $selection) { host in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(host.name).lineLimit(1)
-                        Text(summary(host)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .padding(.bottom, 6)
+                // Plain-button rows aren't in the key loop without Full Keyboard Access, so the
+                // list itself takes focus and moves the selection with the arrow keys like a List.
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(model.visibleHosts) { host in hostRow(host) }
+                        }
                     }
-                    .tag(host.id)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Host \(host.name)")
-                    .accessibilityValue(summary(host))
+                    .focusable().focused($listFocused)
+                    .onKeyPress(.upArrow) { moveSelection(-1, proxy) }
+                    .onKeyPress(.downArrow) { moveSelection(1, proxy) }
                 }
+                .accessibilityElement(children: .contain)
                 .accessibilityLabel("Saved hosts")
                 .overlay {
                     if model.visibleHosts.isEmpty {
-                        Text(model.hosts.isEmpty ? "No saved hosts" : "No matching hosts").foregroundStyle(.secondary)
+                        Text(model.hosts.isEmpty ? "No saved hosts" : "No matching hosts").foregroundStyle(workspace.themeColor(.mutedForeground))
                     }
                 }
-                Button {
+                sidebarAction("New Host", symbol: "plus") {
                     selection = nil
                     load(nil)
-                } label: {
-                    Label("New Host", systemImage: "plus")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    discovering = true
-                } label: {
-                    Label("Discover SSH Aliases…", systemImage: "doc.text.magnifyingglass")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading).disabled(model.loadFailed)
+                sidebarAction("Discover SSH Aliases…", symbol: "doc.text.magnifyingglass") { discovering = true }
+                    .disabled(model.loadFailed)
             }
-            .padding(12).frame(width: 240)
-            Divider()
-            editor.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 12).padding(.bottom, 12)
+            .frame(width: 240)
+            .background(workspace.themeColor(.sidebarBackground))
+            Rectangle().fill(workspace.themeColor(.border)).frame(width: 1)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(editing == nil ? "New Host" : "Edit Host").font(.system(size: 22, weight: .semibold))
+                    Text(editing == nil ? "Save an SSH destination for quick connections." : "Edit saved details for future connections.")
+                        .font(.callout).foregroundStyle(workspace.themeColor(.mutedForeground))
+                }
+                .padding(28)
+                Divider().padding(.horizontal, 28)
+                ScrollView { editor.padding(28) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .foregroundStyle(workspace.themeColor(.foreground))
+            .background(workspace.themeColor(.background))
         }
-        .frame(minWidth: 640, minHeight: 420)
+        .tint(workspace.chromeTint)
+        .preferredColorScheme(workspace.effectiveChromeMode.colorScheme)
+        .frame(minWidth: 700, minHeight: 480)
         .onChange(of: selection) { _, id in
             let host = id.flatMap { id in model.hosts.first { $0.id == id } }
             // A save that just selected its own result already shows it; keep its message.
@@ -74,7 +95,6 @@ public struct HostLibraryView: View {
 
     @ViewBuilder private var editor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(editing == nil ? "New Host" : "Edit Host").font(.headline)
             if model.loadFailed {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(HostListModel.message(for: .readOnly)).font(.callout)
@@ -95,7 +115,7 @@ public struct HostLibraryView: View {
             }
             field("Tags (comma-separated)", text: $draft.tags, error: errors[.tags], prompt: "prod, api")
             Text("Trellis stores no passwords or key contents. Changes apply to future connections only.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
             if let message { Text(message).font(.caption).accessibilityIdentifier("hosts.result") }
             if let host = editing {
                 HStack {
@@ -109,7 +129,7 @@ public struct HostLibraryView: View {
                 }
                 .disabled(model.onConnect == nil || draft != host.draft)
                 if draft != host.draft {
-                    Text("Save or revert your changes before connecting.").font(.caption).foregroundStyle(.secondary)
+                    Text("Save or revert your changes before connecting.").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
                 }
             }
             HStack {
@@ -123,9 +143,54 @@ public struct HostLibraryView: View {
         }
     }
 
+    private func hostRow(_ host: SavedHost) -> some View {
+        let selected = selection == host.id
+        return Button {
+            selection = host.id; listFocused = true
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(host.name).lineLimit(1).font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(workspace.themeColor(selected ? .activeTabForeground : .foreground))
+                Text(summary(host)).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .background(selected ? workspace.themeColor(.activeTabBackground) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Host \(host.name)")
+        .accessibilityValue(summary(host))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func moveSelection(_ step: Int, _ proxy: ScrollViewProxy) -> KeyPress.Result {
+        let ids = model.visibleHosts.map(\.id)
+        guard !ids.isEmpty else { return .ignored }
+        let index = selection.flatMap { ids.firstIndex(of: $0) }.map { min(max($0 + step, 0), ids.count - 1) } ?? (step > 0 ? 0 : ids.count - 1)
+        selection = ids[index]; proxy.scrollTo(ids[index])
+        return .handled
+    }
+
+    private func sidebarAction(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).frame(width: 18)
+                Text(title)
+                Spacer()
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .foregroundStyle(workspace.themeColor(.foreground))
+        }
+        .buttonStyle(.plain)
+    }
+
     private func field(_ title: String, text: Binding<String>, error: String?, prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption)
+            Text(title).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
             TextField(title, text: text, prompt: Text(prompt)).textFieldStyle(.roundedBorder).labelsHidden()
                 .accessibilityLabel(title)
                 .accessibilityValue(error.map { "\(text.wrappedValue). Error: \($0)" } ?? text.wrappedValue)

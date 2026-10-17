@@ -400,10 +400,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func showHosts() {
         if hostsWindow == nil {
-            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 460), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             panel.title = "Hosts"
             panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(rootView: HostLibraryView(model: hosts))
+            panel.contentView = NSHostingView(rootView: HostLibraryView(model: hosts, workspace: model))
             panel.center()
             hostsWindow = panel
         }

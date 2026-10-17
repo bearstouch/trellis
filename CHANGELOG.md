@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Roboto Mono (Regular, Bold, Italic, Bold Italic) now ships with the app and is the default terminal font. It's registered for Trellis only, so it doesn't need to be installed and doesn't appear in other apps. The app chrome keeps system fonts. Existing workspaces keep the terminal font they saved, including Monaco; choose Roboto Mono in Settings → Appearance to switch.
+- The Hosts window now matches Settings: a themed sidebar with a HOSTS header and the same selection styling, a 1 px border, and a titled editor pane. It follows the active app theme.
 
 ## [0.9.1] - 2026-10-17
 
