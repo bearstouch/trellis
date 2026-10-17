@@ -274,7 +274,7 @@ public struct WorkspaceRootView: View {
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.presentation.isEmpty {
             VStack(spacing: 14) {
-                Image(systemName: "terminal").font(.system(size: 34, weight: .light)).foregroundStyle(model.themeColor(.mutedForeground))
+                TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
                 Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n")
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
@@ -453,6 +453,43 @@ extension TabColor {
 }
 
 /// A tab's top edge filling and unfilling while its panes print output (FR-T05). Static under Reduce Motion.
+/// The app icon's prompt mark (geometry from `Design/AppIcon/Trellis-small.svg`, 824-unit
+/// canvas) with a terminal-style blinking cursor block.
+private struct TrellisLogoMark: View {
+    let blinks: Bool
+    private static let green = Color(red: 0x9C / 255, green: 1, blue: 0x62 / 255)
+
+    var body: some View {
+        if blinks {
+            TimelineView(.periodic(from: .now, by: 0.53)) { context in
+                mark(cursorVisible: Int(context.date.timeIntervalSinceReferenceDate / 0.53).isMultiple(of: 2))
+            }
+        } else {
+            mark(cursorVisible: true)
+        }
+    }
+
+    private func mark(cursorVisible: Bool) -> some View {
+        GeometryReader { geometry in
+            let s = min(geometry.size.width, geometry.size.height) / 824
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 185 * s, style: .continuous).fill(Color(red: 0x14 / 255, green: 0x14 / 255, blue: 0x17 / 255))
+                RoundedRectangle(cornerRadius: 130 * s, style: .continuous).fill(Color(red: 0x02 / 255, green: 0x03 / 255, blue: 0x02 / 255))
+                    .frame(width: 684 * s, height: 684 * s).offset(x: 70 * s, y: 70 * s)
+                Path { path in
+                    path.move(to: CGPoint(x: 200 * s, y: 300 * s)); path.addLine(to: CGPoint(x: 370 * s, y: 412 * s)); path.addLine(to: CGPoint(x: 200 * s, y: 524 * s))
+                }
+                .stroke(Self.green, style: StrokeStyle(lineWidth: 86 * s, lineCap: .round, lineJoin: .round))
+                .shadow(color: Self.green.opacity(0.6), radius: 22 * s)
+                RoundedRectangle(cornerRadius: 10 * s).fill(Self.green).frame(width: 170 * s, height: 280 * s).offset(x: 440 * s, y: 272 * s)
+                    .shadow(color: Self.green.opacity(0.6), radius: 22 * s).opacity(cursorVisible ? 1 : 0)
+            }
+            .frame(width: 824 * s, height: 824 * s)
+        }
+        .accessibilityElement().accessibilityLabel("Trellis").accessibilityAddTraits(.isImage)
+    }
+}
+
 private struct TabBusyBar: View {
     let fill: Color
     let track: Color
