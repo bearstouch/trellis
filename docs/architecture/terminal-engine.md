@@ -13,17 +13,18 @@ The adapter rules:
 
 ## Patches
 
-Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and the exact diff in `ThirdParty/SwiftTerm/trellis.patch`. There are nine patched files today:
+Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and the exact diff in `ThirdParty/SwiftTerm/trellis.patch`. There are ten patched files today:
 
 | File | Change | Why |
 | --- | --- | --- |
-| `Mac/MacTerminalView.swift` | Mouse-exit and scroll-wheel overrides are `open`; a `doubleClickSelection` hook replaces double-click word selection; `bufferPosition(for:)` exposes the engine's BiDi-aware hit test; `fontLigatures`, `allowBoldFont`, `allowItalicFont`, `boldIsBright` and `textBlinkEnabled` view properties | Scrollbar reveal, [smart selection](../features/terminal.md#copy), context-menu link actions and text-rendering settings |
-| `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset; OSC 8 parameters are split from the URL only at the first `;`; glyphs and decorations are placed from each run's source cells; concealed text and overline are drawn; the cursor cell is shaped on its own while ligatures are on; text-style flags select fonts, bright colours and blinking | Zooming mustn't reset live parser state such as cursor mode and attributes; URLs containing `;` aren't truncated; [text rendering](../features/terminal.md#text-rendering) (FR-TX01–FR-TX03) |
+| `Mac/MacTerminalView.swift` | Mouse-exit and scroll-wheel overrides are `open`; a `doubleClickSelection` hook replaces double-click word selection; `bufferPosition(for:)` exposes the engine's BiDi-aware hit test; `fontLigatures`, `allowBoldFont`, `allowItalicFont`, `boldIsBright` and `textBlinkEnabled` view properties; `cellMetrics` gives the cell size in points and the backing scale | Scrollbar reveal, [smart selection](../features/terminal.md#copy), context-menu link actions, text-rendering settings and `ReportCellSize` (FR-IM03) |
+| `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset; OSC 8 parameters are split from the URL only at the first `;`; glyphs and decorations are placed from each run's source cells; concealed text and overline are drawn; the cursor cell is shaped on its own while ligatures are on; text-style flags select fonts, bright colours and blinking; `insertImage` is public | Zooming mustn't reset live parser state such as cursor mode and attributes; URLs containing `;` aren't truncated; [text rendering](../features/terminal.md#text-rendering) (FR-TX01–FR-TX03); Trellis decodes [inline images](../features/terminal.md#inline-images) itself and places them with the engine |
 | `CharData.swift` | `Attribute.extendedStyle` holds overline | `CharacterStyle`'s eight bits are all taken |
 | `Mac/MacCaretView.swift` | The caret hides concealed text | FR-TX02 |
 | `iOS/iOSTerminalView.swift` | Plain copies of the text-style properties | Keeps the shared renderer compiling for iOS; not built here |
 | `SelectionService.swift` | `setWordSelection(start:end:)` sets a half-open word-mode selection | A smart double-click selection extends by word when dragged and may end in the last column |
 | `Buffer.swift` | Opt-in `reflowCursorLine` for normal-buffer cursor-line reflow | Keeps the cursor and selections correct across font changes |
+| `EscapeSequenceParser.swift` | `maxStringPayloadBytes` (8 MiB): a longer OSC or APC sequence is dropped whole, even when it arrives across several reads | Upstream grows the payload buffer without limit, so output could exhaust memory (FR-IM04) |
 | `KittyGraphics.swift` | Refuses file (`t=f`), temp-file (`t=t`) and shared-memory (`t=s`) transmission with `ENOTSUP` | Terminal output is untrusted and must never make the app read or unlink local files |
 | `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes, public `handleSemanticPrompt(_:)` and `handleProgressReport(_:)` forwarders, and `linkIsExplicit(at:)`; parses overline (SGR 53/55) and rapid blink (SGR 6) | Trellis's own 133 handler authenticates [shell-integration](../features/shell-integration.md) marks and still keeps prompt navigation state; file links treat OSC 8 targets differently from detected text; FR-TX02 |
 
@@ -36,7 +37,7 @@ To update SwiftTerm:
 
 ## Terminal type
 
-Children get `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Trellis`. Trellis supports the terminal input, job control, signals, colors, alternate screen, mouse modes and bracketed paste that this terminal type promises. Only claim a terminal type the engine and the installed terminfo actually support.
+Children get `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Trellis`, plus `LC_TERMINAL=iTerm2` and `LC_TERMINAL_VERSION=3.5.0` because Trellis implements iTerm2's inline image protocol (FR-IM05) and image tools look for those. Trellis supports the terminal input, job control, signals, colors, alternate screen, mouse modes and bracketed paste that this terminal type promises. Only claim a terminal type the engine and the installed terminfo actually support.
 
 ## Scrollback and output buffers
 
@@ -61,6 +62,7 @@ Output must keep the PTY's byte order. The UI may coalesce frames, but it never 
 - **File links:** `TerminalLinkClassifier` turns a clicked link into a web URL or a local path, and only when the pane supplies a `FileLinkContext` (local panes; never saved SSH hosts or panes started as `ssh`/`mosh`). `file://` hosts must be local, automount paths (`/net`, `/Network`) are refused, schemeless OSC 8 targets are refused, and relative paths need the authenticated shell-integration directory. `FileLinkPolicy` then probes the symlink-resolved file on the main thread at click time (a `stat`, bounded to the clicked path): packages, executables, scripts and other launchable types are revealed in Finder, other regular files and folders open, and anything else is ignored.
 - **Smart selection:** `SmartSelection` (Core) matches URLs, emails, paths, UUIDs, IP addresses, git hashes and quoted strings around a grapheme offset. `TerminalLogicalLine` supplies the soft-wrapped text around the double-clicked cell (at most 32 rows each way and 4,096 characters) and maps the match back to cells.
 - **Kitty graphics:** local-file and shared-memory transmission are refused (see Patches above).
+- **Inline images (OSC 1337):** `NativeTerminal` registers its own 1337 handler, replacing upstream's, which hands any data to `NSImage` and leaves downloads to the delegate. `InlineImageDecoder` reads the type and pixel size with ImageIO first and only decodes PNG, JPEG, GIF, BMP, TIFF, WebP and HEIC within 10,000 px a side and 40 MP. `MultipartImageTransfer` decodes parts as they arrive, holds at most 32 MiB, and drops the transfer on any other 1337 command. `inline=0` downloads are ignored. `InlineImageLayout` shrinks a box with an `auto` side to the pane's width and 10,000 px tall, because upstream's `insertImage` doesn't bound a side derived from the aspect ratio and allocates each row at that width. Images are decoded synchronously in stream order, so they land where the cursor was.
 
 ## Accessibility
 

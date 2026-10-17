@@ -839,6 +839,15 @@
          guard let (rowStart, rowEnd) = terminal.getUpdateRange () else {
              if notifyUpdateChanges {
                  let buffer = terminal.displayBuffer
+@@ -3015,7 +3194,7 @@ extension TerminalView {
+     // Inserts the specified image at the current buffer position (x, y) using the specified size requests
+     // and aspect ratio request.   The insertion is done by adding slices of the image, one per line
+     // to the buffer.
+-    func insertImage (_ image: TTImage, width widthRequest: ImageSizeRequest, height heightRequest: ImageSizeRequest, preserveAspectRatio: Bool)
++    public func insertImage (_ image: TTImage, width widthRequest: ImageSizeRequest, height heightRequest: ImageSizeRequest, preserveAspectRatio: Bool)
+     {
+         let buffer = terminal.buffer
+         var img = image
 --- a/Sources/SwiftTerm/Buffer.swift
 +++ b/Sources/SwiftTerm/Buffer.swift
 @@ -771,9 +771,64 @@ public final class Buffer {
@@ -1008,6 +1017,119 @@
          
          switch fg {
          case .ansi256(let c):
+--- a/Sources/SwiftTerm/EscapeSequenceParser.swift
++++ b/Sources/SwiftTerm/EscapeSequenceParser.swift
+@@ -330,6 +330,10 @@ public class EscapeSequenceParser {
+     /// ```
+     public var oscHandlers: [Int:OscHandler] = [:]
+ 
++    /// OSC and APC payloads longer than this are dropped whole instead of
++    /// growing parser state without bound.
++    public var maxStringPayloadBytes = 8 * 1024 * 1024
++
+     var activeDcsHandler: DcsHandler? = nil
+     var errorHandler: (ParsingState) -> ParsingState = { (state : ParsingState) -> ParsingState in return state; }
+ 
+@@ -346,6 +350,7 @@ public class EscapeSequenceParser {
+     var _parsTxt: [UInt8]
+     var _collect: cstring
+     var _parameterLimitExceeded: Bool
++    var _stringPayloadOverflow: Bool
+     var printHandler: PrintHandler = { (slice : ArraySlice<UInt8>) -> () in }
+     var printStateReset: () -> () = {  }
+     
+@@ -368,6 +373,7 @@ public class EscapeSequenceParser {
+         _parsTxt = []
+         _collect = []
+         _parameterLimitExceeded = false
++        _stringPayloadOverflow = false
+     }
+ 
+     @inline(__always)
+@@ -646,6 +652,7 @@ public class EscapeSequenceParser {
+         _parsTxt = []
+         _collect = []
+         _parameterLimitExceeded = false
++        _stringPayloadOverflow = false
+         activeDcsHandler = nil
+         printStateReset()
+     }
+@@ -690,6 +697,8 @@ public class EscapeSequenceParser {
+         var pars = self._pars
+         var parsTxt = self._parsTxt
+         var parameterLimitExceeded = self._parameterLimitExceeded
++        var stringPayloadOverflow = self._stringPayloadOverflow
++        let maxStringPayloadBytes = self.maxStringPayloadBytes
+         let tableData = table.table
+         var dcsHandler = activeDcsHandler
+         
+@@ -820,6 +829,7 @@ public class EscapeSequenceParser {
+                 parsTxt = []
+                 collect = []
+                 parameterLimitExceeded = false
++                stringPayloadOverflow = false
+                 dcs = -1
+                 printStateReset()
+             case .dcsHook:
+@@ -847,6 +857,7 @@ public class EscapeSequenceParser {
+                 parsTxt = []
+                 collect = []
+                 parameterLimitExceeded = false
++                stringPayloadOverflow = false
+                 dcs = -1
+                 printStateReset()
+             case .oscStart:
+@@ -860,6 +871,7 @@ public class EscapeSequenceParser {
+                 } else {
+                     osc = []
+                 }
++                stringPayloadOverflow = false
+             case .oscPut:
+                 var j = i
+                 while j < end {
+@@ -867,7 +879,9 @@ public class EscapeSequenceParser {
+                     if c == ControlCodes.BEL || c == ControlCodes.CAN || c == ControlCodes.ESC {
+                         break
+                     } else if c >= 0x20 {
+-                        if currentState == .apcString {
++                        if stringPayloadOverflow || osc.count + apc.count >= maxStringPayloadBytes {
++                            stringPayloadOverflow = true
++                        } else if currentState == .apcString {
+                             apc.append (c)
+                         } else {
+                             osc.append (c)
+@@ -878,13 +892,13 @@ public class EscapeSequenceParser {
+                 i = j - 1
+             case .oscEnd:
+                 if currentState == .apcString {
+-                    if apc.count != 0 && code != ControlCodes.CAN && code != ControlCodes.SUB {
++                    if apc.count != 0 && !stringPayloadOverflow && code != ControlCodes.CAN && code != ControlCodes.SUB {
+                         let command = apc[apc.startIndex]
+                         let content = apc.count > 1 ? apc[(apc.startIndex+1)...] : ArraySlice<UInt8>()
+                         dispatchApc(command: command, content: content)
+                     }
+                 } else {
+-                    if osc.count != 0 && code != ControlCodes.CAN && code != ControlCodes.SUB {
++                    if osc.count != 0 && !stringPayloadOverflow && code != ControlCodes.CAN && code != ControlCodes.SUB {
+                         let oscCode: Int?
+                         var content: ArraySlice<UInt8>
+                         let semiColonAscii = 59 // ';'
+@@ -910,6 +924,7 @@ public class EscapeSequenceParser {
+                 parsTxt = []
+                 collect = []
+                 parameterLimitExceeded = false
++                stringPayloadOverflow = false
+                 dcs = -1
+                 printStateReset()
+             }
+@@ -929,6 +944,7 @@ public class EscapeSequenceParser {
+         _pars = pars
+         _parsTxt = parsTxt
+         _parameterLimitExceeded = parameterLimitExceeded
++        _stringPayloadOverflow = stringPayloadOverflow
+         
+         // save active dcs handler reference
+         activeDcsHandler = dcsHandler
 --- a/Sources/SwiftTerm/KittyGraphics.swift
 +++ b/Sources/SwiftTerm/KittyGraphics.swift
 @@ -634,12 +634,10 @@ extension Terminal {
@@ -1319,7 +1441,7 @@
          // Preserves the previous `deltaY == 0` early exit, restated against the
          // delta this method now reads. Without it a zero delta would fall into
          // the non-precise branch below and be turned into a spurious -1 line.
-@@ -3276,7 +3342,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -3276,13 +3342,19 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      {
          // Recompute metrics and redraw, but unlike the font setter do not
          // clear the active selection
@@ -1328,6 +1450,18 @@
          resetFont ()
      }
      
+     func getImageScale () -> CGFloat {
+         self.window?.backingScaleFactor ?? 1
+     }
++
++    /// The size of one cell in points and the backing scale images are drawn at,
++    /// for hosts that answer cell-size queries such as iTerm2's `ReportCellSize`.
++    public var cellMetrics: (size: CGSize, scale: CGFloat) {
++        (cellDimension, getImageScale ())
++    }
+     
+     func scale (image: NSImage, size: CGSize) -> NSImage {
+         
 --- a/Sources/SwiftTerm/iOS/iOSTerminalView.swift
 +++ b/Sources/SwiftTerm/iOS/iOSTerminalView.swift
 @@ -204,6 +204,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi

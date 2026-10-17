@@ -3349,6 +3349,12 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     func getImageScale () -> CGFloat {
         self.window?.backingScaleFactor ?? 1
     }
+
+    /// The size of one cell in points and the backing scale images are drawn at,
+    /// for hosts that answer cell-size queries such as iTerm2's `ReportCellSize`.
+    public var cellMetrics: (size: CGSize, scale: CGFloat) {
+        (cellDimension, getImageScale ())
+    }
     
     func scale (image: NSImage, size: CGSize) -> NSImage {
         

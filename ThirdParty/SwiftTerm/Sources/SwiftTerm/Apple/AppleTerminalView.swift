@@ -3194,7 +3194,7 @@ extension TerminalView {
     // Inserts the specified image at the current buffer position (x, y) using the specified size requests
     // and aspect ratio request.   The insertion is done by adding slices of the image, one per line
     // to the buffer.
-    func insertImage (_ image: TTImage, width widthRequest: ImageSizeRequest, height heightRequest: ImageSizeRequest, preserveAspectRatio: Bool)
+    public func insertImage (_ image: TTImage, width widthRequest: ImageSizeRequest, height heightRequest: ImageSizeRequest, preserveAspectRatio: Bool)
     {
         let buffer = terminal.buffer
         var img = image

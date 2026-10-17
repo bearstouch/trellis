@@ -34,7 +34,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 - Build processes from an executable plus an argument array. Never interpolate into a shell command line, and never add SSH trust-bypass flags.
 - Tokens never go in argv, environment variables or error messages.
 - Don't add telemetry or network calls.
-- Be especially careful in these areas: the control socket and grants (`TrellisControl`), escape-sequence handling (OSC 52, Kitty graphics, links), paste review, SSH invocation, and persistence permissions. Report vulnerabilities privately; see [Contribution workflow](workflow.md#security-issues).
+- Be especially careful in these areas: the control socket and grants (`TrellisControl`), escape-sequence handling (OSC 52, Kitty graphics, OSC 1337 inline images, links), paste review, SSH invocation, and persistence permissions. Report vulnerabilities privately; see [Contribution workflow](workflow.md#security-issues).
 
 ## Code style
 

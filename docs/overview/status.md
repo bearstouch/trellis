@@ -39,6 +39,7 @@ These checks can't be automated here and haven't been performed. They are record
 | Automation | Keychain-backed grants in the native UI; live multi-client socket checks; the installed `trellis` CLI |
 | Portability | Native export/import demo |
 | Security | Native link, clipboard and diagnostics checks |
+| Inline images | FR-IM01–FR-IM03 in the native app: iTerm2's `imgcat` for small and multipart images, `chafa -f iterm`, `timg`, `yazi` previews, and images surviving scrolling, resizing, `clear`, ⌘K and the alternate screen; tmux passthrough over SSH; drawing on Intel and non-Retina displays; how VoiceOver reads rows that hold images |
 | Links and selection | FR-C06 smart double-click in the native app (URLs, paths, emails, hashes; inside vim with `set mouse=a` the click goes to vim); FR-L02–FR-L05 ⌘-click and context-menu opening of real `ls --hyperlink=auto` output and compiler `file:line:col` paths, Finder reveal of a script and an `.app`, and a saved-SSH-host pane refusing paths |
 
 ## Tested matrix

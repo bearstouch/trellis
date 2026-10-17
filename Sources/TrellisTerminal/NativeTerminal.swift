@@ -45,6 +45,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onAttentionRequested: (() -> Void)?
     public private(set) var passwordPromptActive = false
     private var passwordCheck: Task<Void, Never>?
+    private var imageTransfer = MultipartImageTransfer()
     /// Delay before re-reading the PTY modes after I/O; prompts change them just before or after writing.
     static let passwordCheckDelay: TimeInterval = 0.1
     /// True while a native text field (such as tab renaming) owns editing keys.
@@ -90,6 +91,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.describeLink = { [weak self] in self?.describeLink($0) }
         surface.onOpenLink = { [weak self] in self?.openLink($0) }
         observeNotifications()
+        observeInlineImages()
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
             if !data.isEmpty {
@@ -318,6 +320,37 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard !digits.isEmpty else { return true }
         let rest = data.dropFirst(digits.count)
         return !(rest.isEmpty || rest.first == UInt8(ascii: ";"))
+    }
+
+    /// iTerm2's inline image protocol (FR-IM01–FR-IM04) replaces upstream's OSC 1337 handling, which would decode
+    /// any NSImage format. Images are decoded in stream order so they land where the cursor was.
+    private func observeInlineImages() {
+        terminalView.getTerminal().registerOscHandler(code: 1337) { [weak self] data in self?.handleInlineImage(data) }
+    }
+
+    func handleInlineImage(_ data: ArraySlice<UInt8>) {
+        // Any command other than a part ends an unfinished multipart transfer.
+        switch InlineImageCommand(data) {
+        case .filePart(let part): imageTransfer.append(part)
+        case .fileEnd: if let (arguments, bytes) = imageTransfer.finish() { showImage(bytes, arguments) }
+        case .multipartBegin(let arguments): imageTransfer.begin(arguments)
+        case .file(let arguments, let payload):
+            imageTransfer.reset()
+            guard arguments.inline, let bytes = Data(base64Encoded: Data(payload)) else { return }
+            showImage(bytes, arguments)
+        case .reportCellSize:
+            imageTransfer.reset()
+            let metrics = terminalView.cellMetrics
+            terminalView.getTerminal().sendResponse(text: InlineImageCommand.cellSizeReport(size: metrics.size, scale: metrics.scale))
+        case .other: imageTransfer.reset()
+        }
+    }
+
+    private func showImage(_ data: Data, _ arguments: InlineImageArguments) {
+        guard let image = InlineImageDecoder.image(from: data) else { return }
+        let metrics = terminalView.cellMetrics
+        let box = InlineImageLayout.requests(image: image.size, arguments, cell: metrics.size, pane: terminalView.frame.size, scale: metrics.scale)
+        terminalView.insertImage(image, width: box.width, height: box.height, preserveAspectRatio: box.preserveAspectRatio)
     }
 
     /// Every 133 mark keeps upstream prompt handling; only marks with this session's

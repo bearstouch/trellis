@@ -330,6 +330,10 @@ public class EscapeSequenceParser {
     /// ```
     public var oscHandlers: [Int:OscHandler] = [:]
 
+    /// OSC and APC payloads longer than this are dropped whole instead of
+    /// growing parser state without bound.
+    public var maxStringPayloadBytes = 8 * 1024 * 1024
+
     var activeDcsHandler: DcsHandler? = nil
     var errorHandler: (ParsingState) -> ParsingState = { (state : ParsingState) -> ParsingState in return state; }
 
@@ -346,6 +350,7 @@ public class EscapeSequenceParser {
     var _parsTxt: [UInt8]
     var _collect: cstring
     var _parameterLimitExceeded: Bool
+    var _stringPayloadOverflow: Bool
     var printHandler: PrintHandler = { (slice : ArraySlice<UInt8>) -> () in }
     var printStateReset: () -> () = {  }
     
@@ -368,6 +373,7 @@ public class EscapeSequenceParser {
         _parsTxt = []
         _collect = []
         _parameterLimitExceeded = false
+        _stringPayloadOverflow = false
     }
 
     @inline(__always)
@@ -646,6 +652,7 @@ public class EscapeSequenceParser {
         _parsTxt = []
         _collect = []
         _parameterLimitExceeded = false
+        _stringPayloadOverflow = false
         activeDcsHandler = nil
         printStateReset()
     }
@@ -690,6 +697,8 @@ public class EscapeSequenceParser {
         var pars = self._pars
         var parsTxt = self._parsTxt
         var parameterLimitExceeded = self._parameterLimitExceeded
+        var stringPayloadOverflow = self._stringPayloadOverflow
+        let maxStringPayloadBytes = self.maxStringPayloadBytes
         let tableData = table.table
         var dcsHandler = activeDcsHandler
         
@@ -820,6 +829,7 @@ public class EscapeSequenceParser {
                 parsTxt = []
                 collect = []
                 parameterLimitExceeded = false
+                stringPayloadOverflow = false
                 dcs = -1
                 printStateReset()
             case .dcsHook:
@@ -847,6 +857,7 @@ public class EscapeSequenceParser {
                 parsTxt = []
                 collect = []
                 parameterLimitExceeded = false
+                stringPayloadOverflow = false
                 dcs = -1
                 printStateReset()
             case .oscStart:
@@ -860,6 +871,7 @@ public class EscapeSequenceParser {
                 } else {
                     osc = []
                 }
+                stringPayloadOverflow = false
             case .oscPut:
                 var j = i
                 while j < end {
@@ -867,7 +879,9 @@ public class EscapeSequenceParser {
                     if c == ControlCodes.BEL || c == ControlCodes.CAN || c == ControlCodes.ESC {
                         break
                     } else if c >= 0x20 {
-                        if currentState == .apcString {
+                        if stringPayloadOverflow || osc.count + apc.count >= maxStringPayloadBytes {
+                            stringPayloadOverflow = true
+                        } else if currentState == .apcString {
                             apc.append (c)
                         } else {
                             osc.append (c)
@@ -878,13 +892,13 @@ public class EscapeSequenceParser {
                 i = j - 1
             case .oscEnd:
                 if currentState == .apcString {
-                    if apc.count != 0 && code != ControlCodes.CAN && code != ControlCodes.SUB {
+                    if apc.count != 0 && !stringPayloadOverflow && code != ControlCodes.CAN && code != ControlCodes.SUB {
                         let command = apc[apc.startIndex]
                         let content = apc.count > 1 ? apc[(apc.startIndex+1)...] : ArraySlice<UInt8>()
                         dispatchApc(command: command, content: content)
                     }
                 } else {
-                    if osc.count != 0 && code != ControlCodes.CAN && code != ControlCodes.SUB {
+                    if osc.count != 0 && !stringPayloadOverflow && code != ControlCodes.CAN && code != ControlCodes.SUB {
                         let oscCode: Int?
                         var content: ArraySlice<UInt8>
                         let semiColonAscii = 59 // ';'
@@ -910,6 +924,7 @@ public class EscapeSequenceParser {
                 parsTxt = []
                 collect = []
                 parameterLimitExceeded = false
+                stringPayloadOverflow = false
                 dcs = -1
                 printStateReset()
             }
@@ -929,6 +944,7 @@ public class EscapeSequenceParser {
         _pars = pars
         _parsTxt = parsTxt
         _parameterLimitExceeded = parameterLimitExceeded
+        _stringPayloadOverflow = stringPayloadOverflow
         
         // save active dcs handler reference
         activeDcsHandler = dcsHandler

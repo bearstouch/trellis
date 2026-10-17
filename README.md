@@ -4,8 +4,6 @@
 
 A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal panes in bundled Roboto Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
-> **Status:** pre-release. The MVP feature set is implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See [status and known limits](docs/overview/status.md) and the [changelog](CHANGELOG.md) (current version: 0.9.2).
-
 ## Features
 
 - **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Tabs show a busy bar while printing and an **Input** label when a program waits for a password or rings for your attention. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
@@ -169,6 +167,8 @@ Settings → Appearance includes 10 editor-inspired theme families, each with da
 The Terminal font picker lists the monospace typefaces installed on your Mac and previews the selected font. Apply Appearance to save your choice.
 
 Terminals draw font ligatures (with fonts that have them, such as the bundled JetBrains Mono), colour emoji, wide CJK characters and combining marks on the cell grid, along with the usual text styles: bold, dim, italic, underline in single, double, curly, dotted and dashed styles with its own colour, strikethrough, overline, blink, inverse and concealed text. Settings → Appearance turns ligatures, bold-as-bright colours, bold and italic faces, and blinking text on or off.
+
+Programs can show images inline with iTerm2's image protocol, so `imgcat`, `yazi`, `timg` and `chafa -f iterm` work as they do in iTerm2.
 
 ## Troubleshooting
 

@@ -108,6 +108,9 @@ public struct LocalLaunchValidator: Sendable {
         environment["TERM"] = "xterm-256color"
         environment["COLORTERM"] = "truecolor"
         environment["TERM_PROGRAM"] = "Trellis"
+        // Image tools look for iTerm2 here before using its inline image protocol (FR-IM05).
+        environment["LC_TERMINAL"] = "iTerm2"
+        environment["LC_TERMINAL_VERSION"] = "3.5.0"
         environment.removeValue(forKey: "ITERM_SESSION_ID")
         environment.removeValue(forKey: "TERM_SESSION_ID")
         var arguments = configuration.arguments

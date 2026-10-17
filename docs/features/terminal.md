@@ -65,6 +65,20 @@ Hold ⌘ and hover to underline a link; ⌘-click opens it. Links come from OSC 
 
 Known limits: a host reached by typing `ssh` inside a local shell isn't detected, so absolute paths from it open if the same path exists on this Mac. The `:line[:column]` suffix isn't passed to editors. The pointer doesn't change to a hand over links.
 
+## Inline images
+
+Programs can show images in the terminal with iTerm2's inline image protocol (OSC 1337): `imgcat`, `yazi`, `timg`, `chafa -f iterm` and the `viu` crate all use it. An image takes the cells it covers, scrolls with the text around it, and is kept in scrollback like a line of text.
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-IM01 | Show `File=…;inline=1:<base64>` images at the cursor. | A PNG, JPEG, GIF, BMP, TIFF, WebP or HEIC image appears where the cursor was, and the cursor moves to the line below it. `width` and `height` accept `auto`, cells (`N`, below 200), pixels (`Npx`, below 4096) and a share of the pane (`N%`); other values mean `auto`. `preserveAspectRatio=0` stretches the image to the box. An image that would be wider than the pane, or taller than 10,000 pixels at the display's scale (a side that follows from the aspect ratio can be far larger), is shrunk to fit and keeps its shape; a box with both sides given is used as is. JPEG orientation is applied. Animated GIFs show their first frame. |
+| FR-IM02 | Show images sent in parts (`MultipartFile`, then `FilePart`s, then `FileEnd`), as newer `imgcat` does for large files. | The image matches the same file sent with `File=`. A transfer that another OSC 1337 command interrupts, that has bad base64, that grows past its declared `size`, or that goes over 32 MiB shows nothing, and the terminal keeps working. |
+| FR-IM03 | Answer `ReportCellSize`. | The reply is `OSC 1337;ReportCellSize=<height>;<width>;<scale> ST`: the cell size in points and the display's backing scale. |
+| FR-IM04 | Treat image data as untrusted. | `inline=0` (a file download) shows nothing and writes no file. Only the bitmap formats in FR-IM01 are decoded, so PDF, EPS and SVG show nothing. An image over 10,000 pixels on a side or 40 megapixels is refused from its header before any pixels are decoded. A 10,000 × 1 image asked to be ten rows tall is drawn no wider than the pane. Any OSC or APC sequence longer than 8 MiB is dropped whole, so a single `File=` image can be at most about 6 MiB. Other iTerm2 commands (`SetMark`, `SetUserVar`, `CurrentDir`, …) are ignored. |
+| FR-IM05 | Tell programs the protocol is available. | Local sessions get `LC_TERMINAL=iTerm2` and `LC_TERMINAL_VERSION=3.5.0`; `TERM_PROGRAM` stays `Trellis`. |
+
+Known limits: images are decoded on the main thread, so a very large image can pause drawing briefly. The PTY's pixel size (`TIOCGWINSZ` `ws_xpixel`/`ws_ypixel`) is reported as zero, so tools that size images from it fall back to `ReportCellSize` or their own defaults. VoiceOver doesn't announce images. SSH sessions only see `LC_TERMINAL` if the server accepts it (`AcceptEnv LC_*` is common).
+
 ## Terminal output is untrusted
 
 Terminal output can be written by anything, so Trellis treats it as hostile:
@@ -72,6 +86,7 @@ Terminal output can be written by anything, so Trellis treats it as hostile:
 - Terminal-initiated clipboard reads and writes, including OSC 52, are disabled by default.
 - Opening a link needs a user gesture (⌘-click or a context-menu choice). Only `http`, `https` and `mailto` links and existing local files open; files that could run code are only revealed in Finder (FR-L01–FR-L04). Custom schemes and automatic opening are disabled.
 - Copy strips terminal control sequences.
+- Inline images never download or open files, decode only bitmap formats within pixel limits, and every OSC or APC sequence is capped at 8 MiB (FR-IM04).
 - Nothing in terminal output can change permissions. That includes text that looks like instructions to an agent.
 
 The terminal scrollbar stays hidden while idle. Hovering over its right-edge track reveals it when scrollback is available. Scrolling gestures reveal it only when the viewport moves; it fades out one second after scrolling stops or the pointer leaves the track. Incoming output alone does not reveal it, and visibility changes do not alter the terminal grid width.

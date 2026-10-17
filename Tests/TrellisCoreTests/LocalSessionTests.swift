@@ -82,7 +82,10 @@ final class LocalSessionTests: XCTestCase {
     func testStripControlSecrets() throws {
         let configuration = LocalLaunchConfiguration(
             executable: "/bin/zsh", directory: "/tmp",
-            inheritedEnvironment: ["TRELLIS_TOKEN": "secret-a", "__TRELLIS_SOCKET": "secret-b", "trellis_grant": "secret-c", "PATH": "/bin", "GOOD": "before", "ITERM_SESSION_ID": "old"],
+            inheritedEnvironment: [
+                "TRELLIS_TOKEN": "secret-a", "__TRELLIS_SOCKET": "secret-b", "trellis_grant": "secret-c", "PATH": "/bin", "GOOD": "before", "ITERM_SESSION_ID": "old",
+                "LC_TERMINAL": "tmux"
+            ],
             environmentOverrides: ["GOOD": "after", "SPECIAL": "x=y"])
         let validated = try LocalLaunchValidator(files: TestLaunchFiles()).validate(configuration)
         XCTAssertEqual(validated.environment["GOOD"], "after")
@@ -90,6 +93,8 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertFalse(validated.environmentArray.joined().contains("secret-"))
         XCTAssertNil(validated.environment["ITERM_SESSION_ID"])
         XCTAssertEqual(validated.environment["TERM"], "xterm-256color")
+        XCTAssertEqual(validated.environment["LC_TERMINAL"], "iTerm2", "Image tools detect the inline image protocol")
+        XCTAssertEqual(validated.environment["TERM_PROGRAM"], "Trellis")
     }
 
     @MainActor
