@@ -9,7 +9,7 @@ Open the host library with **File → Hosts…**.
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-H01 | Create, edit, delete, search and tag saved SSH hosts. | Save an alias or hostname, with an optional username, port, identity-file reference, tags and saved password, and reconnect from the host list. |
-| FR-H02 | Open a host in a new tab or an explicitly chosen split. | Each connection has its own SSH process. Editing a host affects only later connections. |
+| FR-H02 | Open a host in a new tab or an explicitly chosen split. | The Hosts window offers a new tab; a split is chosen through automation (`host.connect` with a split target). Each connection has its own SSH process. Editing a host affects only later connections. |
 | FR-H03 | Discover aliases from the user's SSH config without changing it. | Imported aliases keep their SSH alias. Config details Trellis doesn't understand are left to OpenSSH. |
 | FR-H04 | Keep SSH's own authentication and trust prompts. | Unknown or changed host keys and password or passphrase prompts stay interactive. No host-key bypass is ever added. |
 | FR-H05 | Leave failed connections open for inspection and reconnect only when asked. | A failed SSH process shows its status and exit code. There's no automatic credential retry loop. |

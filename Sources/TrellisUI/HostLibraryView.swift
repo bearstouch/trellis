@@ -128,11 +128,6 @@ public struct HostLibraryView: View {
                 HStack {
                     Button("Connect in New Tab") { model.onConnect?(host, .newTab) }
                         .accessibilityHint("Starts a new ssh process for \(host.name)")
-                    Menu("Connect in Split") {
-                        Button("Left/Right") { model.onConnect?(host, .split(.x)) }
-                        Button("Top/Bottom") { model.onConnect?(host, .split(.y)) }
-                    }
-                    .fixedSize()
                 }
                 .disabled(model.onConnect == nil || hasUnsavedChanges(host))
                 if hasUnsavedChanges(host) {
