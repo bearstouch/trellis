@@ -19,7 +19,10 @@ public struct WorkspaceRootView: View {
             }
             Divider().overlay(model.separatorOverlay)
             HStack(spacing: 8) {
-                Text(model.presentation.selectedWindow?.name ?? "Trellis")
+                HStack(spacing: 5) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
+                    Text(model.presentation.selectedWindow?.name ?? "Trellis")
+                }
                 Spacer()
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
                 if let notice = model.themeNotice { Text(notice).lineLimit(1).help(notice) }
@@ -159,13 +162,14 @@ public struct WorkspaceRootView: View {
         VStack(spacing: 10) {
             sidebarToggle.padding(.bottom, 8)
             newWindowButton
+            // Padding leaves room for the tile corner markers, which the scroll view would otherwise clip.
             ScrollView {
                 let descriptors = model.accessibility.windows
                 VStack(spacing: 8) {
                     ForEach(model.snapshot.windows) { window in
                         windowTile(window, descriptor: descriptors.first { $0.id == window.id })
                     }
-                }.padding(.vertical, 2).accessibilityElement(children: .contain).accessibilityLabel("Windows")
+                }.padding(.vertical, 8).frame(maxWidth: .infinity).accessibilityElement(children: .contain).accessibilityLabel("Windows")
             }.scrollIndicators(.hidden)
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)

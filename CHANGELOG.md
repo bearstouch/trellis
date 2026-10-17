@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-17
+
+This release adds an optional MCP server, saved SSH passwords in the Keychain, richer text rendering, inline images, smart selection and file links, attention and activity cues on tabs, and a terminal bell setting. Trellis now opens in dark mode on first launch.
+
 ### Added
 
+- **Settings → Appearance → Bell** chooses what a terminal bell does: Sound (the macOS alert sound, the default), Visual flash, Sound and flash, or Off. A bell still marks the tab as waiting for input whatever the choice (FR-T07).
+- The status bar shows the Trellis icon before the window name, and `swift run` builds now show the Trellis icon in the Dock and About panel too.
 - Hovering a window in the collapsed sidebar shows a card of its tabs with their live status (busy, waiting for input, failed command, exited) and pane counts; click a tab to jump straight to it (FR-W06). The card replaces the window-name tooltip.
 - An optional MCP server lets agents such as Claude Code control Trellis (INT-07). Turn it on in the new **Settings → Remote Control** section, which also sets the interface and port (default `127.0.0.1:7777`). Every API method except event subscriptions is an MCP tool, authorized by the same automation grants: clients send a grant token as a bearer token, and see and run only what the grant allows. It's off by default and listens only on loopback unless you confirm a network address, which warns that the traffic is plain HTTP. Browser origins and DNS rebinding are refused, revoking a grant ends its sessions at once, and `--no-mcp` turns it off for one launch.
 - Saved SSH hosts can remember a password in the macOS Keychain (Hosts → Password). It is stored only on this Mac, is never shown again, and is given to `/usr/bin/ssh` through a bundled `SSH_ASKPASS` helper only for the host's password prompt, at most once per connection. Host-key confirmations, key passphrases and any retry are still asked in the terminal. An optional per-host toggle requires Touch ID or the Mac password before each use. Changing the destination, user, port or identity file removes the saved password, as does deleting the host. Exports, the automation API and the CLI never include it.
@@ -23,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Dark is now the first-launch appearance. Settings saved by an earlier version keep their mode.
+- In the About panel, "LayerX Labs" links to https://layerx.xyz.
 - Bold white text (SGR 1;37) is now drawn bright white, like bold text in the other base colours.
 - Concealed text (SGR 8) is now hidden. Its background still shows, and copy and search still see the text.
 - Underline, strikethrough and overline now cover the whole width of wide characters, emoji and ligatures, and dotted, dashed and curly underlines join up across colour changes.
@@ -206,7 +214,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/layerx-labs/trellis/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/layerx-labs/trellis/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/layerx-labs/trellis/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/layerx-labs/trellis/releases/tag/v0.9.0

@@ -23,7 +23,7 @@ let package = Package(
     targets: [
         .target(name: "TrellisAskpass"),
         .executableTarget(name: "TrellisAskpassMain", dependencies: ["TrellisAskpass"]),
-        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration")]),
+        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon")]),
         .target(name: "TrellisPOSIX"),
         .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "SwiftTerm"]),
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),

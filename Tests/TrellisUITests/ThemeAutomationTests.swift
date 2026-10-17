@@ -89,10 +89,11 @@ final class ThemeAutomationTests: XCTestCase {
 
         let before = h.model.appearance
         let revision = h.model.appearanceRevision
-        _ = try result(try await h.call("appearance.set", ["mode": "dark"]))
-        let stale = try await h.call("appearance.set", ["mode": "light", "expectedRevision": Int(revision)])
+        // Dark is the default, so switching to light is a real change that bumps the revision.
+        _ = try result(try await h.call("appearance.set", ["mode": "light"]))
+        let stale = try await h.call("appearance.set", ["mode": "dark", "expectedRevision": Int(revision)])
         XCTAssertEqual(errorCode(stale), "CONFLICT")
-        XCTAssertEqual(h.model.appearance.chromeMode, .dark, "A stale revision changes nothing")
+        XCTAssertEqual(h.model.appearance.chromeMode, .light, "A stale revision changes nothing")
         XCTAssertNotEqual(h.model.appearance, before)
         let invalid = try await h.call("theme.validate", ["document": ["version": 1, "id": "Bad ID", "name": "x", "appearance": "dark"]])
         XCTAssertEqual(try result(invalid)["valid"] as? Bool, false)

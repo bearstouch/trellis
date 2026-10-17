@@ -43,6 +43,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onPasswordPromptChanged: ((Bool) -> Void)?
     /// The program rang the bell or posted an OSC 9/777 notification (FR-T06). Carries no text.
     public var onAttentionRequested: (() -> Void)?
+    /// The audible half of the bell (FR-T07); injected so tests stay silent.
+    var playBell: () -> Void = { NSSound.beep() }
     public private(set) var passwordPromptActive = false
     private var passwordCheck: Task<Void, Never>?
     private var imageTransfer = MultipartImageTransfer()
@@ -198,6 +200,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.allowBoldFont = settings.allowBoldFont
         terminalView.allowItalicFont = settings.allowItalicFont
         terminalView.textBlinkEnabled = settings.blinkingText
+        terminalView.bellStyle = Self.bellStyle(settings.bellStyle)
         if terminalView.scrollback.budget.lineLimit != settings.scrollbackLines {
             let old = terminalView.scrollback
             let evicted = old.historyEvicted || old.retainedHistoryRows > settings.scrollbackLines
@@ -443,6 +446,15 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         case .web(let url): return TerminalLinkMenu(openTitle: "Open Link", copyTitle: "Copy Link", copyText: url.absoluteString, click: frozen)
         case .file(let path, .open): return TerminalLinkMenu(openTitle: "Open", copyTitle: "Copy Path", copyText: path, click: frozen)
         case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Reveal in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
+        }
+    }
+    public func bell(source: TerminalView) { playBell() }
+    static func bellStyle(_ style: TerminalBellStyle) -> BellStyle {
+        switch style {
+        case .sound: .sound;
+        case .visual: .visual;
+        case .soundAndVisual: .soundAndVisual;
+        case .off: .none
         }
     }
     public func setTerminalTitle(source: TerminalView, title: String) {}

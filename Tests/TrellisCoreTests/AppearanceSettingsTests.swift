@@ -2,9 +2,23 @@ import XCTest
 @testable import TrellisCore
 
 final class AppearanceSettingsTests: XCTestCase {
+    func testBundledAppIconIsAPNG() throws {
+        let data = try Data(contentsOf: XCTUnwrap(BundledAppIcon.url()))
+        XCTAssertEqual(Array(data.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
+    }
+    func testSettingsSavedBeforeBellStyleLoadAsSoundAndKeepTheirMode() throws {
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
+        legacy["bellStyle"] = nil; legacy["chromeMode"] = "light"
+        let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(decoded.bellStyle, .sound)
+        XCTAssertEqual(decoded.chromeMode, .light)
+        legacy["bellStyle"] = "chime"
+        XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy)).bellStyle, .sound)
+    }
     func testFirstLaunchPalette() {
         let settings = AppearanceSettings()
-        XCTAssertEqual(settings.chromeMode, .light)
+        XCTAssertEqual(settings.chromeMode, .dark)
+        XCTAssertEqual(settings.bellStyle, .sound)
         XCTAssertEqual(settings.fontName, "RobotoMono-Regular")
         XCTAssertEqual(settings.fontSize, 13)
         XCTAssertEqual(TerminalPalette.builtIn.background, 0x151719)
@@ -65,7 +79,7 @@ final class AppearanceSettingsTests: XCTestCase {
     func testTextRenderingRoundTrip() throws {
         var settings = AppearanceSettings()
         settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
-        settings.allowItalicFont = false; settings.blinkingText = false
+        settings.allowItalicFont = false; settings.blinkingText = false; settings.bellStyle = .visual
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)), settings)
     }
     func testTerminalRenderingDiffersCoversTextStyleFields() {
@@ -76,7 +90,8 @@ final class AppearanceSettingsTests: XCTestCase {
         let changes: [(inout AppearanceSettings) -> Void] = [
             { $0.fontName = "Menlo" }, { $0.fontSize = 14 }, { $0.cursorShape = .bar }, { $0.cursorBlinks = true },
             { $0.scrollbackLines = 1 }, { $0.fontLigatures = false }, { $0.boldAsBright = false },
-            { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false }
+            { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false },
+            { $0.bellStyle = .off }
         ]
         for (index, change) in changes.enumerated() {
             var changed = base

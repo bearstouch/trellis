@@ -13,8 +13,21 @@ public enum ChromeMode: String, Codable, CaseIterable, Sendable {
 
 public enum TerminalCursorShape: String, Codable, CaseIterable, Sendable { case block, underline, bar }
 
+/// What a BEL does (FR-T07). Attention requests (FR-T06) fire whatever the style.
+public enum TerminalBellStyle: String, Codable, CaseIterable, Sendable {
+    case sound, visual, soundAndVisual, off
+    public var displayName: String {
+        switch self {
+        case .sound: "Sound";
+        case .visual: "Visual flash";
+        case .soundAndVisual: "Sound and flash";
+        case .off: "Off"
+        }
+    }
+}
+
 public struct AppearanceSettings: Codable, Equatable, Sendable {
-    public var chromeMode: ChromeMode = .light
+    public var chromeMode: ChromeMode = .dark
     public static let defaultFontName = "RobotoMono-Regular"
     public var fontName = Self.defaultFontName
     public var fontSize: Double = 13
@@ -29,12 +42,13 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var allowBoldFont = true
     public var allowItalicFont = true
     public var blinkingText = true
+    public var bellStyle: TerminalBellStyle = .sound
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
-        case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText
+        case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle
     }
-    /// Settings saved before the text-rendering keys existed load with their defaults.
+    /// Settings saved before the text-rendering and bell keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         chromeMode = try c.decode(ChromeMode.self, forKey: .chromeMode)
@@ -50,6 +64,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         allowBoldFont = try c.decodeIfPresent(Bool.self, forKey: .allowBoldFont) ?? true
         allowItalicFont = try c.decodeIfPresent(Bool.self, forKey: .allowItalicFont) ?? true
         blinkingText = try c.decodeIfPresent(Bool.self, forKey: .blinkingText) ?? true
+        // A style added by a newer build falls back to Sound instead of discarding every appearance setting.
+        bellStyle = (try? c.decodeIfPresent(TerminalBellStyle.self, forKey: .bellStyle)) ?? .sound
     }
     /// True when terminals must be updated: everything except chrome mode and theme selection.
     public func terminalRenderingDiffers(from other: Self) -> Bool {

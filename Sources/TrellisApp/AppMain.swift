@@ -36,6 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self, selector: #selector(activateExistingInstance),
             name: Notification.Name(identity.activationNotification), object: nil)
         NSWindow.allowsAutomaticWindowTabbing = false
+        // A packaged app gets its icon from AppIcon.icns; `swift run` would show the generic executable icon.
+        if Bundle.main.bundleURL.pathExtension != "app", let url = BundledAppIcon.url(), let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
         model.onChromeModeChanged = { mode in
             switch mode {
             case .light: NSApp.appearance = NSAppearance(named: .aqua)
@@ -347,13 +351,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     .font: NSFont.systemFont(ofSize: 12),
                     .link: URL(string: "https://github.com/layerx-labs/trellis/blob/main/LICENSE")!
                 ]))
-        credits.append(NSAttributedString(string: ".", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        credits.append(NSAttributedString(string: ".\n\n© 2026 ", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        // The standard Copyright option is plain text, so the linked copyright line lives in the credits.
+        credits.append(NSAttributedString(string: "LayerX Labs", attributes: [.font: NSFont.systemFont(ofSize: 12), .link: URL(string: "https://layerx.xyz")!]))
+        credits.append(NSAttributedString(string: " and Trellis contributors. All rights reserved.", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        let centered = NSMutableParagraphStyle(); centered.alignment = .center
+        credits.addAttribute(.paragraphStyle, value: centered, range: NSRange(location: 0, length: credits.length))
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Trellis",
             .applicationIcon: NSApp.applicationIconImage!,
             .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
             .version: "",
-            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "© 2026 LayerX Labs and Trellis contributors. All rights reserved.",
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "",
             .credits: credits
         ])
     }

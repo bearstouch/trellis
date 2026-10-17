@@ -151,6 +151,9 @@ struct AppearanceSettingsView: View {
                 ForEach(TerminalCursorShape.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }
             Toggle("Blink cursor", isOn: $draft.cursorBlinks)
+            Picker("Bell", selection: $draft.bellStyle) {
+                ForEach(TerminalBellStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }
             Toggle("Ligatures", isOn: $draft.fontLigatures)
             Text("Joins sequences such as -> and != in fonts that include ligatures, such as JetBrains Mono.")
                 .font(.caption).foregroundStyle(.secondary)
