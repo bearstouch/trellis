@@ -21,7 +21,8 @@ public struct WorkspaceRootView: View {
             HStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
-                    Text(model.presentation.selectedWindow?.name ?? "Trellis")
+                    Text("Trellis")
+                    Text(AppVersion.current).monospacedDigit().opacity(0.7).accessibilityLabel("Version \(AppVersion.current)")
                 }
                 Spacer()
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
@@ -29,6 +30,10 @@ public struct WorkspaceRootView: View {
                 if let notice = model.appearanceNotice { Text(notice).lineLimit(1).help(notice) }
                 Text(model.accessibility.status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(model.accessibility.status)")
                 Text("·  UTF-8  ·  Local")
+                if let name = model.presentation.selectedWindow?.name {
+                    Text("·").accessibilityHidden(true)
+                    Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Window \(name)")
+                }
             }
             .font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 12).frame(height: 28)
             .background(model.themeColor(.surface))

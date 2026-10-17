@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Desktop notifications: programs can post macOS notifications with OSC 9, OSC 777 `notify` and kitty's OSC 99 (with chunked, base64 and query forms). They appear when you aren't looking at the pane, and clicking one jumps to it. Notification text is cleaned of control characters, length-capped and limited to 5 per pane every 10 seconds. **Settings → Appearance → Desktop notifications** turns them off; the tab's **Input** label still shows (FR-T08).
 
+### Changed
+
+- The status bar now always reads **Trellis** followed by the app version on the left (also in `swift run` builds), and shows the selected window's name at the right end.
+
 ## [0.10.0] - 2026-10-17
 
 This release adds an optional MCP server, saved SSH passwords in the Keychain, richer text rendering, inline images, smart selection and file links, attention and activity cues on tabs, and a terminal bell setting. Trellis now opens in dark mode on first launch.
