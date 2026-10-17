@@ -159,6 +159,8 @@ Trellis was previously named **uTerm**. On first launch it copies an existing uT
 
 Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
 
+The installed app (`dev.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `dev.trellis.dev`. Each identity has its own instance lock, activation notification, state directory (`~/Library/Application Support/dev.trellis.dev/` for development) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
+
 ## Themes and terminal fonts
 
 Settings → Appearance includes 10 editor-inspired theme families, each with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations, with matching terminal and app colors. Choose separate light and dark palettes; System appearance switches between them automatically. The original Trellis defaults remain available.

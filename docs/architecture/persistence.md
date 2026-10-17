@@ -2,7 +2,7 @@
 
 ## What is saved and where
 
-All state lives in `~/Library/Application Support/dev.trellis/`. The `--state-directory /abs/path` launch argument replaces that location.
+All state lives in `~/Library/Application Support/<identity>/`: `dev.trellis` for the installed app, and `dev.trellis.dev` for development builds (unbundled executables and the `Trellis Dev` feasibility bundle). The two identities also hold separate instance locks, so both can run at once. The `--state-directory /abs/path` launch argument replaces that location.
 
 | File | Contents | Protection |
 | --- | --- | --- |
@@ -60,4 +60,4 @@ Relaunching restores windows, tabs, splits and titles with every session **stopp
 
 ## Migrating from uTerm
 
-On first launch, if `dev.trellis` doesn't exist, Trellis copies `dev.uterm` (or `dev.uterm.feasibility`) through a staging directory and then moves it into place. The originals are left alone. Custom themes whose IDs use the reserved `trellis-` prefix get the new ID `imported-<uuid>`, and their saved selections in `workspace.json` and its backup are updated to match. A path passed with `--state-directory` is used as-is, with no migration.
+On first launch, if `dev.trellis` doesn't exist, Trellis copies `dev.uterm` (or `dev.uterm.feasibility`) through a staging directory and then moves it into place. The originals are left alone. Custom themes whose IDs use the reserved `trellis-` prefix get the new ID `imported-<uuid>`, and their saved selections in `workspace.json` and its backup are updated to match. Only the installed app identity migrates. Development builds (`dev.trellis.dev`) and paths passed with `--state-directory` are used as-is, with no migration.

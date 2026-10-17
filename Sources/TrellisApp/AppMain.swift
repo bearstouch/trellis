@@ -23,14 +23,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
 
-    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, grants: GrantListModel) {
-        self.model = model; self.hosts = hosts; self.control = control; self.grants = grants
+    private let identity: AppInstanceIdentity
+
+    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, grants: GrantListModel, identity: AppInstanceIdentity) {
+        self.model = model; self.hosts = hosts; self.control = control; self.grants = grants; self.identity = identity
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(activateExistingInstance),
-            name: Notification.Name("dev.trellis.activateExistingInstance"), object: nil)
+            name: Notification.Name(identity.activationNotification), object: nil)
         NSWindow.allowsAutomaticWindowTabbing = false
         model.onChromeModeChanged = { mode in
             switch mode {
@@ -487,14 +489,15 @@ struct TrellisMain {
         app.setActivationPolicy(.regular)
         NativeTerminalFont.registerBundledFonts()
         do {
-            let lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("dev.trellis-\(getuid()).instance.lock")
+            let identity = AppInstanceIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
+            let lockURL = identity.lockURL(in: FileManager.default.temporaryDirectory)
             let instanceLock: ApplicationInstanceLock
             switch try ApplicationInstanceLock.acquire(at: lockURL) {
             case .acquired(let lock): instanceLock = lock
             case .alreadyRunning(let pid):
                 if let pid { NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows]) }
                 DistributedNotificationCenter.default().postNotificationName(
-                    Notification.Name("dev.trellis.activateExistingInstance"), object: nil,
+                    Notification.Name(identity.activationNotification), object: nil,
                     userInfo: nil, deliverImmediately: true)
                 return
             }
@@ -505,7 +508,7 @@ struct TrellisMain {
             } else {
                 directory = try ApplicationSupportLocation.prepare(
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
-                    bundleIdentifier: Bundle.main.bundleIdentifier)
+                    bundleIdentifier: identity.identifier)
             }
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
@@ -550,7 +553,7 @@ struct TrellisMain {
                     }
                 }
             }
-            let delegate = AppDelegate(model: model, hosts: hosts, control: control, grants: GrantListModel(store: grantStore))
+            let delegate = AppDelegate(model: model, hosts: hosts, control: control, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}
