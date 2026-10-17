@@ -163,7 +163,7 @@
      /**
       * Returns the active buffer (either the normal buffer or the alternative buffer)
       */
-@@ -1180,6 +1186,13 @@
+@@ -1180,6 +1186,21 @@
      {
          parser.oscHandlers [code] = handler
      }
@@ -173,6 +173,14 @@
 +    public func handleSemanticPrompt (_ data: ArraySlice<UInt8>)
 +    {
 +        oscSemanticPrompt(data)
++    }
++
++    /// Runs the built-in OSC 9;4 progress-report handling, so an embedder that
++    /// registers its own OSC 9 handler keeps the progress bar. Returns false for other OSC 9 forms.
++    @discardableResult
++    public func handleProgressReport (_ data: ArraySlice<UInt8>) -> Bool
++    {
++        oscProgressReport(data)
 +    }
      
      func cmdSet8BitControls ()

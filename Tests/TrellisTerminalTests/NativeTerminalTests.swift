@@ -99,6 +99,42 @@ final class NativeTerminalTests: XCTestCase {
         XCTAssertFalse(native.isRunning)
         native.adapter.detach()
     }
+
+    @MainActor
+    func testBellAndNotificationsRequestAttentionButProgressDoesNot() async throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        var count = 0
+        native.onAttentionRequested = { count += 1 }
+        for (bytes, expected) in [
+            ("\u{07}", 1), ("\u{1b}]9;Build done\u{07}", 1), ("\u{1b}]777;notify;Title;Body\u{07}", 1), ("\u{1b}]9;3 tests failed\u{07}", 1),
+            ("\u{1b}]9;4;1;50\u{07}", 0), ("\u{1b}]9;1\u{07}", 0), ("\u{1b}]777;other;x\u{07}", 0), ("plain text", 0)
+        ] {
+            count = 0
+            native.adapter.receive(Data(bytes.utf8))
+            XCTAssertEqual(count, expected, bytes.debugDescription)
+        }
+        XCTAssertFalse(try native.adapter.read(.retainedText).contains("Build done"), "Notification text is not printed")
+        // The OSC 9 handler must still hand 9;4 progress to the engine's progress bar.
+        let bar = native.view.subviews.first { String(describing: type(of: $0)).contains("ProgressBar") }
+        XCTAssertEqual(bar?.isHidden, false, "OSC 9;4 still drives the progress bar")
+    }
+
+    @MainActor
+    func testEchoOffWithLineEditingIsReportedAsAPasswordPrompt() async throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.requestTermination(force: true); native.adapter.detach() }
+        var changes: [Bool] = []
+        native.onPasswordPromptChanged = { changes.append($0) }
+        native.start(arguments: ["-f", "-c", "stty -echo; printf 'Password:'; sleep 1; stty echo; printf '\\n'; stty -echo -icanon; printf 'raw'; sleep 1"])
+        let deadline = Date().addingTimeInterval(8)
+        while changes != [true, false], Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(changes, [true, false])
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(changes, [true, false], "Raw mode (a line editor or full-screen program) is never a password prompt")
+    }
 }
 
 @MainActor

@@ -1193,6 +1193,14 @@ open class Terminal {
     {
         oscSemanticPrompt(data)
     }
+
+    /// Runs the built-in OSC 9;4 progress-report handling, so an embedder that
+    /// registers its own OSC 9 handler keeps the progress bar. Returns false for other OSC 9 forms.
+    @discardableResult
+    public func handleProgressReport (_ data: ArraySlice<UInt8>) -> Bool
+    {
+        oscProgressReport(data)
+    }
     
     func cmdSet8BitControls ()
     {

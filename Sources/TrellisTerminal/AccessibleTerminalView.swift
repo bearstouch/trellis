@@ -10,6 +10,7 @@ final class AccessibleTerminalView: TerminalView {
     var onPasteRequested: ((TerminalPasteInput) -> Void)?
     var onSearchRequested: (() -> Void)?
     var onContentsChanged: (() -> Void)?
+    var onBell: (() -> Void)?
     var scrollback = TerminalScrollback(budget: .standard)
     /// The configurable Find chord; other ⌘ chords reach the menu bar.
     var searchChord: KeyChord? = ShortcutMap.defaults[.findInPane]
@@ -19,6 +20,12 @@ final class AccessibleTerminalView: TerminalView {
     private var scrollbarHideTask: Task<Void, Never>?
     var scrollbarIdleDelay: Duration = .seconds(1)
     private var terminalScroller: NSScroller? { subviews.compactMap { $0 as? NSScroller }.first }
+
+    /// Every BEL counts as an attention request, whatever the bell style.
+    override func bell(source: Terminal) {
+        super.bell(source: source)
+        onBell?()
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

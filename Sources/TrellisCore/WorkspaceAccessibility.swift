@@ -7,6 +7,16 @@ public struct AccessibilityDescriptor: Equatable, Sendable {
     public let isSelected: Bool
 }
 
+/// Why a pane's program is waiting for the user (FR-T06). Runtime-only, never persisted.
+public enum InputWaitReason: String, Sendable {
+    /// The PTY has echo off with line editing on, as a password prompt does.
+    case password
+    /// The program rang the bell or posted a notification while the pane was not in view.
+    case attention
+
+    public var text: String { self == .password ? "Waiting for a password" : "Waiting for input" }
+}
+
 public enum SessionStatusText {
     /// Words, never color alone, describe each lifecycle state.
     public static func describe(_ state: SessionState, exitCode: Int32?) -> String {
@@ -26,8 +36,9 @@ public struct WorkspaceAccessibility: Sendable {
         public var exitCode: Int32?
         /// Exit status of the shell's last command, from shell integration; nil when unknown or zero.
         public var failedCommandExit: Int32?
-        public init(state: SessionState, exitCode: Int32? = nil, failedCommandExit: Int32? = nil) {
-            self.state = state; self.exitCode = exitCode; self.failedCommandExit = failedCommandExit
+        public var inputWait: InputWaitReason?
+        public init(state: SessionState, exitCode: Int32? = nil, failedCommandExit: Int32? = nil, inputWait: InputWaitReason? = nil) {
+            self.state = state; self.exitCode = exitCode; self.failedCommandExit = failedCommandExit; self.inputWait = inputWait
         }
     }
 
@@ -43,7 +54,7 @@ public struct WorkspaceAccessibility: Sendable {
     /// keyed by pane ID. Window attention sets come from activity tracking.
     public init(
         snapshot: WorkspaceSnapshot, live: [UUID: LiveSession] = [:],
-        windowsWithOutput: Set<UUID> = [], windowsWithExit: Set<UUID> = [], titles: [UUID: String] = [:]
+        windowsWithOutput: Set<UUID> = [], windowsWithExit: Set<UUID> = [], windowsNeedingInput: Set<UUID> = [], titles: [UUID: String] = [:]
     ) {
         let presentation = WorkspacePresentation(snapshot: snapshot)
         func session(_ pane: WorkspacePane) -> LiveSession? {
@@ -51,6 +62,7 @@ public struct WorkspaceAccessibility: Sendable {
         }
         windows = snapshot.windows.map { window in
             var parts = ["\(window.tabIDs.count) \(window.tabIDs.count == 1 ? "tab" : "tabs")"]
+            if windowsNeedingInput.contains(window.id) { parts.append("waiting for input") }
             if windowsWithExit.contains(window.id) { parts.append("a session exited") } else if windowsWithOutput.contains(window.id) { parts.append("new output") }
             return AccessibilityDescriptor(id: window.id, label: "Window \(window.name)", value: parts.joined(separator: ", "), isSelected: window.id == snapshot.activeWindowID)
         }
@@ -67,6 +79,7 @@ public struct WorkspaceAccessibility: Sendable {
             guard let pane = snapshot.panes[id] else { return nil }
             var state = session(pane).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"
             if let code = live[pane.id]?.failedCommandExit { state += ", " + Self.commandFailureText(code) }
+            if let wait = live[pane.id]?.inputWait { state += ", " + wait.text }
             let focused = id == presentation.selectedTab?.activePaneID
             return AccessibilityDescriptor(
                 id: id, label: "Terminal \(pane.title ?? titles[id] ?? "pane \(index + 1)")",

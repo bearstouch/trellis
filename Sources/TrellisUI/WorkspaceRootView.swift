@@ -194,6 +194,9 @@ public struct WorkspaceRootView: View {
                 Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
                 Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
                 Spacer()
+                if model.windowsNeedingInput.contains(window.id) {
+                    Image(systemName: "keyboard").font(.system(size: 10)).help("Waiting for input")
+                }
                 if model.activity[window.id]?.hasExit == true {
                     Image(systemName: "stop.circle").help("A session exited")
                 } else if model.activity[window.id]?.hasOutput == true {
@@ -220,6 +223,12 @@ public struct WorkspaceRootView: View {
                 .background(selected ? model.sidebarSelectionBackground : model.themeColor(.surface), in: shape)
                 // Selection is a border too, never color alone.
                 .overlay(shape.strokeBorder(selected ? model.themeColor(.accent) : model.themeColor(.border).opacity(0.6), lineWidth: selected ? 2 : 1))
+                .overlay(alignment: .bottomTrailing) {
+                    if model.windowsNeedingInput.contains(window.id) {
+                        Image(systemName: "keyboard.fill").font(.system(size: 8)).foregroundStyle(model.themeColor(.accent))
+                            .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: 4, y: 4).help("Waiting for input")
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
                     if model.activity[window.id]?.hasExit == true {
                         Image(systemName: "stop.circle.fill").font(.system(size: 9)).foregroundStyle(model.themeColor(.mutedForeground))
@@ -290,8 +299,9 @@ public struct WorkspaceRootView: View {
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
         let selected = tab.id == model.presentation.selectedTab?.id
         let busy = model.busyTabIDs.contains(tab.id)
+        let wait = model.inputWait(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let value = [descriptor?.value ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
         return HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
@@ -316,6 +326,14 @@ public struct WorkspaceRootView: View {
                 Image(systemName: "exclamationmark.circle").font(.system(size: 10))
                     .help(WorkspaceAccessibility.commandFailureText(code))
                     .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
+            }
+            if let wait {
+                // A word in a capsule, not color alone (FR-T06); the tab's value speaks it.
+                Label("Input", systemImage: "keyboard").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium)).lineLimit(1)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
+                    .overlay(Capsule().strokeBorder(model.themeColor(.accent).opacity(0.6), lineWidth: 1))
+                    .fixedSize().help(wait.text).accessibilityHidden(true)
             }
             Button {
                 Task { await model.closeTab(tab.id) }

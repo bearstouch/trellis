@@ -151,6 +151,15 @@ final class PTYProcess: LocalSessionTransport {
         _ = ioctl(descriptor, TIOCSWINSZ, &dimensions)
     }
 
+    /// Echo off with canonical input on is how readpassphrase-style prompts (sudo, ssh, `read -s`) read a
+    /// secret. Line editors and full-screen programs turn canonical input off, so they never match.
+    var passwordPromptActive: Bool {
+        guard descriptor >= 0, !readEnded else { return false }
+        var modes = termios()
+        guard tcgetattr(descriptor, &modes) == 0 else { return false }
+        return modes.c_lflag & tcflag_t(ECHO) == 0 && modes.c_lflag & tcflag_t(ICANON) != 0
+    }
+
     func signalGroup(_ signal: Int32) {
         reapChild()
         guard isRunning, let identity = launchIdentity,

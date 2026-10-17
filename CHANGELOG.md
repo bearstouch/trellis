@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Saved SSH hosts can remember a password in the macOS Keychain (Hosts → Password). It is stored only on this Mac, is never shown again, and is given to `/usr/bin/ssh` through a bundled `SSH_ASKPASS` helper only for the host's password prompt, at most once per connection. Host-key confirmations, key passphrases and any retry are still asked in the terminal. An optional per-host toggle requires Touch ID or the Mac password before each use. Changing the destination, user, port or identity file removes the saved password, as does deleting the host. Exports, the automation API and the CLI never include it.
 - Hosts → **Connect in New Window** opens a saved host in a new managed window named after the host.
 - Tabs show an animated bar along their top edge while a pane is printing output. Output at a shell-integrated prompt and the echo of your own typing never trigger it. Reduce Motion shows a static bar.
+- Tabs show an **Input** label when their program is waiting for you: a password prompt (sudo, ssh, `read -s`) while it lasts, or a bell or terminal notification (OSC 9, OSC 777) from a pane you aren't looking at, such as a coding agent asking for permission. The window list marks windows with a waiting pane, and `session.get` reports `waitingForInput`.
 
 ### Changed
 

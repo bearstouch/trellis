@@ -39,6 +39,14 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
     /// Authenticated shell-integration marks only (FR-SI02); forged output never reaches this.
     public var onShellIntegrationEvent: ((ShellIntegrationEvent) -> Void)?
+    /// A password-style prompt: the PTY has echo off with line editing on (FR-T06). Fires on change only.
+    public var onPasswordPromptChanged: ((Bool) -> Void)?
+    /// The program rang the bell or posted an OSC 9/777 notification (FR-T06). Carries no text.
+    public var onAttentionRequested: (() -> Void)?
+    public private(set) var passwordPromptActive = false
+    private var passwordCheck: Task<Void, Never>?
+    /// Delay before re-reading the PTY modes after I/O; prompts change them just before or after writing.
+    static let passwordCheckDelay: TimeInterval = 0.1
     /// True while a native text field (such as tab renaming) owns editing keys.
     /// Keyboard and mouse-report bytes are dropped instead of reaching the PTY.
     public var inputSuspended = false
@@ -74,11 +82,14 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
         surface.onSearchRequested = { [weak self] in self?.showSearch() }
         surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
+        surface.onBell = { [weak self] in self?.onAttentionRequested?() }
+        observeNotifications()
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
             if !data.isEmpty {
                 self?.onOutputData?(data)
                 self?.onOutput?()
+                self?.schedulePasswordCheck()
             }
         }
         session.onInputError = { [weak self] error in self?.onInputError?(error) }
@@ -157,6 +168,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard !inputSuspended else { return }
         onInput?()
         do { try adapter.send(Data(data)) } catch { onInputError?(error) }
+        schedulePasswordCheck()
     }
     /// Mutate the stable native view. No session lifecycle or input operation is
     /// involved; a metrics change only updates the PTY's dimensions.
@@ -250,7 +262,50 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         return winsize(ws_row: UInt16(clamping: terminal.rows), ws_col: UInt16(clamping: terminal.cols), ws_xpixel: 0, ws_ypixel: 0)
     }
     private func processTerminated(exitCode: Int32?) {
+        passwordCheck?.cancel(); passwordCheck = nil
+        updatePasswordPrompt(false)
         onExit?(exitCode)
+    }
+
+    /// Coalesced: a burst of output reads the PTY modes once. Modes only change around I/O, so nothing polls.
+    private func schedulePasswordCheck() {
+        guard passwordCheck == nil else { return }
+        passwordCheck = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.passwordCheckDelay))
+            guard let self, !Task.isCancelled else { return }
+            self.passwordCheck = nil
+            self.updatePasswordPrompt(self.process.passwordPromptActive)
+        }
+    }
+
+    private func updatePasswordPrompt(_ active: Bool) {
+        guard active != passwordPromptActive else { return }
+        passwordPromptActive = active
+        onPasswordPromptChanged?(active)
+    }
+
+    /// OSC 9 text and OSC 777 `notify` are attention requests; their text is never kept. Numbered OSC 9 forms
+    /// (`9;4;…` progress and other ConEmu commands) are not notifications.
+    private func observeNotifications() {
+        let terminal = terminalView.getTerminal()
+        // The OSC 9 handler replaces upstream's, so 9;4 progress is forwarded to keep the progress bar.
+        terminal.registerOscHandler(code: 9) { [weak self, weak terminal] data in
+            if terminal?.handleProgressReport(data) == true { return }
+            guard let self, Self.isNotification(osc9: data) else { return }
+            self.onAttentionRequested?()
+        }
+        terminal.registerOscHandler(code: 777) { [weak self] data in
+            guard let self, data.starts(with: Array("notify;".utf8)) else { return }
+            self.onAttentionRequested?()
+        }
+    }
+
+    nonisolated static func isNotification(osc9 data: ArraySlice<UInt8>) -> Bool {
+        guard !data.isEmpty else { return false }
+        let digits = data.prefix { (0x30...0x39).contains($0) }
+        guard !digits.isEmpty else { return true }
+        let rest = data.dropFirst(digits.count)
+        return !(rest.isEmpty || rest.first == UInt8(ascii: ";"))
     }
 
     /// Every 133 mark keeps upstream prompt handling; only marks with this session's

@@ -67,6 +67,10 @@ struct PaneTreeView: View {
                             .help(WorkspaceAccessibility.commandFailureText(code))
                             .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
                     }
+                    if let wait = model.inputWaits[id] {
+                        Label(wait == .password ? "Password" : "Needs input", systemImage: "keyboard").lineLimit(1)
+                            .help(wait.text).accessibilityLabel(wait.text)
+                    }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.

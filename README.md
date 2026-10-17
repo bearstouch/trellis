@@ -8,7 +8,7 @@ A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal pan
 
 ## Features
 
-- **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
+- **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Tabs show a busy bar while printing and an **Input** label when a program waits for a password or rings for your attention. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
 - **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Includes scrollback search, safe paste review, copy, and Cmd-click links (http/https/mailto only).
 - **Shell integration:** zsh, bash and fish report their current directory and each command's exit status, with no dotfile edits. New splits and tabs open where you are, failed commands are flagged, and ⌘↑/⌘↓ jump between prompts. On by default; turn it off in Settings → Sessions.
 - **Appearance:** separate Light/Dark theme slots and a JSON theme library with live preview (Settings → Themes).

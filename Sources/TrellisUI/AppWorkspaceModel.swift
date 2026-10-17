@@ -229,10 +229,11 @@ public final class AppWorkspaceModel: ObservableObject {
             snapshot: snapshot,
             live: terminals.reduce(into: [:]) { live, entry in
                 live[entry.key] = WorkspaceAccessibility.LiveSession(
-                    state: entry.value.sessionState, exitCode: entry.value.exitCode, failedCommandExit: failedCommandExit(paneID: entry.key))
+                    state: entry.value.sessionState, exitCode: entry.value.exitCode, failedCommandExit: failedCommandExit(paneID: entry.key),
+                    inputWait: inputWaits[entry.key])
             },
             windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys),
-            titles: automaticTitles)
+            windowsNeedingInput: windowsNeedingInput, titles: automaticTitles)
     }
 
     /// VoiceOver names each terminal by pane and status; its value stays the text.
@@ -257,6 +258,8 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Tabs with a pane printing output right now (FR-T05).
     @Published public private(set) var busyTabIDs: Set<UUID> = []
     private var outputActivity = PaneOutputActivity()
+    /// Panes whose program waits for the user (FR-T06); runtime-only, never persisted.
+    @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:]
     private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
     var activityNow: () -> Date = Date.init
     var activitySleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
@@ -496,6 +499,9 @@ public final class AppWorkspaceModel: ObservableObject {
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
         outputActivity.retain(Set(next.panes.keys))
+        if inputWaits.keys.contains(where: { next.panes[$0] == nil }) { inputWaits = inputWaits.filter { next.panes[$0.key] != nil } }
+        // Looking at the pane answers a bell; a password prompt stays until echo returns.
+        if let viewed = presentation.activePane?.id, inputWaits[viewed] == .attention { inputWaits.removeValue(forKey: viewed) }
         for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
@@ -591,7 +597,9 @@ public final class AppWorkspaceModel: ObservableObject {
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
                 self.closureCoordinator.forget(sessionID: request.sessionID)
                 if let registration = self.askpassRegistrations.removeValue(forKey: request.sessionID) { self.askpass?.unregister(registration) }
-                if self.terminals[paneID] === terminal { self.shellStates.removeValue(forKey: paneID); self.settleOutput(paneID: paneID) }
+                if self.terminals[paneID] === terminal {
+                    self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
+                }
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
             }
@@ -682,6 +690,35 @@ public final class AppWorkspaceModel: ObservableObject {
         return state.lastExitCode
     }
 
+    /// The strongest wait among a tab's panes: a password prompt outranks a bell (FR-T06).
+    public func inputWait(tabID: UUID) -> InputWaitReason? {
+        let waits = snapshot.tabs[tabID]?.root.paneIDs.compactMap { inputWaits[$0] } ?? []
+        return waits.contains(.password) ? .password : waits.first
+    }
+
+    public var windowsNeedingInput: Set<UUID> {
+        Set(inputWaits.keys.compactMap { snapshot.panes[$0].flatMap { snapshot.tabs[$0.tabID]?.windowID } })
+    }
+
+    /// At the shell prompt (known through integration) nothing is waiting on a program: a completion bell or the
+    /// user's own `stty -echo` must not label the tab.
+    private func atShellPrompt(_ paneID: UUID) -> Bool { shellStates[paneID]?.commandRunning == false }
+
+    private func setPasswordPrompt(_ active: Bool, paneID: UUID) {
+        if active, !atShellPrompt(paneID) {
+            if inputWaits[paneID] != .password { inputWaits[paneID] = .password }
+        } else if inputWaits[paneID] == .password {
+            inputWaits.removeValue(forKey: paneID)
+        }
+        refreshTerminalAccessibility()
+    }
+
+    private func requestAttention(paneID: UUID) {
+        guard inputWaits[paneID] == nil, presentation.activePane?.id != paneID, !atShellPrompt(paneID) else { return }
+        inputWaits[paneID] = .attention
+        refreshTerminalAccessibility()
+    }
+
     private var automaticTitles: [UUID: String] {
         var titles: [UUID: String] = [:]
         for id in shellStates.keys { if let title = automaticTitle(paneID: id) { titles[id] = title } }
@@ -707,6 +744,8 @@ public final class AppWorkspaceModel: ObservableObject {
         case .commandFinished, .promptStart: settleOutput(paneID: paneID)
         case .commandInputStart, .commandStart: break
         }
+        // Back at the prompt, the program that asked is gone.
+        if case .promptStart = event, inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
         var state = shellStates[paneID] ?? ShellIntegrationState()
         state.apply(event, at: Date())
         guard state != shellStates[paneID] else { return }
@@ -819,6 +858,15 @@ public final class AppWorkspaceModel: ObservableObject {
             self.outputActivity.recordInput(pane.id, at: self.activityNow())
         }
         shellStates.removeValue(forKey: pane.id)
+        inputWaits.removeValue(forKey: pane.id)
+        terminal.onPasswordPromptChanged = { [weak self, weak terminal] active in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.setPasswordPrompt(active, paneID: pane.id)
+        }
+        terminal.onAttentionRequested = { [weak self, weak terminal] in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.requestAttention(paneID: pane.id)
+        }
         terminal.onShellIntegrationEvent = { [weak self, weak terminal] event in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
             self.applyShellEvent(event, paneID: pane.id)
