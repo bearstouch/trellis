@@ -32,7 +32,8 @@ These checks can't be automated here and haven't been performed. They are record
 | Terminal engine | Real IME composition and VoiceOver terminal reading |
 | Native shell | Lifecycle and display checks on external and non-Retina monitors |
 | Accessibility and input | VoiceOver navigation, a real IME, US and Portuguese keyboard layouts, dead keys |
-| Hosts | Native host-library and alias-discovery demos |
+| Hosts | Native host-library and alias-discovery demos; Connect in New Window in the native UI |
+| Tabs | FR-T05 busy bar: the real animation with `seq`, the static bar under Reduce Motion, VoiceOver reading "output in progress" |
 | SSH | Known, unknown and changed host keys; agent, passphrase and password prompts; saved-password login through askpass, with and without Touch ID, and with real `/usr/bin/ssh` retries and host-key prompts; dropped networks, against a controlled SSH server |
 | Automation | Keychain-backed grants in the native UI; live multi-client socket checks; the installed `trellis` CLI |
 | Portability | Native export/import demo |

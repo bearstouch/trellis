@@ -29,6 +29,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onStateChanged: ((SessionState) -> Void)?
     public var onFocused: (() -> Void)?
     public var onOutput: (() -> Void)?
+    /// Fires on each write to the PTY through the view (keystrokes, paste, and terminal-generated replies such as
+    /// cursor or mouse reports); carries no data, so input is never exposed.
+    public var onInput: (() -> Void)?
     /// Raw PTY bytes in arrival order, for bounded automation journaling.
     public var onOutputData: ((Data) -> Void)?
     public var onExit: ((Int32?) -> Void)?
@@ -152,6 +155,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     }
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
         guard !inputSuspended else { return }
+        onInput?()
         do { try adapter.send(Data(data)) } catch { onInputError?(error) }
     }
     /// Mutate the stable native view. No session lifecycle or input operation is

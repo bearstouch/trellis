@@ -89,6 +89,45 @@ final class HostConnectionTests: XCTestCase {
     }
 
     @MainActor
+    func testConnectInNewWindowCreatesNamedWindow() async throws {
+        let fake = try fakeSSH(exitCode: nil)
+        let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
+        let model = try await makeModel(host: host, ssh: fake.path)
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        let original = try XCTUnwrap(model.presentation.selectedWindow)
+        let frozen = Date()
+        model.activityNow = { frozen }
+
+        let result = await model.connect(host: host, placement: .newWindow)
+        let pane = try XCTUnwrap(result)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("FAKE-SSH-READY") }
+        await model.waitForUpdates()
+        let snapshot = model.snapshot
+        XCTAssertEqual(snapshot.windows.count, 2)
+        let window = try XCTUnwrap(snapshot.windows.last)
+        XCTAssertNotEqual(window.id, original.id)
+        XCTAssertEqual(window.name, "Prod")
+        XCTAssertEqual(snapshot.activeWindowID, window.id)
+        XCTAssertEqual(window.tabIDs.count, 1)
+        let tab = try XCTUnwrap(snapshot.tabs[window.activeTabID])
+        XCTAssertEqual(tab.title, "Prod")
+        XCTAssertEqual(tab.root.paneIDs, [pane])
+        let session = try XCTUnwrap(snapshot.panes[pane]?.sessionID)
+        XCTAssertEqual(snapshot.sessions[session]?.launch, .host(host.id))
+        XCTAssertEqual(snapshot.sessions[session]?.state, .running)
+        XCTAssertEqual(snapshot.windows.first { $0.id == original.id }?.tabIDs, original.tabIDs, "The original window is untouched")
+        // Output without integration or recent input marks the tab busy until it goes quiet (FR-T05).
+        XCTAssertEqual(model.busyTabIDs, [tab.id])
+        model.activityNow = { frozen.addingTimeInterval(PaneOutputActivity.quietInterval + 0.1) }
+        try await waitUntil { model.busyTabIDs.isEmpty }
+    }
+
+    @MainActor
     func testFailedConnectionDoesNotRetry() async throws {
         let fake = try fakeSSH(exitCode: 255)
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Down", destination: "down").validated { _ in false }, revision: 1)

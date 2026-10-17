@@ -157,7 +157,7 @@ public struct WorkspaceRootView: View {
 
     private var collapsedSidebar: some View {
         VStack(spacing: 10) {
-            sidebarToggle
+            sidebarToggle.padding(.bottom, 8)
             newWindowButton
             ScrollView {
                 let descriptors = model.accessibility.windows
@@ -289,7 +289,9 @@ public struct WorkspaceRootView: View {
 
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
         let selected = tab.id == model.presentation.selectedTab?.id
+        let busy = model.busyTabIDs.contains(tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
+        let value = [descriptor?.value ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
         return HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
@@ -326,9 +328,7 @@ public struct WorkspaceRootView: View {
             // The tint sits above the opaque active background, so a selected tab keeps it.
             .background(tab.color.map { $0.swatchColor.opacity(selected ? 0.2 : 0.12) } ?? .clear)
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
-            .overlay(alignment: .top) {
-                if let color = tab.color { Rectangle().fill(color.swatchColor).frame(height: 3).help("\(color.displayName) label") }
-            }
+            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy) }
             .overlay(alignment: .bottom) {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
@@ -336,7 +336,7 @@ public struct WorkspaceRootView: View {
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(descriptor?.label ?? "Tab \(model.displayTitle(tab))")
-            .accessibilityValue(descriptor?.value ?? "")
+            .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
@@ -360,6 +360,16 @@ public struct WorkspaceRootView: View {
                 Divider().overlay(model.separatorOverlay)
                 Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
             }
+    }
+
+    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool) -> some View {
+        if busy {
+            let fill = tab.color?.swatchColor ?? model.themeColor(.accent)
+            TabBusyBar(fill: fill, track: tab.color?.swatchColor.opacity(0.3) ?? .clear, animated: !model.reduceMotion)
+                .help(tab.color.map { "Printing output · \($0.displayName) label" } ?? "Printing output")
+        } else if let color = tab.color {
+            Rectangle().fill(color.swatchColor).frame(height: 3).help("\(color.displayName) label")
+        }
     }
 
     private func beginTabRename(_ tab: WorkspaceTab) {
@@ -415,6 +425,32 @@ extension TabColor {
         }
         image.isTemplate = false
         return Image(nsImage: image)
+    }
+}
+
+/// A tab's top edge filling and unfilling while its panes print output (FR-T05). Static under Reduce Motion.
+private struct TabBusyBar: View {
+    let fill: Color
+    let track: Color
+    let animated: Bool
+    @State private var filled = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                track
+                fill.frame(width: animated ? geometry.size.width * (filled ? 1 : 0.08) : geometry.size.width)
+            }
+        }
+        .frame(height: 3)
+        .onAppear { start(animated) }
+        .onChange(of: animated) { _, next in start(next) }
+    }
+
+    private func start(_ animated: Bool) {
+        filled = false
+        guard animated else { return }
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { filled = true }
     }
 }
 

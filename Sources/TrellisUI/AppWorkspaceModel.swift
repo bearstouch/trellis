@@ -254,6 +254,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var defaultShell: String
     @Published public private(set) var defaultDirectory: String
     @Published public private(set) var activity: [UUID: WindowActivity] = [:]
+    /// Tabs with a pane printing output right now (FR-T05).
+    @Published public private(set) var busyTabIDs: Set<UUID> = []
+    private var outputActivity = PaneOutputActivity()
+    private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
+    var activityNow: () -> Date = Date.init
+    var activitySleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
     /// Applies to sessions started after a change (FR-SI06).
     @Published public private(set) var shellIntegrationEnabled: Bool
     /// Runtime-only, per pane, from authenticated marks; never persisted or logged.
@@ -489,6 +495,8 @@ public final class AppWorkspaceModel: ObservableObject {
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
+        outputActivity.retain(Set(next.panes.keys))
+        for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
@@ -497,8 +505,9 @@ public final class AppWorkspaceModel: ObservableObject {
         scheduleWorkspaceSave()
     }
 
-    public func createWindow(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async {
-        guard !isRestoring, recoveryMessage == nil, !shuttingDown, !Task.isCancelled else { return }
+    @discardableResult
+    public func createWindow(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async -> UUID? {
+        guard !isRestoring, recoveryMessage == nil, !shuttingDown, !Task.isCancelled else { return nil }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
@@ -507,11 +516,12 @@ public final class AppWorkspaceModel: ObservableObject {
             // confirmation loop. Shutdown gates only the process launch.
             guard let id = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == id }),
                 let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID]
-            else { return }
+            else { return nil }
             attachTerminal(pane)
             publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
-        } catch { errorMessage = "The window could not be created." }
+            return id
+        } catch { errorMessage = "The window could not be created."; return nil }
     }
 
     public func selectWindow(_ id: UUID) async {
@@ -581,7 +591,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
                 self.closureCoordinator.forget(sessionID: request.sessionID)
                 if let registration = self.askpassRegistrations.removeValue(forKey: request.sessionID) { self.askpass?.unregister(registration) }
-                if self.terminals[paneID] === terminal { self.shellStates.removeValue(forKey: paneID) }
+                if self.terminals[paneID] === terminal { self.shellStates.removeValue(forKey: paneID); self.settleOutput(paneID: paneID) }
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
             }
@@ -693,6 +703,10 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
+        switch event {
+        case .commandFinished, .promptStart: settleOutput(paneID: paneID)
+        case .commandInputStart, .commandStart: break
+        }
         var state = shellStates[paneID] ?? ShellIntegrationState()
         state.apply(event, at: Date())
         guard state != shellStates[paneID] else { return }
@@ -746,6 +760,36 @@ public final class AppWorkspaceModel: ObservableObject {
         if indicator != activity[tab.windowID] { activity[tab.windowID] = indicator }
     }
 
+    private func recordOutput(paneID: UUID) {
+        guard outputActivity.recordOutput(paneID, at: activityNow(), commandRunning: shellStates[paneID]?.commandRunning),
+            let tabID = snapshot.panes[paneID]?.tabID
+        else { return }
+        if !busyTabIDs.contains(tabID) { busyTabIDs.insert(tabID) }
+        guard busySettleTasks[tabID] == nil else { return }
+        // One polling task per busy tab; output chunks only refresh a timestamp, never publish.
+        busySettleTasks[tabID] = Task { [weak self] in
+            repeat {
+                guard let sleep = self?.activitySleep else { return }
+                await sleep(PaneOutputActivity.quietInterval / 4)
+            } while !Task.isCancelled && self?.refreshBusy(tabID) == true
+        }
+    }
+
+    /// Clears the tab when none of its panes is busy; returns whether it still is.
+    @discardableResult
+    private func refreshBusy(_ tabID: UUID) -> Bool {
+        let now = activityNow()
+        if snapshot.tabs[tabID]?.root.paneIDs.contains(where: { outputActivity.isBusy($0, at: now) }) == true { return true }
+        if busyTabIDs.contains(tabID) { busyTabIDs.remove(tabID) }
+        busySettleTasks.removeValue(forKey: tabID)?.cancel()
+        return false
+    }
+
+    private func settleOutput(paneID: UUID) {
+        outputActivity.settle(paneID)
+        if let tabID = snapshot.panes[paneID]?.tabID { refreshBusy(tabID) }
+    }
+
     public func renameWindow(_ id: UUID, name: String) async {
         do { publish(try await service.execute(.renameWindow(id: id, name: name)).snapshot) } catch { errorMessage = "Use a window name between 1 and 200 characters." }
     }
@@ -765,7 +809,15 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.inputSuspended = editingTabID != nil
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
-        terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
+        terminal.onOutput = { [weak self, weak terminal] in
+            guard let self else { return }
+            self.recordActivity(paneID: pane.id)
+            if let terminal, self.terminals[pane.id] === terminal { self.recordOutput(paneID: pane.id) }
+        }
+        terminal.onInput = { [weak self] in
+            guard let self else { return }
+            self.outputActivity.recordInput(pane.id, at: self.activityNow())
+        }
         shellStates.removeValue(forKey: pane.id)
         terminal.onShellIntegrationEvent = { [weak self, weak terminal] event in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
@@ -925,7 +977,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// Where a saved-host connection opens. Splits divide the focused pane.
-    public enum HostPlacement: Sendable, Equatable { case newTab, split(SplitAxis) }
+    public enum HostPlacement: Sendable, Equatable { case newTab, newWindow, split(SplitAxis) }
 
     /// Each call creates a new pane and session with its own ssh process; an
     /// existing connection is never reused or retried.
@@ -934,12 +986,12 @@ public final class AppWorkspaceModel: ObservableObject {
         guard !isRestoring, recoveryMessage == nil, !shuttingDown else { return nil }
         let paneID: UUID?
         switch placement {
-        case .newTab:
+        case .newTab, .newWindow:
             let created: UUID?
-            if presentation.selectedWindow == nil {
+            if placement == .newWindow || presentation.selectedWindow == nil {
                 // A new window already contains one stopped pane; use it instead of adding a tab.
-                await createWindow(name: host.name, startSession: false)
-                created = presentation.selectedTab?.id
+                let window = await createWindow(name: host.name, startSession: false)
+                created = window.flatMap { id in snapshot.windows.first { $0.id == id }?.activeTabID }
             } else {
                 created = await createTab(startSessions: false)
             }
