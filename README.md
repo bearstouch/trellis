@@ -4,7 +4,7 @@
 
 A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal panes in bundled Roboto Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
-> **Status:** pre-release. The MVP feature set is implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See [status and known limits](docs/overview/status.md) and the [changelog](CHANGELOG.md) (current version: 0.9.0).
+> **Status:** pre-release. The MVP feature set is implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See [status and known limits](docs/overview/status.md) and the [changelog](CHANGELOG.md) (current version: 0.9.2).
 
 ## Features
 

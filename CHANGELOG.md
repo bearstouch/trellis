@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-17
+
 ### Added
 
 - Tabs can carry a color label: right-click a tab and choose **Color** (red, orange, yellow, green, blue, purple, gray, or None). A labeled tab shows a colored stripe and a light tint, VoiceOver reads the color name, and the label is saved with the workspace and kept when a tab is duplicated. Automation sets it with `tab.update` (`"color": "blue"`, or `null` to clear) and `trellis tab color --tab <tab> --color blue|none`.
@@ -180,6 +182,7 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/layerx-labs/trellis/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/layerx-labs/trellis/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/layerx-labs/trellis/releases/tag/v0.9.0
