@@ -52,6 +52,7 @@ Rules for shortcuts:
 | Use bold fonts / Use italic fonts | On / On | On, Off (FR-TX03) |
 | Allow blinking text | On | On, Off (FR-TX03); always steady under Reduce Motion |
 | Light / dark theme | `trellis-light` / `trellis-dark` | Any installed theme for that appearance |
+| Remote Control: MCP server | Off, `127.0.0.1`, port 7777 | Interface IP literal, port 1024–65535 ([MCP server](../api/mcp.md#settings), FR-RC01–FR-RC03) |
 
 Changes apply live, without restarting sessions. Settings saved by an earlier version, which have no text-rendering values, load with these defaults.
 

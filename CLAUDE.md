@@ -48,10 +48,11 @@ Always run format + lint + build + test before committing.
 | `TrellisTerminal` | SwiftTerm-specific code only: `NativeTerminal`, `AccessibleTerminalView`, `PTYProcess`, scrollback, search, selection bookmarks, terminal appearance. |
 | `TrellisUI` | SwiftUI/AppKit views and `AppWorkspaceModel` (`@MainActor` `ObservableObject` bridging store ↔ views ↔ terminals). |
 | `TrellisControl` | Local automation: AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, auth-gated `ControlHandler`. |
+| `TrellisMCP` | Optional MCP server (Streamable HTTP, off by default): TCP listener, HTTP parser, MCP sessions, tool table over `AuthorizingControlHandler`. Settings → Remote Control. |
 | `TrellisApp` | `AppMain.swift`: app entry, menus/commands, launch arguments. |
 | `TrellisRelease` | Release manifest checks, user-local CLI link planner, uninstall allow-list, release checklist. |
 | `TrellisCLI` / `TrellisCLIMain` | `trellis-cli` (installed as `trellis`): injected-effect CLI over the control socket; no token argv, no retries. |
-| Tests | `TrellisCoreTests`, `TrellisTerminalTests`, `TrellisUITests`, `TrellisControlTests`, `TrellisCLITests` (XCTest). |
+| Tests | `TrellisCoreTests`, `TrellisTerminalTests`, `TrellisUITests`, `TrellisControlTests`, `TrellisMCPTests`, `TrellisCLITests` (XCTest). |
 
 `ThirdParty/SwiftTerm` is a vendored SwiftTerm 1.20.0 with small patches. Record any engine
 change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `TrellisTerminal`.

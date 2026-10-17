@@ -52,6 +52,7 @@ Formatting uses the toolchain's `swift format` with the repo's `.swift-format`: 
 | `swift run Trellis` | Runs against your **real** workspace |
 | `swift run Trellis --state-directory /abs/path` | Uses a separate workspace and theme library. Recommended. |
 | `swift run Trellis --fixture` | Starts an isolated demo window whose fixed shell exits with code 7. The window stays open for inspection. |
+| `swift run Trellis --no-mcp` | Never starts the MCP server for this launch, whatever Settings → Remote Control says. `--fixture` implies it. |
 | `scripts/run-feasibility.sh` | Assembles `.build/Trellis.app`, ad-hoc signs and verifies it, and opens it. Use it when you need a real bundle (icon, Info.plist, resources). |
 | `scripts/run-feasibility.sh --build-only` | Same, without opening a window |
 
@@ -93,6 +94,7 @@ Sources/
   TrellisTerminal/   all SwiftTerm-specific code (the only place SwiftTerm is imported)
   TrellisUI/         SwiftUI/AppKit views, AppWorkspaceModel, AutomationService
   TrellisControl/    local JSON-RPC server, framing, grants, events
+  TrellisMCP/        optional MCP server (HTTP) over the same authorizer
   TrellisApp/        app entry point, menus, launch arguments
   TrellisRelease/    release manifest, CLI link planner, uninstall allow-list
   TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)

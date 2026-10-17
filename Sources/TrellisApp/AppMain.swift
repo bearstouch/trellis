@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 import SwiftUI
 import TrellisControl
 import TrellisCore
+import TrellisMCP
 import TrellisTerminal
 import TrellisUI
 
@@ -12,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let hosts: HostListModel
     private var hostsWindow: NSWindow?
     private let control: ControlServer
+    private let mcp: MCPServer
     private let grants: GrantListModel
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
@@ -25,8 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private let identity: AppInstanceIdentity
 
-    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, grants: GrantListModel, identity: AppInstanceIdentity) {
-        self.model = model; self.hosts = hosts; self.control = control; self.grants = grants; self.identity = identity
+    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, mcp: MCPServer, grants: GrantListModel, identity: AppInstanceIdentity) {
+        self.model = model; self.hosts = hosts; self.control = control; self.mcp = mcp; self.grants = grants; self.identity = identity
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -56,6 +58,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
+        // Restored or applied settings (re)start the MCP server; fixture and --no-mcp launches never listen.
+        let mcpBlocked = CommandLine.arguments.contains("--no-mcp") || CommandLine.arguments.contains("--fixture")
+        model.onRemoteControlSettingsChanged = { [weak self] settings in
+            guard let self else { return }
+            if mcpBlocked, settings.mcpEnabled {
+                mcp.stop()
+                model.remoteControlStatus = .failed(reason: "Turned off for this launch (--no-mcp or --fixture).")
+            } else {
+                model.remoteControlStatus = mcp.apply(settings)
+            }
+        }
         model.openHosts = { [weak self] in self?.showHosts() }
         model.resolveHost = { [hosts] id in await hosts.host(id) }
         if let helper = Self.askpassHelperPath() {
@@ -104,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop(); model.askpass?.stop() }
+    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop() }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
     private static func askpassHelperPath() -> String? {
@@ -546,6 +559,7 @@ struct TrellisMain {
             let handler = AuthorizingControlHandler(
                 grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
+            let mcp = MCPServer(handler: handler, serverVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")
             let forwarder = EventForwarder(hub: events, instanceID: instanceID)
             model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
             // Appearance is global; the hub gates it on theme.read, not window scope.
@@ -575,11 +589,12 @@ struct TrellisMain {
                 await grantStore.onRevocation { grantID in
                     Task {
                         await events.removeGrant(grantID)
+                        await mcp.closeSessions(grantID: grantID)
                         control.closeConnections(await handler.connections(for: grantID))
                     }
                 }
             }
-            let delegate = AppDelegate(model: model, hosts: hosts, control: control, grants: GrantListModel(store: grantStore), identity: identity)
+            let delegate = AppDelegate(model: model, hosts: hosts, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}

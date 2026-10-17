@@ -15,6 +15,8 @@ flowchart TD
     Terminal --> POSIX[TrellisPOSIX<br/>spawn.c]
     Terminal --> SwiftTerm[(SwiftTerm 1.20.0<br/>vendored)]
     Control[TrellisControl<br/>socket, JSON-RPC, grants, events] --> Core
+    App --> MCP[TrellisMCP<br/>HTTP listener, MCP tools]
+    MCP --> Control
     CLIMain[TrellisCLIMain<br/>trellis-cli] --> CLI[TrellisCLI]
     CLI --> Control
     CLI --> Release[TrellisRelease]
@@ -27,6 +29,7 @@ flowchart TD
 | `TrellisPOSIX` | A small C target for PTY spawning and process identity | `trellis_spawn_pty`, `trellis_read_process_identity` |
 | `TrellisTerminal` | All SwiftTerm-specific code. **The only module that imports SwiftTerm.** | `NativeTerminal`, `PTYProcess`, `AccessibleTerminalView`, `TerminalScrollback`, `PaneTextSearch`, `TerminalSelectionBookmark`, `TerminalAppearance` |
 | `TrellisControl` | The local automation server | `ControlServer`, `ControlEndpoint`, `ControlSession`, `ControlFramer`, `AuthorizingControlHandler`, `AuthorizationPolicy`, `GrantStore`, `KeychainGrantSecretStore`, `EventHub`, `LayoutJSON`, `PortableDocument` |
+| `TrellisMCP` | The optional MCP server: an HTTP transport over the same authorizer ([MCP server](../api/mcp.md)) | `MCPServer`, `MCPListener`, `MCPEndpoint`, `MCPTools`, `HTTPRequestParser` |
 | `TrellisUI` | SwiftUI and AppKit views, and the bridge between the store, the views and the terminals | `AppWorkspaceModel` (`@MainActor ObservableObject`), `AutomationService`, `WorkspaceRootView`, `PaneTreeView`, `HostListModel`, `DiagnosticsExporter`, `PortableTransfer`, settings views |
 | `TrellisApp` | The `Trellis` executable. Wires everything together. | `TrellisMain` (`@main`), `AppDelegate` (menus, shortcuts, termination), `EventForwarder` |
 | `TrellisRelease` | Release-time policy | `ReleaseManifest`, `CLILinkPlanner`, `UninstallPlanner`, `ReleaseChecklist` |

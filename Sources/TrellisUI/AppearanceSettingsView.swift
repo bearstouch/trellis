@@ -71,6 +71,10 @@ public struct AppSettingsView: View {
                         ThemePreviewView(workspace: model)
                     case .automation:
                         if let grants, let hosts { AutomationSettingsView(grants: grants, workspace: model, hosts: hosts) }
+                    case .remoteControl:
+                        ScrollView {
+                            RemoteControlSettingsView(model: model, showAutomation: grants != nil && hosts != nil ? { selection = .automation } : nil)
+                        }
                     }
                 }
                 .padding(12)
@@ -87,6 +91,7 @@ public struct AppSettingsView: View {
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case appearance = "Appearance", sessions = "Sessions", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
+    case remoteControl = "Remote Control"
     var id: Self { self }
     var symbol: String {
         switch self {
@@ -95,6 +100,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: "keyboard"
         case .themes: "swatchpalette"
         case .automation: "bolt"
+        case .remoteControl: "antenna.radiowaves.left.and.right"
         }
     }
     var detail: String {
@@ -104,6 +110,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
         case .automation: "Manage access for scripts and agents."
+        case .remoteControl: "Let agents connect over the Model Context Protocol (MCP)."
         }
     }
 }

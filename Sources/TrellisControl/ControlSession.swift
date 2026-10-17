@@ -222,7 +222,7 @@ public actor ControlSession {
         return .success(ControlRequest(id: id, method: method, params: object["params"]))
     }
 
-    static func exceedsNesting(_ frame: Data) -> Bool {
+    public static func exceedsNesting(_ frame: Data) -> Bool {
         var depth = 0, inString = false, escaped = false
         for byte in frame {
             if inString {

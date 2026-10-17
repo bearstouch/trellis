@@ -61,6 +61,7 @@ nav:
       - Errors: api/errors.md
       - Layouts: api/layouts.md
       - CLI: api/cli.md
+      - MCP server: api/mcp.md
   - Platform:
       - Integrations: integrations.md
       - macOS support: platform/macos.md

@@ -156,6 +156,23 @@ public final class AppWorkspaceModel: ObservableObject {
         scheduleWorkspaceSave()
     }
     public var onChromeModeChanged: ((ChromeMode) -> Void)?
+    /// MCP server settings (FR-RC01); saved with the workspace, applied by the app.
+    @Published public private(set) var remoteControl = RemoteControlSettings()
+    @Published public var remoteControlStatus: RemoteControlStatus = .stopped
+    /// Called after a committed or restored change; the app restarts the server.
+    public var onRemoteControlSettingsChanged: ((RemoteControlSettings) -> Void)?
+    /// Injected so tests list fixed interfaces.
+    public var networkInterfaces: () -> [NetworkInterfaceAddress] = NetworkInterfaceAddress.current
+
+    /// Invalid settings keep the previous ones (and the running server) unchanged.
+    @discardableResult
+    public func applyRemoteControl(_ settings: RemoteControlSettings) -> Bool {
+        guard settings.isValid else { return false }
+        remoteControl = settings
+        scheduleWorkspaceSave()
+        onRemoteControlSettingsChanged?(settings)
+        return true
+    }
     public var appearanceNotice: String? { NativeTerminalFont.choice(for: appearance.fontName).notice }
 
     public func applyAppearance(_ settings: AppearanceSettings) -> Bool {
@@ -379,6 +396,8 @@ public final class AppWorkspaceModel: ObservableObject {
         try await service.store.restoreStoppedSnapshot(restored.snapshot)
         defaultShell = restored.settings.shell; defaultDirectory = restored.settings.directory
         appearance = restored.settings.appearance
+        remoteControl = restored.settings.remoteControl
+        onRemoteControlSettingsChanged?(remoteControl)
         reconcileThemeSelections()
         refreshEffectiveTheme()
         restoredWindowFrame = restored.settings.windowFrame
@@ -468,7 +487,7 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
         let settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
-            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance)
+            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl)
         do { try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration); return true } catch {
             errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
         }

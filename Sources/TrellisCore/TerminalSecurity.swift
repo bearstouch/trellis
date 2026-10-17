@@ -70,6 +70,8 @@ public struct DiagnosticsReport: Equatable, Sendable {
     public var customThemes = 0
     public var appearanceMode = ""
     public var controlSocketRunning = false
+    /// `off`, `loopback`, `network` or `failed`; never the address or port.
+    public var mcpServer = "off"
     /// Stable error codes only (for example `LAUNCH_FAILED`), never messages.
     public var recentErrorCodes: [String] = []
     /// The only codes a report may contain.
@@ -105,6 +107,7 @@ public struct DiagnosticsReport: Equatable, Sendable {
             "Custom themes: \(customThemes)",
             "Appearance mode: \(appearanceMode)",
             "Control socket: \(controlSocketRunning ? "running" : "not running")",
+            "MCP server: \(mcpServer)",
             "Recent error codes: \(codes.isEmpty ? "none" : codes.joined(separator: ", "))",
             "",
             "Not included: window/tab/pane names, directories, commands, terminal output, typed input, hosts, keys, tokens, or clipboard contents."

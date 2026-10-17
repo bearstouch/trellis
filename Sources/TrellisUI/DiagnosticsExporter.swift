@@ -30,6 +30,11 @@ public final class DiagnosticsExporter {
         report.customThemes = model.themeCatalog.documents.count
         report.appearanceMode = model.appearance.chromeMode.rawValue
         report.controlSocketRunning = controlRunning()
+        switch model.remoteControlStatus {
+        case .stopped: report.mcpServer = "off"
+        case .running: report.mcpServer = model.remoteControl.isLoopback ? "loopback" : "network"
+        case .failed: report.mcpServer = "failed"
+        }
         report.recentErrorCodes = model.diagnosticCodes
         return report
     }

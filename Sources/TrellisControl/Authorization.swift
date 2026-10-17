@@ -253,15 +253,18 @@ public actor AuthorizingControlHandler: ControlHandler {
     private let grants: GrantStore
     private let domain: any ControlDomain
     private let limiter: AuthenticationRateLimiter
+    /// Network (MCP) failures are counted apart, so a LAN client cannot lock out the local socket.
+    private let networkLimiter: AuthenticationRateLimiter
     private let idempotency: IdempotencyCache
     private let events: EventHub?
     private var connections: [UUID: UUID] = [:]
 
     public init(
         grants: GrantStore, domain: any ControlDomain, limiter: AuthenticationRateLimiter = AuthenticationRateLimiter(),
-        idempotency: IdempotencyCache = IdempotencyCache(), events: EventHub? = nil
+        networkLimiter: AuthenticationRateLimiter = AuthenticationRateLimiter(), idempotency: IdempotencyCache = IdempotencyCache(), events: EventHub? = nil
     ) {
-        self.grants = grants; self.domain = domain; self.limiter = limiter; self.idempotency = idempotency; self.events = events
+        self.grants = grants; self.domain = domain; self.limiter = limiter; self.networkLimiter = networkLimiter
+        self.idempotency = idempotency; self.events = events
     }
 
     /// Connections currently authenticated with `grantID`, for revocation.
@@ -299,6 +302,27 @@ public actor AuthorizingControlHandler: ControlHandler {
                     "protocolVersion": .number(1)
                 ])
             ))
+    }
+
+    /// Bearer-token authentication for the MCP transport (API-07). A network
+    /// peer has no UID to check, so the token is the whole credential; grant
+    /// lookup, expiry, revocation and scope are exactly as on the socket.
+    public func authenticate(bearer token: String, connectionID: UUID) async -> Result<ControlIdentity, ControlError> {
+        connections.removeValue(forKey: connectionID)
+        await grants.ensureLoaded()
+        guard !(await networkLimiter.isLimited()) else { return .failure(.rateLimited) }
+        guard (1...512).contains(token.utf8.count), let grant = await grants.activeGrant(token: token) else {
+            await networkLimiter.recordFailure()
+            return .failure(.authenticationFailed)
+        }
+        connections[connectionID] = grant.id
+        return .success(ControlIdentity(connectionID: connectionID, peerUID: geteuid(), grantID: grant.id))
+    }
+
+    /// The identity's grant while it is still active; nil after expiry or revocation.
+    public func activeGrant(for identity: ControlIdentity) async -> AutomationGrant? {
+        guard let id = identity.grantID else { return nil }
+        return await grants.activeGrant(id: id)
     }
 
     public func dispatch(_ method: String, params: JSONValue?, identity: ControlIdentity) async -> Result<JSONValue, ControlError> {

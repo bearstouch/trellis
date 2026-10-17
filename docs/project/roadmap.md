@@ -24,14 +24,13 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Richer SSH host import | [SSH hosts](../features/ssh-hosts.md) |
 | P1 | Keychain-enforced Touch ID for saved host passwords (`SecAccessControl` with a keychain-access-group entitlement, Developer ID builds) | `FR-H07`, [Saved passwords](../features/ssh-hosts.md#saved-passwords) |
 | P1 | Signed automatic updates | `MAC-11` |
-| P1 | Optional MCP adapter over the existing command service | `INT-07`, [Integrations](../integrations.md#scripts-and-agents) |
 | P1 | Clipboard API (`clipboard.read`/`clipboard.write` are reserved) | [Authorization](../api/authorization.md#capabilities) |
 | P1 | Per-window, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
 | P2 | A session broker so sessions survive application exit | |
 | P2 | tmux awareness, richer terminal protocols, plugins | |
 | P2 | Links: open `file:line:column` in a configured editor, a pointing-hand cursor over links, detecting `ssh` typed inside a local shell | `FR-L02`, `FR-L04`, [Links](../features/terminal.md#links) |
 
-**Not planned:** Windows, Linux and iOS; cloud sync; a web UI; a remote API server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import.
+**Not planned:** Windows, Linux and iOS; cloud sync; a web UI; a remote API server beyond the optional MCP server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import.
 
 ## Decisions
 
@@ -48,5 +47,5 @@ These were decided during the MVP. Reopening one needs a docs change and a revie
 | Application identity | Trellis, bundle ID `dev.trellis` (renamed from uTerm). Provisional until a Developer ID team is chosen. | [Release guide](../release/README.md) |
 | Distribution | A direct-download DMG, without App Sandbox or the Mac App Store | `MAC-09` |
 | Sessions on quit | Closing the app ends local processes. Relaunch restores layouts as stopped sessions. | [Persistence](../architecture/persistence.md#restoring-stopped-sessions) |
-| Automation transport | A local Unix socket plus the `trellis` CLI. No TCP or remote control. | [Automation API](../api/index.md) |
+| Automation transport | A local Unix socket plus the `trellis` CLI. Revised for INT-07: an optional MCP server over HTTP, off by default, loopback unless the user confirms a network address, using the same grants and authorizer. There's no other TCP API. | [Automation API](../api/index.md), [MCP server](../api/mcp.md) |
 | Visual direction | "Native calm": light chrome, dark terminals, bundled Roboto Mono | [Product overview](../overview/product.md#primary-interaction) |

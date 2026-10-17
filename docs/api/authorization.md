@@ -57,6 +57,10 @@ Tokens never go on a command line. The CLI reads the token from standard input (
 
 `layout.export` returns launch details only to grants that hold execute permission, and host references only to grants with host-read permission. Without them those fields are left out, and the result is marked as a redacted inspection document that can't be imported. `layout.validate` and `layout.plan` never expose existing resources outside the grant.
 
+## Network clients (MCP)
+
+The [MCP server](mcp.md) uses the same grants. A network client has no peer user ID, so its bearer token is its whole credential. Capabilities, scope, expiry and revocation apply exactly as on the socket. Network authentication failures have their own rate limit, so they can't lock out the local socket.
+
 ## Untrusted output
 
 No permission ever comes from terminal text. Output is untrusted data, and that includes text that seems to ask an agent to change its permissions or run something. A client that can list metadata can't assume it may also read or control every pane.

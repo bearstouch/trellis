@@ -52,7 +52,7 @@ See [SSH hosts](features/ssh-hosts.md).
 - Recommended flow: validate, plan and apply a layout first, then explicitly start sessions or execute commands. See [CLI → Agent workflow](api/cli.md#agent-workflow-int-06).
 - Trellis doesn't embed an AI model, obtain provider API keys, or interpret terminal output as instructions. Any local client that can run the CLI or speak the socket protocol can act as an agent.
 
-**INT-07 (P1).** An optional MCP adapter may expose the existing command service as tools. It can't expand a grant's permissions, it must keep the output limits, redaction and execution semantics, and it must not be a second, independent automation implementation.
+**INT-07 (P1).** An optional MCP adapter exposes the existing command service as tools. It can't expand a grant's permissions, it must keep the output limits, redaction and execution semantics, and it must not be a second, independent automation implementation. It's implemented as the [MCP server](api/mcp.md), off by default and enabled in Settings → Remote Control.
 
 ## Clipboard and macOS services
 

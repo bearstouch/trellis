@@ -12,7 +12,8 @@ A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal pan
 - **Appearance:** separate Light/Dark theme slots and a JSON theme library with live preview (Settings → Themes).
 - **Keyboard and accessibility:** rebindable menu shortcuts (conflicts are rejected before saving), Option-as-Meta toggle, and accessibility labels throughout.
 - **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust. An optional per-host password is kept in the macOS Keychain (optionally behind Touch ID) and given to ssh only for its password prompt.
-- **Automation:** an owner-only local JSON-RPC socket (no TCP) with scoped, expiring grants created in Settings → Automation. Covers windows, tabs, panes, sessions, input, output cursors, events, declarative layouts, themes and appearance.
+- **Automation:** an owner-only local JSON-RPC socket with scoped, expiring grants created in Settings → Automation. Covers windows, tabs, panes, sessions, input, output cursors, events, declarative layouts, themes and appearance.
+- **MCP server:** optional, off by default. It exposes the same API as MCP tools over HTTP for agents such as Claude Code, using the same grants. Interface and port are set in Settings → Remote Control. See [docs/api/mcp.md](docs/api/mcp.md).
 - **Portability:** export and import workspaces with a review step (File → Export/Import Workspace…).
 - **Privacy:** no telemetry. Terminal output and typed input are never logged or persisted. Help → Export Diagnostics… previews an allow-listed report before saving.
 
@@ -77,6 +78,7 @@ Formatting uses the toolchain's `swift format` with the repo [`.swift-format`](.
 | `swift run Trellis` | Runs against your **real** workspace in Application Support |
 | `swift run Trellis --state-directory /abs/path` | Uses a separate workspace and theme library (recommended for development) |
 | `swift run Trellis --fixture` | Starts an isolated, fixed-shell demo window whose child exits with code 7. The window stays open for inspection |
+| `swift run Trellis --no-mcp` | Never starts the MCP server for this launch, whatever Settings → Remote Control says. `--fixture` implies it. |
 | `scripts/run-feasibility.sh` | Assembles `.build/Trellis.app`, ad-hoc signs and verifies it, then opens it. Use this when you need a real bundle (icon, Info.plist, resources) |
 | `scripts/run-feasibility.sh --build-only` | Same as above without opening a window |
 
@@ -120,6 +122,7 @@ Sources/
   TrellisTerminal/   all SwiftTerm-specific code (the only place SwiftTerm is imported)
   TrellisUI/         SwiftUI/AppKit views and AppWorkspaceModel
   TrellisControl/    local JSON-RPC server, framing, auth-gated handler
+  TrellisMCP/        optional MCP server (HTTP) over the same authorizer
   TrellisApp/        app entry point, menus, launch arguments
   TrellisRelease/    release manifest checks, CLI link planner, uninstall allow-list
   TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)

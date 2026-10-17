@@ -89,8 +89,10 @@ final class ThemeReviewTests: XCTestCase {
         let json: [String: Any] = [
             "version": 1, "id": "subtle-separators", "name": "Subtle separators", "appearance": "light",
             "terminal": ["background": "#FFFFFF"],
-            "ui": ["background": "#FFFFFF", "surface": "#F8FAFC", "sidebarBackground": "#F0F3F6",
-                   "border": "#D0D7DE", "focusRing": "#D0D7DE"]
+            "ui": [
+                "background": "#FFFFFF", "surface": "#F8FAFC", "sidebarBackground": "#F0F3F6",
+                "border": "#D0D7DE", "focusRing": "#D0D7DE"
+            ]
         ]
         let warnings = try ThemeValidator.validate(JSONSerialization.data(withJSONObject: json)).resolved().contrastWarnings
         XCTAssertFalse(warnings.contains { $0.foregroundPath == "ui.border" })

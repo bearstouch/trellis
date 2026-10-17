@@ -37,6 +37,7 @@ These checks can't be automated here and haven't been performed. They are record
 | Tabs | FR-T05 busy bar: the real animation with `seq`, the static bar under Reduce Motion, VoiceOver reading "output in progress"; FR-T06 input label: a real `sudo` prompt, Claude Code's bell in a background tab, VoiceOver reading "waiting for input" |
 | SSH | Known, unknown and changed host keys; agent, passphrase and password prompts; saved-password login through askpass, with and without Touch ID, and with real `/usr/bin/ssh` retries and host-key prompts; dropped networks, against a controlled SSH server |
 | Automation | Keychain-backed grants in the native UI; live multi-client socket checks; the installed `trellis` CLI |
+| MCP server | Settings → Remote Control in the native app (status text, the network-address warning, VoiceOver labels); a real Claude Code client connecting with `claude mcp add --transport http`; a client on another Mac over a LAN address; the macOS firewall prompt for a non-loopback bind |
 | Portability | Native export/import demo |
 | Security | Native link, clipboard and diagnostics checks |
 | Inline images | FR-IM01–FR-IM03 in the native app: iTerm2's `imgcat` for small and multipart images, `chafa -f iterm`, `timg`, `yazi` previews, and images surviving scrolling, resizing, `clear`, ⌘K and the alternate screen; tmux passthrough over SSH; drawing on Intel and non-Retina displays; how VoiceOver reads rows that hold images |
@@ -57,6 +58,7 @@ Only these combinations have been run.
 
 - **Signing:** current builds are ad-hoc signed. Gatekeeper rejects them on other Macs.
 - **Windows:** there's one native terminal window. Managed windows live in its sidebar; multiple native windows are P1.
+- **MCP server:** plain HTTP with no TLS, and no server-initiated stream, so there are no event subscriptions over MCP. Use loopback or an SSH tunnel for remote agents.
 - **Updates:** upgrades are manual. There's no automatic update service.
 - **Sessions don't survive quitting.** Closing the app ends its local processes, and relaunching restores layouts as stopped sessions.
 - **Shell knowledge:** [shell integration](../features/shell-integration.md) reports the directory, the running command and exit status for local zsh, bash and fish. Other shells, SSH sessions and disabled integration report none of this. `session.execute` still submits input without waiting for a command result, and command-completion events aren't published to automation yet.

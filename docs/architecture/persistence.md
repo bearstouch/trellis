@@ -6,7 +6,7 @@ All state lives in `~/Library/Application Support/<identity>/`: `dev.trellis` fo
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance) | Last-known-good copy in `workspace.backup.json` |
+| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control) | Last-known-good copy in `workspace.backup.json` |
 | `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
 | `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts | An unreadable file is preserved |
