@@ -13,10 +13,10 @@ The three examples are also bundled in `Sources/TrellisCore/Resources/Themes`. `
 ## User experience
 
 - Trellis ships **Trellis Dark** (`trellis-dark`) and **Trellis Light** (`trellis-light`), plus 10 editor-inspired families with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations with complete app and terminal palettes, available immediately without importing files.
-- **Settings → Appearance** offers **System**, **Dark** and **Light** chrome modes. Light is the first-launch default. System follows macOS, and an explicit Dark or Light stays fixed.
+- **Settings → Appearance** offers **System**, **Dark** and **Light** chrome modes. Dark is the first-launch default; settings saved by an earlier version keep their mode. System follows macOS, and an explicit Dark or Light stays fixed.
 - Users pick a theme separately for each appearance, so a custom dark theme can be paired with the built-in light one.
 - The original **Trellis Light** and **Trellis Dark** defaults keep terminal panes dark. The additional families use light terminal backgrounds in their light variants and dark backgrounds in their dark variants.
-- The font isn't part of a theme. **Settings → Appearance → Terminal font** lists locally installed monospace typefaces (one entry per family) and previews the selected font. Monaco is the default; if a saved font is missing or isn't monospaced, Trellis uses Menlo or the system monospace font and shows a notice. Choose **Apply Appearance** to save font changes.
+- The font isn't part of a theme. **Settings → Appearance → Terminal font** lists locally installed monospace typefaces and the bundled ones (Roboto Mono, JetBrains Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono; one entry per family) and previews the selected font. Roboto Mono is the default; if a saved font is missing or isn't monospaced, Trellis uses Menlo or the system monospace font and shows a notice. Choose **Apply Appearance** to save font changes.
 - The resolved theme colors the sidebar, tabs, split dividers, focus indicators, terminal background and foreground, cursor, selection and ANSI palette. System dialogs and standard controls follow the native appearance.
 - Changing the appearance updates every window and pane without restarting shells, changing terminal contents, or losing focus or selection.
 
@@ -72,6 +72,7 @@ A theme controls only the terminal's default colors and ANSI indexes 0–15. Exp
 
 - Built-in normal text and essential labels must reach at least **4.5:1** contrast against their backgrounds.
 - Focus indicators and essential boundaries must reach **3:1** against neighboring colors.
+- `ui.border` supplies subtle pane and chrome separators, with a **1.2:1** visibility advisory (not a WCAG target). Use `ui.focusRing` for focus indicators; separators should not compete with text or selection.
 - Selected text and cursor text are tested on their own.
 
 For custom themes, contrast warnings are advisory and name the fields involved, and you can still save the theme. Built-in palettes must pass the check at release. Status is always shown with a label or icon too, never by color alone.
@@ -80,7 +81,7 @@ For custom themes, contrast warnings are advisory and name the fields involved, 
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| FR-TH01 | Built-in dark and light themes, plus System, Dark and Light modes. | In System mode, change the macOS appearance: the chrome follows while default terminal panes stay dark. Explicit modes stay fixed. |
+| FR-TH01 | Built-in dark and light themes, plus System, Dark and Light modes. Dark is the first-launch default. | Launch with an empty state directory: the chrome is dark. In System mode, change the macOS appearance: the chrome follows while default terminal panes stay dark. Explicit modes stay fixed. |
 | FR-TH02 | Simple, versioned JSON themes with per-field defaults. | Import the minimal example; colors it doesn't specify come from the matching built-in theme. |
 | FR-TH03 | Import, preview, select, export, replace, delete and reload custom themes. | Complete the whole flow without restarting the app or any session. Cancelling restores the previous theme. |
 | FR-TH04 | Validate themes before activating them, and recover from invalid edits. | Invalid hex, an unsupported version, unknown fields, duplicate keys, an oversized file and a wrong-length ANSI array are all rejected, and the previous theme keeps working. |

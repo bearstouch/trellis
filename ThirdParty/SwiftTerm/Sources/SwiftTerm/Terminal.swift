@@ -1186,6 +1186,21 @@ open class Terminal {
     {
         parser.oscHandlers [code] = handler
     }
+
+    /// Runs the built-in OSC 133 semantic-prompt handling, so an embedder that
+    /// registers its own 133 handler can observe marks without losing prompt state.
+    public func handleSemanticPrompt (_ data: ArraySlice<UInt8>)
+    {
+        oscSemanticPrompt(data)
+    }
+
+    /// Runs the built-in OSC 9;4 progress-report handling, so an embedder that
+    /// registers its own OSC 9 handler keeps the progress bar. Returns false for other OSC 9 forms.
+    @discardableResult
+    public func handleProgressReport (_ data: ArraySlice<UInt8>) -> Bool
+    {
+        oscProgressReport(data)
+    }
     
     func cmdSet8BitControls ()
     {
@@ -4827,6 +4842,7 @@ open class Terminal {
         var bg = curAttr.bg
         var underlineStyle = curAttr.underlineStyle
         var underlineColor = curAttr.underlineColor
+        var extendedStyle = curAttr.extendedStyle
         let def = CharData.defaultAttr
 
         var i = 0
@@ -5003,6 +5019,7 @@ open class Terminal {
                 bg = def.bg
                 underlineStyle = def.underlineStyle
                 underlineColor = def.underlineColor
+                extendedStyle = def.extendedStyle
             case 1:
                 // bold text
                 style = [style, .bold]
@@ -5022,8 +5039,8 @@ open class Terminal {
                     style = [style, .underline]
                     underlineStyle = .single
                 }
-            case 5:
-                // blink
+            case 5, 6:
+                // blink; rapid blink (6) blinks at the same rate
                 style = [style, .blink]
             case 7:
                 // inverse and positive
@@ -5105,6 +5122,12 @@ open class Terminal {
             case 59:
                 // reset underline color
                 underlineColor = nil
+
+            case 53:
+                extendedStyle.insert (.overline)
+            case 55:
+                // not overlined
+                extendedStyle.remove (.overline)
                 
             default:
                 print ("Unknown SGR attribute: \(p) \(pars)")
@@ -5115,7 +5138,8 @@ open class Terminal {
                             bg: bg,
                             style: style,
                             underlineStyle: underlineStyle,
-                            underlineColor: underlineColor)
+                            underlineColor: underlineColor,
+                            extendedStyle: extendedStyle)
     }
 
     //
@@ -7208,6 +7232,13 @@ open class Terminal {
     public func link(at location: LinkLookupLocation, mode: LinkLookupMode) -> String?
     {
         return linkMatch(at: location, mode: mode)?.text
+    }
+
+    /// True when the location holds an OSC 8 hyperlink, whose target may differ
+    /// from its visible text, rather than a link detected in plain text.
+    public func linkIsExplicit(at location: LinkLookupLocation) -> Bool
+    {
+        return linkMatch(at: location, mode: .explicitOnly) != nil
     }
 
     func getDisplayText (start: Position, end: Position) -> String

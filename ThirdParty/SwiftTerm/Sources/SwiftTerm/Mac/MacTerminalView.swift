@@ -148,6 +148,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     }
 
     struct FontSet {
+        /// The font as set by the host; `normal` differs only in its feature settings.
+        let base: NSFont
         public let normal: NSFont
         let bold: NSFont
         let italic: NSFont
@@ -161,11 +163,24 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
             }
         }
         
-        public init(font baseFont: NSFont, fontSize: CGFloat? = nil) {
-            self.normal = baseFont
-            self.bold = NSFontManager.shared.convert(baseFont, toHaveTrait: [.boldFontMask])
-            self.italic = NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask])
-            self.boldItalic = NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask, .boldFontMask])
+        public init(font baseFont: NSFont, fontSize: CGFloat? = nil, ligatures: Bool = true) {
+            self.base = baseFont
+            let shaped = { (font: NSFont) in ligatures ? font : FontSet.withoutLigatures(font) }
+            self.normal = shaped(baseFont)
+            self.bold = shaped(NSFontManager.shared.convert(baseFont, toHaveTrait: [.boldFontMask]))
+            self.italic = shaped(NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask]))
+            self.boldItalic = shaped(NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask, .boldFontMask]))
+        }
+
+        /// Turns off the OpenType features that join characters. Programming
+        /// fonts use contextual alternates (`calt`), which `kCTLigatureAttributeName`
+        /// does not control, so the features are disabled on the font itself.
+        static func withoutLigatures(_ font: NSFont) -> NSFont {
+            let settings: [[CFString: Any]] = ["calt", "liga", "dlig"].map {
+                [kCTFontOpenTypeFeatureTag: $0, kCTFontOpenTypeFeatureValue: 0]
+            }
+            let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFeatureSettingsAttribute: settings] as CFDictionary)
+            return CTFontCreateCopyWithAttributes(font as CTFont, font.pointSize, nil, descriptor) as NSFont
         }
 
         // Expected by the shared rendering code
@@ -211,6 +226,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     var textBlinkTimer: Timer?
     var textBlinkObservers: [(NotificationCenter, NSObjectProtocol)] = []
     var textBlinkApplicationActive = true
+    /// Cursor cell last shaped on its own while ligatures are on.
+    var ligatureCursor: (row: Int, col: Int, hidden: Bool)?
     var cursorColorIsDefault = true
     var cursorTextColorIsDefault = true
     /// Output received shortly after local input is likely echo or prompt redraw;
@@ -347,10 +364,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// The font to use to render the terminal
     public var font: NSFont {
         get {
-            return fontSet.normal
+            return fontSet.base
         }
         set {
-            fontSet = FontSet (font: newValue)
+            fontSet = FontSet (font: newValue, ligatures: fontLigatures)
             resetFont()
             selectNone()
         }
@@ -983,6 +1000,40 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// Controls weather to use high ansi colors, if false terminal will use bold text instead of high ansi colors
     public var useBrightColors: Bool = true
 
+    /// Draws font ligatures. When false, the font's `calt`, `liga` and `dlig` features are off.
+    public var fontLigatures: Bool = true {
+        didSet {
+            guard fontLigatures != oldValue else { return }
+            fontSet = FontSet (font: fontSet.base, ligatures: fontLigatures)
+            textStyleChanged()
+        }
+    }
+
+    /// When false, bold text is drawn with the regular face.
+    public var allowBoldFont: Bool = true {
+        didSet { if allowBoldFont != oldValue { textStyleChanged() } }
+    }
+
+    /// When false, italic text is drawn with the regular face.
+    public var allowItalicFont: Bool = true {
+        didSet { if allowItalicFont != oldValue { textStyleChanged() } }
+    }
+
+    /// When true (and `useBrightColors` is on), bold text in ANSI colors 0-7 uses
+    /// the bright colors 8-15. Explicit bright colors are unaffected.
+    public var boldIsBright: Bool = true {
+        didSet { if boldIsBright != oldValue { textStyleChanged() } }
+    }
+
+    /// When false, text with the blink attribute is drawn steadily.
+    public var textBlinkEnabled: Bool = true {
+        didSet {
+            guard textBlinkEnabled != oldValue else { return }
+            updateTextBlinkLifecycle()
+            textStyleChanged()
+        }
+    }
+
     /// Controls whether this view applies the terminal's BiDi presentation state.
     public var bidiHostPolicy: BidiHostPolicy = .respectTerminal {
         didSet {
@@ -1188,6 +1239,17 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// Controls how link tracking resolves hovered links:
     /// `.explicit` = OSC 8 only, `.implicit` = explicit + implicit fallback, `.none` = off.
     public var linkReporting: LinkReporting = .implicit
+
+    /// Replaces double-click word selection: given the clicked buffer position, returns
+    /// a half-open range to select, or nil for the built-in word selection. It is not
+    /// consulted while mouse reporting captures the click.
+    public var doubleClickSelection: ((Position) -> (start: Position, end: Position)?)?
+
+    /// The buffer position under a mouse event, using the same BiDi-aware hit test as selection.
+    public func bufferPosition(for event: NSEvent) -> Position
+    {
+        calculateMouseHit(with: event).grid
+    }
 
     /// Controls link highlighting and link activation behavior.
     public var linkHighlightMode: LinkHighlightMode = .hoverWithModifier {
@@ -2903,7 +2965,11 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
             }
         case 2:
             let displayBuffer = terminal.displayBuffer
-            selection.selectWordOrExpression(at: Position(col: hit.col, row: hit.row), in: displayBuffer)
+            if let range = doubleClickSelection?(Position(col: hit.col, row: hit.row)) {
+                selection.setWordSelection(start: range.start, end: range.end)
+            } else {
+                selection.selectWordOrExpression(at: Position(col: hit.col, row: hit.row), in: displayBuffer)
+            }
 
         default:
             // 3 and higher
@@ -3276,12 +3342,18 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     {
         // Recompute metrics and redraw, but unlike the font setter do not
         // clear the active selection
-        fontSet = FontSet (font: FontSet.defaultFont)
+        fontSet = FontSet (font: FontSet.defaultFont, ligatures: fontLigatures)
         resetFont ()
     }
     
     func getImageScale () -> CGFloat {
         self.window?.backingScaleFactor ?? 1
+    }
+
+    /// The size of one cell in points and the backing scale images are drawn at,
+    /// for hosts that answer cell-size queries such as iTerm2's `ReportCellSize`.
+    public var cellMetrics: (size: CGSize, scale: CGFloat) {
+        (cellDimension, getImageScale ())
     }
     
     func scale (image: NSImage, size: CGSize) -> NSImage {

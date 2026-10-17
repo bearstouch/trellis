@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-import TrellisCore
+@testable import TrellisCore
 import TrellisTerminal
 @testable import TrellisUI
 
@@ -89,6 +89,45 @@ final class HostConnectionTests: XCTestCase {
     }
 
     @MainActor
+    func testConnectInNewWindowCreatesNamedWindow() async throws {
+        let fake = try fakeSSH(exitCode: nil)
+        let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
+        let model = try await makeModel(host: host, ssh: fake.path)
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        let original = try XCTUnwrap(model.presentation.selectedWindow)
+        let frozen = Date()
+        model.activityNow = { frozen }
+
+        let result = await model.connect(host: host, placement: .newWindow)
+        let pane = try XCTUnwrap(result)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("FAKE-SSH-READY") }
+        await model.waitForUpdates()
+        let snapshot = model.snapshot
+        XCTAssertEqual(snapshot.windows.count, 2)
+        let window = try XCTUnwrap(snapshot.windows.last)
+        XCTAssertNotEqual(window.id, original.id)
+        XCTAssertEqual(window.name, "Prod")
+        XCTAssertEqual(snapshot.activeWindowID, window.id)
+        XCTAssertEqual(window.tabIDs.count, 1)
+        let tab = try XCTUnwrap(snapshot.tabs[window.activeTabID])
+        XCTAssertEqual(tab.title, "Prod")
+        XCTAssertEqual(tab.root.paneIDs, [pane])
+        let session = try XCTUnwrap(snapshot.panes[pane]?.sessionID)
+        XCTAssertEqual(snapshot.sessions[session]?.launch, .host(host.id))
+        XCTAssertEqual(snapshot.sessions[session]?.state, .running)
+        XCTAssertEqual(snapshot.windows.first { $0.id == original.id }?.tabIDs, original.tabIDs, "The original window is untouched")
+        // Output without integration or recent input marks the tab busy until it goes quiet (FR-T05).
+        XCTAssertEqual(model.busyTabIDs, [tab.id])
+        model.activityNow = { frozen.addingTimeInterval(PaneOutputActivity.quietInterval + 0.1) }
+        try await waitUntil { model.busyTabIDs.isEmpty }
+    }
+
+    @MainActor
     func testFailedConnectionDoesNotRetry() async throws {
         let fake = try fakeSSH(exitCode: 255)
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Down", destination: "down").validated { _ in false }, revision: 1)
@@ -165,5 +204,113 @@ final class HostConnectionTests: XCTestCase {
         XCTAssertEqual(model.snapshot.tabs[tab.id]?.root.paneIDs, [tab.activePaneID], "No hidden pane is created behind the maximized one")
         XCTAssertEqual(model.errorMessage, "Restore panes before connecting in a split.")
         XCTAssertFalse(FileManager.default.fileExists(atPath: fake.log.path))
+    }
+
+    /// A stand-in ssh that runs `$SSH_ASKPASS` as its direct child twice, like a real password
+    /// retry, logging what it received; without askpass variables it only logs their absence.
+    private func askingSSH() throws -> (path: String, log: URL) {
+        let log = directory.appendingPathComponent("askpass.log")
+        let script = directory.appendingPathComponent("ssh-askpass")
+        let body = """
+            #!/bin/sh
+            if [ -z "$SSH_ASKPASS" ]; then printf 'NO-ASKPASS\\n' >> '\(log.path)'; else
+            printf 'REQUIRE=%s\\n' "$SSH_ASKPASS_REQUIRE" >> '\(log.path)'
+            "$SSH_ASKPASS" "deploy@prod's password: " > '\(directory.path)/first' </dev/null
+            printf 'FIRST=%s\\n' "$(cat '\(directory.path)/first')" >> '\(log.path)'
+            "$SSH_ASKPASS" "deploy@prod's password: " > '\(directory.path)/second' </dev/null
+            printf 'SECOND=%s\\n' "$(cat '\(directory.path)/second')" >> '\(log.path)'
+            fi
+            printf 'FAKE-SSH-READY\\n'; exec /bin/sleep 30
+
+            """
+        try Data(body.utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        return (script.path, log)
+    }
+
+    @MainActor
+    func testSavedPasswordReachesSSHOnlyThroughOneAskpassAnswer() async throws {
+        let helper = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent(AskpassBroker.helperName).path
+        guard FileManager.default.isExecutableFile(atPath: helper) else { throw XCTSkip("Run `swift build` first to build \(AskpassBroker.helperName).") }
+        let fake = try askingSSH()
+        var host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod", user: "deploy").validated { _ in false }, revision: 3)
+        host.savedPassword = SavedPasswordPolicy(requiresUserPresence: false)
+        let model = try await makeModel(host: host, ssh: fake.path)
+        let broker = AskpassBroker(helperPath: helper)
+        defer {
+            broker.stop()
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        model.askpass = broker
+        let expected = host.connectionRevision, id = host.id
+        model.savedPassword = { hostID, revision in hostID == id && revision == expected ? Data("s3cret-PASSWORD".utf8) : nil }
+
+        let paneResult = await model.connect(host: host)
+        let pane = try XCTUnwrap(paneResult)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        // The retry is asked on the pane itself, like ssh's own prompt; the person types it.
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("deploy@prod's password:") }
+        try terminal.adapter.send(Data("typed-by-person\r".utf8))
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("FAKE-SSH-READY") }
+        let log = try String(contentsOf: fake.log, encoding: .utf8)
+        XCTAssertTrue(log.contains("REQUIRE=force"))
+        XCTAssertTrue(log.contains("FIRST=s3cret-PASSWORD\n"), log)
+        XCTAssertTrue(log.contains("SECOND=typed-by-person\n"), "A second prompt is never answered from the Keychain: \(log)")
+        XCTAssertFalse(try terminal.adapter.read(.retainedText).contains("s3cret"), "The password never appears in the pane")
+        terminal.requestTermination(force: true)
+        try await waitUntil { broker.registeredCount == 0 }
+    }
+
+    @MainActor
+    func testHostWithoutSavedPasswordGetsNoAskpass() async throws {
+        let fake = try askingSSH()
+        let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
+        let model = try await makeModel(host: host, ssh: fake.path)
+        let broker = AskpassBroker(helperPath: "/fixture/trellis-askpass")
+        defer {
+            broker.stop()
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        model.askpass = broker
+        model.savedPassword = { _, _ in
+            XCTFail("No password is read for this host"); return nil
+        }
+        let paneResult = await model.connect(host: host)
+        let terminal = try XCTUnwrap(model.terminals[try XCTUnwrap(paneResult)])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("FAKE-SSH-READY") }
+        XCTAssertEqual(try String(contentsOf: fake.log, encoding: .utf8), "NO-ASKPASS\n")
+        XCTAssertEqual(broker.registeredCount, 0)
+    }
+
+    private final class Secrets: HostSecretStore, @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [UUID: Data] = [:]
+        func store(_ password: Data, hostID: UUID) throws { lock.withLock { values[hostID] = password } }
+        func read(hostID: UUID) throws -> Data? { lock.withLock { values[hostID] } }
+        func remove(hostID: UUID) { _ = lock.withLock { values.removeValue(forKey: hostID) } }
+    }
+
+    private struct Gate: UserPresenceGate {
+        let allow: Bool
+        func authorize(reason: String) async -> Bool { allow }
+    }
+
+    @MainActor
+    func testTurningOffTouchIDRequirementNeedsConfirmation() async throws {
+        let model = HostListModel(library: HostLibrary(storage: MemoryHosts(), secrets: Secrets()))
+        let created = try await model.library.create(HostDraft(name: "Prod", destination: "prod"))
+        let gated = try await model.library.setPassword(id: created.id, .save(Data("pw".utf8), requiresUserPresence: true), expectedRevision: created.revision)
+        model.userPresence = Gate(allow: false)
+        let declined = await model.setPassword(gated, .policy(requiresUserPresence: false))
+        XCTAssertEqual(declined, .failure(.notAuthorized))
+        let unchanged = await model.library.hosts.first
+        XCTAssertEqual(unchanged?.savedPassword?.requiresUserPresence, true)
+        model.userPresence = Gate(allow: true)
+        let allowed = await model.setPassword(gated, .policy(requiresUserPresence: false))
+        XCTAssertEqual(try allowed.get().savedPassword?.requiresUserPresence, false)
     }
 }

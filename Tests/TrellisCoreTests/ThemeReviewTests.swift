@@ -81,7 +81,23 @@ final class ThemeReviewTests: XCTestCase {
                     $0.foregroundPath == field && $0.backgroundPath == "terminal.background"
                 })
             XCTAssertEqual(warning.ratio, 1, accuracy: 0.001)
-            XCTAssertEqual(warning.minimum, 3)
+            XCTAssertEqual(warning.minimum, field == "ui.focusRing" ? 3 : 1.2)
         }
+    }
+
+    func testSubtleSeparatorsDoNotRelaxFocusContrast() throws {
+        let json: [String: Any] = [
+            "version": 1, "id": "subtle-separators", "name": "Subtle separators", "appearance": "light",
+            "terminal": ["background": "#FFFFFF"],
+            "ui": [
+                "background": "#FFFFFF", "surface": "#F8FAFC", "sidebarBackground": "#F0F3F6",
+                "border": "#D0D7DE", "focusRing": "#D0D7DE"
+            ]
+        ]
+        let warnings = try ThemeValidator.validate(JSONSerialization.data(withJSONObject: json)).resolved().contrastWarnings
+        XCTAssertFalse(warnings.contains { $0.foregroundPath == "ui.border" })
+        let focusWarnings = warnings.filter { $0.foregroundPath == "ui.focusRing" }
+        XCTAssertFalse(focusWarnings.isEmpty)
+        XCTAssertTrue(focusWarnings.allSatisfy { $0.minimum == 3 })
     }
 }

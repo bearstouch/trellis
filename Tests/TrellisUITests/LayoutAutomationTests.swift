@@ -298,4 +298,20 @@ final class LayoutAutomationTests: XCTestCase {
         let validated = try result(try await h.call("layout.validate", ["document": exported["document"] as Any]))
         XCTAssertEqual(validated["valid"] as? Bool, true, "Exports validate as layouts")
     }
+    @MainActor
+    func testReapplyingLayoutKeepsTabColorLabel() async throws {
+        let h = try await harness()
+        defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
+        let first = try result(try await apply(h, single("a")))
+        let tabID = try XCTUnwrap((first["mapping"] as? [String: [String: String]])?["a-tab"]?["id"])
+        _ = try result(try await h.call("tab.update", ["id": tabID, "color": "green"]))
+        var renamed = single("a")
+        if var windows = renamed["windows"] as? [[String: Any]], var tabs = windows[0]["tabs"] as? [[String: Any]] {
+            tabs[0]["title"] = "Renamed"; windows[0]["tabs"] = tabs; renamed["windows"] = windows
+        }
+        _ = try result(try await apply(h, renamed))
+        let tab = try XCTUnwrap(h.model.snapshot.tabs[try XCTUnwrap(UUID(uuidString: tabID))])
+        XCTAssertEqual(tab.title, "Renamed")
+        XCTAssertEqual(tab.color, .green, "Layouts don't declare labels, so applying one never wipes them")
+    }
 }

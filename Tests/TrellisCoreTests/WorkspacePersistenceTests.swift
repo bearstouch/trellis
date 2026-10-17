@@ -44,6 +44,23 @@ final class WorkspacePersistenceTests: XCTestCase {
         }
     }
 
+    func testTabColorRoundTripsAndUnknownColorIsDropped() async throws {
+        var state = try await Self.fixture()
+        let tabID = try XCTUnwrap(state.tabs.keys.first)
+        state.tabs[tabID]?.color = .green
+        let data = try WorkspaceSnapshotCodec.encode(state, settings: WorkspaceSettings(shell: "/bin/zsh", directory: "/tmp"))
+        XCTAssertEqual(try WorkspaceSnapshotCodec.decode(data).snapshot.tabs[tabID]?.color, .green)
+        // A label added by a newer build must not make the workspace look corrupt.
+        let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(text.contains(#""color" : "green""#))
+        let newer = try WorkspaceSnapshotCodec.decode(Data(text.replacingOccurrences(of: #""color" : "green""#, with: #""color" : "teal""#).utf8))
+        XCTAssertNil(newer.snapshot.tabs[tabID]?.color)
+        XCTAssertEqual(newer.snapshot.tabs[tabID]?.title, state.tabs[tabID]?.title)
+        // Files written before labels existed have no key and decode unlabeled.
+        let older = try WorkspaceSnapshotCodec.decode(Data(text.replacingOccurrences(of: #""color" : "green","#, with: "").utf8))
+        XCTAssertNil(older.snapshot.tabs[tabID]?.color)
+    }
+
     func testFailedAtomicWriteKeepsBackup() async throws {
         let directory = try directory()
         defer { try? FileManager.default.removeItem(at: directory) }

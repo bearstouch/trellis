@@ -5,7 +5,7 @@
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-U01 | Discoverable, configurable keyboard shortcuts with conflict warnings. | Menus show the shortcuts. A conflict can't silently disable a critical command. |
-| FR-U02 | Readable terminal settings. | Monaco is the default terminal font, with Menlo or the system monospace font and a visible notice if it's missing. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
+| FR-U02 | Readable terminal settings. | Roboto Mono, bundled with the app, is the default terminal font; JetBrains Mono, Cascadia Mono NF (with Nerd Font prompt glyphs), IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled alternatives. A missing or non-monospaced saved font falls back to Menlo or the system monospace font with a visible notice. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
 
 ## Default shortcuts
 
@@ -23,8 +23,10 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Next / previous tab | ⇧⌘] / ⇧⌘[ |
 | Next / previous window | ⌃⌘] / ⌃⌘[ |
 | Find in pane / next / previous | ⌘F / ⌘G / ⇧⌘G |
+| Previous / next prompt (shell integration) | ⌘↑ / ⌘↓ |
 | Zoom in / out / actual size | ⌘+ (⌘= also works) / ⌘- / ⌘0 |
 | Save workspace | ⌘S |
+| Hide / show sidebar | ⌃⌘S |
 | Rename tab, rename window, delete window, show hosts | Unbound by default |
 
 These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q), Undo and Redo, Cut, Copy, Paste, Select All, and Minimize (⌘M).
@@ -32,7 +34,7 @@ These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q)
 Rules for shortcuts:
 
 - Every configurable shortcut must include ⌘, so terminal key combinations (Ctrl-C, Option sequences) always reach the shell.
-- Conflicts are rejected before they're saved.
+- Conflicts are rejected before they're saved. Previous/Next Prompt (added with shell integration) yield to a shortcut you had already assigned to ⌘↑ or ⌘↓: that prompt action starts unbound instead of discarding your saved shortcuts.
 - Settings are stored under the `keyboard.settings` user default.
 - **Option as Meta** is a terminal setting and is off by default.
 - Cmd-C and Cmd-V are always native copy and paste, and Ctrl-C always sends the terminal interrupt. Clipboard actions and terminal input must not fight over the responder chain.
@@ -42,12 +44,17 @@ Rules for shortcuts:
 | Setting | Default | Range |
 | --- | --- | --- |
 | Chrome mode | Light | System, Dark, Light |
-| Terminal font | Monaco 13 | Sizes 8–48, with zoom |
+| Terminal font | Roboto Mono 13 (bundled) | Sizes 8–48, with zoom |
 | Cursor | Block, not blinking | |
 | Scrollback | 10,000 lines | 0–50,000, plus a 16 MiB cap |
+| Ligatures | On | On, Off (FR-TX01); visible only with fonts that have them, such as JetBrains Mono |
+| Bold as bright colors | On | On, Off (FR-TX03) |
+| Use bold fonts / Use italic fonts | On / On | On, Off (FR-TX03) |
+| Allow blinking text | On | On, Off (FR-TX03); always steady under Reduce Motion |
 | Light / dark theme | `trellis-light` / `trellis-dark` | Any installed theme for that appearance |
+| Remote Control: MCP server | Off, `127.0.0.1`, port 7777 | Interface IP literal, port 1024–65535 ([MCP server](../api/mcp.md#settings), FR-RC01–FR-RC03) |
 
-Changes apply live, without restarting sessions.
+Changes apply live, without restarting sessions. Settings saved by an earlier version, which have no text-rendering values, load with these defaults.
 
 ## Accessibility
 

@@ -11,6 +11,19 @@ public struct WindowActivity: Equatable, Sendable {
     public init() {}
 }
 
+/// One tab in the collapsed rail's hover card (FR-W06): live status, never persisted.
+public struct WindowTabPreview: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let title: String
+    public let color: TabColor?
+    public let isActive: Bool
+    public let paneCount: Int
+    public let isBusy: Bool
+    public let inputWait: InputWaitReason?
+    public let failedCommandExit: Int32?
+    public let hasExitedSession: Bool
+}
+
 @MainActor
 public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var snapshot = WorkspaceSnapshot()
@@ -21,6 +34,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
     public private(set) var diagnosticCodes: [String] = []
     @Published public private(set) var appearance = AppearanceSettings()
+    /// Narrow initials rail instead of the full window list; a per-user UI preference, not workspace data.
+    @Published public private(set) var sidebarCollapsed = false
     /// Advances once per committed settings change; API `expectedRevision` uses it.
     public private(set) var appearanceRevision: UInt64 = 0
     /// Called once per committed change of settings or effective theme, after reconciliation; previews are not commits.
@@ -154,15 +169,29 @@ public final class AppWorkspaceModel: ObservableObject {
         scheduleWorkspaceSave()
     }
     public var onChromeModeChanged: ((ChromeMode) -> Void)?
+    /// MCP server settings (FR-RC01); saved with the workspace, applied by the app.
+    @Published public private(set) var remoteControl = RemoteControlSettings()
+    @Published public var remoteControlStatus: RemoteControlStatus = .stopped
+    /// Called after a committed or restored change; the app restarts the server.
+    public var onRemoteControlSettingsChanged: ((RemoteControlSettings) -> Void)?
+    /// Injected so tests list fixed interfaces.
+    public var networkInterfaces: () -> [NetworkInterfaceAddress] = NetworkInterfaceAddress.current
+
+    /// Invalid settings keep the previous ones (and the running server) unchanged.
+    @discardableResult
+    public func applyRemoteControl(_ settings: RemoteControlSettings) -> Bool {
+        guard settings.isValid else { return false }
+        remoteControl = settings
+        scheduleWorkspaceSave()
+        onRemoteControlSettingsChanged?(settings)
+        return true
+    }
     public var appearanceNotice: String? { NativeTerminalFont.choice(for: appearance.fontName).notice }
 
     public func applyAppearance(_ settings: AppearanceSettings) -> Bool {
         guard settings.isValid else { return false }
         let previous = appearance
-        let terminalSettingsChanged =
-            previous.fontName != settings.fontName || previous.fontSize != settings.fontSize
-            || previous.cursorShape != settings.cursorShape || previous.cursorBlinks != settings.cursorBlinks
-            || previous.scrollbackLines != settings.scrollbackLines
+        let terminalSettingsChanged = previous.terminalRenderingDiffers(from: settings)
         appearance = settings
         reconcileThemeSelections()
         if terminalSettingsChanged { for terminal in terminals.values { terminal.applyAppearance(terminalAppearance) } }
@@ -225,8 +254,13 @@ public final class AppWorkspaceModel: ObservableObject {
     public var accessibility: WorkspaceAccessibility {
         WorkspaceAccessibility(
             snapshot: snapshot,
-            live: terminals.mapValues { WorkspaceAccessibility.LiveSession(state: $0.sessionState, exitCode: $0.exitCode) },
-            windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys))
+            live: terminals.reduce(into: [:]) { live, entry in
+                live[entry.key] = WorkspaceAccessibility.LiveSession(
+                    state: entry.value.sessionState, exitCode: entry.value.exitCode, failedCommandExit: failedCommandExit(paneID: entry.key),
+                    inputWait: inputWaits[entry.key])
+            },
+            windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys),
+            windowsNeedingInput: windowsNeedingInput, titles: automaticTitles)
     }
 
     /// VoiceOver names each terminal by pane and status; its value stays the text.
@@ -248,6 +282,23 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var defaultShell: String
     @Published public private(set) var defaultDirectory: String
     @Published public private(set) var activity: [UUID: WindowActivity] = [:]
+    /// Tabs with a pane printing output right now (FR-T05).
+    @Published public private(set) var busyTabIDs: Set<UUID> = []
+    private var outputActivity = PaneOutputActivity()
+    /// Panes whose program waits for the user (FR-T06); runtime-only, never persisted.
+    @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:]
+    private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
+    var activityNow: () -> Date = Date.init
+    var activitySleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
+    /// Applies to sessions started after a change (FR-SI06).
+    @Published public private(set) var shellIntegrationEnabled: Bool
+    /// Runtime-only, per pane, from authenticated marks; never persisted or logged.
+    @Published public private(set) var shellStates: [UUID: ShellIntegrationState] = [:]
+    /// Per session, outliving its shell state so Quit can still save it as the launch directory (FR-SI07).
+    /// Keyed by session so a restarted or reconfigured pane never resumes a previous shell's directory.
+    private var lastReportedDirectories: [UUID: String] = [:]
+    /// Injected by tests; nil disables integration.
+    var shellIntegrationDirectory: String? = BundledShellIntegration.directory()
     public var confirmCloseSessions: (Int) -> Bool = { _ in true }
     public var confirmForceSessions: (Int) -> Bool = { _ in false }
     private var closeSummary: [String] = []
@@ -298,6 +349,11 @@ public final class AppWorkspaceModel: ObservableObject {
     public var resolveHost: ((UUID) async -> SavedHost?)?
     /// Injected only by tests; connections always use the system OpenSSH client.
     var sshExecutable = "/usr/bin/ssh"
+    /// Answers ssh's password prompt for hosts with a saved password (FR-H08); nil keeps every prompt typed.
+    public var askpass: AskpassBroker?
+    /// Reads a host's Keychain password for one answer, given the connection revision the session started with.
+    public var savedPassword: (@Sendable (UUID, UInt64) async -> Data?)?
+    private var askpassRegistrations: [UUID: AskpassBroker.Registration] = [:]
     let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
     private let preferences: UserDefaults
@@ -312,6 +368,8 @@ public final class AppWorkspaceModel: ObservableObject {
         self.preferences = preferences
         defaultShell = preferences.string(forKey: "terminal.shell") ?? LocalLaunchConfiguration.loginShell().executable
         defaultDirectory = preferences.string(forKey: "terminal.directory") ?? FileManager.default.homeDirectoryForCurrentUser.path
+        shellIntegrationEnabled = preferences.object(forKey: "terminal.shellIntegration") as? Bool ?? true
+        sidebarCollapsed = preferences.bool(forKey: "sidebar.collapsed")
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
@@ -351,6 +409,8 @@ public final class AppWorkspaceModel: ObservableObject {
         try await service.store.restoreStoppedSnapshot(restored.snapshot)
         defaultShell = restored.settings.shell; defaultDirectory = restored.settings.directory
         appearance = restored.settings.appearance
+        remoteControl = restored.settings.remoteControl
+        onRemoteControlSettingsChanged?(remoteControl)
         reconcileThemeSelections()
         refreshEffectiveTheme()
         restoredWindowFrame = restored.settings.windowFrame
@@ -412,6 +472,11 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
 
+    public func toggleSidebar() {
+        sidebarCollapsed.toggle()
+        preferences.set(sidebarCollapsed, forKey: "sidebar.collapsed")
+    }
+
     public func updateWindowFrame(_ frame: String) {
         preferences.set(frame, forKey: "app.windowFrame")
         scheduleWorkspaceSave()
@@ -435,8 +500,8 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
         let settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
-            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance)
-        do { try await persistence.save(snapshot, settings: settings, sequence: saveGeneration); return true } catch {
+            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl)
+        do { try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration); return true } catch {
             errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
         }
     }
@@ -461,6 +526,13 @@ public final class AppWorkspaceModel: ObservableObject {
         if let pendingPaste, pendingPaste.target != currentPasteTarget { cancelPaste() }
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
+        if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
+        outputActivity.retain(Set(next.panes.keys))
+        if inputWaits.keys.contains(where: { next.panes[$0] == nil }) { inputWaits = inputWaits.filter { next.panes[$0.key] != nil } }
+        // Looking at the pane answers a bell; a password prompt stays until echo returns.
+        if let viewed = presentation.activePane?.id, inputWaits[viewed] == .attention { inputWaits.removeValue(forKey: viewed) }
+        for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
+        lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
@@ -468,8 +540,9 @@ public final class AppWorkspaceModel: ObservableObject {
         scheduleWorkspaceSave()
     }
 
-    public func createWindow(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async {
-        guard !isRestoring, recoveryMessage == nil, !shuttingDown, !Task.isCancelled else { return }
+    @discardableResult
+    public func createWindow(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async -> UUID? {
+        guard !isRestoring, recoveryMessage == nil, !shuttingDown, !Task.isCancelled else { return nil }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
@@ -478,11 +551,12 @@ public final class AppWorkspaceModel: ObservableObject {
             // confirmation loop. Shutdown gates only the process launch.
             guard let id = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == id }),
                 let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID]
-            else { return }
+            else { return nil }
             attachTerminal(pane)
             publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
-        } catch { errorMessage = "The window could not be created." }
+            return id
+        } catch { errorMessage = "The window could not be created."; return nil }
     }
 
     public func selectWindow(_ id: UUID) async {
@@ -551,19 +625,27 @@ public final class AppWorkspaceModel: ObservableObject {
                                 ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
                 self.closureCoordinator.forget(sessionID: request.sessionID)
+                if let registration = self.askpassRegistrations.removeValue(forKey: request.sessionID) { self.askpass?.unregister(registration) }
+                if self.terminals[paneID] === terminal {
+                    self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
+                }
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
             }
             if fixture {
                 await terminal.startFixture()
             } else {
-                let configuration: LocalLaunchConfiguration
+                var configuration: LocalLaunchConfiguration
                 switch request.launch {
                 case .shell(let directory):
                     configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory, environmentOverrides: environment)
+                    configuration.shellIntegration = shellIntegration(for: configuration)
                 case .process(let executable, let arguments, let directory):
                     configuration = LocalLaunchConfiguration(
                         executable: executable, arguments: arguments, directory: directory ?? defaultDirectory, environmentOverrides: environment)
+                    // `.shell` is frozen to `.process(shell, ["-l"])` before launch. Any frozen login shell qualifies, so
+                    // panes started before the default shell changed keep integration on restart and restore.
+                    if arguments == ["-l"] { configuration.shellIntegration = shellIntegration(for: configuration) }
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
                     // `.host(id)` so persistence and explicit reconnects re-read it.
@@ -582,12 +664,184 @@ public final class AppWorkspaceModel: ObservableObject {
                             ).snapshot)
                         return
                     }
+                    var overrides = environment
+                    // argv is untouched: the password reaches ssh only through the one-shot askpass broker.
+                    if host.savedPassword != nil, let askpass, let savedPassword {
+                        let revision = host.connectionRevision
+                        let registration = askpass.register(
+                            parent: { [weak terminal] in await MainActor.run { terminal?.processID } },
+                            answer: { await savedPassword(hostID, revision) })
+                        if let registration {
+                            askpassRegistrations[request.sessionID] = registration
+                            overrides.merge(registration.environment(helper: askpass.helperPath)) { $1 }
+                        }
+                    }
                     configuration = LocalLaunchConfiguration(
-                        executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: environment)
+                        executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
                 await terminal.start(configuration: configuration)
+                // A launch refused before spawning never reports an exit, so drop its nonce here.
+                if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
+    }
+
+    /// The default login shell with bundled scripts only; other processes, SSH and fixtures never reach this (FR-SI01).
+    private func shellIntegration(for configuration: LocalLaunchConfiguration) -> ShellIntegrationInjection? {
+        guard shellIntegrationEnabled, let directory = shellIntegrationDirectory, let kind = ShellIntegrationKind(executable: configuration.executable) else {
+            return nil
+        }
+        // Plan against the final environment so a pane's own ZDOTDIR/XDG_DATA_DIRS override is the one restored.
+        return .plan(
+            kind: kind, arguments: configuration.arguments,
+            inheritedEnvironment: configuration.inheritedEnvironment.merging(configuration.environmentOverrides) { $1 },
+            resourceDirectory: directory, nonce: ShellIntegrationInjection.makeNonce())
+    }
+
+    public func setShellIntegrationEnabled(_ enabled: Bool) {
+        guard enabled != shellIntegrationEnabled else { return }
+        shellIntegrationEnabled = enabled
+        preferences.set(enabled, forKey: "terminal.shellIntegration")
+    }
+
+    /// The shell's reported directory; nil without integration (INT-01).
+    public func currentDirectory(paneID: UUID) -> String? { shellStates[paneID]?.currentDirectory }
+
+    /// File links resolve only in local panes, read at click time so a restart is seen (FR-L04).
+    /// A saved SSH host's (or a direct `ssh` command's) paths name files on the remote machine.
+    func fileLinkContext(paneID: UUID) -> FileLinkContext? {
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return nil }
+        if case .host = launch { return nil }
+        // A pane started straight into `ssh` or `mosh` shows remote paths too.
+        if case .process(let executable, _, _) = launch, ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent) { return nil }
+        return FileLinkContext(currentDirectory: currentDirectory(paneID: paneID), homeDirectory: NSHomeDirectory())
+    }
+
+    /// A renamed tab keeps its title; the default title follows the active pane (FR-SI05).
+    public func displayTitle(_ tab: WorkspaceTab) -> String {
+        guard tab.title == WorkspaceTab.defaultTitle else { return tab.title }
+        return automaticTitle(paneID: tab.activePaneID) ?? tab.title
+    }
+
+    /// Non-zero exit of the pane's last finished command (FR-SI04).
+    public func failedCommandExit(paneID: UUID) -> Int32? {
+        guard let state = shellStates[paneID], state.lastCommandFailed else { return nil }
+        return state.lastExitCode
+    }
+
+    /// The strongest wait among a tab's panes: a password prompt outranks a bell (FR-T06).
+    public func inputWait(tabID: UUID) -> InputWaitReason? {
+        let waits = snapshot.tabs[tabID]?.root.paneIDs.compactMap { inputWaits[$0] } ?? []
+        return waits.contains(.password) ? .password : waits.first
+    }
+
+    public var windowsNeedingInput: Set<UUID> {
+        Set(inputWaits.keys.compactMap { snapshot.panes[$0].flatMap { snapshot.tabs[$0.tabID]?.windowID } })
+    }
+
+    /// A window's tabs in order with their live status, for the rail's hover card (FR-W06). Unknown window → empty.
+    public func tabPreviews(windowID: UUID) -> [WindowTabPreview] {
+        guard let window = snapshot.windows.first(where: { $0.id == windowID }) else { return [] }
+        return window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in
+            let panes = tab.root.paneIDs
+            return WindowTabPreview(
+                id: tab.id, title: displayTitle(tab), color: tab.color, isActive: tab.id == window.activeTabID, paneCount: panes.count,
+                isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id),
+                failedCommandExit: panes.lazy.compactMap(failedCommandExit(paneID:)).first,
+                hasExitedSession: panes.contains { [.exited, .failed].contains(terminals[$0]?.sessionState) })
+        }
+    }
+
+    /// Selecting a tab only sets its window's active tab, so jumping from another window selects both.
+    public func selectWindowTab(windowID: UUID, tabID: UUID) async {
+        guard snapshot.tabs[tabID]?.windowID == windowID else { return }
+        await selectWindow(windowID)
+        await selectTab(tabID)
+    }
+
+    /// At the shell prompt (known through integration) nothing is waiting on a program: a completion bell or the
+    /// user's own `stty -echo` must not label the tab.
+    private func atShellPrompt(_ paneID: UUID) -> Bool { shellStates[paneID]?.commandRunning == false }
+
+    private func setPasswordPrompt(_ active: Bool, paneID: UUID) {
+        if active, !atShellPrompt(paneID) {
+            if inputWaits[paneID] != .password { inputWaits[paneID] = .password }
+        } else if inputWaits[paneID] == .password {
+            inputWaits.removeValue(forKey: paneID)
+        }
+        refreshTerminalAccessibility()
+    }
+
+    private func requestAttention(paneID: UUID) {
+        guard inputWaits[paneID] == nil, presentation.activePane?.id != paneID, !atShellPrompt(paneID) else { return }
+        inputWaits[paneID] = .attention
+        refreshTerminalAccessibility()
+    }
+
+    private var automaticTitles: [UUID: String] {
+        var titles: [UUID: String] = [:]
+        for id in shellStates.keys { if let title = automaticTitle(paneID: id) { titles[id] = title } }
+        for tab in snapshot.tabs.values where tab.title == WorkspaceTab.defaultTitle { titles[tab.id] = automaticTitle(paneID: tab.activePaneID) }
+        return titles
+    }
+
+    public func paneTitle(_ id: UUID) -> String {
+        snapshot.panes[id]?.title ?? automaticTitle(paneID: id) ?? WorkspaceTab.defaultTitle
+    }
+
+    private func automaticTitle(paneID: UUID) -> String? {
+        guard let state = shellStates[paneID] else { return nil }
+        if let name = state.commandName { return name }
+        guard let directory = state.currentDirectory else { return nil }
+        if directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
+        let name = (directory as NSString).lastPathComponent
+        return name.isEmpty ? directory : name
+    }
+
+    private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
+        switch event {
+        case .commandFinished, .promptStart: settleOutput(paneID: paneID)
+        case .commandInputStart, .commandStart: break
+        }
+        // Back at the prompt, the program that asked is gone.
+        if case .promptStart = event, inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
+        var state = shellStates[paneID] ?? ShellIntegrationState()
+        state.apply(event, at: Date())
+        guard state != shellStates[paneID] else { return }
+        shellStates[paneID] = state
+        if let directory = state.currentDirectory, let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
+            lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
+        }
+        refreshTerminalAccessibility()
+    }
+
+    /// Local shells are saved with their last reported directory so a restart resumes there (FR-SI07).
+    /// The store keeps the original launch, so Restart and Duplicate Tab are unchanged.
+    private func snapshotForSave() -> WorkspaceSnapshot {
+        var saved = snapshot
+        let files = SystemLaunchFileAccess()
+        for (sessionID, directory) in lastReportedDirectories {
+            guard let launch = saved.sessions[sessionID]?.launch else { continue }
+            let resumed: SessionLaunch
+            switch launch {
+            case .shell: resumed = .shell(directory: directory)
+            case .process(let executable, let arguments, _) where arguments == ["-l"]: resumed = .process(executable: executable, arguments: arguments, directory: directory)
+            default: continue
+            }
+            guard resumed != launch, files.isAccessibleDirectory(directory) else { continue }
+            saved.sessions[sessionID]?.launch = resumed
+        }
+        return saved
+    }
+
+    /// New panes start in the source pane's reported directory when it is still accessible.
+    private func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
+        guard let directory = sourcePaneID.flatMap(currentDirectory(paneID:)), SystemLaunchFileAccess().isAccessibleDirectory(directory),
+            let pane = snapshot.panes[paneID], case .shell(nil)? = snapshot.sessions[pane.sessionID]?.launch
+        else { return }
+        if let result = try? await service.execute(.configureStoppedSession(paneID: paneID, launch: .shell(directory: directory))) {
+            publish(result.snapshot)
+        }
     }
 
     func isClosing(paneID: UUID) -> Bool {
@@ -602,6 +856,36 @@ public final class AppWorkspaceModel: ObservableObject {
         var indicator = activity[tab.windowID] ?? WindowActivity()
         if exited { indicator.hasExit = true } else { indicator.hasOutput = true }
         if indicator != activity[tab.windowID] { activity[tab.windowID] = indicator }
+    }
+
+    private func recordOutput(paneID: UUID) {
+        guard outputActivity.recordOutput(paneID, at: activityNow(), commandRunning: shellStates[paneID]?.commandRunning),
+            let tabID = snapshot.panes[paneID]?.tabID
+        else { return }
+        if !busyTabIDs.contains(tabID) { busyTabIDs.insert(tabID) }
+        guard busySettleTasks[tabID] == nil else { return }
+        // One polling task per busy tab; output chunks only refresh a timestamp, never publish.
+        busySettleTasks[tabID] = Task { [weak self] in
+            repeat {
+                guard let sleep = self?.activitySleep else { return }
+                await sleep(PaneOutputActivity.quietInterval / 4)
+            } while !Task.isCancelled && self?.refreshBusy(tabID) == true
+        }
+    }
+
+    /// Clears the tab when none of its panes is busy; returns whether it still is.
+    @discardableResult
+    private func refreshBusy(_ tabID: UUID) -> Bool {
+        let now = activityNow()
+        if snapshot.tabs[tabID]?.root.paneIDs.contains(where: { outputActivity.isBusy($0, at: now) }) == true { return true }
+        if busyTabIDs.contains(tabID) { busyTabIDs.remove(tabID) }
+        busySettleTasks.removeValue(forKey: tabID)?.cancel()
+        return false
+    }
+
+    private func settleOutput(paneID: UUID) {
+        outputActivity.settle(paneID)
+        if let tabID = snapshot.panes[paneID]?.tabID { refreshBusy(tabID) }
     }
 
     public func renameWindow(_ id: UUID, name: String) async {
@@ -623,7 +907,30 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.inputSuspended = editingTabID != nil
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
-        terminal.onOutput = { [weak self] in self?.recordActivity(paneID: pane.id) }
+        terminal.onOutput = { [weak self, weak terminal] in
+            guard let self else { return }
+            self.recordActivity(paneID: pane.id)
+            if let terminal, self.terminals[pane.id] === terminal { self.recordOutput(paneID: pane.id) }
+        }
+        terminal.onInput = { [weak self] in
+            guard let self else { return }
+            self.outputActivity.recordInput(pane.id, at: self.activityNow())
+        }
+        shellStates.removeValue(forKey: pane.id)
+        inputWaits.removeValue(forKey: pane.id)
+        terminal.onPasswordPromptChanged = { [weak self, weak terminal] active in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.setPasswordPrompt(active, paneID: pane.id)
+        }
+        terminal.onAttentionRequested = { [weak self, weak terminal] in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.requestAttention(paneID: pane.id)
+        }
+        terminal.onShellIntegrationEvent = { [weak self, weak terminal] event in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.applyShellEvent(event, paneID: pane.id)
+        }
+        terminal.fileLinkContext = { [weak self] in self?.fileLinkContext(paneID: pane.id) }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.
             guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }
@@ -766,7 +1073,10 @@ public final class AppWorkspaceModel: ObservableObject {
             // The store may have committed while a close operation began. Keep
             // its surviving pane materialized, but do not launch a new process
             // inside a hierarchy that is already closing.
-            if startSession, !isClosing(paneID: id), !isClosing(paneID: newID) { await start(paneID: newID) }
+            if startSession, !isClosing(paneID: id), !isClosing(paneID: newID) {
+                await inheritDirectory(from: id, into: newID)
+                await start(paneID: newID)
+            }
             return newID
         } catch {
             errorMessage = "This pane cannot be split further. Check its size and the layout limits."
@@ -775,7 +1085,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// Where a saved-host connection opens. Splits divide the focused pane.
-    public enum HostPlacement: Sendable, Equatable { case newTab, split(SplitAxis) }
+    public enum HostPlacement: Sendable, Equatable { case newTab, newWindow, split(SplitAxis) }
 
     /// Each call creates a new pane and session with its own ssh process; an
     /// existing connection is never reused or retried.
@@ -784,12 +1094,12 @@ public final class AppWorkspaceModel: ObservableObject {
         guard !isRestoring, recoveryMessage == nil, !shuttingDown else { return nil }
         let paneID: UUID?
         switch placement {
-        case .newTab:
+        case .newTab, .newWindow:
             let created: UUID?
-            if presentation.selectedWindow == nil {
+            if placement == .newWindow || presentation.selectedWindow == nil {
                 // A new window already contains one stopped pane; use it instead of adding a tab.
-                await createWindow(name: host.name, startSession: false)
-                created = presentation.selectedTab?.id
+                let window = await createWindow(name: host.name, startSession: false)
+                created = window.flatMap { id in snapshot.windows.first { $0.id == id }?.activeTabID }
             } else {
                 created = await createTab(startSessions: false)
             }
@@ -834,6 +1144,11 @@ public final class AppWorkspaceModel: ObservableObject {
         if let id {
             guard snapshot.tabs[id]?.windowID == windowID, !closingTabIDs.contains(id) else { return nil }
         }
+        // A new (not duplicated) tab starts where the window's focused shell is.
+        let sourcePaneID =
+            id == nil
+            ? snapshot.windows.first { $0.id == windowID }
+                .flatMap { snapshot.tabs[$0.activeTabID]?.activePaneID } : nil
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
@@ -844,6 +1159,7 @@ public final class AppWorkspaceModel: ObservableObject {
             }
             publish(result.snapshot)
             if startSessions {
+                if let sourcePaneID, let paneID = tab.root.paneIDs.first { await inheritDirectory(from: sourcePaneID, into: paneID) }
                 for paneID in tab.root.paneIDs { await start(paneID: paneID) }
             }
             return tabID
@@ -883,6 +1199,10 @@ public final class AppWorkspaceModel: ObservableObject {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) } catch { errorMessage = "Use a tab name between 1 and 200 characters." }
+    }
+
+    public func setTabColor(_ id: UUID, color: TabColor?) async {
+        do { publish(try await service.execute(.setTabColor(id: id, color: color)).snapshot) } catch { errorMessage = "The tab color could not be changed." }
     }
 
     public func moveTab(_ id: UUID, offset: Int) async {

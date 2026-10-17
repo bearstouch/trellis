@@ -71,6 +71,26 @@ final class TerminalAppearanceTests: XCTestCase {
         native.applyAppearance(settings)
         XCTAssertTrue(native.historyNotice.contains("evicted"))
     }
+
+    @MainActor
+    func testBellStyleControlsSoundButNeverAttention() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
+        var beeps = 0, attention = 0
+        native.playBell = { beeps += 1 }; native.onAttentionRequested = { attention += 1 }
+        var settings = AppearanceSettings()
+        for (style, expected, sounds) in [(TerminalBellStyle.sound, BellStyle.sound, 1), (.visual, .visual, 0), (.soundAndVisual, .soundAndVisual, 1), (.off, .none, 0)] {
+            settings.bellStyle = style
+            native.applyAppearance(settings)
+            XCTAssertEqual(view.bellStyle, expected)
+            (beeps, attention) = (0, 0)
+            native.adapter.receive(Data("\u{07}".utf8))
+            XCTAssertEqual(beeps, sounds, "\(style)")
+            XCTAssertEqual(attention, 1, "\(style)")
+        }
+    }
 }
 
 @MainActor

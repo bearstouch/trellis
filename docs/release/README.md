@@ -59,7 +59,7 @@ All files are owner-only and written atomically.
 
 - **Migration:** the workspace is versioned JSON. A newer format is opened in read-only recovery and never overwritten. Settings from installs named "uTerm" are copied on first launch, and the originals are left untouched.
 - **Downgrading:** state written by a newer release may be refused by an older one. The older app shows recovery and leaves the file as it is. Before downgrading, keep a copy of `~/Library/Application Support/dev.trellis`.
-- **Backing up:** copy that folder while Trellis is not running. Grant tokens are stored in the Keychain, not in this folder.
+- **Backing up:** copy that folder while Trellis is not running. Grant tokens and saved host passwords are stored in the Keychain, not in this folder. Restored on another Mac, a host still says its password is saved, but that Keychain has no item. ssh then asks for the password in the terminal; use **Replace…** to save it again.
 
 ## Uninstalling
 
@@ -72,9 +72,9 @@ Then:
 
 1. Delete `Trellis.app`.
 2. Delete the folders listed by `uninstall-plan`: Application Support, Preferences, Caches, and Saved Application State for `dev.trellis`.
-3. Delete the automation tokens from the Keychain, either with Keychain Access (service "Trellis Automation") or with `security delete-generic-password -s "Trellis Automation"`, repeating for each grant.
+3. Delete the automation tokens and saved host passwords from the Keychain, either with Keychain Access (services "Trellis Automation" and "Trellis SSH Host") or with `security delete-generic-password -s "Trellis Automation"` and `security delete-generic-password -s "Trellis SSH Host"`, repeating until no item is left.
 
-The uninstall plan never includes `~/.ssh` (keys, config, `known_hosts`), shell startup files, or shell history. Deleting saved hosts removes only Trellis metadata.
+The uninstall plan never includes `~/.ssh` (keys, config, `known_hosts`), shell startup files, or shell history. Deleting a saved host removes its Trellis metadata and its saved password.
 
 ## Tested matrix
 
@@ -100,3 +100,14 @@ Only these combinations have been run. Nothing else is claimed.
 ## Licenses
 
 SwiftTerm is MIT-licensed. Its license ships as `Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt`. Its provenance and Trellis's changes to it are in `ThirdParty/SwiftTerm/`.
+
+The bundled terminal fonts are all licensed under the SIL Open Font License 1.1. Each family's license ships as `Trellis.app/Contents/Resources/<Family>-OFL.txt`, and the font files and a second copy of each license are in `Trellis.app/Contents/Resources/Trellis_TrellisCore.bundle/Fonts`. Exact revisions are pinned in `release/manifest.json`.
+
+| Family | Version | Source | Files | Notes |
+| --- | --- | --- | --- | --- |
+| Roboto Mono | 3.001 | `googlefonts/RobotoMono` | `RobotoMono-*.ttf` | Unmodified. |
+| JetBrains Mono | 2.304 | `JetBrains/JetBrainsMono` release | `JetBrainsMono-*.ttf` | Unmodified. |
+| Cascadia Mono NF | 2407.24 | `microsoft/cascadia-code` release, `ttf/static` | `CascadiaMonoNF-*.ttf`, `CascadiaMono-OFL.txt` | Unmodified; Reserved Font Name "Cascadia Code". |
+| IBM Plex Mono | 2.005 (`@ibm/plex-mono@2.5.0`) | `IBM/plex` release | `IBMPlexMono-*.ttf` | Unmodified; Reserved Font Name "Plex". |
+| Iosevka Fixed | 34.9.0 | `be5invis/Iosevka` release, unhinted TTF | `IosevkaFixed-*.ttf` | Modified: subset with `pyftsubset` to Latin, Greek, Cyrillic, punctuation, symbols, arrows, math, box drawing, blocks, Braille, Private Use (Powerline) and legacy-computing ranges with default layout features (stylistic alternates dropped), about 0.5 MB per face instead of 7 MB. The Iosevka license reserves no font name, so the name is kept. |
+| Atkinson Hyperlegible Mono | 2.001 | `googlefonts/atkinson-hyperlegible-next-mono`, `fonts/ttf` | `AtkinsonHyperlegibleMono-*.ttf` | Unmodified. |

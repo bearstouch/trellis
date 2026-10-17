@@ -36,12 +36,12 @@
     "foreground": "#E6EDF3",
     "mutedForeground": "#B0B6BC",
     "accent": "#58A6FF",
-    "border": "#6F747A",
-    "activeTabBackground": "#213956",
+    "border": "#27313D",
+    "activeTabBackground": "#1C3049",
     "activeTabForeground": "#E6EDF3",
     "focusRing": "#58A6FF",
     "success": "#7EE787",
-    "warning": "#D2A8FF",
+    "warning": "#E3B341",
     "error": "#FF7B72"
   }
 }

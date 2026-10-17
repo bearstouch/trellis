@@ -28,6 +28,8 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertEqual(map[.closePane], KeyChord("w"))
         XCTAssertEqual(map[.closeTab], KeyChord("w", [.command, .shift]))
         XCTAssertEqual(map[.splitLeftRight], KeyChord("d"))
+        XCTAssertEqual(map[.toggleSidebar], KeyChord("s", [.command, .control]))
+        XCTAssertEqual(ShortcutAction.toggleSidebar.menu, .view)
         XCTAssertEqual(map[.splitTopBottom], KeyChord("d", [.command, .shift]))
         XCTAssertEqual(map[.findInPane], KeyChord("f"))
         XCTAssertEqual(map[.focusLeft], KeyChord("left", [.command, .option]))
@@ -66,6 +68,32 @@ final class KeyboardShortcutTests: XCTestCase {
 
         let future = Data(#"{"optionAsMeta":false,"overrides":{"teleport":{"chord":{"key":"p","modifiers":1}}}}"#.utf8)
         XCTAssertEqual(try JSONDecoder().decode(KeyboardSettings.self, from: future), KeyboardSettings())
+    }
+
+    func testANewDefaultYieldsToAChordTheUserAlreadyChose() throws {
+        // Saved before ⌘↑ became Previous Prompt: the user's choice wins and the new action starts unbound.
+        var saved = KeyboardSettings()
+        saved.shortcuts = saved.shortcuts.assigning(KeyChord("up"), to: .focusUp).assigning(nil, to: .previousPrompt)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
+        var overrides = try XCTUnwrap(json["overrides"] as? [String: Any])
+        overrides.removeValue(forKey: "previousPrompt")
+        json["overrides"] = overrides
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(loaded.shortcuts[.focusUp], KeyChord("up"))
+        XCTAssertNil(loaded.shortcuts[.previousPrompt])
+        XCTAssertEqual(loaded.shortcuts[.nextPrompt], KeyChord("down"))
+        XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
+        XCTAssertEqual(try JSONDecoder().decode(KeyboardSettings.self, from: JSONEncoder().encode(loaded)), loaded)
+    }
+
+    func testToggleSidebarDefaultYieldsToASavedControlCommandS() throws {
+        // Saved before ⌃⌘S became Toggle Sidebar: the map must still load instead of falling back to defaults.
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"saveWorkspace":{"chord":{"key":"s","modifiers":9}}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.saveWorkspace], KeyChord("s", [.command, .control]))
+        XCTAssertNil(loaded.shortcuts[.toggleSidebar])
+        XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
+        XCTAssertEqual(try JSONDecoder().decode(KeyboardSettings.self, from: Data(#"{"optionAsMeta":false,"overrides":{}}"#.utf8)).shortcuts[.toggleSidebar], KeyChord("s", [.command, .control]))
     }
 
     func testAccessibilityStateReflectsSelection() throws {

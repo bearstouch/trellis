@@ -34,19 +34,19 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `window.close` | `id`, `allowRunning?`, `force?`, `expectedRevision?` | A close result or pending cleanup |
 | `tab.list`, `tab.get` | `windowId` / `id` | Ordered tabs / split-tree metadata |
 | `tab.create` | `windowId`, `title?`, `start?` | The tab plus its initial pane and session IDs |
-| `tab.update`, `tab.reorder` | `id`, `title` / `windowId`, `ids`; revision optional | Updated metadata or order |
+| `tab.update`, `tab.reorder` | `id`, `title?`, `color?` / `windowId`, `ids`; revision optional | Updated metadata or order |
 | `tab.focus`, `tab.close` | `id`, plus close flags | Selection / close result |
 | `pane.split` | `paneId`, `axis`, `ratio?`, `start?` | New pane and branch IDs. The existing pane becomes the first child. |
 | `pane.resize` | `branchId`, `ratio`, `expectedRevision?` | Updated branch, with geometry constraints enforced |
 | `pane.focus`, `pane.close` | `id`, plus close flags | Selection / close result |
 | `pane.maximize` | `id`, `maximized` | Temporary presentation state |
-| `session.get` | `id` | State and exit status. Launch details only with execute permission. |
+| `session.get` | `id` | State and exit status. Launch details only with execute permission. With [shell integration](../features/shell-integration.md), `shellIntegration: {commandRunning, lastExitStatus?, currentDirectory?}`; the directory needs execute permission, and command text is never included. `waitingForInput: "password"|"attention"` while the program waits for the user ([FR-T06](../features/workspace.md#tabs)). |
 | `session.start` | `paneId`, `launch?` | New or stopped session ID and the launch status |
 | `session.restart` | `paneId`, `allowRunning?`, `launch?` | Replaces the session after any required termination. The new session gets a new UUID. |
 | `session.sendInput` | `id`, `text` or `base64`, `mode: literal\|paste` | Accepted byte count. Acceptance doesn't mean the input has been processed. |
 | `session.execute` | `id`, `command`, `submit: true` | `{acceptedBytes, submitted: true}` |
 | `session.readOutput` | `id`, `view`, `cursor?`, `maxBytes?` | See [Output and events](output-events.md) |
-| `host.list`, `host.get` | `query?`, tags / `id` | Scoped host metadata |
+| `host.list`, `host.get` | `query?`, tags / `id` | Scoped host metadata. Never a password, nor whether one is saved. Automation can't set passwords. |
 | `host.create`, `host.update`, `host.delete` | Validated host fields; revision on update and delete | Persisted metadata change |
 | `host.connect` | `hostId`, `windowId`, optional split target and `axis` | A new tab or pane, plus the SSH launch outcome |
 | `layout.validate` | `document` | Errors and warnings, without changing anything |
@@ -59,7 +59,7 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `theme.export` | `id`, `resolved?` | `{id, resolved, document}`. Built-in themes are always exported complete. |
 | `theme.delete` | `id` | Deletes a custom theme. Any slot that had it selected falls back to the built-in theme. |
 | `appearance.get` | — | Mode, selected theme IDs and the effective theme |
-| `appearance.set` | `mode: system\|dark\|light`, `darkThemeId?`, `lightThemeId?`, `expectedRevision?` | Atomic settings update. A theme in the wrong appearance slot is rejected. |
+| `appearance.set` | `mode: system\|dark\|light`, `darkThemeId?`, `lightThemeId?`, `expectedRevision?` | Atomic settings update. A theme in the wrong appearance slot is rejected. Font, cursor, scrollback, text-rendering (FR-TX01, FR-TX03) and bell (FR-T07) settings aren't exposed and are kept unchanged. |
 | `events.subscribe` | `topics`, `resourceIds?`, `afterSequence?`, `instanceId?` | `{subscriptionId, sequence, instanceId}` |
 | `events.unsubscribe` | `subscriptionId` | The subscription stops |
 
@@ -73,6 +73,8 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 - Trees can nest at most 16 levels, and a workspace holds at most 100 panes.
 
 ## Session launch and input
+
+**Tab colors.** `tab.update` takes `title`, `color` or both, and at least one is required. `color` is one of `red`, `orange`, `yellow`, `green`, `blue`, `purple` or `gray`, or `null` to remove the label (`FR-T04`). Any other value returns `-32602` with a `color` field error. When you pass both, they apply together or not at all. Tab results include `color` only when the tab has a label, and a change emits `tab.updated`.
 
 **Launch descriptors.** `session.start` with no `launch` uses the pane's saved shell or approved host. Starting an arbitrary executable uses a descriptor like this, and always needs `session.execute`:
 

@@ -2,18 +2,18 @@
 
 [![CI](https://github.com/layerx-labs/trellis/actions/workflows/ci.yml/badge.svg)](https://github.com/layerx-labs/trellis/actions/workflows/ci.yml)
 
-A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal panes, Monaco, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
-
-> **Status:** pre-release. The MVP feature set is implemented. Some manual and platform checks are still pending, among them VoiceOver/IME, the macOS/CPU matrix, Developer ID notarization, and the 10 MiB/s flood target. See [status and known limits](docs/overview/status.md) and the [changelog](CHANGELOG.md) (current version: 0.9.1).
+A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), dark terminal panes in bundled Roboto Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
 ## Features
 
-- **Workspace:** managed windows in a left sidebar, renameable tabs, nested horizontal/vertical splits. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
+- **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Tabs show a busy bar while printing and an **Input** label when a program waits for a password or rings for your attention. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
 - **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Includes scrollback search, safe paste review, copy, and Cmd-click links (http/https/mailto only).
+- **Shell integration:** zsh, bash and fish report their current directory and each command's exit status, with no dotfile edits. New splits and tabs open where you are, failed commands are flagged, and ⌘↑/⌘↓ jump between prompts. On by default; turn it off in Settings → Sessions.
 - **Appearance:** separate Light/Dark theme slots and a JSON theme library with live preview (Settings → Themes).
 - **Keyboard and accessibility:** rebindable menu shortcuts (conflicts are rejected before saving), Option-as-Meta toggle, and accessibility labels throughout.
-- **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust.
-- **Automation:** an owner-only local JSON-RPC socket (no TCP) with scoped, expiring grants created in Settings → Automation. Covers windows, tabs, panes, sessions, input, output cursors, events, declarative layouts, themes and appearance.
+- **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust. An optional per-host password is kept in the macOS Keychain (optionally behind Touch ID) and given to ssh only for its password prompt.
+- **Automation:** an owner-only local JSON-RPC socket with scoped, expiring grants created in Settings → Automation. Covers windows, tabs, panes, sessions, input, output cursors, events, declarative layouts, themes and appearance.
+- **MCP server:** optional, off by default. It exposes the same API as MCP tools over HTTP for agents such as Claude Code, using the same grants. Interface and port are set in Settings → Remote Control. See [docs/api/mcp.md](docs/api/mcp.md).
 - **Portability:** export and import workspaces with a review step (File → Export/Import Workspace…).
 - **Privacy:** no telemetry. Terminal output and typed input are never logged or persisted. Help → Export Diagnostics… previews an allow-listed report before saving.
 
@@ -78,6 +78,7 @@ Formatting uses the toolchain's `swift format` with the repo [`.swift-format`](.
 | `swift run Trellis` | Runs against your **real** workspace in Application Support |
 | `swift run Trellis --state-directory /abs/path` | Uses a separate workspace and theme library (recommended for development) |
 | `swift run Trellis --fixture` | Starts an isolated, fixed-shell demo window whose child exits with code 7. The window stays open for inspection |
+| `swift run Trellis --no-mcp` | Never starts the MCP server for this launch, whatever Settings → Remote Control says. `--fixture` implies it. |
 | `scripts/run-feasibility.sh` | Assembles `.build/Trellis.app`, ad-hoc signs and verifies it, then opens it. Use this when you need a real bundle (icon, Info.plist, resources) |
 | `scripts/run-feasibility.sh --build-only` | Same as above without opening a window |
 
@@ -121,6 +122,7 @@ Sources/
   TrellisTerminal/   all SwiftTerm-specific code (the only place SwiftTerm is imported)
   TrellisUI/         SwiftUI/AppKit views and AppWorkspaceModel
   TrellisControl/    local JSON-RPC server, framing, auth-gated handler
+  TrellisMCP/        optional MCP server (HTTP) over the same authorizer
   TrellisApp/        app entry point, menus, launch arguments
   TrellisRelease/    release manifest checks, CLI link planner, uninstall allow-list
   TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)
@@ -159,11 +161,17 @@ Trellis was previously named **uTerm**. On first launch it copies an existing uT
 
 Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
 
+The installed app (`dev.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `dev.trellis.dev`. Each identity has its own instance lock, activation notification, state directory (`~/Library/Application Support/dev.trellis.dev/` for development) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
+
 ## Themes and terminal fonts
 
 Settings → Appearance includes 10 editor-inspired theme families, each with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations, with matching terminal and app colors. Choose separate light and dark palettes; System appearance switches between them automatically. The original Trellis defaults remain available.
 
 The Terminal font picker lists the monospace typefaces installed on your Mac and previews the selected font. Apply Appearance to save your choice.
+
+Terminals draw font ligatures (with fonts that have them, such as the bundled JetBrains Mono), colour emoji, wide CJK characters and combining marks on the cell grid, along with the usual text styles: bold, dim, italic, underline in single, double, curly, dotted and dashed styles with its own colour, strikethrough, overline, blink, inverse and concealed text. Settings → Appearance turns ligatures, bold-as-bright colours, bold and italic faces, and blinking text on or off.
+
+Programs can show images inline with iTerm2's image protocol, so `imgcat`, `yazi`, `timg` and `chafa -f iterm` work as they do in iTerm2.
 
 ## Troubleshooting
 

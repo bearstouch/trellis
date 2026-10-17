@@ -29,11 +29,27 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onStateChanged: ((SessionState) -> Void)?
     public var onFocused: (() -> Void)?
     public var onOutput: (() -> Void)?
+    /// Fires on each write to the PTY through the view (keystrokes, paste, and terminal-generated replies such as
+    /// cursor or mouse reports); carries no data, so input is never exposed.
+    public var onInput: (() -> Void)?
     /// Raw PTY bytes in arrival order, for bounded automation journaling.
     public var onOutputData: ((Data) -> Void)?
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
+    /// Authenticated shell-integration marks only (FR-SI02); forged output never reaches this.
+    public var onShellIntegrationEvent: ((ShellIntegrationEvent) -> Void)?
+    /// A password-style prompt: the PTY has echo off with line editing on (FR-T06). Fires on change only.
+    public var onPasswordPromptChanged: ((Bool) -> Void)?
+    /// The program rang the bell or posted an OSC 9/777 notification (FR-T06). Carries no text.
+    public var onAttentionRequested: (() -> Void)?
+    /// The audible half of the bell (FR-T07); injected so tests stay silent.
+    var playBell: () -> Void = { NSSound.beep() }
+    public private(set) var passwordPromptActive = false
+    private var passwordCheck: Task<Void, Never>?
+    private var imageTransfer = MultipartImageTransfer()
+    /// Delay before re-reading the PTY modes after I/O; prompts change them just before or after writing.
+    static let passwordCheckDelay: TimeInterval = 0.1
     /// True while a native text field (such as tab renaming) owns editing keys.
     /// Keyboard and mouse-report bytes are dropped instead of reaching the PTY.
     public var inputSuspended = false
@@ -50,7 +66,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard) {
         let surface = AccessibleTerminalView(
             frame: NSRect(x: 0, y: 0, width: 900, height: 520),
-            font: NSFont(name: "Monaco", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))
+            font: NativeTerminalFont.font(NativeTerminalFont.choice(for: AppearanceSettings.defaultFontName), size: 13))
         terminalView = surface
         surface.scrollback = TerminalScrollback(budget: scrollbackBudget)
         surface.changeScrollback(scrollbackBudget.lineLimit)
@@ -69,11 +85,21 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
         surface.onSearchRequested = { [weak self] in self?.showSearch() }
         surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
+        surface.onBell = { [weak self] in self?.onAttentionRequested?() }
+        surface.doubleClickSelection = { [weak surface] position in
+            guard let surface else { return nil }
+            return TerminalLogicalLine.smartSelection(in: surface.getTerminal(), at: position)
+        }
+        surface.describeLink = { [weak self] in self?.describeLink($0) }
+        surface.onOpenLink = { [weak self] in self?.openLink($0) }
+        observeNotifications()
+        observeInlineImages()
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
             if !data.isEmpty {
                 self?.onOutputData?(data)
                 self?.onOutput?()
+                self?.schedulePasswordCheck()
             }
         }
         session.onInputError = { [weak self] error in self?.onInputError?(error) }
@@ -99,6 +125,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard !adapter.isDetached else { return }
         let size = getWindowSize()
         guard let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) else { return }
+        if session.state == .stopped, let nonce = configuration.shellIntegration?.nonce { observeShellIntegration(nonce: nonce) }
         await session.start(configuration, size: dimensions)
         if session.state == .failed {
             adapter.receive(Data("Unable to start the terminal session. Check its executable, directory, and environment.\r\n".utf8))
@@ -149,7 +176,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     }
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
         guard !inputSuspended else { return }
+        onInput?()
         do { try adapter.send(Data(data)) } catch { onInputError?(error) }
+        schedulePasswordCheck()
     }
     /// Mutate the stable native view. No session lifecycle or input operation is
     /// involved; a metrics change only updates the PTY's dimensions.
@@ -165,6 +194,13 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             terminalView.getTerminal().reflowCursorLine = false
             paneSearch.reset()
         }
+        // Each property redraws only when its value changes; none resizes the grid.
+        terminalView.fontLigatures = settings.fontLigatures
+        terminalView.boldIsBright = settings.boldAsBright
+        terminalView.allowBoldFont = settings.allowBoldFont
+        terminalView.allowItalicFont = settings.allowItalicFont
+        terminalView.textBlinkEnabled = settings.blinkingText
+        terminalView.bellStyle = Self.bellStyle(settings.bellStyle)
         if terminalView.scrollback.budget.lineLimit != settings.scrollbackLines {
             let old = terminalView.scrollback
             let evicted = old.historyEvicted || old.retainedHistoryRows > settings.scrollbackLines
@@ -243,20 +279,183 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         return winsize(ws_row: UInt16(clamping: terminal.rows), ws_col: UInt16(clamping: terminal.cols), ws_xpixel: 0, ws_ypixel: 0)
     }
     private func processTerminated(exitCode: Int32?) {
+        passwordCheck?.cancel(); passwordCheck = nil
+        updatePasswordPrompt(false)
         onExit?(exitCode)
+    }
+
+    /// Coalesced: a burst of output reads the PTY modes once. Modes only change around I/O, so nothing polls.
+    private func schedulePasswordCheck() {
+        guard passwordCheck == nil else { return }
+        passwordCheck = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.passwordCheckDelay))
+            guard let self, !Task.isCancelled else { return }
+            self.passwordCheck = nil
+            self.updatePasswordPrompt(self.process.passwordPromptActive)
+        }
+    }
+
+    private func updatePasswordPrompt(_ active: Bool) {
+        guard active != passwordPromptActive else { return }
+        passwordPromptActive = active
+        onPasswordPromptChanged?(active)
+    }
+
+    /// OSC 9 text and OSC 777 `notify` are attention requests; their text is never kept. Numbered OSC 9 forms
+    /// (`9;4;…` progress and other ConEmu commands) are not notifications.
+    private func observeNotifications() {
+        let terminal = terminalView.getTerminal()
+        // The OSC 9 handler replaces upstream's, so 9;4 progress is forwarded to keep the progress bar.
+        terminal.registerOscHandler(code: 9) { [weak self, weak terminal] data in
+            if terminal?.handleProgressReport(data) == true { return }
+            guard let self, Self.isNotification(osc9: data) else { return }
+            self.onAttentionRequested?()
+        }
+        terminal.registerOscHandler(code: 777) { [weak self] data in
+            guard let self, data.starts(with: Array("notify;".utf8)) else { return }
+            self.onAttentionRequested?()
+        }
+    }
+
+    nonisolated static func isNotification(osc9 data: ArraySlice<UInt8>) -> Bool {
+        guard !data.isEmpty else { return false }
+        let digits = data.prefix { (0x30...0x39).contains($0) }
+        guard !digits.isEmpty else { return true }
+        let rest = data.dropFirst(digits.count)
+        return !(rest.isEmpty || rest.first == UInt8(ascii: ";"))
+    }
+
+    /// iTerm2's inline image protocol (FR-IM01–FR-IM04) replaces upstream's OSC 1337 handling, which would decode
+    /// any NSImage format. Images are decoded in stream order so they land where the cursor was.
+    private func observeInlineImages() {
+        terminalView.getTerminal().registerOscHandler(code: 1337) { [weak self] data in self?.handleInlineImage(data) }
+    }
+
+    func handleInlineImage(_ data: ArraySlice<UInt8>) {
+        // Any command other than a part ends an unfinished multipart transfer.
+        switch InlineImageCommand(data) {
+        case .filePart(let part): imageTransfer.append(part)
+        case .fileEnd: if let (arguments, bytes) = imageTransfer.finish() { showImage(bytes, arguments) }
+        case .multipartBegin(let arguments): imageTransfer.begin(arguments)
+        case .file(let arguments, let payload):
+            imageTransfer.reset()
+            guard arguments.inline, let bytes = Data(base64Encoded: Data(payload)) else { return }
+            showImage(bytes, arguments)
+        case .reportCellSize:
+            imageTransfer.reset()
+            let metrics = terminalView.cellMetrics
+            terminalView.getTerminal().sendResponse(text: InlineImageCommand.cellSizeReport(size: metrics.size, scale: metrics.scale))
+        case .other: imageTransfer.reset()
+        }
+    }
+
+    private func showImage(_ data: Data, _ arguments: InlineImageArguments) {
+        guard let image = InlineImageDecoder.image(from: data) else { return }
+        let metrics = terminalView.cellMetrics
+        let box = InlineImageLayout.requests(image: image.size, arguments, cell: metrics.size, pane: terminalView.frame.size, scale: metrics.scale)
+        terminalView.insertImage(image, width: box.width, height: box.height, preserveAspectRatio: box.preserveAspectRatio)
+    }
+
+    /// Every 133 mark keeps upstream prompt handling; only marks with this session's
+    /// nonce become events. The nonce lives only in memory for this session.
+    private func observeShellIntegration(nonce: String) {
+        let terminal = terminalView.getTerminal()
+        terminal.registerOscHandler(code: 133) { [weak self, weak terminal] data in
+            terminal?.handleSemanticPrompt(data)
+            guard let self, let event = ShellIntegrationEvent.parse(data, nonce: nonce) else { return }
+            self.onShellIntegrationEvent?(event)
+        }
+    }
+
+    /// Scrolls to the previous or next shell prompt marked through OSC 133 (FR-SI06).
+    @discardableResult
+    public func scrollToPrompt(forward: Bool) -> Bool {
+        let terminal = terminalView.getTerminal()
+        guard !terminal.isCurrentBufferAlternate else { return false }
+        let top = terminal.getTopVisibleRow()
+        var row = forward ? top + 1 : top - 1
+        while row >= 0, terminal.bufferLine(atRow: row) != nil {
+            if terminal.semanticRowKind(at: row) == .initial {
+                terminalView.scrollTo(row: row)
+                return true
+            }
+            row += forward ? 1 : -1
+        }
+        if forward { terminalView.scrollTo(row: .max) }
+        return false
     }
     // OSC 52 clipboard access is denied; native selection copy/paste remains in the view.
     public func clipboardCopy(source: TerminalView, content: Data) {}
     public func clipboardRead(source: TerminalView) -> Data? { nil }
     /// Opens a vetted URL; injected by tests.
     public var openURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    /// Shows a file in Finder instead of opening it (FR-L03); injected by tests.
+    public var revealURL: (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+    /// Where this pane's file links resolve, read at click time; nil refuses every file link (FR-L04).
+    public var fileLinkContext: () -> FileLinkContext? = { nil }
+    var fileProbe = FileProbe.live
     var now: () -> Date = { Date() }
 
-    /// Output can request any link; only clicked http/https/mailto links open.
+    /// Output can request any link; only clicked web links and vetted local files open.
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
-        guard let url = LinkPolicy.mayOpen(link, lastGesture: terminalView.lastUserGesture, now: now()) else { return }
+        var click = terminalView.linkClick ?? TerminalLinkClick(link: nil, explicit: false, position: nil)
+        click.link = link
+        openLink(click)
+    }
+
+    private enum ResolvedLink { case web(URL), file(path: String, action: FileLinkAction) }
+
+    /// SwiftTerm's detector lets paths contain spaces, so `a.txt b.txt` reads as one path.
+    /// When its text names nothing, the smart-selection token under the click is tried.
+    private func resolve(_ click: TerminalLinkClick) -> (candidate: String, link: ResolvedLink)? {
+        var candidates = click.link.map { [$0] } ?? []
+        if !click.explicit, let position = click.position, let token = linkToken(at: position), token != click.link { candidates.append(token) }
+        let files = fileLinkContext()
+        for candidate in candidates {
+            switch TerminalLinkClassifier.classify(candidate, explicit: click.explicit, files: files) {
+            case .web(let url): return (candidate, .web(url))
+            case .file(let path, _, _): if let action = FileLinkPolicy.action(path: path, probe: fileProbe) { return (candidate, .file(path: path, action: action)) }
+            case nil: continue
+            }
+        }
+        return nil
+    }
+
+    private func linkToken(at position: Position) -> String? {
+        guard let line = TerminalLogicalLine(terminal: terminalView.getTerminal(), row: position.row), let offset = line.offset(for: position),
+            let match = SmartSelection.match(in: line.text, at: offset), [.url, .filePath].contains(match.kind)
+        else { return nil }
+        return String(Array(line.text)[match.range])
+    }
+
+    func openLink(_ click: TerminalLinkClick) {
+        guard LinkPolicy.gestureIsFresh(lastGesture: terminalView.lastUserGesture, now: now()), let resolved = resolve(click) else { return }
         terminalView.lastUserGesture = nil
-        _ = openURL(url)
+        switch resolved.link {
+        case .web(let url): _ = openURL(url)
+        case .file(_, .open(let url)): _ = openURL(url)
+        case .file(_, .reveal(let url)): revealURL(url)
+        }
+    }
+
+    /// The menu keeps the text it described, so output arriving while it is open can't change what Open opens.
+    func describeLink(_ click: TerminalLinkClick) -> TerminalLinkMenu? {
+        guard let resolved = resolve(click) else { return nil }
+        let frozen = TerminalLinkClick(link: resolved.candidate, explicit: click.explicit, position: nil)
+        switch resolved.link {
+        case .web(let url): return TerminalLinkMenu(openTitle: "Open Link", copyTitle: "Copy Link", copyText: url.absoluteString, click: frozen)
+        case .file(let path, .open): return TerminalLinkMenu(openTitle: "Open", copyTitle: "Copy Path", copyText: path, click: frozen)
+        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Reveal in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
+        }
+    }
+    public func bell(source: TerminalView) { playBell() }
+    static func bellStyle(_ style: TerminalBellStyle) -> BellStyle {
+        switch style {
+        case .sound: .sound;
+        case .visual: .visual;
+        case .soundAndVisual: .soundAndVisual;
+        case .off: .none
+        }
     }
     public func setTerminalTitle(source: TerminalView, title: String) {}
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}

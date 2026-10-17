@@ -6,6 +6,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-17
+
+This release adds an optional MCP server, saved SSH passwords in the Keychain, richer text rendering, inline images, smart selection and file links, attention and activity cues on tabs, and a terminal bell setting. Trellis now opens in dark mode on first launch.
+
+### Added
+
+- **Settings → Appearance → Bell** chooses what a terminal bell does: Sound (the macOS alert sound, the default), Visual flash, Sound and flash, or Off. A bell still marks the tab as waiting for input whatever the choice (FR-T07).
+- The status bar shows the Trellis icon before the window name, and `swift run` builds now show the Trellis icon in the Dock and About panel too.
+- Hovering a window in the collapsed sidebar shows a card of its tabs with their live status (busy, waiting for input, failed command, exited) and pane counts; click a tab to jump straight to it (FR-W06). The card replaces the window-name tooltip.
+- An optional MCP server lets agents such as Claude Code control Trellis (INT-07). Turn it on in the new **Settings → Remote Control** section, which also sets the interface and port (default `127.0.0.1:7777`). Every API method except event subscriptions is an MCP tool, authorized by the same automation grants: clients send a grant token as a bearer token, and see and run only what the grant allows. It's off by default and listens only on loopback unless you confirm a network address, which warns that the traffic is plain HTTP. Browser origins and DNS rebinding are refused, revoking a grant ends its sessions at once, and `--no-mcp` turns it off for one launch.
+- Saved SSH hosts can remember a password in the macOS Keychain (Hosts → Password). It is stored only on this Mac, is never shown again, and is given to `/usr/bin/ssh` through a bundled `SSH_ASKPASS` helper only for the host's password prompt, at most once per connection. Host-key confirmations, key passphrases and any retry are still asked in the terminal. An optional per-host toggle requires Touch ID or the Mac password before each use. Changing the destination, user, port or identity file removes the saved password, as does deleting the host. Exports, the automation API and the CLI never include it.
+- Hosts → **Connect in New Window** opens a saved host in a new managed window named after the host.
+- Tabs show an animated bar along their top edge while a pane is printing output. Output at a shell-integrated prompt and the echo of your own typing never trigger it. Reduce Motion shows a static bar.
+- Smart selection: double-clicking a URL, email address, file path (with its `:line:column` suffix), UUID, IP address, git hash, or a quote around a quoted string selects the whole thing, even across wrapped lines. Elsewhere double-click still selects a word, and programs that use the mouse (such as vim with `set mouse=a`) still receive the click.
+- ⌘-click opens file paths and OSC 8 `file://` hyperlinks (`ls --hyperlink`, compilers, `rg`) in the file's default app, and the context menu offers **Open Link**, **Copy Link**, **Open**, **Reveal in Finder** and **Copy Path** over links. Apps, executables, scripts, installers and other files that could run code are only revealed in Finder. Files open only from local panes: relative paths need shell integration's directory, saved SSH host panes and panes started as `ssh` or `mosh` never open paths, `file://` links naming another host are refused, and network automount paths (`/net`, `/Network`) are never touched.
+- Font ligatures, on by default and drawn on the cell grid: with JetBrains Mono, `->`, `!=` and `<=>` join, and text after them keeps its columns. The character under the cursor is drawn on its own. Settings → Appearance → **Ligatures** turns them off.
+- Inline images with iTerm2's image protocol (OSC 1337): `imgcat`, `yazi`, `timg`, `chafa -f iterm` and other tools show PNG, JPEG, GIF, BMP, TIFF, WebP and HEIC images in the terminal, including images sent in parts. Sessions set `LC_TERMINAL=iTerm2` so tools detect it. File downloads (`inline=0`) are ignored, documents such as PDF and SVG aren't decoded, and oversized images are refused.
+- Overline text (SGR 53/55), and rapid blink (SGR 6) blinks like SGR 5.
+- Settings → Appearance adds **Bold as bright colors**, **Use bold fonts**, **Use italic fonts** and **Allow blinking text**. All are on by default; settings saved by earlier versions keep these defaults.
+- Tabs show an **Input** label when their program is waiting for you: a password prompt (sudo, ssh, `read -s`) while it lasts, or a bell or terminal notification (OSC 9, OSC 777) from a pane you aren't looking at, such as a coding agent asking for permission. The window list marks windows with a waiting pane, and `session.get` reports `waitingForInput`.
+
+### Changed
+
+- Dark is now the first-launch appearance. Settings saved by an earlier version keep their mode.
+- In the About panel, "LayerX Labs" links to https://layerx.xyz.
+- Bold white text (SGR 1;37) is now drawn bright white, like bold text in the other base colours.
+- Concealed text (SGR 8) is now hidden. Its background still shows, and copy and search still see the text.
+- Underline, strikethrough and overline now cover the whole width of wide characters, emoji and ligatures, and dotted, dashed and curly underlines join up across colour changes.
+- Any OSC or APC escape sequence longer than 8 MiB is now dropped instead of being buffered without limit.
+- OSC 8 hyperlinks whose URL contains `;` are no longer cut off at the first `;` after the parameters.
+- More space between the sidebar toggle and the New Window button in the collapsed sidebar.
+
+## [0.9.2] - 2026-10-17
+
+### Added
+
+- Tabs can carry a color label: right-click a tab and choose **Color** (red, orange, yellow, green, blue, purple, gray, or None). A labeled tab shows a colored stripe and a light tint, VoiceOver reads the color name, and the label is saved with the workspace and kept when a tab is duplicated. Automation sets it with `tab.update` (`"color": "blue"`, or `null` to clear) and `trellis tab color --tab <tab> --color blue|none`.
+- The window sidebar can be collapsed into a narrow rail that shows each window as a square with its initials. Selection, activity markers, tooltips with the full name, and the context menu still work there. Toggle it with the sidebar button or View → Hide/Show Sidebar (⌃⌘S); the choice is remembered across launches.
+- Shell integration for zsh, bash (including macOS `/bin/bash` 3.2) and fish, on by default and loaded without editing dotfiles. Trellis tracks each shell's current directory, so new splits and tabs open there. A failed command shows an exit-status indicator on its tab and pane, and unrenamed tabs show the running program or directory. Edit → Previous/Next Prompt (⌘↑/⌘↓) jumps between prompts. Marks are authenticated with a per-session nonce, so output can't forge them. Turn it off in Settings → Sessions.
+- Settings → Sessions → Shell is now a picker of the installed shells (`/etc/shells` and Homebrew), with **Other…** for any path. It marks which shells support shell integration.
+- Five more terminal fonts ship with the app: JetBrains Mono, Cascadia Mono NF (includes Nerd Font glyphs for Powerline and icon prompts such as starship, oh-my-posh and powerlevel10k), IBM Plex Mono, Iosevka Fixed (narrow, so more columns fit in splits) and Atkinson Hyperlegible Mono (designed for legibility). Each comes in Regular, Bold, Italic and Bold Italic, appears in Settings → Appearance → Terminal font, and is registered for Trellis only.
+
+### Fixed
+
+- Restored workspaces reopen each local shell pane in the directory it was last in, as reported by shell integration, instead of the directory it started in. SSH panes and custom processes are unchanged.
+
+### Changed
+
+- Roboto Mono (Regular, Bold, Italic, Bold Italic) now ships with the app and is the default terminal font. It's registered for Trellis only, so it doesn't need to be installed and doesn't appear in other apps. The app chrome keeps system fonts. Existing workspaces keep the terminal font they saved, including Monaco; choose Roboto Mono in Settings → Appearance to switch.
+- Development builds now use their own identity, `dev.trellis.dev`, separate from the installed app (`dev.trellis`). They have their own instance lock, state directory and control socket, so an installed Trellis and a development instance can run at the same time. The feasibility bundle is now named "Trellis Dev".
+- The Hosts window now matches Settings: a themed sidebar with a HOSTS header and the same selection styling, a 1 px border, and a titled editor pane. It follows the active app theme.
+
 ## [0.9.1] - 2026-10-17
 
 This release adds new themes and font choices, refines the terminal layout, and makes closing shells smoother.
@@ -162,6 +214,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/layerx-labs/trellis/compare/v0.9.2...v0.10.0
+[0.9.2]: https://github.com/layerx-labs/trellis/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/layerx-labs/trellis/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/layerx-labs/trellis/releases/tag/v0.9.0

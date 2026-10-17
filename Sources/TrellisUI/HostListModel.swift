@@ -8,7 +8,10 @@ public final class HostListModel: ObservableObject {
     @Published public private(set) var hosts: [SavedHost] = []
     @Published public var query = ""
     @Published public private(set) var loadFailed = false
-    let library: HostLibrary
+    public let library: HostLibrary
+
+    /// Confirms turning off a host's Touch ID requirement (FR-H07); set by the app.
+    public var userPresence: (any UserPresenceGate)?
 
     public init(library: HostLibrary) { self.library = library }
 
@@ -37,6 +40,20 @@ public final class HostListModel: ObservableObject {
         } catch {
             result = .failure(error)
         }
+        await refresh()
+        return result
+    }
+
+    /// Saves, replaces, re-gates or removes the host's Keychain password from the revision the editor holds.
+    public func setPassword(_ host: SavedHost, _ change: HostLibrary.PasswordChange) async -> Result<SavedHost, HostLibraryError> {
+        // Otherwise anyone at the unlocked Mac could switch the gate off and then connect.
+        if change == .policy(requiresUserPresence: false), host.savedPassword?.requiresUserPresence == true, let userPresence,
+            await !userPresence.authorize(reason: "stop asking before using the saved password for “\(host.name)”")
+        {
+            return .failure(.notAuthorized)
+        }
+        let result: Result<SavedHost, HostLibraryError>
+        do { result = .success(try await library.setPassword(id: host.id, change, expectedRevision: host.revision)) } catch { result = .failure(error) }
         await refresh()
         return result
     }
@@ -90,6 +107,8 @@ public final class HostListModel: ObservableObject {
         case .conflict: "This host changed since you opened it. Reselect it to see the latest details."
         case .readOnly: "Saved hosts could not be read, so changes are not saved. Reset the host library to continue."
         case .io: "Saved hosts could not be written. Check disk space and permissions, then try again."
+        case .secretStore: "The password could not be saved in the Keychain. Unlock the login keychain or allow Trellis access, then try again."
+        case .notAuthorized: "Touch ID or the Mac password was not confirmed, so the setting was not changed."
         }
     }
 }

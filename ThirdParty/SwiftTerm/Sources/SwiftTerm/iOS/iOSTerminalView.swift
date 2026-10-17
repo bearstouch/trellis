@@ -204,6 +204,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     var textBlinkTimer: Timer?
     var textBlinkObservers: [(NotificationCenter, NSObjectProtocol)] = []
     var textBlinkApplicationActive = true
+    var ligatureCursor: (row: Int, col: Int, hidden: Bool)?
     var cursorColorIsDefault = true
     var cursorTextColorIsDefault = true
     var reverseColorsSavedLayerBackground: CGColor?
@@ -1577,6 +1578,13 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     
     /// Controls weather to use high ansi colors, if false terminal will use bold text instead of high ansi colors
     public var useBrightColors: Bool = true
+
+    // Text-style flags shared with the macOS view; ligatures are always on here.
+    let fontLigatures = true
+    public var allowBoldFont: Bool = true
+    public var allowItalicFont: Bool = true
+    public var boldIsBright: Bool = true
+    public var textBlinkEnabled: Bool = true
 
     /// Controls whether this view applies the terminal's BiDi presentation state.
     public var bidiHostPolicy: BidiHostPolicy = .respectTerminal {

@@ -2,18 +2,18 @@
 
 ## What is saved and where
 
-All state lives in `~/Library/Application Support/dev.trellis/`. The `--state-directory /abs/path` launch argument replaces that location.
+All state lives in `~/Library/Application Support/<identity>/`: `dev.trellis` for the installed app, and `dev.trellis.dev` for development builds (unbundled executables and the `Trellis Dev` feasibility bundle). The two identities also hold separate instance locks, so both can run at once. The `--state-directory /abs/path` launch argument replaces that location.
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `workspace.json` | Windows, tabs, split trees and ratios, titles, selection, launch descriptions and settings (shell, directory, window frame, appearance) | Last-known-good copy in `workspace.backup.json` |
-| `hosts.json` | Saved hosts | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
+| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control) | Last-known-good copy in `workspace.backup.json` |
+| `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
 | `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts | An unreadable file is preserved |
 | `control.json` | Discovery for the running control socket | Rewritten on every launch |
 | `Themes/<id>.theme.json` | Custom themes | File names come only from validated IDs |
 
-Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.directory`, `app.windowFrame` and `keyboard.settings`. Grant tokens live in the Keychain, under service `Trellis Automation`.
+Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.directory`, `app.windowFrame` and `keyboard.settings`. Grant tokens live in the Keychain, under service `Trellis Automation`. Saved-host passwords live under service `Trellis SSH Host`, with the host UUID as account. The Keychain is written before `hosts.json`, and a failed metadata write restores the previous Keychain value.
 
 **Never persisted:**
 
@@ -23,7 +23,7 @@ Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.dir
 - process IDs and session states
 - custom-process arguments
 
-Saved launch descriptions can refer to a shell, a host or a directory, but they never replay earlier input. A pane that was running a custom process comes back *unconfigured*, because its arguments weren't saved.
+Saved launch descriptions can refer to a shell, a host or a directory, but they never replay earlier input. A local shell pane's directory is the last one its shell reported through [shell integration](../features/shell-integration.md) (FR-SI07), if it still exists; otherwise it's the directory the pane was launched in. A pane that was running a custom process comes back *unconfigured*, because its arguments weren't saved.
 
 ## Writing safely
 
@@ -60,4 +60,4 @@ Relaunching restores windows, tabs, splits and titles with every session **stopp
 
 ## Migrating from uTerm
 
-On first launch, if `dev.trellis` doesn't exist, Trellis copies `dev.uterm` (or `dev.uterm.feasibility`) through a staging directory and then moves it into place. The originals are left alone. Custom themes whose IDs use the reserved `trellis-` prefix get the new ID `imported-<uuid>`, and their saved selections in `workspace.json` and its backup are updated to match. A path passed with `--state-directory` is used as-is, with no migration.
+On first launch, if `dev.trellis` doesn't exist, Trellis copies `dev.uterm` (or `dev.uterm.feasibility`) through a staging directory and then moves it into place. The originals are left alone. Custom themes whose IDs use the reserved `trellis-` prefix get the new ID `imported-<uuid>`, and their saved selections in `workspace.json` and its backup are updated to match. Only the installed app identity migrates. Development builds (`dev.trellis.dev`) and paths passed with `--state-directory` are used as-is, with no migration.

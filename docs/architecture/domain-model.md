@@ -16,13 +16,13 @@ classDiagram
 | Type | Fields | Notes |
 | --- | --- | --- |
 | `ManagedWindow` | `id`, `name`, `tabIDs`, `activeTabID`, `revision` | A sidebar "window" (workspace) |
-| `WorkspaceTab` | `id`, `windowID`, `title`, `root: PaneLayout`, `activePaneID`, `revision` | |
+| `WorkspaceTab` | `id`, `windowID`, `title`, `color: TabColor?`, `root: PaneLayout`, `activePaneID`, `revision` | `TabColor` is a fixed palette (`FR-T04`); nil means unlabeled |
 | `PaneLayout` | `.pane(UUID)` or `.split(id, axis, ratio, children)` | The binary split tree. `ratio` is the first child's share. `SplitAxis` is `x` (left/right) or `y` (top/bottom). |
 | `WorkspacePane` | `id`, `tabID`, `sessionID`, `profileID` (`"default"`), `title?` | Owns exactly one session |
 | `WorkspaceSession` | `id`, `launch`, `state`, timestamps, `processID`, `exitCode`, `failureMessage`, `launchAttemptID` | Exists only at runtime; never persisted in this form |
 | `SessionLaunch` | `.shell(directory)`, `.host(UUID)`, `.process(executable, arguments, directory)` | |
 | `WorkspaceSnapshot` | `revision`, `windows`, `activeWindowID`, `tabs`, `panes`, `sessions` | The whole workspace. `validate()` enforces the invariants listed below. |
-| `SavedHost` (`SavedHost.swift`) | `id`, `name`, `destination`, `user?`, `port?`, `identityFile?`, `tags`, `revision`, `connectionRevision` | Never holds passwords or key contents |
+| `SavedHost` (`SavedHost.swift`) | `id`, `name`, `destination`, `user?`, `port?`, `identityFile?`, `tags`, `revision`, `connectionRevision`, `savedPassword?` (`requiresUserPresence`) | Never holds password values or key contents; a saved password lives in the Keychain (`HostSecretStore`) |
 | `AutomationGrant` (`TrellisControl`) | `id`, `name`, `tokenHash`, `capabilities`, `windowScope`, `hostScope`, `createdAt`, `expiresAt`, `revokedAt` | The token secret is kept apart from layout data |
 | `LayoutDocument`, `LayoutPlan`, `LayoutBinding` (`LayoutDocument.swift`) | | [Declarative layouts](../api/layouts.md) |
 | `ThemeDocument`, `ResolvedTheme`, `AppearanceSettings` | | [Themes](../features/themes.md) |

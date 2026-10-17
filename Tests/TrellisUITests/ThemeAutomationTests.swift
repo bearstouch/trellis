@@ -89,10 +89,11 @@ final class ThemeAutomationTests: XCTestCase {
 
         let before = h.model.appearance
         let revision = h.model.appearanceRevision
-        _ = try result(try await h.call("appearance.set", ["mode": "dark"]))
-        let stale = try await h.call("appearance.set", ["mode": "light", "expectedRevision": Int(revision)])
+        // Dark is the default, so switching to light is a real change that bumps the revision.
+        _ = try result(try await h.call("appearance.set", ["mode": "light"]))
+        let stale = try await h.call("appearance.set", ["mode": "dark", "expectedRevision": Int(revision)])
         XCTAssertEqual(errorCode(stale), "CONFLICT")
-        XCTAssertEqual(h.model.appearance.chromeMode, .dark, "A stale revision changes nothing")
+        XCTAssertEqual(h.model.appearance.chromeMode, .light, "A stale revision changes nothing")
         XCTAssertNotEqual(h.model.appearance, before)
         let invalid = try await h.call("theme.validate", ["document": ["version": 1, "id": "Bad ID", "name": "x", "appearance": "dark"]])
         XCTAssertEqual(try result(invalid)["valid"] as? Bool, false)
@@ -103,6 +104,21 @@ final class ThemeAutomationTests: XCTestCase {
         XCTAssertNotEqual(rejected, "OK")
         let library = try FileManager.default.contentsOfDirectory(atPath: themes.path).filter { $0.hasSuffix(".theme.json") }
         XCTAssertEqual(library, ["mine.theme.json"], "Failed operations wrote nothing")
+    }
+
+    @MainActor
+    func testAppearanceSetKeepsTextRenderingSettings() async throws {
+        let h = try Harness(themeDirectory: themes)
+        defer { h.discardPreferences() }
+        try await h.grant("full")
+        var settings = h.model.appearance
+        settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
+        settings.allowItalicFont = false; settings.blinkingText = false
+        XCTAssertTrue(h.model.applyAppearance(settings))
+        _ = try result(try await h.call("appearance.set", ["mode": "dark"]))
+        var expected = settings
+        expected.chromeMode = .dark
+        XCTAssertEqual(h.model.appearance, expected, "appearance.set changes only the mode and theme slots")
     }
 
     @MainActor

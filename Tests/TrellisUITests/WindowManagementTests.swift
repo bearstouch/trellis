@@ -182,4 +182,104 @@ final class WindowManagementTests: XCTestCase {
         await model.shutdown()
         XCTAssertFalse(other.isRunning)
     }
+
+    @MainActor
+    func testSidebarCollapseIsRememberedAcrossLaunches() throws {
+        let suite = "trellis.tests.sidebar.\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite) }
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        XCTAssertFalse(model.sidebarCollapsed)
+        model.toggleSidebar()
+        XCTAssertTrue(model.sidebarCollapsed)
+        XCTAssertTrue(AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences).sidebarCollapsed)
+        model.toggleSidebar()
+        XCTAssertFalse(AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences).sidebarCollapsed)
+    }
+
+    @MainActor
+    func testTabPreviewsListInactiveWindowTabsInOrderWithActiveTab() async throws {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        let firstResult = await model.createWindow(name: "One", startSession: false)
+        let first = try XCTUnwrap(firstResult)
+        let firstTab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        let secondResult = await model.createTab(windowID: first, startSessions: false)
+        let second = try XCTUnwrap(secondResult)
+        let thirdResult = await model.createTab(windowID: first, startSessions: false)
+        let third = try XCTUnwrap(thirdResult)
+        let splitFrom = try XCTUnwrap(model.presentation.activePane?.id)
+        _ = await model.splitPane(splitFrom, axis: .x, startSession: false)
+        await model.selectTab(second)
+        _ = await model.createWindow(name: "Two", startSession: false)
+        XCTAssertNotEqual(model.snapshot.activeWindowID, first)
+        let previews = model.tabPreviews(windowID: first)
+        XCTAssertEqual(previews.map(\.id), [firstTab, second, third])
+        XCTAssertEqual(previews.map(\.isActive), [false, true, false])
+        XCTAssertEqual(previews.map(\.paneCount), [1, 1, 2])
+        XCTAssertTrue(previews.allSatisfy { !$0.isBusy && $0.inputWait == nil && $0.failedCommandExit == nil && !$0.hasExitedSession })
+    }
+
+    @MainActor
+    func testTabPreviewsReflectRenameColorAndInputWait() async throws {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        let windowResult = await model.createWindow(name: "One", startSession: false)
+        let window = try XCTUnwrap(windowResult)
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        await model.renameTab(tab, title: "api-server")
+        await model.setTabColor(tab, color: .green)
+        model.terminals[pane]?.onPasswordPromptChanged?(true)
+        let preview = try XCTUnwrap(model.tabPreviews(windowID: window).first)
+        XCTAssertEqual(preview.title, "api-server")
+        XCTAssertEqual(preview.color, .green)
+        XCTAssertEqual(preview.inputWait, .password)
+    }
+
+    @MainActor
+    func testTabPreviewsMarkOnlyTheTabWhoseCommandFailed() async throws {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        let windowResult = await model.createWindow(name: "One", startSession: false)
+        let window = try XCTUnwrap(windowResult)
+        let tabResult = await model.createTab(windowID: window, startSessions: false)
+        let failing = try XCTUnwrap(tabResult)
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        for event: ShellIntegrationEvent in [.promptStart(directory: "/tmp"), .commandStart(commandLine: "false"), .commandFinished(exitCode: 2)] {
+            terminal.onShellIntegrationEvent?(event)
+        }
+        let previews = model.tabPreviews(windowID: window)
+        XCTAssertEqual(previews.map(\.failedCommandExit), [nil, 2])
+        XCTAssertEqual(previews.last?.id, failing)
+    }
+
+    @MainActor
+    func testSelectWindowTabSwitchesWindowAndTab() async throws {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        let firstResult = await model.createWindow(name: "One", startSession: false)
+        let first = try XCTUnwrap(firstResult)
+        let targetResult = await model.createTab(windowID: first, startSessions: false)
+        let target = try XCTUnwrap(targetResult)
+        let firstTab = try XCTUnwrap(model.snapshot.windows.first?.tabIDs.first)
+        await model.selectTab(firstTab)
+        let secondResult = await model.createWindow(name: "Two", startSession: false)
+        let second = try XCTUnwrap(secondResult)
+        let before = model.snapshot
+        await model.selectWindowTab(windowID: second, tabID: target)
+        XCTAssertEqual(model.snapshot, before, "A tab from another window is ignored")
+        await model.selectWindowTab(windowID: first, tabID: target)
+        XCTAssertEqual(model.snapshot.activeWindowID, first)
+        XCTAssertEqual(model.presentation.selectedTab?.id, target)
+    }
+
+    @MainActor
+    func testTabPreviewsEmptyForUnknownWindow() async throws {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        _ = await model.createWindow(name: "One", startSession: false)
+        XCTAssertEqual(model.tabPreviews(windowID: UUID()), [])
+    }
 }

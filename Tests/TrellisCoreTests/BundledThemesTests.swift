@@ -37,3 +37,18 @@ final class BundledThemesTests: XCTestCase {
         }
     }
 }
+
+final class BundledFontsTests: XCTestCase {
+    func testAllTerminalFacesAreBundledWithLicense() throws {
+        let urls = BundledFonts.urls()
+        XCTAssertEqual(urls.map { $0.deletingPathExtension().lastPathComponent }, BundledFonts.faces)
+        XCTAssertTrue(urls.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+        let directory = try XCTUnwrap(urls.first?.deletingLastPathComponent())
+        XCTAssertEqual(BundledFonts.faces.count, BundledFonts.families.count * 4)
+        for family in BundledFonts.families {
+            let license = directory.appendingPathComponent(BundledFonts.licenseName(for: family)).appendingPathExtension("txt")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: license.path), family)
+        }
+        XCTAssertTrue(BundledFonts.faces.contains(AppearanceSettings.defaultFontName))
+    }
+}

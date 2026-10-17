@@ -12,13 +12,17 @@ public struct WorkspaceRootView: View {
     public var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                sidebar.frame(width: 205).disabled(model.isRestoring || model.recoveryMessage != nil)
+                sidebar.frame(width: model.sidebarCollapsed ? 52 : 205).animation(.easeInOut(duration: 0.15), value: model.sidebarCollapsed)
+                    .disabled(model.isRestoring || model.recoveryMessage != nil)
                 Divider().overlay(model.separatorOverlay)
                 mainArea
             }
             Divider().overlay(model.separatorOverlay)
             HStack(spacing: 8) {
-                Text(model.presentation.selectedWindow?.name ?? "Trellis")
+                HStack(spacing: 5) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
+                    Text(model.presentation.selectedWindow?.name ?? "Trellis")
+                }
                 Spacer()
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
                 if let notice = model.themeNotice { Text(notice).lineLimit(1).help(notice) }
@@ -93,17 +97,40 @@ public struct WorkspaceRootView: View {
     }
 
     private var sidebar: some View {
+        Group {
+            if model.sidebarCollapsed { collapsedSidebar } else { expandedSidebar }
+        }
+        .font(.system(size: 12)).padding(.top, 20).padding(.bottom, 14)
+        .background(model.themeColor(.sidebarBackground))
+    }
+
+    private var sidebarToggle: some View {
+        Button {
+            model.toggleSidebar()
+        } label: {
+            Image(systemName: "sidebar.left")
+        }
+        .buttonStyle(.plain).help(shortcutHelp(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", .toggleSidebar))
+        .accessibilityLabel(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar")
+    }
+
+    private var newWindowButton: some View {
+        Button {
+            Task { await model.createWindow() }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .buttonStyle(.plain).help(shortcutHelp("New Window", .newWindow)).accessibilityLabel("New Window")
+    }
+
+    private var expandedSidebar: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 10) {
+                sidebarToggle
                 Text("WINDOWS").font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
                 Spacer()
-                Button {
-                    Task { await model.createWindow() }
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.plain).help(shortcutHelp("New Window", .newWindow)).accessibilityLabel("New Window")
+                newWindowButton
             }.padding(.horizontal, 10).padding(.bottom, 8)
             ScrollView {
                 let descriptors = model.accessibility.windows
@@ -128,8 +155,38 @@ public struct WorkspaceRootView: View {
             }
             .buttonStyle(.plain).help("Settings (⌘,)").padding(.horizontal, 10).padding(.top, 6)
         }
-        .font(.system(size: 12)).padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 14)
-        .background(model.themeColor(.sidebarBackground))
+        .padding(.horizontal, 10)
+    }
+
+    private var collapsedSidebar: some View {
+        VStack(spacing: 10) {
+            sidebarToggle.padding(.bottom, 8)
+            newWindowButton
+            // Padding leaves room for the tile corner markers, which the scroll view would otherwise clip.
+            ScrollView {
+                let descriptors = model.accessibility.windows
+                VStack(spacing: 8) {
+                    ForEach(model.snapshot.windows) { window in
+                        windowTile(window, descriptor: descriptors.first { $0.id == window.id })
+                    }
+                }.padding(.vertical, 8).frame(maxWidth: .infinity).accessibilityElement(children: .contain).accessibilityLabel("Windows")
+            }.scrollIndicators(.hidden)
+            Spacer(minLength: 0)
+            Divider().overlay(model.separatorOverlay)
+            Button {
+                model.openHosts?()
+            } label: {
+                Image(systemName: "server.rack")
+            }
+            .buttonStyle(.plain).help("Saved SSH hosts").accessibilityLabel("Hosts")
+            Button {
+                model.openSettings?()
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+            }
+            .buttonStyle(.plain).help("Settings (⌘,)").accessibilityLabel("Settings")
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func windowRow(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
@@ -141,6 +198,9 @@ public struct WorkspaceRootView: View {
                 Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
                 Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
                 Spacer()
+                if model.windowsNeedingInput.contains(window.id) {
+                    Image(systemName: "keyboard").font(.system(size: 10)).help("Waiting for input")
+                }
                 if model.activity[window.id]?.hasExit == true {
                     Image(systemName: "stop.circle").help("A session exited")
                 } else if model.activity[window.id]?.hasOutput == true {
@@ -152,19 +212,41 @@ public struct WorkspaceRootView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(descriptor?.label ?? window.name)
-        .accessibilityValue(descriptor?.value ?? "")
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-        .accessibilityAction(named: "Rename") { beginWindowRename(window) }
-        .contextMenu {
-            Button("Rename…") { beginWindowRename(window) }
-            Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
-                .disabled(model.snapshot.windows.first?.id == window.id)
-            Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
-                .disabled(model.snapshot.windows.last?.id == window.id)
-            Divider().overlay(model.separatorOverlay)
-            Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+        .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+    }
+
+    private func windowTile(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
+        let selected = window.id == model.snapshot.activeWindowID
+        let shape = RoundedRectangle(cornerRadius: 7)
+        return Button {
+            Task { await model.selectWindow(window.id) }
+        } label: {
+            Text(WorkspaceAccessibility.initials(for: window.name))
+                .font(.system(size: 12, weight: selected ? .bold : .medium)).lineLimit(1).minimumScaleFactor(0.6)
+                .frame(width: 32, height: 32)
+                .background(selected ? model.sidebarSelectionBackground : model.themeColor(.surface), in: shape)
+                // Selection is a border too, never color alone.
+                .overlay(shape.strokeBorder(selected ? model.themeColor(.accent) : model.themeColor(.border).opacity(0.6), lineWidth: selected ? 2 : 1))
+                .overlay(alignment: .bottomTrailing) {
+                    if model.windowsNeedingInput.contains(window.id) {
+                        Image(systemName: "keyboard.fill").font(.system(size: 8)).foregroundStyle(model.themeColor(.accent))
+                            .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: 4, y: 4).help("Waiting for input")
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if model.activity[window.id]?.hasExit == true {
+                        Image(systemName: "stop.circle.fill").font(.system(size: 9)).foregroundStyle(model.themeColor(.mutedForeground))
+                            .background(Circle().fill(model.themeColor(.sidebarBackground))).offset(x: 4, y: -4).help("A session exited")
+                    } else if model.activity[window.id]?.hasOutput == true {
+                        Circle().fill(model.themeColor(.accent)).frame(width: 7, height: 7).offset(x: 3, y: -3).help("New terminal output")
+                    }
+                }
+                .contentShape(shape)
         }
+        // The hover card carries the full name (FR-W06), so no tooltip competes with it.
+        .buttonStyle(.plain)
+        .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+        .modifier(WindowHoverPreview(window: window, model: model))
     }
 
     private func beginWindowRename(_ window: ManagedWindow) {
@@ -222,9 +304,13 @@ public struct WorkspaceRootView: View {
 
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
         let selected = tab.id == model.presentation.selectedTab?.id
+        let busy = model.busyTabIDs.contains(tab.id)
+        let wait = model.inputWait(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
+        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
         return HStack(spacing: 8) {
-            Image(systemName: "terminal").font(.system(size: 10)).accessibilityHidden(true)
+            Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
+                .accessibilityHidden(true)
             if model.editingTabID == tab.id {
                 TextField("Tab name", text: $model.tabRenameDraft)
                     .textFieldStyle(.plain).focused($tabNameFocused)
@@ -236,32 +322,60 @@ public struct WorkspaceRootView: View {
                         Task { await model.finishTabRename(tab.id, draft: model.tabRenameDraft, action: .cancel) }
                     }
             } else {
-                Text(tab.title).lineLimit(1)
-                    .onTapGesture(count: 2) { beginTabRename(tab) }
+                // Simultaneous double-tap: an exclusive one delays every single click by the double-click interval.
+                Text(model.displayTitle(tab)).lineLimit(1)
                     .onTapGesture { Task { await model.selectTab(tab.id) } }
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { beginTabRename(tab) })
+            }
+            if let code = tab.root.paneIDs.lazy.compactMap(model.failedCommandExit(paneID:)).first {
+                // A symbol plus spoken text; never color alone (FR-SI04).
+                Image(systemName: "exclamationmark.circle").font(.system(size: 10))
+                    .help(WorkspaceAccessibility.commandFailureText(code))
+                    .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
+            }
+            if let wait {
+                // A word in a capsule, not color alone (FR-T06); the tab's value speaks it.
+                Label("Input", systemImage: "keyboard").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium)).lineLimit(1)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
+                    .overlay(Capsule().strokeBorder(model.themeColor(.accent).opacity(0.6), lineWidth: 1))
+                    .fixedSize().help(wait.text).accessibilityHidden(true)
             }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
                 Image(systemName: "xmark").font(.system(size: 9))
             }
-            .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(tab.title)")
+            .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(model.displayTitle(tab))")
         }.foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
             .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
+            // The tint sits above the opaque active background, so a selected tab keeps it.
+            .background(tab.color.map { $0.swatchColor.opacity(selected ? 0.2 : 0.12) } ?? .clear)
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
+            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy) }
             .overlay(alignment: .bottom) {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
             .contentShape(Rectangle())
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(descriptor?.label ?? "Tab \(tab.title)")
-            .accessibilityValue(descriptor?.value ?? "")
+            .accessibilityLabel(descriptor?.label ?? "Tab \(model.displayTitle(tab))")
+            .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
             .contextMenu {
                 Button("Rename…") { beginTabRename(tab) }
+                Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
+                    Text("None").tag(TabColor?.none)
+                    ForEach(TabColor.allCases, id: \.self) { color in
+                        Label {
+                            Text(color.displayName)
+                        } icon: {
+                            color.swatchImage
+                        }.tag(TabColor?.some(color))
+                    }
+                }
                 Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
                 Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
                     .disabled(model.presentation.visibleTabs.first?.id == tab.id)
@@ -270,6 +384,16 @@ public struct WorkspaceRootView: View {
                 Divider().overlay(model.separatorOverlay)
                 Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
             }
+    }
+
+    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool) -> some View {
+        if busy {
+            let fill = tab.color?.swatchColor ?? model.themeColor(.accent)
+            TabBusyBar(fill: fill, track: tab.color?.swatchColor.opacity(0.3) ?? .clear, animated: !model.reduceMotion)
+                .help(tab.color.map { "Printing output · \($0.displayName) label" } ?? "Printing output")
+        } else if let color = tab.color {
+            Rectangle().fill(color.swatchColor).frame(height: 3).help("\(color.displayName) label")
+        }
     }
 
     private func beginTabRename(_ tab: WorkspaceTab) {
@@ -300,6 +424,195 @@ public struct WorkspaceRootView: View {
                 model.terminalBackground
             }
         }
+    }
+}
+
+extension TabColor {
+    /// Adaptive system colors, so labels stay distinct in light and dark chrome.
+    var nsColor: NSColor {
+        switch self {
+        case .red: .systemRed
+        case .orange: .systemOrange
+        case .yellow: .systemYellow
+        case .green: .systemGreen
+        case .blue: .systemBlue
+        case .purple: .systemPurple
+        case .gray: .systemGray
+        }
+    }
+    var swatchColor: Color { Color(nsColor: nsColor) }
+    /// Menus render symbols as templates and drop their tint; a drawn, non-template image keeps the color.
+    var swatchImage: Image {
+        let color = nsColor
+        let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+            color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill(); return true
+        }
+        image.isTemplate = false
+        return Image(nsImage: image)
+    }
+}
+
+/// A tab's top edge filling and unfilling while its panes print output (FR-T05). Static under Reduce Motion.
+private struct TabBusyBar: View {
+    let fill: Color
+    let track: Color
+    let animated: Bool
+    @State private var filled = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                track
+                fill.frame(width: animated ? geometry.size.width * (filled ? 1 : 0.08) : geometry.size.width)
+            }
+        }
+        .frame(height: 3)
+        .onAppear { start(animated) }
+        .onChange(of: animated) { _, next in start(next) }
+    }
+
+    private func start(_ animated: Bool) {
+        filled = false
+        guard animated else { return }
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { filled = true }
+    }
+}
+
+/// Shared by the expanded row and the collapsed tile so both expose the same
+/// VoiceOver description and window commands.
+private struct WindowItemActions: ViewModifier {
+    let window: ManagedWindow
+    let descriptor: AccessibilityDescriptor?
+    let selected: Bool
+    @ObservedObject var model: AppWorkspaceModel
+    let rename: (ManagedWindow) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityLabel(descriptor?.label ?? window.name)
+            .accessibilityValue(descriptor?.value ?? "")
+            .accessibilityAddTraits(selected ? [.isSelected] : [])
+            .accessibilityAction(named: "Rename") { rename(window) }
+            .contextMenu {
+                Button("Rename…") { rename(window) }
+                Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
+                    .disabled(model.snapshot.windows.first?.id == window.id)
+                Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
+                    .disabled(model.snapshot.windows.last?.id == window.id)
+                Divider().overlay(model.separatorOverlay)
+                Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+            }
+    }
+}
+
+/// Hovering a rail tile opens a card of the window's tabs (FR-W06). A short grace lets the
+/// pointer cross from the tile into the card without closing it.
+private struct WindowHoverPreview: ViewModifier {
+    let window: ManagedWindow
+    @ObservedObject var model: AppWorkspaceModel
+    @State private var presented = false
+    @State private var overTile = false
+    @State private var overCard = false
+    @State private var pending: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content
+            .onHover {
+                overTile = $0; schedule()
+            }
+            .accessibilityAction(named: "Show Tabs") { presented = true }
+            .popover(isPresented: $presented, arrowEdge: .trailing) {
+                WindowTabsPreviewCard(window: window, model: model) { tabID in
+                    close()
+                    Task { await model.selectWindowTab(windowID: window.id, tabID: tabID) }
+                }
+                .onHover {
+                    overCard = $0; schedule()
+                }
+            }
+            // A card dismissed by an outside click may never report the pointer leaving it.
+            .onChange(of: presented) { _, shown in if !shown { overCard = false } }
+            .onChange(of: model.sidebarCollapsed) { _, _ in close() }
+            .onDisappear { close() }
+    }
+
+    private func schedule() {
+        pending?.cancel()
+        let open = overTile || overCard
+        guard open != presented else { return }
+        pending = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(open ? 400 : 250))
+            guard !Task.isCancelled, (overTile || overCard) == open else { return }
+            presented = open
+        }
+    }
+
+    private func close() {
+        pending?.cancel(); pending = nil
+        overTile = false; overCard = false; presented = false
+    }
+}
+
+private struct WindowTabsPreviewCard: View {
+    let window: ManagedWindow
+    @ObservedObject var model: AppWorkspaceModel
+    let select: (UUID) -> Void
+
+    var body: some View {
+        let tabs = model.tabPreviews(windowID: window.id)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(window.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 12)
+                Text("\(tabs.count) \(tabs.count == 1 ? "tab" : "tabs")").font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
+            }.padding(.horizontal, 6).padding(.bottom, 4).accessibilityElement(children: .combine)
+            ForEach(tabs) { tab in
+                Button {
+                    select(tab.id)
+                } label: {
+                    row(tab)
+                }.buttonStyle(.plain)
+                    .accessibilityLabel(Self.spoken(tab)).accessibilityAddTraits(tab.isActive ? [.isSelected] : [])
+            }
+        }
+        .padding(10).frame(width: 280, alignment: .leading)
+        .foregroundStyle(model.themeColor(.foreground))
+        .background(model.themeColor(.surface))
+        .accessibilityElement(children: .contain).accessibilityLabel("Tabs in \(window.name)")
+    }
+
+    private func row(_ tab: WindowTabPreview) -> some View {
+        HStack(spacing: 6) {
+            // The active tab is marked by a chevron and weight, never color alone.
+            Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).opacity(tab.isActive ? 1 : 0)
+            Circle().fill(tab.color?.swatchColor ?? .clear).frame(width: 7, height: 7)
+            Text(tab.title).lineLimit(1).fontWeight(tab.isActive ? .semibold : .regular)
+            Spacer(minLength: 8)
+            if tab.paneCount > 1 { Text("\(tab.paneCount) panes").foregroundStyle(model.themeColor(.mutedForeground)) }
+            if let code = tab.failedCommandExit { Label("exit \(code)", systemImage: "exclamationmark.circle").labelStyle(.titleAndIcon) }
+            if tab.hasExitedSession { Label("Exited", systemImage: "stop.circle").labelStyle(.titleAndIcon) }
+            if let wait = tab.inputWait {
+                Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
+            } else if tab.isBusy {
+                Label("Busy", systemImage: "waveform").labelStyle(.titleAndIcon).foregroundStyle(model.themeColor(.accent))
+            }
+        }
+        .font(.system(size: 11)).lineLimit(1).padding(.horizontal, 6).padding(.vertical, 5)
+        .background(tab.isActive ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .contentShape(Rectangle())
+    }
+
+    static func spoken(_ tab: WindowTabPreview) -> String {
+        var parts = ["Tab \(tab.title)"]
+        if tab.isActive { parts.append("active") }
+        if let color = tab.color { parts.append("\(color.displayName.lowercased()) label") }
+        if tab.paneCount > 1 { parts.append("\(tab.paneCount) panes") }
+        if let code = tab.failedCommandExit { parts.append(WorkspaceAccessibility.commandFailureText(code)) }
+        if tab.hasExitedSession { parts.append("a session exited") }
+        if let wait = tab.inputWait { parts.append(wait.text.lowercased()) } else if tab.isBusy { parts.append("output in progress") }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -387,17 +700,57 @@ public struct LaunchSettingsView: View {
     @State private var directory: String
     @State private var message = ""
     @State private var saving = false
+    @State private var customShell: Bool
+    private let shells: [ShellOption]
+    private static let customTag = ""
     public init(model: AppWorkspaceModel) {
         self.model = model
+        let shells = ShellCatalog.options(current: model.defaultShell)
+        self.shells = shells
         _shell = State(initialValue: model.defaultShell)
         _directory = State(initialValue: model.defaultDirectory)
+        _customShell = State(initialValue: !shells.contains { $0.path == model.defaultShell })
+    }
+    private var shellSelection: Binding<String> {
+        Binding(
+            get: { customShell ? Self.customTag : shell },
+            set: { selected in
+                customShell = selected == Self.customTag
+                if !customShell { shell = selected }
+            })
+    }
+    /// Spoken and visible, not color-only: whether the chosen shell gets integration (FR-SI01).
+    private var integrationNote: String {
+        let name = (shell as NSString).lastPathComponent
+        guard ShellIntegrationKind(executable: shell) != nil else {
+            return "\(name.isEmpty ? "This shell" : name) has no shell integration: Trellis won't track its directory or commands."
+        }
+        return model.shellIntegrationEnabled ? "\(name) supports shell integration." : "\(name) supports shell integration; it's turned off below."
     }
     public var body: some View {
         Form {
-            TextField("Shell executable", text: $shell)
+            Picker("Shell", selection: shellSelection) {
+                ForEach(shells) { option in
+                    Text(option.integration == nil ? "\(option.name)  —  \(option.path)" : "\(option.name)  —  \(option.path)  ·  Shell integration")
+                        .tag(option.path)
+                }
+                Divider()
+                Text("Other…").tag(Self.customTag)
+            }.accessibilityIdentifier("settings.shell")
+            if customShell {
+                TextField("Shell executable", text: $shell).accessibilityIdentifier("settings.shellPath")
+            }
+            Text(integrationNote).font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+                .accessibilityIdentifier("settings.shellIntegrationNote")
             TextField("Working directory", text: $directory)
             Text("Applies to new local sessions. Use absolute paths.").font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             if !message.isEmpty { Text(message).font(.caption).accessibilityIdentifier("settings.result") }
+            Toggle(
+                "Shell integration (zsh, bash, fish)",
+                isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
+            ).accessibilityIdentifier("settings.shellIntegration")
+            Text("Tracks the current directory, command status and prompts without editing your dotfiles. Applies to new sessions.")
+                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             HStack {
                 Spacer()
                 Button("Save") {

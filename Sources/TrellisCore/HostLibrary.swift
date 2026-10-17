@@ -9,6 +9,10 @@ public enum HostLibraryError: Error, Equatable, Sendable {
     /// The stored file is unreadable or newer; it is preserved, not overwritten.
     case readOnly
     case io(Int32)
+    /// The Keychain refused the password; host metadata was left unchanged.
+    case secretStore
+    /// Touch ID or the Mac password was declined; nothing changed.
+    case notAuthorized
 }
 
 /// Persistence boundary for host metadata, replaceable in tests.
@@ -112,7 +116,8 @@ public enum HostLibraryCodec {
             document.hosts.allSatisfy({ $0.revision <= document.revision && $0.connectionRevision <= $0.revision }),
             document.hosts.allSatisfy({ host in
                 guard let valid = try? host.draft.validated(isRegularFile: { _ in true }) else { return false }
-                return SavedHost(id: host.id, draft: valid, revision: host.revision, connectionRevision: host.connectionRevision) == host
+                return SavedHost(
+                    id: host.id, draft: valid, revision: host.revision, connectionRevision: host.connectionRevision, savedPassword: host.savedPassword) == host
             })
         else { throw HostLibraryError.readOnly }
         return (document.hosts, document.revision)
@@ -127,17 +132,18 @@ public actor HostLibrary {
     /// Set when the stored file cannot be used; mutations are refused until reset.
     public private(set) var loadFailed = false
     private let storage: HostStorage
+    private let secrets: any HostSecretStore
     private let makeID: @Sendable () -> UUID
     private let isRegularFile: @Sendable (String) -> Bool
 
     public init(
-        storage: HostStorage, makeID: @escaping @Sendable () -> UUID = { UUID() },
+        storage: HostStorage, secrets: any HostSecretStore = UnavailableHostSecretStore(), makeID: @escaping @Sendable () -> UUID = { UUID() },
         isRegularFile: @escaping @Sendable (String) -> Bool = { path in
             var info = stat()
             return stat(path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
         }
     ) {
-        self.storage = storage; self.makeID = makeID; self.isRegularFile = isRegularFile
+        self.storage = storage; self.secrets = secrets; self.makeID = makeID; self.isRegularFile = isRegularFile
     }
 
     @discardableResult
@@ -200,7 +206,9 @@ public actor HostLibrary {
                 throw .conflict(expected: replacement.expectedRevision, actual: next[index].revision)
             }
             var host = SavedHost(id: replacement.id, draft: try validate(replacement.draft), revision: stamp)
-            if host.sameConnection(as: next[index]) { host.connectionRevision = next[index].connectionRevision }
+            if host.sameConnection(as: next[index]) {
+                host.connectionRevision = next[index].connectionRevision; host.savedPassword = next[index].savedPassword
+            }
             replaced.append(next[index])
             next[index] = host
         }
@@ -210,6 +218,10 @@ public actor HostLibrary {
         }
         let undo = ImportUndo(replaced: replaced, created: Set(changes.creates.map(\.id)), stamp: stamp)
         if !changes.creates.isEmpty || !changes.replacements.isEmpty { try commit(next) }
+        // Replacements that changed the connection dropped their saved password with it.
+        for old in replaced where old.savedPassword != nil && next.first(where: { $0.id == old.id })?.savedPassword == nil {
+            secrets.remove(hostID: old.id)
+        }
         return undo
     }
 
@@ -226,6 +238,8 @@ public actor HostLibrary {
                 guard var restored = restore.first(where: { $0.id == host.id }) else { return host }
                 // Revisions only advance, so editors holding the imported revision see a conflict.
                 restored.revision = revision + 1
+                // The import already removed a dropped password from the Keychain.
+                if host.savedPassword == nil { restored.savedPassword = nil }
                 return restored
             })
     }
@@ -237,21 +251,91 @@ public actor HostLibrary {
         let valid = try validate(draft)
         // An unchanged save keeps the revision, so it does not invalidate approvals.
         let current = hosts[index]
-        guard SavedHost(id: id, draft: valid, revision: current.revision, connectionRevision: current.connectionRevision) != current else { return current }
+        guard
+            SavedHost(id: id, draft: valid, revision: current.revision, connectionRevision: current.connectionRevision, savedPassword: current.savedPassword)
+                != current
+        else { return current }
         var host = SavedHost(id: id, draft: valid, revision: revision + 1)
-        // Renaming or retagging keeps the connection revision, so approvals survive.
-        if host.sameConnection(as: current) { host.connectionRevision = current.connectionRevision }
+        // Renaming or retagging keeps the connection revision, so approvals survive. A different
+        // destination, user, port or key drops the saved password: it is never offered to another server.
+        if host.sameConnection(as: current) { host.connectionRevision = current.connectionRevision; host.savedPassword = current.savedPassword }
         var next = hosts
         next[index] = host
         try commit(next)
+        if current.savedPassword != nil, host.savedPassword == nil { secrets.remove(hostID: id) }
         return host
     }
 
-    /// Removes metadata only. No session, process, or SSH file is touched.
+    public enum PasswordChange: Equatable, Sendable {
+        /// Adds or replaces the Keychain password; `password` is validated with `HostPassword`.
+        case save(Data, requiresUserPresence: Bool)
+        /// Changes only whether use needs Touch ID or the Mac password.
+        case policy(requiresUserPresence: Bool)
+        case remove
+    }
+
+    /// Keychain first, then metadata. A failed metadata write restores the previous
+    /// Keychain value, so the library and the Keychain never disagree about a password.
+    public func setPassword(id: UUID, _ change: PasswordChange, expectedRevision: UInt64) throws(HostLibraryError) -> SavedHost {
+        guard let index = hosts.firstIndex(where: { $0.id == id }) else { throw .notFound }
+        let current = hosts[index]
+        guard current.revision == expectedRevision else { throw .conflict(expected: expectedRevision, actual: current.revision) }
+        guard !loadFailed else { throw .readOnly }
+        var host = current
+        host.revision = revision + 1
+        var previous: Data?
+        switch change {
+        case .save(let password, let requiresUserPresence):
+            guard (try? HostPassword.validated(String(decoding: password, as: UTF8.self))) == password else {
+                throw .invalid(HostValidationError(fields: [.password: "Use up to \(HostPassword.byteLimit) bytes without line breaks."]))
+            }
+            if current.savedPassword != nil { previous = try? secrets.read(hostID: id) }
+            do { try secrets.store(password, hostID: id) } catch { throw .secretStore }
+            // A new or different password changes how the host authenticates; approvals bind to it.
+            host.savedPassword = SavedPasswordPolicy(requiresUserPresence: requiresUserPresence); host.connectionRevision = host.revision
+        case .policy(let requiresUserPresence):
+            guard current.savedPassword != nil else { throw .notFound }
+            host.savedPassword = SavedPasswordPolicy(requiresUserPresence: requiresUserPresence)
+            guard host.savedPassword != current.savedPassword else { return current }
+        case .remove:
+            guard current.savedPassword != nil else { return current }
+            host.savedPassword = nil; host.connectionRevision = host.revision
+        }
+        var next = hosts
+        next[index] = host
+        do {
+            try commit(next)
+        } catch {
+            if case .save = change {
+                if let previous { try? secrets.store(previous, hostID: id) } else if current.savedPassword == nil { secrets.remove(hostID: id) }
+            }
+            throw error
+        }
+        if change == .remove { secrets.remove(hostID: id) }
+        return host
+    }
+
+    /// One askpass answer. Nil unless the host still exists with the connection the session was
+    /// started for, still has a saved password, and any required confirmation succeeded.
+    public func password(hostID: UUID, connectionRevision: UInt64, gate: any UserPresenceGate) async -> Data? {
+        func eligible() -> SavedHost? {
+            hosts.first { $0.id == hostID && $0.connectionRevision == connectionRevision && $0.savedPassword != nil }
+        }
+        guard let host = eligible() else { return nil }
+        if host.savedPassword?.requiresUserPresence == true {
+            guard await gate.authorize(reason: "use the saved password for “\(host.name)”") else { return nil }
+            // The host may have been edited or deleted while the prompt was up.
+            guard eligible() != nil else { return nil }
+        }
+        return try? secrets.read(hostID: hostID)
+    }
+
+    /// Removes metadata and the host's Keychain password. No session, process, or SSH file is touched.
     public func delete(id: UUID, expectedRevision: UInt64? = nil) throws(HostLibraryError) {
         guard let host = hosts.first(where: { $0.id == id }) else { throw .notFound }
         if let expectedRevision, host.revision != expectedRevision { throw .conflict(expected: expectedRevision, actual: host.revision) }
         try commit(hosts.filter { $0.id != id })
+        if host.savedPassword != nil { secrets.remove(hostID: id) }
     }
 
     private func validate(_ draft: HostDraft) throws(HostLibraryError) -> HostDraft.Valid {

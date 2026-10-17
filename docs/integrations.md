@@ -12,7 +12,12 @@ Trellis relies on the system and on existing tools rather than reimplementing th
 - Basic use must never depend on shell integration.
 - Without shell integration, Trellis knows only the *initial* working directory. It must not claim to know the shell's current directory, the active command, or whether a command completed.
 
-**INT-02 (P1).** Planned: opt-in zsh and bash integration that reports prompt readiness, the local current directory, command start and end, and exit status. The integration protocol will be versioned, and authenticated integration messages must be distinguishable from ordinary output. Remote commands are observable only if the integration is installed on the remote host too.
+**INT-02 (P1).** zsh, bash and fish integration reports prompt readiness, the local current directory, command start and end, and exit status. See [Shell integration](features/shell-integration.md).
+
+- It's on by default, can be turned off in Settings, and never requires editing dotfiles.
+- The protocol is versioned (`TRELLIS_SHELL_INTEGRATION=1`). Every mark that changes Trellis state carries a per-session nonce, so integration messages are distinguishable from ordinary output.
+- Unsupported shells, SSH sessions and custom processes keep the INT-01 rule: no claims about their directory or commands.
+- Remote shells aren't covered in v1.
 
 ## SSH and saved hosts
 
@@ -20,7 +25,7 @@ Trellis relies on the system and on existing tools rather than reimplementing th
 
 - SSH runs as `/usr/bin/ssh` inside a PTY, so the user's OpenSSH configuration, keys, agent, known-hosts policy and proxy settings all apply.
 - Host-key verification and interactive authentication stay in the terminal.
-- Trellis implements neither SSH nor credential management.
+- Trellis doesn't implement SSH. Its only credential handling is an optional per-host password in the macOS Keychain, given to ssh through `SSH_ASKPASS` for its password prompt only ([FR-H06–FR-H09](features/ssh-hosts.md#saved-passwords)).
 - Arguments are built without a shell. There's no unrestricted "extra arguments" field, and destinations that start with `-` or contain control characters are rejected.
 
 **INT-04 (P0).** Discovery reads literal aliases from `~/.ssh/config`, as a best effort; it isn't an OpenSSH parser.
@@ -47,7 +52,7 @@ See [SSH hosts](features/ssh-hosts.md).
 - Recommended flow: validate, plan and apply a layout first, then explicitly start sessions or execute commands. See [CLI → Agent workflow](api/cli.md#agent-workflow-int-06).
 - Trellis doesn't embed an AI model, obtain provider API keys, or interpret terminal output as instructions. Any local client that can run the CLI or speak the socket protocol can act as an agent.
 
-**INT-07 (P1).** An optional MCP adapter may expose the existing command service as tools. It can't expand a grant's permissions, it must keep the output limits, redaction and execution semantics, and it must not be a second, independent automation implementation.
+**INT-07 (P1).** An optional MCP adapter exposes the existing command service as tools. It can't expand a grant's permissions, it must keep the output limits, redaction and execution semantics, and it must not be a second, independent automation implementation. It's implemented as the [MCP server](api/mcp.md), off by default and enabled in Settings → Remote Control.
 
 ## Clipboard and macOS services
 
@@ -57,13 +62,13 @@ See [SSH hosts](features/ssh-hosts.md).
 - The clipboard is read only on paste and is never polled. Copy strips terminal control sequences.
 - Pasting files as escaped paths is an explicit action, and shows a preview when shell escaping is uncertain.
 - Clipboard requests from the terminal (OSC 52) are disabled, and agents get no clipboard access in v1.
-- Links open through the system URL handler, only after a user gesture, and only for `https`, `http` and `mailto`.
+- Links open through the system URL handler, only after a user gesture, and only for `https`, `http`, `mailto` and existing local files. Files that could run code are revealed in Finder instead (FR-L03).
 
 ## Configuration import and export
 
 **INT-09 (P0).**
 
-- Exports are portable JSON with schema versions. They exclude credentials, output history and runtime environment values.
+- Exports are portable JSON with schema versions. They exclude credentials (including saved host passwords and whether one exists), output history and runtime environment values. Imports never set a password.
 - Before applying an import, Trellis previews the counts, hosts and launch references.
 - Host import is atomic. Existing hosts don't change unless the user explicitly picks a collision policy, and a matching alias or name alone never authorizes overwriting a host.
 - `layout.apply` through the API follows its [additive semantics](api/layouts.md#matching-and-idempotency-fr-a04). An interactive import always creates fresh resources.

@@ -6,15 +6,16 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public var directory: String
     public var windowFrame: String?
     public var appearance: AppearanceSettings
+    public var remoteControl: RemoteControlSettings
     public init(
         shell: String = LocalLaunchConfiguration.loginShell().executable,
         directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
-        appearance: AppearanceSettings = .init()
+        appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init()
     ) {
         self.shell = shell; self.directory = directory; self.windowFrame = windowFrame
-        self.appearance = appearance
+        self.appearance = appearance; self.remoteControl = remoteControl
     }
-    private enum CodingKeys: String, CodingKey { case shell, directory, windowFrame, appearance }
+    private enum CodingKeys: String, CodingKey { case shell, directory, windowFrame, appearance, remoteControl }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         shell = try values.decode(String.self, forKey: .shell)
@@ -25,6 +26,9 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
         guard appearance.isValid else {
             throw DecodingError.dataCorruptedError(forKey: .appearance, in: values, debugDescription: "Invalid appearance settings")
         }
+        // An unusable value turns the server off instead of failing the whole workspace.
+        let remote = try? values.decodeIfPresent(RemoteControlSettings.self, forKey: .remoteControl)
+        remoteControl = remote.flatMap { $0 }.flatMap { $0.isValid ? $0 : nil } ?? .init()
     }
 }
 

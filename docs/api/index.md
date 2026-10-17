@@ -13,10 +13,11 @@ The server lives in `Sources/TrellisControl`, and domain dispatch is in `Sources
 | [Errors](errors.md) | JSON-RPC and application error codes |
 | [Layouts](layouts.md) | Declarative layout documents and the validate → plan → apply flow |
 | [CLI](cli.md) | The `trellis` command-line client |
+| [MCP server](mcp.md) | The optional MCP transport for agents, and Settings → Remote Control |
 
 ## Transport (API-01)
 
-- JSON-RPC 2.0 over a Unix-domain socket. There is no TCP listener.
+- JSON-RPC 2.0 over a Unix-domain socket. The socket is the only transport for this protocol. The optional [MCP server](mcp.md) is a separate HTTP transport, off by default, that runs the same methods through the same authorizer.
 - Each message is one UTF-8 JSON object followed by a newline. Newlines inside strings must be escaped, as JSON requires.
 - The maximum frame size is **1 MiB**, for both requests and responses. A response that would be larger returns `LIMIT_EXCEEDED`.
 - JSON nesting is limited to 64 levels, and method names to 128 bytes.
@@ -35,7 +36,7 @@ On startup the app publishes a discovery file and a socket:
 | Runtime directory | `$TMPDIR/trellis-<12 hex>` | Per-user temporary directory, mode `0700`, random name |
 | Socket | `<runtime-dir>/s` | Mode `0600`, path ≤ 103 bytes to respect the `sun_path` limit |
 
-`<state-dir>` defaults to `~/Library/Application Support/dev.trellis`. You can override it with `--state-directory` on both the app and the CLI.
+`<state-dir>` defaults to `~/Library/Application Support/dev.trellis` (`dev.trellis.dev` for development builds of the app). You can override it with `--state-directory` on both the app and the CLI.
 
 Endpoint safety rules:
 

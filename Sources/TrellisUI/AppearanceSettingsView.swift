@@ -71,6 +71,10 @@ public struct AppSettingsView: View {
                         ThemePreviewView(workspace: model)
                     case .automation:
                         if let grants, let hosts { AutomationSettingsView(grants: grants, workspace: model, hosts: hosts) }
+                    case .remoteControl:
+                        ScrollView {
+                            RemoteControlSettingsView(model: model, showAutomation: grants != nil && hosts != nil ? { selection = .automation } : nil)
+                        }
                     }
                 }
                 .padding(12)
@@ -87,6 +91,7 @@ public struct AppSettingsView: View {
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case appearance = "Appearance", sessions = "Sessions", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
+    case remoteControl = "Remote Control"
     var id: Self { self }
     var symbol: String {
         switch self {
@@ -95,6 +100,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: "keyboard"
         case .themes: "swatchpalette"
         case .automation: "bolt"
+        case .remoteControl: "antenna.radiowaves.left.and.right"
         }
     }
     var detail: String {
@@ -104,6 +110,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
         case .automation: "Manage access for scripts and agents."
+        case .remoteControl: "Let agents connect over the Model Context Protocol (MCP)."
         }
     }
 }
@@ -144,6 +151,17 @@ struct AppearanceSettingsView: View {
                 ForEach(TerminalCursorShape.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }
             Toggle("Blink cursor", isOn: $draft.cursorBlinks)
+            Picker("Bell", selection: $draft.bellStyle) {
+                ForEach(TerminalBellStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }
+            Toggle("Ligatures", isOn: $draft.fontLigatures)
+            Text("Joins sequences such as -> and != in fonts that include ligatures, such as JetBrains Mono.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Bold as bright colors", isOn: $draft.boldAsBright)
+            Toggle("Use bold fonts", isOn: $draft.allowBoldFont)
+            Toggle("Use italic fonts", isOn: $draft.allowItalicFont)
+            Toggle("Allow blinking text", isOn: $draft.blinkingText)
+            Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary)
             TextField("Scrollback lines (0–50,000)", value: $draft.scrollbackLines, format: .number.grouping(.never))
             Text("History also has a 16 MiB text limit. Reducing history discards older output.")
                 .font(.caption).foregroundStyle(.secondary)

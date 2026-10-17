@@ -30,7 +30,8 @@ The launch descriptor is validated before any process exists (`LocalLaunchValida
     - The child inherits the app's environment plus allowed overrides.
     - Variables with a `TRELLIS_`, `__TRELLIS_`, `UTERM_` or `__UTERM_` prefix are removed when inherited and rejected when passed as overrides. This keeps application control secrets out of shells.
     - `ITERM_SESSION_ID` and `TERM_SESSION_ID` are removed.
-    - `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Trellis` are set.
+    - Sessions of a host with a saved password also get `SSH_ASKPASS`, `SSH_ASKPASS_REQUIRE=force`, `SSH_ASKPASS_TRELLIS_SOCKET` and `SSH_ASKPASS_TRELLIS_NONCE` (one-time, not a secret). These names avoid the reserved `TRELLIS_` prefix. See [saved passwords](../features/ssh-hosts.md#saved-passwords).
+    - `TERM=xterm-256color`, `COLORTERM=truecolor`, `TERM_PROGRAM=Trellis`, `LC_TERMINAL=iTerm2` and `LC_TERMINAL_VERSION=3.5.0` are set, replacing inherited values ([inline images](../features/terminal.md#inline-images), FR-IM05).
 
 `trellis_spawn_pty` in `Sources/TrellisPOSIX/spawn.c` does the spawn:
 
@@ -68,4 +69,4 @@ A saved host is launched as `/usr/bin/ssh [-p port] [-l user] [-i identity] -- d
 
 ## What Trellis doesn't know
 
-Without shell integration (P1), Trellis knows the initial working directory, but not the shell's current directory, the active command, or whether a command finished. A process's exit status means **the launched process** exited. It doesn't say whether the last command typed into an interactive shell succeeded.
+Without [shell integration](../features/shell-integration.md) (local zsh, bash and fish only), Trellis knows the initial working directory, but not the shell's current directory, the active command, or whether a command finished. A process's exit status means **the launched process** exited. It doesn't say whether the last command typed into an interactive shell succeeded.

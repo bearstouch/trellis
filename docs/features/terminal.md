@@ -7,12 +7,25 @@ All requirements here are P0.
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-S01 | Run configurable local shells with real PTY behavior. | The default login shell, Ctrl-C, Ctrl-D, job control, resizing and process exit all work. |
-| FR-S02 | Render ordinary terminal applications reliably. | Exercise vim, less, top, colors, the alternate screen, mouse reporting and Unicode. |
+| FR-S02 | Render ordinary terminal applications reliably. | Exercise vim, less, top, colors, the alternate screen, mouse reporting and Unicode. Text styles, ligatures and Unicode widths are detailed in FR-TX01–FR-TX04. |
 | FR-S03 | Show session status and exit code, and allow an explicit restart. | A process that exits with code 7 stays visible, and restarting gives a fresh session ID. |
 | FR-S04 | Keep bounded scrollback and search per pane. | Search forward and backward through retained text, and say when older output has been evicted. |
 | FR-S05 | Let new sessions set a working directory and environment. | Launch in a directory whose name contains spaces, with an override variable. Inaccessible paths are rejected before any process is created. |
 
 Session states and process handling are described in [Sessions and processes](../architecture/sessions.md). Run `swift run Trellis --fixture` to see a fixed shell that exits with code 7 (FR-S03).
+
+## Text rendering
+
+These requirements are P1. They refine FR-S02 for text. The settings are described in [Keyboard, settings and accessibility](keyboard-accessibility.md#settings).
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-TX01 | Draw font ligatures on the cell grid, controlled by a **Ligatures** setting that is on by default. | With JetBrains Mono (the bundled font with programming ligatures), `->`, `!=` and `<=>` show joined glyphs, and text after them keeps its columns. Turning the setting off shows the separate characters, because it disables the `calt`, `liga` and `dlig` font features. It doesn't resize the grid or reset the session. Each part of a ligature keeps its own cell's colour, so colour changes and selections don't break it; a change of face (bold or italic) does. The character under a visible cursor is always drawn on its own, so the cursor never covers half a joined glyph. |
+| FR-TX02 | Render SGR text styles. | Bold (1), dim (2), italic (3), underline (4, and the styles `4:0`–`4:5`: none, single, double, curly, dotted, dashed), double underline (21), underline colour (58, reset with 59), blink (5 and 6), inverse (7), concealed (8, reset with 28), strikethrough (9) and overline (53, reset with 55) all show. Underline, strikethrough and overline cover the full width of wide characters and ligatures. Concealed text hides glyphs and decorations but keeps its background; copy, search and accessibility still read the text, because it is in the buffer. |
+| FR-TX03 | Let users choose how text styles are drawn. | **Bold as bright colors** draws bold text in ANSI colours 0–7 with the bright colours 8–15; explicit bright colours (SGR 90–97) stay bright with it off. **Use bold fonts** and **Use italic fonts** off draw that text with the regular face. **Allow blinking text** off draws blinking text steadily; blinking also stops while Reduce Motion is on or the app is inactive. All four are on by default and apply live. |
+| FR-TX04 | Give emoji and other Unicode text stable cell widths. | Each of these takes a fixed number of cells and moves the cursor by the same amount: ZWJ sequences (`👨‍👩‍👧`, 2), emoji presentation with VS16 (`❤️`, 2) and text presentation with VS15 (`☺︎`, 1), flags (`🇵🇹`, 2), skin tones (`👍🏽`, 2), combining marks (`é` written as `e` + U+0301, 1) and CJK and Hangul (`漢`, `한`, 2 each). Each is one cluster for selection, copy and search. Colour emoji fit within their two cells. |
+
+Known limits: ligatures whose font merges several characters into one glyph take the colour of their first cell. In bidirectional rows the cursor cell isn't drawn on its own, so the cursor can cover part of a joined glyph there. The automation API doesn't expose the text-rendering settings (see [Methods](../api/methods.md)).
 
 ## Copy
 
@@ -20,6 +33,7 @@ Session states and process handling are described in [Sessions and processes](..
 | --- | --- | --- |
 | FR-C01 | Support native text selection, Cmd-C, Cmd-V, and context-menu copy and paste. | Cmd-C copies when there's a selection, and with no selection it does **not** send SIGINT. Ctrl-C still sends the terminal interrupt. |
 | FR-C02 | Support plain-text copy, Select All, and word and line selection. | Unicode and multiline text copy without terminal escape sequences, and Copy All covers the whole retained buffer. |
+| FR-C06 | Double-click selects the whole recognized token under the pointer (smart selection): a URL, an email address, a file path with an optional `:line[:column]` suffix, a UUID, an IPv4 address with optional port, an IPv6 address, a git hash, or a quoted string when the click lands on one of its quotes. Elsewhere it selects a word as before. | Double-clicking any part of `https://en.wikipedia.org/wiki/A_(b)).` selects the URL without the trailing `).`, `src/main.swift:12:5` and `~/notes/todo.md` are selected whole, a path that soft-wraps across rows is selected across them, and wide characters keep their columns. A clock time such as `12:34:56` is not an IPv6 address. Dragging after the double-click extends from the whole token. While a program captures the mouse (mouse reporting), the double-click goes to the program. Triple-click still selects the line. |
 
 ## Paste
 
@@ -37,13 +51,42 @@ The UI paste review is mandatory. API input (`session.sendInput`) doesn't show i
 - Search is per pane and runs forward and backward. It shows the current match, and says when the history it could have matched has been evicted.
 - The alternate screen (vim, less, top) and the main screen's history are searched separately.
 
+## Links
+
+Hold ⌘ and hover to underline a link; ⌘-click opens it. Links come from OSC 8 hyperlinks (`ls --hyperlink`, compilers, `rg`) or are detected in plain text.
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-L01 | ⌘-click opens web and mail links. | `http`, `https` and `mailto` links open in the default browser or mail app only after a ⌘-click; output alone never opens anything, and one click opens at most one link. |
+| FR-L02 | ⌘-click opens local file paths and OSC 8 `file://` links in the file's default app. | Absolute paths, `~/` paths and relative paths open; a `:line[:column]` suffix is removed before opening, and percent-encoded `file://` paths are decoded. Missing files, devices, sockets and FIFOs do nothing. |
+| FR-L03 | Never launch anything from a terminal link. | Executables (any execute bit), application bundles and other packages, scripts (`.command`, `.sh`, `.py`, `.scpt`, …), installers, disk images, aliases and URL shortcut files are revealed in Finder instead of opened. A symbolic link is judged by its target. |
+| FR-L04 | Open files only from local panes. | Relative paths resolve only against the directory reported by authenticated shell integration; without one they don't open. Panes connected to a saved SSH host, or started directly as `ssh` or `mosh`, never open file paths. Paths under the `/net` and `/Network` automounts are refused, so a click can't make the Mac contact a host named by output. `file://` links naming another host or a port are refused, and an OSC 8 link whose target has no scheme is refused because its visible text can differ from its target. |
+| FR-L05 | Offer link actions in the context menu. | Right-clicking a web link offers **Open Link** and **Copy Link**; right-clicking a file path offers **Open** (or **Reveal in Finder** under FR-L03) and **Copy Path**. Elsewhere the menu is unchanged. The menu follows the same rules as ⌘-click. |
+
+Known limits: a host reached by typing `ssh` inside a local shell isn't detected, so absolute paths from it open if the same path exists on this Mac. The `:line[:column]` suffix isn't passed to editors. The pointer doesn't change to a hand over links.
+
+## Inline images
+
+Programs can show images in the terminal with iTerm2's inline image protocol (OSC 1337): `imgcat`, `yazi`, `timg`, `chafa -f iterm` and the `viu` crate all use it. An image takes the cells it covers, scrolls with the text around it, and is kept in scrollback like a line of text.
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-IM01 | Show `File=…;inline=1:<base64>` images at the cursor. | A PNG, JPEG, GIF, BMP, TIFF, WebP or HEIC image appears where the cursor was, and the cursor moves to the line below it. `width` and `height` accept `auto`, cells (`N`, below 200), pixels (`Npx`, below 4096) and a share of the pane (`N%`); other values mean `auto`. `preserveAspectRatio=0` stretches the image to the box. An image that would be wider than the pane, or taller than 10,000 pixels at the display's scale (a side that follows from the aspect ratio can be far larger), is shrunk to fit and keeps its shape; a box with both sides given is used as is. JPEG orientation is applied. Animated GIFs show their first frame. |
+| FR-IM02 | Show images sent in parts (`MultipartFile`, then `FilePart`s, then `FileEnd`), as newer `imgcat` does for large files. | The image matches the same file sent with `File=`. A transfer that another OSC 1337 command interrupts, that has bad base64, that grows past its declared `size`, or that goes over 32 MiB shows nothing, and the terminal keeps working. |
+| FR-IM03 | Answer `ReportCellSize`. | The reply is `OSC 1337;ReportCellSize=<height>;<width>;<scale> ST`: the cell size in points and the display's backing scale. |
+| FR-IM04 | Treat image data as untrusted. | `inline=0` (a file download) shows nothing and writes no file. Only the bitmap formats in FR-IM01 are decoded, so PDF, EPS and SVG show nothing. An image over 10,000 pixels on a side or 40 megapixels is refused from its header before any pixels are decoded. A 10,000 × 1 image asked to be ten rows tall is drawn no wider than the pane. Any OSC or APC sequence longer than 8 MiB is dropped whole, so a single `File=` image can be at most about 6 MiB. Other iTerm2 commands (`SetMark`, `SetUserVar`, `CurrentDir`, …) are ignored. |
+| FR-IM05 | Tell programs the protocol is available. | Local sessions get `LC_TERMINAL=iTerm2` and `LC_TERMINAL_VERSION=3.5.0`; `TERM_PROGRAM` stays `Trellis`. |
+
+Known limits: images are decoded on the main thread, so a very large image can pause drawing briefly. The PTY's pixel size (`TIOCGWINSZ` `ws_xpixel`/`ws_ypixel`) is reported as zero, so tools that size images from it fall back to `ReportCellSize` or their own defaults. VoiceOver doesn't announce images. SSH sessions only see `LC_TERMINAL` if the server accepts it (`AcceptEnv LC_*` is common).
+
 ## Terminal output is untrusted
 
 Terminal output can be written by anything, so Trellis treats it as hostile:
 
 - Terminal-initiated clipboard reads and writes, including OSC 52, are disabled by default.
-- Opening a link needs a user gesture (Cmd-click), and only `http`, `https` and `mailto` are allowed. Custom schemes and automatic opening are disabled.
+- Opening a link needs a user gesture (⌘-click or a context-menu choice). Only `http`, `https` and `mailto` links and existing local files open; files that could run code are only revealed in Finder (FR-L01–FR-L04). Custom schemes and automatic opening are disabled.
 - Copy strips terminal control sequences.
+- Inline images never download or open files, decode only bitmap formats within pixel limits, and every OSC or APC sequence is capped at 8 MiB (FR-IM04).
 - Nothing in terminal output can change permissions. That includes text that looks like instructions to an agent.
 
 The terminal scrollbar stays hidden while idle. Hovering over its right-edge track reveals it when scrollback is available. Scrolling gestures reveal it only when the viewport moves; it fades out one second after scrolling stops or the pointer leaves the track. Incoming output alone does not reveal it, and visibility changes do not alter the terminal grid width.

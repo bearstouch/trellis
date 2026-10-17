@@ -76,6 +76,10 @@ def main():
             assert digest(built / "Trellis") == source_hash, "signing changed the Swift build product"
             assert stat.S_IMODE(shader.stat().st_mode) == 0o444
             assert (destination / "Contents/Resources/Trellis_TrellisCore.bundle/Themes/example-minimal.theme.json").is_file()
+            for face in ("RobotoMono-Regular", "CascadiaMonoNF-Regular", "IosevkaFixed-BoldItalic"):
+                assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/Fonts/{face}.ttf").is_file(), f"assembled app has no bundled {face}"
+            for script in ("zsh/.zshenv", "bash/trellis.bash", "fish/vendor_conf.d/trellis-shell-integration.fish"):
+                assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/ShellIntegration/{script}").is_file(), f"assembled app has no {script}"
             assert digest(destination / "Contents/Resources/AppIcon.icns") == digest(icon)
 
         run("--build-only")

@@ -22,7 +22,7 @@ Trellis is a focused native macOS terminal that makes many concurrent local and 
 | Tab | A named container for one binary split tree and its active pane. |
 | Pane | A visible terminal leaf in a tab. Each pane owns exactly one session. |
 | Session | One PTY-backed process, usually a login shell or the system SSH client. |
-| Host | Saved SSH connection metadata. It is neither a running session nor a credential store. |
+| Host | Saved SSH connection metadata. It isn't a running session. Its only credential is an optional password kept in the Keychain, never in the host itself. |
 | Profile | Reusable appearance and launch defaults. The MVP has a single default profile. |
 | Layout | A declarative, versioned description of windows, tabs and pane trees. |
 | Grant | A user-created automation credential with a capability set and a resource scope. |
@@ -39,7 +39,7 @@ Structural rules:
 | Priority | Features |
 | --- | --- |
 | P0 (MVP) | Sidebar windows; tabs; nested left/right and top/bottom splits; local shells; SSH hosts; native selection and clipboard; built-in dark and light themes plus custom JSON themes; terminal search; keyboard navigation; saved layouts; local CLI and API; explicit automation grants; bounded output reading; import and export of layouts and hosts |
-| P1 | Multiple native windows; dragging tabs between windows; multiple profiles; opt-in shell integration with command-completion events; richer host import; a signed update mechanism; an optional MCP adapter |
+| P1 | Multiple native windows; dragging tabs between windows; multiple profiles; shell integration (zsh, bash, fish; command-completion events for automation still to come); richer host import; a signed update mechanism; an optional MCP adapter |
 | P2 | A session broker so sessions survive application exit; tmux awareness; richer terminal protocols; plugins |
 
 Out of scope for the MVP: Windows, Linux or iOS support; cloud sync; a web UI; a remote API server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import; and replaying arbitrary commands on restore.
@@ -51,8 +51,8 @@ The visual direction is **Native calm**.
 - The left sidebar lists managed windows. Selecting one shows that window's own tab bar above its terminal area.
 - Selecting a tab restores its split layout and its last focused pane.
 - The tab bar has visible separators, a new-tab button and a rename action. Double-clicking a tab label edits it inline: Enter commits, Escape cancels, and an empty name keeps the previous title. Renaming never restarts a session or changes an ID.
-- Light application chrome is the first-launch default; Dark and System are available. The sidebar, title bar and tab bar stay light by default, while terminal panes stay dark and use Monaco in every appearance.
-- **Hosts** opens a searchable list with connect and edit actions. Connecting opens a new tab by default, with an explicit option to open a split instead.
+- Dark application chrome is the first-launch default; Light and System are available, and settings saved by an earlier version keep their mode. Terminal panes stay dark with the default themes and use bundled Roboto Mono by default in every appearance.
+- **Hosts** opens a searchable list with connect and edit actions. Connecting opens a new tab by default, with explicit options to open a new window or a split instead.
 
 Menus say **Split Left/Right** and **Split Top/Bottom**. In the API, `axis: x` means left/right and `axis: y` means top/bottom. This avoids the ambiguous term "vertical split".
 

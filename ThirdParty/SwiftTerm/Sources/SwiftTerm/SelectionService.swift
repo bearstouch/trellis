@@ -700,6 +700,21 @@ public class SelectionService: CustomDebugStringConvertible {
     }
 
     /**
+     * Selects a host-computed half-open range as if it were a double-clicked word: a
+     * following drag pivots around the whole range. `end.col` may equal `cols`.
+     */
+    public func setWordSelection (start: Position, end: Position)
+    {
+        self.start = start
+        self.end = end
+        selectionMode = .word
+        wordSelectionAnchor = (start, end)
+        rowSelectionAnchor = nil
+        selectingRows = false
+        setActiveAndNotify()
+    }
+
+    /**
      * Clears the selection
      */
     public func selectNone ()

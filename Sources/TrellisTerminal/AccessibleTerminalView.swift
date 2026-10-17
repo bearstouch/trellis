@@ -2,6 +2,23 @@ import AppKit
 import SwiftTerm
 import TrellisCore
 
+/// Context-menu titles for a link under the pointer.
+struct TerminalLinkMenu: Equatable {
+    var openTitle: String
+    var copyTitle: String
+    var copyText: String
+    /// What Open re-resolves: the described link text, without its cell.
+    var click: TerminalLinkClick
+}
+
+/// A clicked link: the engine's text (nil if it found none), whether it is an OSC 8
+/// hyperlink, and the clicked cell for re-detecting the token under it.
+struct TerminalLinkClick: Equatable {
+    var link: String?
+    var explicit: Bool
+    var position: Position?
+}
+
 /// SwiftTerm 1.20's macOS accessibility helper is a stub. Supply a native text
 /// area interface here so assistive clients can read actual retained terminal text.
 @MainActor
@@ -10,6 +27,11 @@ final class AccessibleTerminalView: TerminalView {
     var onPasteRequested: ((TerminalPasteInput) -> Void)?
     var onSearchRequested: (() -> Void)?
     var onContentsChanged: (() -> Void)?
+    var onBell: (() -> Void)?
+    /// Describes a clicked link for the context menu (FR-L05); nil when it must not be offered.
+    var describeLink: ((TerminalLinkClick) -> TerminalLinkMenu?)?
+    /// Opens a link chosen from the context menu, under the same rules as ⌘-click.
+    var onOpenLink: ((TerminalLinkClick) -> Void)?
     var scrollback = TerminalScrollback(budget: .standard)
     /// The configurable Find chord; other ⌘ chords reach the menu bar.
     var searchChord: KeyChord? = ShortcutMap.defaults[.findInPane]
@@ -19,6 +41,12 @@ final class AccessibleTerminalView: TerminalView {
     private var scrollbarHideTask: Task<Void, Never>?
     var scrollbarIdleDelay: Duration = .seconds(1)
     private var terminalScroller: NSScroller? { subviews.compactMap { $0 as? NSScroller }.first }
+
+    /// Every BEL counts as an attention request, whatever the bell style.
+    override func bell(source: Terminal) {
+        super.bell(source: source)
+        onBell?()
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -184,6 +212,7 @@ final class AccessibleTerminalView: TerminalView {
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
         if item.action == #selector(pasteEscapedPath(_:)) { return true }
         if item.action == #selector(showPaneSearch(_:)) { return true }
+        if item.action == #selector(openContextLink(_:)) || item.action == #selector(copyContextLink(_:)) { return contextLink != nil }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
     }
@@ -193,6 +222,19 @@ final class AccessibleTerminalView: TerminalView {
         window?.makeFirstResponder(self)
         onFocused?()
         let menu = NSMenu()
+        let position = bufferPosition(for: event), terminal = getTerminal()
+        let click = TerminalLinkClick(
+            link: terminal.link(at: .buffer(position), mode: .explicitAndImplicit), explicit: terminal.linkIsExplicit(at: .buffer(position)), position: position)
+        contextLink = nil
+        if let described = describeLink?(click) {
+            contextLink = (described.click, described.copyText)
+            for (title, action) in [(described.openTitle, #selector(openContextLink(_:))), (described.copyTitle, #selector(copyContextLink(_:)))] {
+                let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                item.target = self
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
+        }
         for (title, action) in [
             ("Copy", #selector(copy(_:))),
             (copyAllTitle, #selector(copyAllRetainedText(_:))),
@@ -208,6 +250,21 @@ final class AccessibleTerminalView: TerminalView {
         return menu
     }
 
+    private var contextLink: (click: TerminalLinkClick, copyText: String)?
+
+    @objc func openContextLink(_ sender: Any?) {
+        guard let contextLink else { return }
+        // Choosing the menu item is the gesture.
+        lastUserGesture = Date()
+        defer { lastUserGesture = nil }
+        onOpenLink?(contextLink.click)
+    }
+
+    @objc func copyContextLink(_ sender: Any?) {
+        guard let contextLink else { return }
+        writePlainText(contextLink.copyText)
+    }
+
     override func mouseDown(with event: NSEvent) {
         onFocused?()
         super.mouseDown(with: event)
@@ -215,11 +272,15 @@ final class AccessibleTerminalView: TerminalView {
 
     /// Set only while a click is being handled; links open only during one.
     var lastUserGesture: Date?
+    /// The clicked cell and whether it holds an OSC 8 hyperlink; set only during `mouseUp`.
+    private(set) var linkClick: TerminalLinkClick?
 
     override func mouseUp(with event: NSEvent) {
         // SwiftTerm requests link opening from mouseUp; the gesture ends with this click.
         lastUserGesture = Date()
-        defer { lastUserGesture = nil }
+        let position = bufferPosition(for: event)
+        linkClick = TerminalLinkClick(link: nil, explicit: getTerminal().linkIsExplicit(at: .buffer(position)), position: position)
+        defer { lastUserGesture = nil; linkClick = nil }
         super.mouseUp(with: event)
     }
 

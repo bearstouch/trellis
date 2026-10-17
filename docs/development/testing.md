@@ -9,6 +9,7 @@ All tests use XCTest (`swift test`). The suite has about 310 tests and runs in r
 | `TrellisCoreTests` | The store, persistence, sessions, closure policy, themes, hosts, SSH discovery, keyboard, diagnostics, scrollback, output journal | `WorkspaceStoreTests`, `WorkspacePersistenceTests`, `SessionClosureTests`, `ThemeValidationTests`, `SSHConfigDiscoveryTests` |
 | `TrellisTerminalTests` | Real PTYs, process ownership, output ordering, copy, paste, search, selection, appearance | `PTYProcessTests`, `ProcessOwnershipTests`, `PTYOutputOrderingTests`, `TerminalSecurityTests` |
 | `TrellisUITests` | `AppWorkspaceModel` behavior, automation methods, layouts, restore, themes | `TabManagementTests`, `SplitManagementTests`, `SessionSafetyTests`, `LayoutAutomationTests`, `AutomationOutputTests` |
+| `TrellisMCPTests` | HTTP parsing, MCP sessions and tools, Origin/Host checks, the TCP listener | `HTTPParserTests`, `MCPEndpointTests`, `MCPListenerTests` |
 | `TrellisControlTests` | Framing, endpoint safety, authorization, events, fuzzing | `ControlProtocolTests`, `GrantAuthorizationTests`, `EventHubTests`, `BoundaryFuzzTests` |
 | `TrellisCLITests` | Argument parsing, exit codes, launch behavior | `CLITests` |
 | `TrellisReleaseTests` | Release manifest, CLI link planner, uninstall plan | `ReleaseTests` |

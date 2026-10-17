@@ -3,6 +3,8 @@ import UniformTypeIdentifiers
 import SwiftUI
 import TrellisControl
 import TrellisCore
+import TrellisMCP
+import TrellisTerminal
 import TrellisUI
 
 @MainActor
@@ -11,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let hosts: HostListModel
     private var hostsWindow: NSWindow?
     private let control: ControlServer
+    private let mcp: MCPServer
     private let grants: GrantListModel
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
@@ -22,15 +25,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
 
-    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, grants: GrantListModel) {
-        self.model = model; self.hosts = hosts; self.control = control; self.grants = grants
+    private let identity: AppInstanceIdentity
+
+    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, mcp: MCPServer, grants: GrantListModel, identity: AppInstanceIdentity) {
+        self.model = model; self.hosts = hosts; self.control = control; self.mcp = mcp; self.grants = grants; self.identity = identity
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(activateExistingInstance),
-            name: Notification.Name("dev.trellis.activateExistingInstance"), object: nil)
+            name: Notification.Name(identity.activationNotification), object: nil)
         NSWindow.allowsAutomaticWindowTabbing = false
+        // A packaged app gets its icon from AppIcon.icns; `swift run` would show the generic executable icon.
+        if Bundle.main.bundleURL.pathExtension != "app", let url = BundledAppIcon.url(), let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
         model.onChromeModeChanged = { mode in
             switch mode {
             case .light: NSApp.appearance = NSAppearance(named: .aqua)
@@ -53,8 +62,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
+        // Restored or applied settings (re)start the MCP server; fixture and --no-mcp launches never listen.
+        let mcpBlocked = CommandLine.arguments.contains("--no-mcp") || CommandLine.arguments.contains("--fixture")
+        model.onRemoteControlSettingsChanged = { [weak self] settings in
+            guard let self else { return }
+            if mcpBlocked, settings.mcpEnabled {
+                mcp.stop()
+                model.remoteControlStatus = .failed(reason: "Turned off for this launch (--no-mcp or --fixture).")
+            } else {
+                model.remoteControlStatus = mcp.apply(settings)
+            }
+        }
         model.openHosts = { [weak self] in self?.showHosts() }
         model.resolveHost = { [hosts] id in await hosts.host(id) }
+        if let helper = Self.askpassHelperPath() {
+            model.askpass = AskpassBroker(helperPath: helper)
+            let library = hosts.library, gate = LocalAuthenticationGate()
+            hosts.userPresence = gate
+            model.savedPassword = { id, revision in await library.password(hostID: id, connectionRevision: revision, gate: gate) }
+        }
         hosts.onConnect = { [weak self] host, placement in
             guard let self else { return }
             window?.makeKeyAndOrderFront(nil)
@@ -95,7 +121,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop() }
+    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop() }
+
+    /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
+    private static func askpassHelperPath() -> String? {
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let candidates = [
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/\(AskpassBroker.helperName)"),
+            executable.deletingLastPathComponent().appendingPathComponent(AskpassBroker.helperName)
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }?.path
+    }
 
     @objc private func activateExistingInstance() {
         window?.deminiaturize(nil)
@@ -154,8 +190,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(withTitle: "Select All", action: #selector(selectAllText(_:)), keyEquivalent: "a")
         edit.submenu?.addItem(.separator())
         for action in [ShortcutAction.findInPane, .findNext, .findPrevious] { edit.submenu?.addItem(item(action)) }
+        edit.submenu?.addItem(.separator())
+        for action in [ShortcutAction.previousPrompt, .nextPrompt] { edit.submenu?.addItem(item(action)) }
         menu.addItem(edit)
-        let view = submenu("View", [.zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.toggleSidebar, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -217,9 +255,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .findInPane: model.activeTerminal?.showSearch()
         case .findNext: model.activeTerminal?.findInPane()
         case .findPrevious: model.activeTerminal?.findInPane(forward: false)
+        case .previousPrompt: model.activeTerminal?.scrollToPrompt(forward: false)
+        case .nextPrompt: model.activeTerminal?.scrollToPrompt(forward: true)
         case .zoomIn: model.zoomTerminalFont(by: 1)
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
+        case .toggleSidebar: model.toggleSidebar()
         case .splitLeftRight, .splitTopBottom:
             if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
         case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
@@ -244,10 +285,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
         if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
-        guard window?.isKeyWindow == true, !model.isRestoring, model.recoveryMessage == nil else { return false }
+        guard window?.isKeyWindow == true else { return false }
+        if action == .toggleSidebar { return true }
+        guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
         case .findInPane, .findNext, .findPrevious: return model.activeTerminal != nil
+        // ⌘↑/⌘↓ stay text navigation while a field (rename, search) is editing.
+        case .previousPrompt, .nextPrompt: return model.activeTerminal != nil && !(window?.firstResponder is NSText)
         case .splitLeftRight, .splitTopBottom:
             return presentation.activePane != nil && presentation.selectedTab.map { model.maximizedPanes[$0.id] == nil } == true
         case .closePane, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
@@ -272,6 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(performShortcut(_:)) {
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
+            if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
             return validateShortcut(action)
         }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
@@ -305,13 +351,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     .font: NSFont.systemFont(ofSize: 12),
                     .link: URL(string: "https://github.com/layerx-labs/trellis/blob/main/LICENSE")!
                 ]))
-        credits.append(NSAttributedString(string: ".", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        credits.append(NSAttributedString(string: ".\n\n© 2026 ", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        // The standard Copyright option is plain text, so the linked copyright line lives in the credits.
+        credits.append(NSAttributedString(string: "LayerX Labs", attributes: [.font: NSFont.systemFont(ofSize: 12), .link: URL(string: "https://layerx.xyz")!]))
+        credits.append(NSAttributedString(string: " and Trellis contributors. All rights reserved.", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        let centered = NSMutableParagraphStyle(); centered.alignment = .center
+        credits.addAttribute(.paragraphStyle, value: centered, range: NSRange(location: 0, length: credits.length))
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Trellis",
             .applicationIcon: NSApp.applicationIconImage!,
             .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
             .version: "",
-            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "© 2026 LayerX Labs and Trellis contributors. All rights reserved.",
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "",
             .credits: credits
         ])
     }
@@ -399,10 +450,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func showHosts() {
         if hostsWindow == nil {
-            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 460), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             panel.title = "Hosts"
             panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(rootView: HostLibraryView(model: hosts))
+            panel.contentView = NSHostingView(rootView: HostLibraryView(model: hosts, workspace: model))
             panel.center()
             hostsWindow = panel
         }
@@ -484,15 +535,17 @@ struct TrellisMain {
     @MainActor static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
+        NativeTerminalFont.registerBundledFonts()
         do {
-            let lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("dev.trellis-\(getuid()).instance.lock")
+            let identity = AppInstanceIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
+            let lockURL = identity.lockURL(in: FileManager.default.temporaryDirectory)
             let instanceLock: ApplicationInstanceLock
             switch try ApplicationInstanceLock.acquire(at: lockURL) {
             case .acquired(let lock): instanceLock = lock
             case .alreadyRunning(let pid):
                 if let pid { NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows]) }
                 DistributedNotificationCenter.default().postNotificationName(
-                    Notification.Name("dev.trellis.activateExistingInstance"), object: nil,
+                    Notification.Name(identity.activationNotification), object: nil,
                     userInfo: nil, deliverImmediately: true)
                 return
             }
@@ -503,18 +556,19 @@ struct TrellisMain {
             } else {
                 directory = try ApplicationSupportLocation.prepare(
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
-                    bundleIdentifier: Bundle.main.bundleIdentifier)
+                    bundleIdentifier: identity.identifier)
             }
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
-            let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory)))
+            let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
             let events = EventHub(instanceID: instanceID, grants: grantStore)
             let handler = AuthorizingControlHandler(
                 grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
+            let mcp = MCPServer(handler: handler, serverVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")
             let forwarder = EventForwarder(hub: events, instanceID: instanceID)
             model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
             // Appearance is global; the hub gates it on theme.read, not window scope.
@@ -544,11 +598,12 @@ struct TrellisMain {
                 await grantStore.onRevocation { grantID in
                     Task {
                         await events.removeGrant(grantID)
+                        await mcp.closeSessions(grantID: grantID)
                         control.closeConnections(await handler.connections(for: grantID))
                     }
                 }
             }
-            let delegate = AppDelegate(model: model, hosts: hosts, control: control, grants: GrantListModel(store: grantStore))
+            let delegate = AppDelegate(model: model, hosts: hosts, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}

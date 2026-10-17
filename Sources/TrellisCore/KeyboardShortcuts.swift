@@ -44,8 +44,8 @@ public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view
 
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts
-    case findInPane, findNext, findPrevious
-    case zoomIn, zoomOut, actualSize
+    case findInPane, findNext, findPrevious, previousPrompt, nextPrompt
+    case zoomIn, zoomOut, actualSize, toggleSidebar
     case splitLeftRight, splitTopBottom, maximizePane
     case focusLeft, focusRight, focusUp, focusDown
     case resizeLeft, resizeRight, resizeUp, resizeDown
@@ -66,9 +66,12 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .findInPane: "Find in Pane…"
         case .findNext: "Find Next"
         case .findPrevious: "Find Previous"
+        case .previousPrompt: "Previous Prompt"
+        case .nextPrompt: "Next Prompt"
         case .zoomIn: "Zoom In"
         case .zoomOut: "Zoom Out"
         case .actualSize: "Actual Size"
+        case .toggleSidebar: "Toggle Sidebar"
         case .splitLeftRight: "Split Left/Right"
         case .splitTopBottom: "Split Top/Bottom"
         case .maximizePane: "Maximize / Restore Pane"
@@ -97,8 +100,8 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     public var menu: ShortcutMenu {
         switch self {
         case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts: .file
-        case .findInPane, .findNext, .findPrevious: .edit
-        case .zoomIn, .zoomOut, .actualSize: .view
+        case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt: .edit
+        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             .pane
@@ -116,9 +119,12 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .findInPane: KeyChord("f")
         case .findNext: KeyChord("g")
         case .findPrevious: KeyChord("g", [.command, .shift])
+        case .previousPrompt: KeyChord("up")
+        case .nextPrompt: KeyChord("down")
         case .zoomIn: KeyChord("+")
         case .zoomOut: KeyChord("-")
         case .actualSize: KeyChord("0")
+        case .toggleSidebar: KeyChord("s", [.command, .control])
         case .splitLeftRight: KeyChord("d")
         case .splitTopBottom: KeyChord("d", [.command, .shift])
         case .maximizePane: KeyChord("return", [.command, .shift])
@@ -239,14 +245,24 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
     /// A missing chord encodes as JSON null so an unbound default survives a round trip.
     private struct Override: Codable { var chord: KeyChord? }
 
+    /// Actions whose default chord shipped after saved maps already existed.
+    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar]
+
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         optionAsMeta = try values.decodeIfPresent(Bool.self, forKey: .optionAsMeta) ?? false
         var chords = ShortcutMap.defaults.chords
+        var overridden: Set<ShortcutAction> = []
         // Unknown action names from a newer build are ignored rather than fatal.
         for (name, override) in try values.decodeIfPresent([String: Override].self, forKey: .overrides) ?? [:] {
             guard let action = ShortcutAction(rawValue: name) else { continue }
-            chords[action] = override.chord
+            chords[action] = override.chord; overridden.insert(action)
+        }
+        // A default added in a later build yields to a chord the user already chose,
+        // instead of turning the whole saved map into a conflict. Other conflicts still reject the map.
+        let chosen = Set(overridden.compactMap { chords[$0] })
+        for action in Self.laterDefaults where !overridden.contains(action) {
+            if let chord = chords[action], chosen.contains(chord) { chords[action] = nil }
         }
         shortcuts = ShortcutMap(chords: chords)
     }

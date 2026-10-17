@@ -239,7 +239,11 @@ public enum CLI {
             return .object([
                 "dryRun": .bool(true),
                 "remove": .array(entries),
-                "keychain": .string("Delete generic passwords with service \"\(UninstallPlanner.keychainService)\" (Keychain Access, or: security delete-generic-password -s \"\(UninstallPlanner.keychainService)\")."),
+                "keychain": .string(
+                    "Delete generic passwords with service "
+                        + UninstallPlanner.keychainServices.map { "\"\($0)\"" }.joined(separator: " or ")
+                        + " (Keychain Access, or: "
+                        + UninstallPlanner.keychainServices.map { "security delete-generic-password -s \"\($0)\"" }.joined(separator: "; ") + ")."),
                 "neverRemoved": .string("~/.ssh (keys, config, known_hosts), shell startup files, and shell history are never touched.")
             ])
         }
@@ -370,6 +374,8 @@ public enum CLI {
         case "tab.get", "tab.update", "tab.focus", "tab.close":
             try tab("id")
             set("title", "title"); flag("allowRunning", "allow-running"); flag("force", "force")
+            // `none` removes the label; the app validates color names.
+            if let color = command.value("color") { params["color"] = color == "none" ? .null : .string(color) }
         case "pane.split":
             try uuid("paneId", "pane"); set("axis", "axis"); try number("ratio", "ratio"); flag("start", "start")
         case "pane.resize": try uuid("branchId", "branch"); try number("ratio", "ratio")

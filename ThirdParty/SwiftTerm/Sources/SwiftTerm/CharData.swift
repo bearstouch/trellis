@@ -50,6 +50,19 @@ public struct CharacterStyle : OptionSet, Hashable {
     public static let crossedOut = CharacterStyle (rawValue: 128)
 }
 
+/// Character styles beyond the eight bits of ``CharacterStyle``.
+public struct ExtendedCharacterStyle : OptionSet, Hashable {
+    public let rawValue: UInt8
+
+    public init (rawValue: UInt8)
+    {
+        self.rawValue = rawValue
+    }
+
+    /// Draw a line above the text (SGR 53)
+    public static let overline = ExtendedCharacterStyle (rawValue: 1)
+}
+
 public enum UnderlineStyle: UInt8 {
     case none = 0
     case single = 1
@@ -113,6 +126,8 @@ public struct Attribute: Equatable, Hashable {
     public private(set) var underlineStyle: UnderlineStyle = .none
     /// Optional underline color
     public private(set) var underlineColor: Color? = nil
+    /// Styles that do not fit in `style`, such as overline
+    public private(set) var extendedStyle: ExtendedCharacterStyle = []
     
     public static func ==(lhs: Attribute, rhs: Attribute) -> Bool
     {
@@ -120,7 +135,8 @@ public struct Attribute: Equatable, Hashable {
             lhs.fg == rhs.fg &&
             lhs.bg == rhs.bg &&
             lhs.underlineStyle == rhs.underlineStyle &&
-            lhs.underlineColor == rhs.underlineColor
+            lhs.underlineColor == rhs.underlineColor &&
+            lhs.extendedStyle == rhs.extendedStyle
     }
     
     // Returns an attribute with just the colors
@@ -148,6 +164,9 @@ public struct Attribute: Equatable, Hashable {
         }
         if style.contains (.invisible) {
             result += ";8"
+        }
+        if extendedStyle.contains (.overline) {
+            result += ";53"
         }
         
         switch fg {

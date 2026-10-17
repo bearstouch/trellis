@@ -24,8 +24,13 @@ public enum LinkPolicy {
 
     /// True only for an allowed link requested within the gesture window.
     public static func mayOpen(_ link: String, lastGesture: Date?, now: Date) -> URL? {
-        guard let lastGesture, now.timeIntervalSince(lastGesture) >= 0, now.timeIntervalSince(lastGesture) <= gestureWindow else { return nil }
+        guard gestureIsFresh(lastGesture: lastGesture, now: now) else { return nil }
         return url(link)
+    }
+
+    public static func gestureIsFresh(lastGesture: Date?, now: Date) -> Bool {
+        guard let lastGesture else { return false }
+        return now.timeIntervalSince(lastGesture) >= 0 && now.timeIntervalSince(lastGesture) <= gestureWindow
     }
 }
 
@@ -65,6 +70,8 @@ public struct DiagnosticsReport: Equatable, Sendable {
     public var customThemes = 0
     public var appearanceMode = ""
     public var controlSocketRunning = false
+    /// `off`, `loopback`, `network` or `failed`; never the address or port.
+    public var mcpServer = "off"
     /// Stable error codes only (for example `LAUNCH_FAILED`), never messages.
     public var recentErrorCodes: [String] = []
     /// The only codes a report may contain.
@@ -100,6 +107,7 @@ public struct DiagnosticsReport: Equatable, Sendable {
             "Custom themes: \(customThemes)",
             "Appearance mode: \(appearanceMode)",
             "Control socket: \(controlSocketRunning ? "running" : "not running")",
+            "MCP server: \(mcpServer)",
             "Recent error codes: \(codes.isEmpty ? "none" : codes.joined(separator: ", "))",
             "",
             "Not included: window/tab/pane names, directories, commands, terminal output, typed input, hosts, keys, tokens, or clipboard contents."

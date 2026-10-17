@@ -47,3 +47,36 @@ final class ApplicationInstanceLockTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "unchanged")
     }
 }
+
+final class AppInstanceIdentityTests: XCTestCase {
+    func testInstalledAndDevelopmentBuildsDoNotShareInstanceResources() throws {
+        let installed = AppInstanceIdentity(bundleIdentifier: "dev.trellis")
+        let unbundled = AppInstanceIdentity(bundleIdentifier: nil)
+        let devBundle = AppInstanceIdentity(bundleIdentifier: "dev.trellis.dev")
+        XCTAssertFalse(installed.isDevelopment)
+        XCTAssertTrue(unbundled.isDevelopment); XCTAssertEqual(unbundled, devBundle)
+        let tmp = URL(fileURLWithPath: "/tmp", isDirectory: true)
+        XCTAssertEqual(installed.lockURL(in: tmp, uid: 501).lastPathComponent, "dev.trellis-501.instance.lock")
+        XCTAssertNotEqual(installed.lockURL(in: tmp, uid: 501), unbundled.lockURL(in: tmp, uid: 501))
+        XCTAssertNotEqual(installed.activationNotification, unbundled.activationNotification)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertNotEqual(
+            try ApplicationSupportLocation.prepare(root: root, bundleIdentifier: installed.identifier),
+            try ApplicationSupportLocation.prepare(root: root, bundleIdentifier: unbundled.identifier))
+    }
+
+    func testInstalledAndDevelopmentLocksAreHeldIndependently() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        guard case .acquired(let installed) = try ApplicationInstanceLock.acquire(at: AppInstanceIdentity(bundleIdentifier: "dev.trellis").lockURL(in: directory)) else {
+            return XCTFail("Installed app must acquire its lock")
+        }
+        withExtendedLifetime(installed) {
+            guard case .acquired = try? ApplicationInstanceLock.acquire(at: AppInstanceIdentity(bundleIdentifier: nil).lockURL(in: directory)) else {
+                return XCTFail("A development build must run beside the installed app")
+            }
+        }
+    }
+}
