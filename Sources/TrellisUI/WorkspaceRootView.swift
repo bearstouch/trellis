@@ -236,9 +236,10 @@ public struct WorkspaceRootView: View {
                         Task { await model.finishTabRename(tab.id, draft: model.tabRenameDraft, action: .cancel) }
                     }
             } else {
+                // Simultaneous double-tap: an exclusive one delays every single click by the double-click interval.
                 Text(tab.title).lineLimit(1)
-                    .onTapGesture(count: 2) { beginTabRename(tab) }
                     .onTapGesture { Task { await model.selectTab(tab.id) } }
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { beginTabRename(tab) })
             }
             Button {
                 Task { await model.closeTab(tab.id) }
