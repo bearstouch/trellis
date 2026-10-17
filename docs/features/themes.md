@@ -72,6 +72,7 @@ A theme controls only the terminal's default colors and ANSI indexes 0–15. Exp
 
 - Built-in normal text and essential labels must reach at least **4.5:1** contrast against their backgrounds.
 - Focus indicators and essential boundaries must reach **3:1** against neighboring colors.
+- `ui.border` supplies subtle pane and chrome separators, with a **1.2:1** visibility advisory (not a WCAG target). Use `ui.focusRing` for focus indicators; separators should not compete with text or selection.
 - Selected text and cursor text are tested on their own.
 
 For custom themes, contrast warnings are advisory and name the fields involved, and you can still save the theme. Built-in palettes must pass the check at release. Status is always shown with a label or icon too, never by color alone.

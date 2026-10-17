@@ -23,15 +23,17 @@ extension ResolvedTheme {
         check(ThemeColor(terminal.selectionForeground), ThemeColor(terminal.selectionBackground), "terminal.selectionForeground", "terminal.selectionBackground")
         check(ThemeColor(terminal.cursorText), ThemeColor(terminal.cursor), "terminal.cursorText", "terminal.cursor")
         check(ThemeColor(terminal.cursor), ThemeColor(terminal.background), "terminal.cursor", "terminal.background", minimum: 3)
-        for boundary in [UIColorField.focusRing, .border] {
-            check(self[boundary], ThemeColor(terminal.background), "ui.\(boundary.rawValue)", "terminal.background", minimum: 3)
+        // Separators provide quiet structure; focus rings communicate interaction.
+        // 1.2 is a visibility advisory for separators, not a WCAG contrast target.
+        for (boundary, minimum) in [(UIColorField.focusRing, 3.0), (.border, 1.2)] {
+            check(self[boundary], ThemeColor(terminal.background), "ui.\(boundary.rawValue)", "terminal.background", minimum: minimum)
         }
         for background in [UIColorField.background, .surface, .sidebarBackground] {
             for foreground in [UIColorField.foreground, .mutedForeground, .accent, .success, .warning, .error] {
                 check(self[foreground], self[background], "ui.\(foreground.rawValue)", "ui.\(background.rawValue)")
             }
-            for boundary in [UIColorField.focusRing, .border] {
-                check(self[boundary], self[background], "ui.\(boundary.rawValue)", "ui.\(background.rawValue)", minimum: 3)
+            for (boundary, minimum) in [(UIColorField.focusRing, 3.0), (.border, 1.2)] {
+                check(self[boundary], self[background], "ui.\(boundary.rawValue)", "ui.\(background.rawValue)", minimum: minimum)
             }
         }
         check(self[.activeTabForeground], self[.activeTabBackground], "ui.activeTabForeground", "ui.activeTabBackground")
