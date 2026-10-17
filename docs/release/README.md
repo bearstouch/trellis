@@ -59,7 +59,7 @@ All files are owner-only and written atomically.
 
 - **Migration:** the workspace is versioned JSON. A newer format is opened in read-only recovery and never overwritten. Settings from installs named "uTerm" are copied on first launch, and the originals are left untouched.
 - **Downgrading:** state written by a newer release may be refused by an older one. The older app shows recovery and leaves the file as it is. Before downgrading, keep a copy of `~/Library/Application Support/dev.trellis`.
-- **Backing up:** copy that folder while Trellis is not running. Grant tokens are stored in the Keychain, not in this folder.
+- **Backing up:** copy that folder while Trellis is not running. Grant tokens and saved host passwords are stored in the Keychain, not in this folder. Restored on another Mac, a host still says its password is saved, but that Keychain has no item. ssh then asks for the password in the terminal; use **Replace…** to save it again.
 
 ## Uninstalling
 
@@ -72,9 +72,9 @@ Then:
 
 1. Delete `Trellis.app`.
 2. Delete the folders listed by `uninstall-plan`: Application Support, Preferences, Caches, and Saved Application State for `dev.trellis`.
-3. Delete the automation tokens from the Keychain, either with Keychain Access (service "Trellis Automation") or with `security delete-generic-password -s "Trellis Automation"`, repeating for each grant.
+3. Delete the automation tokens and saved host passwords from the Keychain, either with Keychain Access (services "Trellis Automation" and "Trellis SSH Host") or with `security delete-generic-password -s "Trellis Automation"` and `security delete-generic-password -s "Trellis SSH Host"`, repeating until no item is left.
 
-The uninstall plan never includes `~/.ssh` (keys, config, `known_hosts`), shell startup files, or shell history. Deleting saved hosts removes only Trellis metadata.
+The uninstall plan never includes `~/.ssh` (keys, config, `known_hosts`), shell startup files, or shell history. Deleting a saved host removes its Trellis metadata and its saved password.
 
 ## Tested matrix
 

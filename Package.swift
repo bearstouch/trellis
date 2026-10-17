@@ -12,13 +12,17 @@ let package = Package(
         .executable(name: "Trellis", targets: ["TrellisApp"]),
         // Installed as `trellis` by packaging; a distinct build name avoids
         // colliding with the app binary on case-insensitive volumes.
-        .executable(name: "trellis-cli", targets: ["TrellisCLIMain"])
+        .executable(name: "trellis-cli", targets: ["TrellisCLIMain"]),
+        // SSH_ASKPASS helper for saved-host passwords; bundled beside the app binary.
+        .executable(name: "trellis-askpass", targets: ["TrellisAskpassMain"])
     ],
     dependencies: [
         .package(path: "ThirdParty/SwiftTerm")
     ],
     targets: [
-        .target(name: "TrellisCore", resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration")]),
+        .target(name: "TrellisAskpass"),
+        .executableTarget(name: "TrellisAskpassMain", dependencies: ["TrellisAskpass"]),
+        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration")]),
         .target(name: "TrellisPOSIX"),
         .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "SwiftTerm"]),
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),
@@ -27,8 +31,8 @@ let package = Package(
         .target(name: "TrellisRelease"),
         .target(name: "TrellisCLI", dependencies: ["TrellisControl", "TrellisRelease"]),
         .executableTarget(name: "TrellisCLIMain", dependencies: ["TrellisCLI"]),
-        .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore"]),
-        .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore", "TrellisControl"]),
+        .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore", "TrellisAskpass"]),
+        .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore", "TrellisControl", "TrellisAskpass"]),
         .testTarget(name: "TrellisTerminalTests", dependencies: ["TrellisTerminal"]),
         .testTarget(name: "TrellisControlTests", dependencies: ["TrellisControl", "TrellisCore"]),
         .testTarget(name: "TrellisCLITests", dependencies: ["TrellisCLI", "TrellisControl", "TrellisRelease"]),

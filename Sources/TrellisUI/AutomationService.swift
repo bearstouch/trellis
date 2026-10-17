@@ -940,6 +940,9 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 details: .object(["expectedRevision": .number(Double(expected)), "currentRevision": .number(Double(actual))]))
         case .readOnly: .application("INVALID_STATE", "Saved hosts could not be read, so changes are not saved.")
         case .io: .application("INVALID_STATE", "Saved hosts could not be written.", retryable: true)
+        // Automation never sets passwords; mapped for exhaustiveness only.
+        case .secretStore: .application("INVALID_STATE", "The Keychain could not be used.")
+        case .notAuthorized: .application("INVALID_STATE", "The change was not confirmed.")
         }
     }
 

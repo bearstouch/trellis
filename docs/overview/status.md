@@ -33,7 +33,7 @@ These checks can't be automated here and haven't been performed. They are record
 | Native shell | Lifecycle and display checks on external and non-Retina monitors |
 | Accessibility and input | VoiceOver navigation, a real IME, US and Portuguese keyboard layouts, dead keys |
 | Hosts | Native host-library and alias-discovery demos |
-| SSH | Known, unknown and changed host keys; agent, passphrase and password prompts; dropped networks, against a controlled SSH server |
+| SSH | Known, unknown and changed host keys; agent, passphrase and password prompts; saved-password login through askpass, with and without Touch ID, and with real `/usr/bin/ssh` retries and host-key prompts; dropped networks, against a controlled SSH server |
 | Automation | Keychain-backed grants in the native UI; live multi-client socket checks; the installed `trellis` CLI |
 | Portability | Native export/import demo |
 | Security | Native link, clipboard and diagnostics checks |

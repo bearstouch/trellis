@@ -114,6 +114,8 @@ public enum UninstallPlanner {
     }
 
     public static let keychainService = "Trellis Automation"
+    /// Every Keychain service Trellis creates items under: automation grants and saved-host passwords.
+    public static let keychainServices = [keychainService, "Trellis SSH Host"]
 
     public static func items(home: String, bundleIdentifier: String = "dev.trellis", cliLink: String? = nil) -> [Item] {
         var items = [

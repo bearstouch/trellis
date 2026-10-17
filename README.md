@@ -13,7 +13,7 @@ A native Swift terminal for macOS. Light "Native calm" chrome, dark terminal pan
 - **Shell integration:** zsh, bash and fish report their current directory and each command's exit status, with no dotfile edits. New splits and tabs open where you are, failed commands are flagged, and ⌘↑/⌘↓ jump between prompts. On by default; turn it off in Settings → Sessions.
 - **Appearance:** separate Light/Dark theme slots and a JSON theme library with live preview (Settings → Themes).
 - **Keyboard and accessibility:** rebindable menu shortcuts (conflicts are rejected before saving), Option-as-Meta toggle, and accessibility labels throughout.
-- **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust.
+- **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust. An optional per-host password is kept in the macOS Keychain (optionally behind Touch ID) and given to ssh only for its password prompt.
 - **Automation:** an owner-only local JSON-RPC socket (no TCP) with scoped, expiring grants created in Settings → Automation. Covers windows, tabs, panes, sessions, input, output cursors, events, declarative layouts, themes and appearance.
 - **Portability:** export and import workspaces with a review step (File → Export/Import Workspace…).
 - **Privacy:** no telemetry. Terminal output and typed input are never logged or persisted. Help → Export Diagnostics… previews an allow-listed report before saving.

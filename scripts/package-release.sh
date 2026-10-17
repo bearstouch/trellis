@@ -17,7 +17,7 @@ mkdir -p "$dist"
 # Per-architecture native builds (the multi-arch Xcode path needs a Metal
 # toolchain for SwiftTerm's shader), combined into Universal 2 with lipo.
 for arch in arm64 x86_64; do
-    for product in Trellis trellis-cli; do
+    for product in Trellis trellis-cli trellis-askpass; do
         swift build --configuration release --triple "$arch-apple-macosx$minimum" --product "$product"
     done
 done
@@ -25,7 +25,7 @@ arm=$(swift build --configuration release --triple "arm64-apple-macosx$minimum" 
 intel=$(swift build --configuration release --triple "x86_64-apple-macosx$minimum" --show-bin-path)
 bin="$dist/universal"
 mkdir -p "$bin"
-for product in Trellis trellis-cli; do
+for product in Trellis trellis-cli trellis-askpass; do
     /usr/bin/lipo -create "$arm/$product" "$intel/$product" -output "$bin/$product"
 done
 # Resource bundles are architecture-independent.
@@ -35,6 +35,7 @@ app="$dist/Trellis.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"
 cp "$bin/Trellis" "$app/Contents/MacOS/Trellis"
 cp "$bin/trellis-cli" "$app/Contents/Helpers/trellis"
+cp "$bin/trellis-askpass" "$app/Contents/Helpers/trellis-askpass"
 cp -R "$bin/SwiftTerm_SwiftTerm.bundle" "$bin/Trellis_TrellisCore.bundle" "$app/Contents/Resources/"
 rm -rf "$bin"
 cp Design/AppIcon/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
@@ -65,6 +66,7 @@ sign() {
     fi
 }
 sign "$app/Contents/Helpers/trellis" dev.trellis.cli
+sign "$app/Contents/Helpers/trellis-askpass" dev.trellis.askpass
 sign "$app" dev.trellis
 
 dmg="$dist/Trellis-$version.dmg"
@@ -85,7 +87,8 @@ verified=false
 runtime=false
 # The CodeDirectory flags list "runtime" for hardened-runtime signatures (with or without adhoc).
 /usr/bin/codesign --display --verbose=4 "$app" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && \
-    /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && runtime=true
+    /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && \
+    /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis-askpass" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && runtime=true
 gatekeeper=$(/usr/sbin/spctl --assess --type execute --verbose=2 "$app" 2>&1 || true)
 python3 - "$app" "$dmg" "$identity" "$verified" "$runtime" "$notarized" "$stapled" "$gatekeeper" <<'PY'
 import json, plistlib, subprocess, sys, os
@@ -97,7 +100,7 @@ files = {a for a in manifest["artifacts"] if os.path.exists(os.path.join(os.path
 problems = []
 if info["LSMinimumSystemVersion"] != manifest["minimumMacOS"]: problems.append("minimum macOS mismatch")
 if info["CFBundleIdentifier"] != manifest["bundleIdentifier"]: problems.append("bundle identifier mismatch")
-for binary in ["Contents/MacOS/Trellis", "Contents/Helpers/trellis"]:
+for binary in ["Contents/MacOS/Trellis", "Contents/Helpers/trellis", "Contents/Helpers/trellis-askpass"]:
     missing = set(manifest["architectures"]) - set(archs(os.path.join(app, binary)))
     if missing: problems.append(f"{binary} lacks {sorted(missing)}")
 problems += [f"missing {a}" for a in manifest["artifacts"] if a not in files]

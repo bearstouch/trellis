@@ -25,7 +25,7 @@ Trellis relies on the system and on existing tools rather than reimplementing th
 
 - SSH runs as `/usr/bin/ssh` inside a PTY, so the user's OpenSSH configuration, keys, agent, known-hosts policy and proxy settings all apply.
 - Host-key verification and interactive authentication stay in the terminal.
-- Trellis implements neither SSH nor credential management.
+- Trellis doesn't implement SSH. Its only credential handling is an optional per-host password in the macOS Keychain, given to ssh through `SSH_ASKPASS` for its password prompt only ([FR-H06–FR-H09](features/ssh-hosts.md#saved-passwords)).
 - Arguments are built without a shell. There's no unrestricted "extra arguments" field, and destinations that start with `-` or contain control characters are rejected.
 
 **INT-04 (P0).** Discovery reads literal aliases from `~/.ssh/config`, as a best effort; it isn't an OpenSSH parser.
@@ -68,7 +68,7 @@ See [SSH hosts](features/ssh-hosts.md).
 
 **INT-09 (P0).**
 
-- Exports are portable JSON with schema versions. They exclude credentials, output history and runtime environment values.
+- Exports are portable JSON with schema versions. They exclude credentials (including saved host passwords and whether one exists), output history and runtime environment values. Imports never set a password.
 - Before applying an import, Trellis previews the counts, hosts and launch references.
 - Host import is atomic. Existing hosts don't change unless the user explicitly picks a collision policy, and a matching alias or name alone never authorizes overwriting a host.
 - `layout.apply` through the API follows its [additive semantics](api/layouts.md#matching-and-idempotency-fr-a04). An interactive import always creates fresh resources.

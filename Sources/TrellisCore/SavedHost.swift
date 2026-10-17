@@ -1,7 +1,8 @@
 import Foundation
 
-/// Connection metadata only. Never holds passwords, key contents, or output;
-/// `identityFile` is a path reference that OpenSSH reads, not the app.
+/// Connection metadata only. Never holds password values, key contents, or output;
+/// `identityFile` is a path reference that OpenSSH reads, not the app, and a saved
+/// password lives in the Keychain (`HostSecretStore`), recorded here only as a policy.
 public struct SavedHost: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public var name: String
@@ -15,14 +16,17 @@ public struct SavedHost: Identifiable, Equatable, Codable, Sendable {
     /// Advances only when a launch-affecting field (destination, user, port,
     /// identity file) changes. Automation host approvals bind to it.
     public var connectionRevision: UInt64
+    /// Set while a password for this host is stored in the Keychain (FR-H06).
+    public var savedPassword: SavedPasswordPolicy?
 
-    public init(id: UUID, draft: HostDraft.Valid, revision: UInt64, connectionRevision: UInt64? = nil) {
+    public init(id: UUID, draft: HostDraft.Valid, revision: UInt64, connectionRevision: UInt64? = nil, savedPassword: SavedPasswordPolicy? = nil) {
         self.id = id; self.revision = revision; self.connectionRevision = connectionRevision ?? revision
         name = draft.name; destination = draft.destination; user = draft.user
         port = draft.port; identityFile = draft.identityFile; tags = draft.tags
+        self.savedPassword = savedPassword
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, destination, user, port, identityFile, tags, revision, connectionRevision }
+    private enum CodingKeys: String, CodingKey { case id, name, destination, user, port, identityFile, tags, revision, connectionRevision, savedPassword }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -36,6 +40,7 @@ public struct SavedHost: Identifiable, Equatable, Codable, Sendable {
         revision = try values.decode(UInt64.self, forKey: .revision)
         // Older host files have no separate connection revision.
         connectionRevision = try values.decodeIfPresent(UInt64.self, forKey: .connectionRevision) ?? revision
+        savedPassword = try values.decodeIfPresent(SavedPasswordPolicy.self, forKey: .savedPassword)
     }
 
     /// True when both hosts would spawn the same ssh arguments.
@@ -69,7 +74,30 @@ public struct SavedHost: Identifiable, Equatable, Codable, Sendable {
     }
 }
 
-public enum HostField: String, CaseIterable, Sendable { case name, destination, user, port, identityFile, tags }
+/// How a Keychain-stored host password may be used. Never carries the value.
+public struct SavedPasswordPolicy: Equatable, Codable, Sendable {
+    /// Touch ID or the Mac password is asked for before each use (FR-H07).
+    public var requiresUserPresence: Bool
+    public init(requiresUserPresence: Bool) { self.requiresUserPresence = requiresUserPresence }
+}
+
+/// Validation for a password typed in the host editor.
+public enum HostPassword {
+    /// ssh reads at most 1023 bytes of askpass output, so a longer password would arrive truncated.
+    public static let byteLimit = 1023
+
+    /// ssh reads askpass output up to a newline, so line breaks and NUL can never round-trip.
+    public static func validated(_ text: String) throws(HostValidationError) -> Data {
+        let bytes = Data(text.utf8)
+        guard !bytes.isEmpty else { throw HostValidationError(fields: [.password: "Enter a password, or cancel to keep the current one."]) }
+        guard bytes.count <= byteLimit, !bytes.contains(where: { $0 == 0 || $0 == 0x0A || $0 == 0x0D }) else {
+            throw HostValidationError(fields: [.password: "Use up to \(byteLimit) bytes without line breaks."])
+        }
+        return bytes
+    }
+}
+
+public enum HostField: String, CaseIterable, Sendable { case name, destination, user, port, identityFile, tags, password }
 
 /// Field-keyed, user-facing errors for the host editor.
 public struct HostValidationError: Error, Equatable, Sendable {

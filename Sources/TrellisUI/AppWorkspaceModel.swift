@@ -313,6 +313,11 @@ public final class AppWorkspaceModel: ObservableObject {
     public var resolveHost: ((UUID) async -> SavedHost?)?
     /// Injected only by tests; connections always use the system OpenSSH client.
     var sshExecutable = "/usr/bin/ssh"
+    /// Answers ssh's password prompt for hosts with a saved password (FR-H08); nil keeps every prompt typed.
+    public var askpass: AskpassBroker?
+    /// Reads a host's Keychain password for one answer, given the connection revision the session started with.
+    public var savedPassword: (@Sendable (UUID, UInt64) async -> Data?)?
+    private var askpassRegistrations: [UUID: AskpassBroker.Registration] = [:]
     let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
     private let preferences: UserDefaults
@@ -575,6 +580,7 @@ public final class AppWorkspaceModel: ObservableObject {
                                 ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                     : .recordSessionExit(sessionID: request.sessionID, code: code)
                 self.closureCoordinator.forget(sessionID: request.sessionID)
+                if let registration = self.askpassRegistrations.removeValue(forKey: request.sessionID) { self.askpass?.unregister(registration) }
                 if self.terminals[paneID] === terminal { self.shellStates.removeValue(forKey: paneID) }
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
@@ -611,10 +617,24 @@ public final class AppWorkspaceModel: ObservableObject {
                             ).snapshot)
                         return
                     }
+                    var overrides = environment
+                    // argv is untouched: the password reaches ssh only through the one-shot askpass broker.
+                    if host.savedPassword != nil, let askpass, let savedPassword {
+                        let revision = host.connectionRevision
+                        let registration = askpass.register(
+                            parent: { [weak terminal] in await MainActor.run { terminal?.processID } },
+                            answer: { await savedPassword(hostID, revision) })
+                        if let registration {
+                            askpassRegistrations[request.sessionID] = registration
+                            overrides.merge(registration.environment(helper: askpass.helperPath)) { $1 }
+                        }
+                    }
                     configuration = LocalLaunchConfiguration(
-                        executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: environment)
+                        executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
                 await terminal.start(configuration: configuration)
+                // A launch refused before spawning never reports an exit, so drop its nonce here.
+                if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
     }

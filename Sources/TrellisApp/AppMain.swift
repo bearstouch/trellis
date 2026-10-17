@@ -58,6 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.openSettings = { [weak self] in self?.showSettings() }
         model.openHosts = { [weak self] in self?.showHosts() }
         model.resolveHost = { [hosts] id in await hosts.host(id) }
+        if let helper = Self.askpassHelperPath() {
+            model.askpass = AskpassBroker(helperPath: helper)
+            let library = hosts.library, gate = LocalAuthenticationGate()
+            hosts.userPresence = gate
+            model.savedPassword = { id, revision in await library.password(hostID: id, connectionRevision: revision, gate: gate) }
+        }
         hosts.onConnect = { [weak self] host, placement in
             guard let self else { return }
             window?.makeKeyAndOrderFront(nil)
@@ -98,7 +104,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop() }
+    func applicationWillTerminate(_ notification: Notification) { control.stop(); model.askpass?.stop() }
+
+    /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
+    private static func askpassHelperPath() -> String? {
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let candidates = [
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/\(AskpassBroker.helperName)"),
+            executable.deletingLastPathComponent().appendingPathComponent(AskpassBroker.helperName)
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }?.path
+    }
 
     @objc private func activateExistingInstance() {
         window?.deminiaturize(nil)
@@ -523,7 +539,7 @@ struct TrellisMain {
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
-            let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory)))
+            let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
             let events = EventHub(instanceID: instanceID, grants: grantStore)

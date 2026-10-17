@@ -22,6 +22,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Multiple profiles | [Product overview](../overview/product.md#scope) |
 | P1 | Shell-integration events for automation: command-completion events and `session.execute` waiting for the exit status | `INT-02`, [Shell integration](../features/shell-integration.md) |
 | P1 | Richer SSH host import | [SSH hosts](../features/ssh-hosts.md) |
+| P1 | Keychain-enforced Touch ID for saved host passwords (`SecAccessControl` with a keychain-access-group entitlement, Developer ID builds) | `FR-H07`, [Saved passwords](../features/ssh-hosts.md#saved-passwords) |
 | P1 | Signed automatic updates | `MAC-11` |
 | P1 | Optional MCP adapter over the existing command service | `INT-07`, [Integrations](../integrations.md#scripts-and-agents) |
 | P1 | Clipboard API (`clipboard.read`/`clipboard.write` are reserved) | [Authorization](../api/authorization.md#capabilities) |

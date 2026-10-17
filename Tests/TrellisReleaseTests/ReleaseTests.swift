@@ -13,6 +13,8 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(manifest.bundleIdentifier, "dev.trellis")
         XCTAssertEqual(Set(manifest.architectures), ["arm64", "x86_64"], "Universal 2")
         XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis"), "The CLI is bundled")
+        XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis-askpass"), "The saved-password askpass helper is bundled")
+        XCTAssertEqual(UninstallPlanner.keychainServices, ["Trellis Automation", "Trellis SSH Host"], "Uninstall lists every Keychain service")
         XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT"] + Array(repeating: "OFL-1.1", count: 6))
         // Package.swift's deployment target must match the release policy.
         let package = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)

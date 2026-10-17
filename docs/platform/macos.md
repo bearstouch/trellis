@@ -21,7 +21,7 @@
 ## Files, credentials and permissions
 
 - Durable configuration goes in Application Support, and disposable data in Caches or the runtime directory. The control socket lives in the per-user `$TMPDIR`.
-- Preferences use native settings storage, and automation credentials use the Keychain. Private-key contents are never stored.
+- Preferences use native settings storage. Automation credentials (service `Trellis Automation`) and optional saved-host passwords (service `Trellis SSH Host`, [FR-H06](../features/ssh-hosts.md#saved-passwords)) use the login Keychain, accessible when unlocked, this device only. Private-key contents are never stored. Ad-hoc builds may ask for Keychain access again after a rebuild, because the item's access list names the previous signature.
 - **MAC-08:** shells and SSH run as the current user, with no root helper. Trellis never asks at launch for blanket Accessibility, Screen Recording or Full Disk Access permission. If macOS denies a directory operation, Trellis explains it in context instead of requesting unrelated privileges.
 - **MAC-09:** Trellis is distributed directly, not through the Mac App Store, and without App Sandbox, so that it can run ordinary developer shells. The app and the bundled CLI are signed with the hardened runtime and no entitlements, notarized and stapled. Gatekeeper is verified on a clean machine. A sandboxed build would need its own feasibility decision.
 
@@ -29,7 +29,7 @@
 
 - **MAC-10:** the app ships as a signed DMG with the `trellis` executable in `Contents/Helpers`. Installing a user-local CLI link is an explicit step the user runs. Trellis never silently edits shell startup files or writes to system directories.
 - **MAC-11:** upgrades are manual and signed for the MVP; automatic updates are P1. Persisted state is versioned and migrated safely, a last-known-good backup is kept, and newer formats are rejected without being overwritten. Downgrading has known limits.
-- **MAC-12:** uninstalling removes the app and the optional CLI link. `trellis cli uninstall-plan` lists the app-owned files and Keychain items. It never touches SSH keys, SSH configuration, known-hosts files or shell history. Deleting a host deletes only its metadata.
+- **MAC-12:** uninstalling removes the app and the optional CLI link. `trellis cli uninstall-plan` lists the app-owned files and both Keychain services. It never touches SSH keys, SSH configuration, known-hosts files or shell history. Deleting a host deletes its metadata and its saved password, if any.
 
 The step-by-step procedures are in the [release guide](../release/README.md).
 
@@ -44,7 +44,7 @@ The step-by-step procedures are in the [release guide](../release/README.md).
 | Lifecycle | Close and quit confirmation, crash recovery, stopped restoration, backup migration, launching the app from the CLI |
 | Displays | Retina and non-Retina where available, monitor disconnect, full screen, small windows |
 | Security | Gatekeeper, signing and notarization, protected paths, token revocation, same-user socket ownership, malformed clients |
-| Hosts | Known, unknown and changed host keys; agent authentication; passphrase and password prompts; alias configuration; dropped networks |
+| Hosts | Known, unknown and changed host keys; agent authentication; passphrase and password prompts; saved passwords with and without Touch ID; alias configuration; dropped networks |
 
 [Status](../overview/status.md) shows which rows are still pending.
 

@@ -46,7 +46,7 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `session.sendInput` | `id`, `text` or `base64`, `mode: literal\|paste` | Accepted byte count. Acceptance doesn't mean the input has been processed. |
 | `session.execute` | `id`, `command`, `submit: true` | `{acceptedBytes, submitted: true}` |
 | `session.readOutput` | `id`, `view`, `cursor?`, `maxBytes?` | See [Output and events](output-events.md) |
-| `host.list`, `host.get` | `query?`, tags / `id` | Scoped host metadata |
+| `host.list`, `host.get` | `query?`, tags / `id` | Scoped host metadata. Never a password, nor whether one is saved. Automation can't set passwords. |
 | `host.create`, `host.update`, `host.delete` | Validated host fields; revision on update and delete | Persisted metadata change |
 | `host.connect` | `hostId`, `windowId`, optional split target and `axis` | A new tab or pane, plus the SSH launch outcome |
 | `layout.validate` | `document` | Errors and warnings, without changing anything |

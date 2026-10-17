@@ -22,7 +22,7 @@ Trellis is a focused native macOS terminal that makes many concurrent local and 
 | Tab | A named container for one binary split tree and its active pane. |
 | Pane | A visible terminal leaf in a tab. Each pane owns exactly one session. |
 | Session | One PTY-backed process, usually a login shell or the system SSH client. |
-| Host | Saved SSH connection metadata. It is neither a running session nor a credential store. |
+| Host | Saved SSH connection metadata. It isn't a running session. Its only credential is an optional password kept in the Keychain, never in the host itself. |
 | Profile | Reusable appearance and launch defaults. The MVP has a single default profile. |
 | Layout | A declarative, versioned description of windows, tabs and pane trees. |
 | Grant | A user-created automation credential with a capability set and a resource scope. |

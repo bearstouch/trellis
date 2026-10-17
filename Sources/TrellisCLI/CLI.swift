@@ -239,7 +239,11 @@ public enum CLI {
             return .object([
                 "dryRun": .bool(true),
                 "remove": .array(entries),
-                "keychain": .string("Delete generic passwords with service \"\(UninstallPlanner.keychainService)\" (Keychain Access, or: security delete-generic-password -s \"\(UninstallPlanner.keychainService)\")."),
+                "keychain": .string(
+                    "Delete generic passwords with service "
+                        + UninstallPlanner.keychainServices.map { "\"\($0)\"" }.joined(separator: " or ")
+                        + " (Keychain Access, or: "
+                        + UninstallPlanner.keychainServices.map { "security delete-generic-password -s \"\($0)\"" }.joined(separator: "; ") + ")."),
                 "neverRemoved": .string("~/.ssh (keys, config, known_hosts), shell startup files, and shell history are never touched.")
             ])
         }

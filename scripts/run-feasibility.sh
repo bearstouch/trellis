@@ -23,11 +23,14 @@ cleanup() {
 trap cleanup 0
 trap 'exit 130' INT
 trap 'exit 143' TERM
-mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Helpers" "$bundle/Contents/Resources"
 # Always assemble fresh files: do not overwrite a running executable or merge
 # into an old read-only resource tree or stale signature.
 cp "$bin_path/Trellis" "$bundle/Contents/MacOS/Trellis"
 chmod u+x "$bundle/Contents/MacOS/Trellis"
+# SSH_ASKPASS helper for saved-host passwords (FR-H08).
+cp "$bin_path/trellis-askpass" "$bundle/Contents/Helpers/trellis-askpass"
+chmod u+x "$bundle/Contents/Helpers/trellis-askpass"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -48,6 +51,7 @@ cp Design/AppIcon/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 # The SwiftPM command-line signature does not seal an app's Info.plist/resources.
 # Sign the completed development bundle; no certificate or account is required.
 # dev.trellis.dev keeps its own instance lock and state, apart from an installed Trellis.
+/usr/bin/codesign --force --sign - --identifier dev.trellis.dev.askpass "$bundle/Contents/Helpers/trellis-askpass"
 /usr/bin/codesign --force --sign - --identifier dev.trellis.dev "$bundle"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$bundle"
 if [ -e "$destination" ]; then

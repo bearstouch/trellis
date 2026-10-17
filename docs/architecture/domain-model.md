@@ -22,7 +22,7 @@ classDiagram
 | `WorkspaceSession` | `id`, `launch`, `state`, timestamps, `processID`, `exitCode`, `failureMessage`, `launchAttemptID` | Exists only at runtime; never persisted in this form |
 | `SessionLaunch` | `.shell(directory)`, `.host(UUID)`, `.process(executable, arguments, directory)` | |
 | `WorkspaceSnapshot` | `revision`, `windows`, `activeWindowID`, `tabs`, `panes`, `sessions` | The whole workspace. `validate()` enforces the invariants listed below. |
-| `SavedHost` (`SavedHost.swift`) | `id`, `name`, `destination`, `user?`, `port?`, `identityFile?`, `tags`, `revision`, `connectionRevision` | Never holds passwords or key contents |
+| `SavedHost` (`SavedHost.swift`) | `id`, `name`, `destination`, `user?`, `port?`, `identityFile?`, `tags`, `revision`, `connectionRevision`, `savedPassword?` (`requiresUserPresence`) | Never holds password values or key contents; a saved password lives in the Keychain (`HostSecretStore`) |
 | `AutomationGrant` (`TrellisControl`) | `id`, `name`, `tokenHash`, `capabilities`, `windowScope`, `hostScope`, `createdAt`, `expiresAt`, `revokedAt` | The token secret is kept apart from layout data |
 | `LayoutDocument`, `LayoutPlan`, `LayoutBinding` (`LayoutDocument.swift`) | | [Declarative layouts](../api/layouts.md) |
 | `ThemeDocument`, `ResolvedTheme`, `AppearanceSettings` | | [Themes](../features/themes.md) |

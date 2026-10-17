@@ -7,13 +7,13 @@ All state lives in `~/Library/Application Support/<identity>/`: `dev.trellis` fo
 | File | Contents | Protection |
 | --- | --- | --- |
 | `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance) | Last-known-good copy in `workspace.backup.json` |
-| `hosts.json` | Saved hosts | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
+| `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
 | `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts | An unreadable file is preserved |
 | `control.json` | Discovery for the running control socket | Rewritten on every launch |
 | `Themes/<id>.theme.json` | Custom themes | File names come only from validated IDs |
 
-Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.directory`, `app.windowFrame` and `keyboard.settings`. Grant tokens live in the Keychain, under service `Trellis Automation`.
+Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.directory`, `app.windowFrame` and `keyboard.settings`. Grant tokens live in the Keychain, under service `Trellis Automation`. Saved-host passwords live under service `Trellis SSH Host`, with the host UUID as account. The Keychain is written before `hosts.json`, and a failed metadata write restores the previous Keychain value.
 
 **Never persisted:**
 

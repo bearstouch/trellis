@@ -14,6 +14,10 @@ public struct HostLibraryView: View {
     @State private var saving = false
     @State private var confirmingDelete = false
     @State private var discovering = false
+    /// Typed only; a saved password is never read back into the editor.
+    @State private var passwordDraft = ""
+    @State private var replacingPassword = false
+    @State private var requiresUserPresence = false
     @FocusState private var listFocused: Bool
     public init(model: HostListModel, workspace: AppWorkspaceModel) { self.model = model; self.workspace = workspace }
 
@@ -89,7 +93,9 @@ public struct HostLibraryView: View {
         .confirmationDialog("Delete “\(editing?.name ?? "")”?", isPresented: $confirmingDelete) {
             Button("Delete Host", role: .destructive) { delete() }
         } message: {
-            Text("Only Trellis’s saved details are removed. SSH keys, ssh_config, and known_hosts are not changed, and open sessions keep running.")
+            Text(
+                "Trellis’s saved details and any saved password in the Keychain are removed. SSH keys, ssh_config, and known_hosts are not changed, and open sessions keep running."
+            )
         }
     }
 
@@ -114,7 +120,8 @@ public struct HostLibraryView: View {
                 Button("Choose…", action: chooseIdentity).accessibilityLabel("Choose identity file")
             }
             field("Tags (comma-separated)", text: $draft.tags, error: errors[.tags], prompt: "prod, api")
-            Text("Trellis stores no passwords or key contents. Changes apply to future connections only.")
+            passwordSection
+            Text("Trellis never stores key contents. Changes apply to future connections only.")
                 .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
             if let message { Text(message).font(.caption).accessibilityIdentifier("hosts.result") }
             if let host = editing {
@@ -127,8 +134,8 @@ public struct HostLibraryView: View {
                     }
                     .fixedSize()
                 }
-                .disabled(model.onConnect == nil || draft != host.draft)
-                if draft != host.draft {
+                .disabled(model.onConnect == nil || hasUnsavedChanges(host))
+                if hasUnsavedChanges(host) {
                     Text("Save or revert your changes before connecting.").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
                 }
             }
@@ -140,6 +147,49 @@ public struct HostLibraryView: View {
                 Button(editing == nil ? "Add Host" : "Save Changes", action: save)
                     .keyboardShortcut(.defaultAction).disabled(saving || model.loadFailed)
             }
+        }
+    }
+
+    private var hasSavedPassword: Bool { editing?.savedPassword != nil }
+
+    private func hasUnsavedChanges(_ host: SavedHost) -> Bool {
+        draft != host.draft || !passwordDraft.isEmpty || (host.savedPassword.map { $0.requiresUserPresence != requiresUserPresence } ?? false)
+    }
+
+    @ViewBuilder private var passwordSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Password (optional)").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
+            if hasSavedPassword && !replacingPassword {
+                HStack {
+                    Label("Saved in Keychain", systemImage: "key.fill").accessibilityLabel("Password saved in the Keychain")
+                    Spacer()
+                    Button("Replace…") { replacingPassword = true }.accessibilityLabel("Replace saved password")
+                    Button("Remove", role: .destructive, action: removePassword).accessibilityLabel("Remove saved password").disabled(saving)
+                }
+            } else {
+                HStack {
+                    SecureField("Password", text: $passwordDraft, prompt: Text(hasSavedPassword ? "New password" : "Not saved"))
+                        .textFieldStyle(.roundedBorder).labelsHidden()
+                        .accessibilityLabel(hasSavedPassword ? "New password" : "Password")
+                        .accessibilityValue(errors[.password].map { "Error: \($0)" } ?? "")
+                    if replacingPassword {
+                        Button("Cancel") {
+                            replacingPassword = false; passwordDraft = ""; errors[.password] = nil
+                        }
+                    }
+                }
+                if let error = errors[.password] {
+                    Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red).accessibilityHidden(true)
+                }
+            }
+            if hasSavedPassword || !passwordDraft.isEmpty {
+                Toggle("Require Touch ID or Mac password to use", isOn: $requiresUserPresence)
+                    .accessibilityHint("Asks before each connection that uses the saved password")
+            }
+            Text(
+                "Stored only in this Mac’s Keychain and given to ssh only when it asks for this host’s password. Host-key checks and passphrases stay in the terminal. Changing the destination, user, port, or identity file removes it."
+            )
+            .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -210,15 +260,32 @@ public struct HostLibraryView: View {
 
     private func load(_ host: SavedHost?) {
         draft = host?.draft ?? HostDraft()
+        passwordDraft = ""; replacingPassword = false
+        requiresUserPresence = host?.savedPassword?.requiresUserPresence ?? false
         errors = [:]
         message = nil
     }
 
     private func save() {
+        // Validate the password before any write, so a bad one never leaves a half-saved host.
+        var password: Data?
+        if !passwordDraft.isEmpty {
+            do { password = try HostPassword.validated(passwordDraft) } catch {
+                errors = error.fields; message = HostListModel.message(for: .invalid(error))
+                return
+            }
+        }
         saving = true
-        let current = editing, origin = selection
+        let current = editing, origin = selection, presence = requiresUserPresence
         Task {
-            let result = await model.save(draft, editing: current)
+            var result = await model.save(draft, editing: current)
+            if case .success(let host) = result {
+                if let password {
+                    result = await model.setPassword(host, .save(password, requiresUserPresence: presence))
+                } else if let policy = host.savedPassword, policy.requiresUserPresence != presence {
+                    result = await model.setPassword(host, .policy(requiresUserPresence: presence))
+                }
+            }
             saving = false
             // The user moved to another host while saving; don't overwrite that editor.
             guard selection == origin else { return }
@@ -226,11 +293,31 @@ public struct HostLibraryView: View {
             case .success(let host):
                 errors = [:]
                 selection = host.id
-                draft = host.draft
-                message = current == nil ? "Host added." : "Changes saved for future connections."
+                load(host)
+                if current?.savedPassword != nil, host.savedPassword == nil {
+                    message = "Changes saved. The saved password was removed because the connection changed."
+                } else {
+                    message = current == nil ? "Host added." : "Changes saved for future connections."
+                }
             case .failure(let error):
                 if case .invalid(let validation) = error { errors = validation.fields }
+                // A created host stays selected even if its password could not be saved.
+                if current == nil, let created = model.hosts.first(where: { $0.draft == draft }) { selection = created.id }
                 message = HostListModel.message(for: error)
+            }
+        }
+    }
+
+    private func removePassword() {
+        guard let host = editing else { return }
+        saving = true
+        Task {
+            let result = await model.setPassword(host, .remove)
+            saving = false
+            guard selection == host.id else { return }
+            switch result {
+            case .success(let updated): load(updated); message = "Saved password removed from the Keychain."
+            case .failure(let error): message = HostListModel.message(for: error)
             }
         }
     }
