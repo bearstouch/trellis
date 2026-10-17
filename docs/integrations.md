@@ -62,7 +62,7 @@ See [SSH hosts](features/ssh-hosts.md).
 - The clipboard is read only on paste and is never polled. Copy strips terminal control sequences.
 - Pasting files as escaped paths is an explicit action, and shows a preview when shell escaping is uncertain.
 - Clipboard requests from the terminal (OSC 52) are disabled, and agents get no clipboard access in v1.
-- Links open through the system URL handler, only after a user gesture, and only for `https`, `http` and `mailto`.
+- Links open through the system URL handler, only after a user gesture, and only for `https`, `http`, `mailto` and existing local files. Files that could run code are revealed in Finder instead (FR-L03).
 
 ## Configuration import and export
 

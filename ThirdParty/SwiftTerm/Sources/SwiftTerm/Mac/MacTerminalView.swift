@@ -1189,6 +1189,17 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// `.explicit` = OSC 8 only, `.implicit` = explicit + implicit fallback, `.none` = off.
     public var linkReporting: LinkReporting = .implicit
 
+    /// Replaces double-click word selection: given the clicked buffer position, returns
+    /// a half-open range to select, or nil for the built-in word selection. It is not
+    /// consulted while mouse reporting captures the click.
+    public var doubleClickSelection: ((Position) -> (start: Position, end: Position)?)?
+
+    /// The buffer position under a mouse event, using the same BiDi-aware hit test as selection.
+    public func bufferPosition(for event: NSEvent) -> Position
+    {
+        calculateMouseHit(with: event).grid
+    }
+
     /// Controls link highlighting and link activation behavior.
     public var linkHighlightMode: LinkHighlightMode = .hoverWithModifier {
         didSet {
@@ -2903,7 +2914,11 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
             }
         case 2:
             let displayBuffer = terminal.displayBuffer
-            selection.selectWordOrExpression(at: Position(col: hit.col, row: hit.row), in: displayBuffer)
+            if let range = doubleClickSelection?(Position(col: hit.col, row: hit.row)) {
+                selection.setWordSelection(start: range.start, end: range.end)
+            } else {
+                selection.selectWordOrExpression(at: Position(col: hit.col, row: hit.row), in: displayBuffer)
+            }
 
         default:
             // 3 and higher

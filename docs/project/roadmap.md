@@ -29,6 +29,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Per-window, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
 | P2 | A session broker so sessions survive application exit | |
 | P2 | tmux awareness, richer terminal protocols, plugins | |
+| P2 | Links: open `file:line:column` in a configured editor, a pointing-hand cursor over links, detecting `ssh` typed inside a local shell | `FR-L02`, `FR-L04`, [Links](../features/terminal.md#links) |
 
 **Not planned:** Windows, Linux and iOS; cloud sync; a web UI; a remote API server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import.
 

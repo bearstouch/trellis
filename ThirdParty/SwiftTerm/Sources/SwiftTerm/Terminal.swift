@@ -7225,6 +7225,13 @@ open class Terminal {
         return linkMatch(at: location, mode: mode)?.text
     }
 
+    /// True when the location holds an OSC 8 hyperlink, whose target may differ
+    /// from its visible text, rather than a link detected in plain text.
+    public func linkIsExplicit(at location: LinkLookupLocation) -> Bool
+    {
+        return linkMatch(at: location, mode: .explicitOnly) != nil
+    }
+
     func getDisplayText (start: Position, end: Position) -> String
     {
         getText(start: start, end: end, buffer: displayBuffer)

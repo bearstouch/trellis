@@ -38,6 +38,7 @@ These checks can't be automated here and haven't been performed. They are record
 | Automation | Keychain-backed grants in the native UI; live multi-client socket checks; the installed `trellis` CLI |
 | Portability | Native export/import demo |
 | Security | Native link, clipboard and diagnostics checks |
+| Links and selection | FR-C06 smart double-click in the native app (URLs, paths, emails, hashes; inside vim with `set mouse=a` the click goes to vim); FR-L02–FR-L05 ⌘-click and context-menu opening of real `ls --hyperlink=auto` output and compiler `file:line:col` paths, Finder reveal of a script and an `.app`, and a saved-SSH-host pane refusing paths |
 
 ## Tested matrix
 
@@ -57,4 +58,5 @@ Only these combinations have been run.
 - **Updates:** upgrades are manual. There's no automatic update service.
 - **Sessions don't survive quitting.** Closing the app ends its local processes, and relaunching restores layouts as stopped sessions.
 - **Shell knowledge:** [shell integration](../features/shell-integration.md) reports the directory, the running command and exit status for local zsh, bash and fish. Other shells, SSH sessions and disabled integration report none of this. `session.execute` still submits input without waiting for a command result, and command-completion events aren't published to automation yet.
+- **File links:** relative paths open only where shell integration reports the directory. A host reached by typing `ssh` in a local shell isn't detected, so its absolute paths open if the same path exists on this Mac. `:line[:column]` suffixes aren't passed to editors, and the pointer doesn't change over links.
 - **Shell integration checks pending:** fish on a Mac with fish installed (its PTY test skips without it), VoiceOver reading of the failed-command indicator, and prompt themes such as powerlevel10k and starship.

@@ -13,14 +13,16 @@ The adapter rules:
 
 ## Patches
 
-Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and the exact diff in `ThirdParty/SwiftTerm/trellis.patch`. There are four patched files today:
+Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and the exact diff in `ThirdParty/SwiftTerm/trellis.patch`. There are six patched files today:
 
 | File | Change | Why |
 | --- | --- | --- |
-| `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset | Zooming mustn't reset live parser state such as cursor mode and attributes |
+| `Mac/MacTerminalView.swift` | Mouse-exit and scroll-wheel overrides are `open`; a `doubleClickSelection` hook replaces double-click word selection; `bufferPosition(for:)` exposes the engine's BiDi-aware hit test | Scrollbar reveal, [smart selection](../features/terminal.md#copy) and context-menu link actions |
+| `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset; OSC 8 parameters are split from the URL only at the first `;` | Zooming mustn't reset live parser state such as cursor mode and attributes; URLs containing `;` aren't truncated |
+| `SelectionService.swift` | `setWordSelection(start:end:)` sets a half-open word-mode selection | A smart double-click selection extends by word when dragged and may end in the last column |
 | `Buffer.swift` | Opt-in `reflowCursorLine` for normal-buffer cursor-line reflow | Keeps the cursor and selections correct across font changes |
 | `KittyGraphics.swift` | Refuses file (`t=f`), temp-file (`t=t`) and shared-memory (`t=s`) transmission with `ENOTSUP` | Terminal output is untrusted and must never make the app read or unlink local files |
-| `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes, and a public `handleSemanticPrompt(_:)` forwarder to the built-in OSC 133 handler | Trellis's own 133 handler authenticates [shell-integration](../features/shell-integration.md) marks and still keeps prompt navigation state |
+| `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes, public `handleSemanticPrompt(_:)` and `handleProgressReport(_:)` forwarders, and `linkIsExplicit(at:)` | Trellis's own 133 handler authenticates [shell-integration](../features/shell-integration.md) marks and still keeps prompt navigation state; file links treat OSC 8 targets differently from detected text |
 
 To update SwiftTerm:
 
@@ -52,7 +54,9 @@ Output must keep the PTY's byte order. The UI may coalesce frames, but it never 
 ## Output security
 
 - **OSC 52:** the engine's clipboard callbacks do nothing. Copy requests are ignored and read requests return nothing.
-- **Links:** `LinkPolicy` allows `http`, `https` and `mailto` only, up to 2,048 bytes, with no control characters or spaces. Web links must include a host and must not include credentials, and `mailto` keeps only `subject` and `body`. A link opens only within 1.5 seconds of a user's click.
+- **Links:** `LinkPolicy` allows `http`, `https` and `mailto` only, up to 2,048 bytes, with no control characters or spaces. Web links must include a host and must not include credentials, and `mailto` keeps only `subject` and `body`. A link opens only within 1.5 seconds of a user's click, and each click opens at most one link.
+- **File links:** `TerminalLinkClassifier` turns a clicked link into a web URL or a local path, and only when the pane supplies a `FileLinkContext` (local panes; never saved SSH hosts or panes started as `ssh`/`mosh`). `file://` hosts must be local, automount paths (`/net`, `/Network`) are refused, schemeless OSC 8 targets are refused, and relative paths need the authenticated shell-integration directory. `FileLinkPolicy` then probes the symlink-resolved file on the main thread at click time (a `stat`, bounded to the clicked path): packages, executables, scripts and other launchable types are revealed in Finder, other regular files and folders open, and anything else is ignored.
+- **Smart selection:** `SmartSelection` (Core) matches URLs, emails, paths, UUIDs, IP addresses, git hashes and quoted strings around a grapheme offset. `TerminalLogicalLine` supplies the soft-wrapped text around the double-clicked cell (at most 32 rows each way and 4,096 characters) and maps the match back to cells.
 - **Kitty graphics:** local-file and shared-memory transmission are refused (see Patches above).
 
 ## Accessibility

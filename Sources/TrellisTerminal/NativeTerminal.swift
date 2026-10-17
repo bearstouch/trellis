@@ -83,6 +83,12 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.onSearchRequested = { [weak self] in self?.showSearch() }
         surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
         surface.onBell = { [weak self] in self?.onAttentionRequested?() }
+        surface.doubleClickSelection = { [weak surface] position in
+            guard let surface else { return nil }
+            return TerminalLogicalLine.smartSelection(in: surface.getTerminal(), at: position)
+        }
+        surface.describeLink = { [weak self] in self?.describeLink($0) }
+        surface.onOpenLink = { [weak self] in self?.openLink($0) }
         observeNotifications()
         session.onOutput = { [weak self] data in
             self?.adapter.receive(data)
@@ -341,13 +347,64 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public func clipboardRead(source: TerminalView) -> Data? { nil }
     /// Opens a vetted URL; injected by tests.
     public var openURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    /// Shows a file in Finder instead of opening it (FR-L03); injected by tests.
+    public var revealURL: (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+    /// Where this pane's file links resolve, read at click time; nil refuses every file link (FR-L04).
+    public var fileLinkContext: () -> FileLinkContext? = { nil }
+    var fileProbe = FileProbe.live
     var now: () -> Date = { Date() }
 
-    /// Output can request any link; only clicked http/https/mailto links open.
+    /// Output can request any link; only clicked web links and vetted local files open.
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
-        guard let url = LinkPolicy.mayOpen(link, lastGesture: terminalView.lastUserGesture, now: now()) else { return }
+        var click = terminalView.linkClick ?? TerminalLinkClick(link: nil, explicit: false, position: nil)
+        click.link = link
+        openLink(click)
+    }
+
+    private enum ResolvedLink { case web(URL), file(path: String, action: FileLinkAction) }
+
+    /// SwiftTerm's detector lets paths contain spaces, so `a.txt b.txt` reads as one path.
+    /// When its text names nothing, the smart-selection token under the click is tried.
+    private func resolve(_ click: TerminalLinkClick) -> (candidate: String, link: ResolvedLink)? {
+        var candidates = click.link.map { [$0] } ?? []
+        if !click.explicit, let position = click.position, let token = linkToken(at: position), token != click.link { candidates.append(token) }
+        let files = fileLinkContext()
+        for candidate in candidates {
+            switch TerminalLinkClassifier.classify(candidate, explicit: click.explicit, files: files) {
+            case .web(let url): return (candidate, .web(url))
+            case .file(let path, _, _): if let action = FileLinkPolicy.action(path: path, probe: fileProbe) { return (candidate, .file(path: path, action: action)) }
+            case nil: continue
+            }
+        }
+        return nil
+    }
+
+    private func linkToken(at position: Position) -> String? {
+        guard let line = TerminalLogicalLine(terminal: terminalView.getTerminal(), row: position.row), let offset = line.offset(for: position),
+            let match = SmartSelection.match(in: line.text, at: offset), [.url, .filePath].contains(match.kind)
+        else { return nil }
+        return String(Array(line.text)[match.range])
+    }
+
+    func openLink(_ click: TerminalLinkClick) {
+        guard LinkPolicy.gestureIsFresh(lastGesture: terminalView.lastUserGesture, now: now()), let resolved = resolve(click) else { return }
         terminalView.lastUserGesture = nil
-        _ = openURL(url)
+        switch resolved.link {
+        case .web(let url): _ = openURL(url)
+        case .file(_, .open(let url)): _ = openURL(url)
+        case .file(_, .reveal(let url)): revealURL(url)
+        }
+    }
+
+    /// The menu keeps the text it described, so output arriving while it is open can't change what Open opens.
+    func describeLink(_ click: TerminalLinkClick) -> TerminalLinkMenu? {
+        guard let resolved = resolve(click) else { return nil }
+        let frozen = TerminalLinkClick(link: resolved.candidate, explicit: click.explicit, position: nil)
+        switch resolved.link {
+        case .web(let url): return TerminalLinkMenu(openTitle: "Open Link", copyTitle: "Copy Link", copyText: url.absoluteString, click: frozen)
+        case .file(let path, .open): return TerminalLinkMenu(openTitle: "Open", copyTitle: "Copy Path", copyText: path, click: frozen)
+        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Reveal in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
+        }
     }
     public func setTerminalTitle(source: TerminalView, title: String) {}
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}

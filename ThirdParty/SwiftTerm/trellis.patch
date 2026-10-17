@@ -11,6 +11,16 @@
          }
          updateCaretView()
          
+@@ -1325,7 +1327,8 @@
+     // "k=v:k2=v2;URL"
+     func urlAndParamsFrom(payload: String) -> (String, [String:String])?
+     {
+-        let split = payload.split(separator: ";", maxSplits: Int.max, omittingEmptySubsequences: false)
++        // Only the first ';' separates parameters; URLs may contain more.
++        let split = payload.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
+         if split.count > 1 {
+             let pairs = split[0].split(separator: ":")
+             var params: [String:String] = [:]
 --- a/Sources/SwiftTerm/Buffer.swift
 +++ b/Sources/SwiftTerm/Buffer.swift
 @@ -771,9 +771,64 @@
@@ -148,6 +158,30 @@
          default:
              return (nil, "ENOTSUP: unsupported transmission")
          }
+--- a/Sources/SwiftTerm/SelectionService.swift
++++ b/Sources/SwiftTerm/SelectionService.swift
+@@ -699,6 +699,21 @@
+         setActiveAndNotify()
+     }
+ 
++    /**
++     * Selects a host-computed half-open range as if it were a double-clicked word: a
++     * following drag pivots around the whole range. `end.col` may equal `cols`.
++     */
++    public func setWordSelection (start: Position, end: Position)
++    {
++        self.start = start
++        self.end = end
++        selectionMode = .word
++        wordSelectionAnchor = (start, end)
++        rowSelectionAnchor = nil
++        selectingRows = false
++        setActiveAndNotify()
++    }
++
+     /**
+      * Clears the selection
+      */
 --- a/Sources/SwiftTerm/Terminal.swift
 +++ b/Sources/SwiftTerm/Terminal.swift
 @@ -370,6 +370,12 @@
@@ -185,11 +219,68 @@
      
      func cmdSet8BitControls ()
      {
+@@ -7204,6 +7225,13 @@
+         return linkMatch(at: location, mode: mode)?.text
+     }
+ 
++    /// True when the location holds an OSC 8 hyperlink, whose target may differ
++    /// from its visible text, rather than a link detected in plain text.
++    public func linkIsExplicit(at location: LinkLookupLocation) -> Bool
++    {
++        return linkMatch(at: location, mode: .explicitOnly) != nil
++    }
++
+     func getDisplayText (start: Position, end: Position) -> String
+     {
+         getText(start: start, end: end, buffer: displayBuffer)
 --- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
 +++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
-@@ -1527 +1527 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1189,6 +1189,17 @@
+     /// `.explicit` = OSC 8 only, `.implicit` = explicit + implicit fallback, `.none` = off.
+     public var linkReporting: LinkReporting = .implicit
+ 
++    /// Replaces double-click word selection: given the clicked buffer position, returns
++    /// a half-open range to select, or nil for the built-in word selection. It is not
++    /// consulted while mouse reporting captures the click.
++    public var doubleClickSelection: ((Position) -> (start: Position, end: Position)?)?
++
++    /// The buffer position under a mouse event, using the same BiDi-aware hit test as selection.
++    public func bufferPosition(for event: NSEvent) -> Position
++    {
++        calculateMouseHit(with: event).grid
++    }
++
+     /// Controls link highlighting and link activation behavior.
+     public var linkHighlightMode: LinkHighlightMode = .hoverWithModifier {
+         didSet {
+@@ -1524,7 +1535,7 @@
+         super.flagsChanged(with: event)
+     }
+     
 -    public override func mouseExited(with event: NSEvent) {
 +    open override func mouseExited(with event: NSEvent) {
-@@ -3193 +3193 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+         turnOffUrlPreview()
+         if linkHighlightMode == .hover || linkHighlightMode == .hoverWithModifier {
+             let oldRange = linkHighlightRange
+@@ -2903,7 +2914,11 @@
+             }
+         case 2:
+             let displayBuffer = terminal.displayBuffer
+-            selection.selectWordOrExpression(at: Position(col: hit.col, row: hit.row), in: displayBuffer)
++            if let range = doubleClickSelection?(Position(col: hit.col, row: hit.row)) {
++                selection.setWordSelection(start: range.start, end: range.end)
++            } else {
++                selection.selectWordOrExpression(at: Position(col: hit.col, row: hit.row), in: displayBuffer)
++            }
+ 
+         default:
+             // 3 and higher
+@@ -3190,7 +3205,7 @@
+         didSet { scrollSensitivity = max(0.05, scrollSensitivity) }
+     }
+ 
 -    public override func scrollWheel(with event: NSEvent) {
 +    open override func scrollWheel(with event: NSEvent) {
+         // Preserves the previous `deltaY == 0` early exit, restated against the
+         // delta this method now reads. Without it a zero delta would fall into
+         // the non-precise branch below and be turned into a spurious -1 line.

@@ -24,8 +24,13 @@ public enum LinkPolicy {
 
     /// True only for an allowed link requested within the gesture window.
     public static func mayOpen(_ link: String, lastGesture: Date?, now: Date) -> URL? {
-        guard let lastGesture, now.timeIntervalSince(lastGesture) >= 0, now.timeIntervalSince(lastGesture) <= gestureWindow else { return nil }
+        guard gestureIsFresh(lastGesture: lastGesture, now: now) else { return nil }
         return url(link)
+    }
+
+    public static func gestureIsFresh(lastGesture: Date?, now: Date) -> Bool {
+        guard let lastGesture else { return false }
+        return now.timeIntervalSince(lastGesture) >= 0 && now.timeIntervalSince(lastGesture) <= gestureWindow
     }
 }
 

@@ -678,6 +678,16 @@ public final class AppWorkspaceModel: ObservableObject {
     /// The shell's reported directory; nil without integration (INT-01).
     public func currentDirectory(paneID: UUID) -> String? { shellStates[paneID]?.currentDirectory }
 
+    /// File links resolve only in local panes, read at click time so a restart is seen (FR-L04).
+    /// A saved SSH host's (or a direct `ssh` command's) paths name files on the remote machine.
+    func fileLinkContext(paneID: UUID) -> FileLinkContext? {
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return nil }
+        if case .host = launch { return nil }
+        // A pane started straight into `ssh` or `mosh` shows remote paths too.
+        if case .process(let executable, _, _) = launch, ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent) { return nil }
+        return FileLinkContext(currentDirectory: currentDirectory(paneID: paneID), homeDirectory: NSHomeDirectory())
+    }
+
     /// A renamed tab keeps its title; the default title follows the active pane (FR-SI05).
     public func displayTitle(_ tab: WorkspaceTab) -> String {
         guard tab.title == WorkspaceTab.defaultTitle else { return tab.title }
@@ -871,6 +881,7 @@ public final class AppWorkspaceModel: ObservableObject {
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
             self.applyShellEvent(event, paneID: pane.id)
         }
+        terminal.fileLinkContext = { [weak self] in self?.fileLinkContext(paneID: pane.id) }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.
             guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }

@@ -150,6 +150,31 @@ final class ShellIntegrationUITests: XCTestCase {
     }
 
     @MainActor
+    func testFileLinkContextUsesReportedDirectoryAndExcludesHosts() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        await model.createWindow(name: "Links")
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        XCTAssertNotNil(terminal.fileLinkContext(), "Local shells resolve absolute and home paths")
+        XCTAssertNil(terminal.fileLinkContext()?.currentDirectory, "Relative paths wait for a reported directory")
+        let project = root.appendingPathComponent("project dir").path
+        try emit(model, pane, .promptStart(directory: project))
+        XCTAssertEqual(terminal.fileLinkContext()?.currentDirectory, project)
+        XCTAssertEqual(terminal.fileLinkContext()?.homeDirectory, NSHomeDirectory())
+
+        _ = try await model.service.execute(.splitPane(id: pane, axis: .x, availableSize: try TerminalSize(columns: 160, rows: 40)))
+        await model.refresh()
+        let second = try XCTUnwrap(model.snapshot.panes.keys.first { $0 != pane })
+        _ = try await model.service.execute(.configureStoppedSession(paneID: second, launch: .host(UUID())))
+        await model.refresh()
+        XCTAssertNil(model.fileLinkContext(paneID: second), "A saved SSH host's paths name remote files")
+        _ = try await model.service.execute(.configureStoppedSession(paneID: second, launch: .process(executable: "/usr/bin/ssh", arguments: ["box"], directory: nil)))
+        await model.refresh()
+        XCTAssertNil(model.fileLinkContext(paneID: second), "A pane started as ssh shows remote paths")
+    }
+
+    @MainActor
     func testAutomaticTitlesRespectRenamedTabs() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
