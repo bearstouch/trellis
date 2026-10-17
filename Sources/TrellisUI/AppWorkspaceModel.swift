@@ -258,6 +258,9 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var shellIntegrationEnabled: Bool
     /// Runtime-only, per pane, from authenticated marks; never persisted or logged.
     @Published public private(set) var shellStates: [UUID: ShellIntegrationState] = [:]
+    /// Per session, outliving its shell state so Quit can still save it as the launch directory (FR-SI07).
+    /// Keyed by session so a restarted or reconfigured pane never resumes a previous shell's directory.
+    private var lastReportedDirectories: [UUID: String] = [:]
     /// Injected by tests; nil disables integration.
     var shellIntegrationDirectory: String? = BundledShellIntegration.directory()
     public var confirmCloseSessions: (Int) -> Bool = { _ in true }
@@ -455,7 +458,7 @@ public final class AppWorkspaceModel: ObservableObject {
         let settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
             windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance)
-        do { try await persistence.save(snapshot, settings: settings, sequence: saveGeneration); return true } catch {
+        do { try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration); return true } catch {
             errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
         }
     }
@@ -481,6 +484,7 @@ public final class AppWorkspaceModel: ObservableObject {
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
+        lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
@@ -673,7 +677,29 @@ public final class AppWorkspaceModel: ObservableObject {
         state.apply(event, at: Date())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
+        if let directory = state.currentDirectory, let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
+            lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
+        }
         refreshTerminalAccessibility()
+    }
+
+    /// Local shells are saved with their last reported directory so a restart resumes there (FR-SI07).
+    /// The store keeps the original launch, so Restart and Duplicate Tab are unchanged.
+    private func snapshotForSave() -> WorkspaceSnapshot {
+        var saved = snapshot
+        let files = SystemLaunchFileAccess()
+        for (sessionID, directory) in lastReportedDirectories {
+            guard let launch = saved.sessions[sessionID]?.launch else { continue }
+            let resumed: SessionLaunch
+            switch launch {
+            case .shell: resumed = .shell(directory: directory)
+            case .process(let executable, let arguments, _) where arguments == ["-l"]: resumed = .process(executable: executable, arguments: arguments, directory: directory)
+            default: continue
+            }
+            guard resumed != launch, files.isAccessibleDirectory(directory) else { continue }
+            saved.sessions[sessionID]?.launch = resumed
+        }
+        return saved
     }
 
     /// New panes start in the source pane's reported directory when it is still accessible.

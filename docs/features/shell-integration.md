@@ -16,6 +16,7 @@ Shell integration lets a local zsh, bash or fish shell report its current direct
 | FR-SI04 | Report each command's exit status. | After `false`, the tab and pane show a failure symbol with the text "Exit 1", and VoiceOver reads "Last command failed (exit 1)". The indicator clears when the next command starts. `session.get` reports `shellIntegration.lastExitStatus`. |
 | FR-SI05 | Give unrenamed tabs and panes an automatic title. | A tab titled "Terminal" shows the running program (`vim`), or else the directory name (`~` for home). A renamed tab, or a pane with its own title, keeps that title. |
 | FR-SI06 | Navigate between prompts. | Edit → Previous Prompt (⌘↑) and Next Prompt (⌘↓) scroll the pane to the previous or next prompt. While a text field (tab rename, search) is editing, ⌘↑/⌘↓ stay text navigation. |
+| FR-SI07 | Restore each local shell pane in its last reported directory. | After `cd 'x y'`, quitting and relaunching shows `x y` in the pane header, and starting the pane opens the shell there. Quit stops the shells before saving, so the directory isn't lost. If the directory is gone when saved, or the pane's current session reported nothing (for example after Restart, before the new shell's first prompt), the pane keeps its launch directory. SSH panes and custom processes are unaffected. The live session's launch settings don't change, so Restart and Duplicate Tab behave as before (FR-T01). |
 
 ## Protocol (version 1)
 
@@ -40,7 +41,7 @@ Every OSC 133 mark, authenticated or not, still feeds the engine's prompt tracki
 
 ## Privacy and limits
 
-- The command line is runtime state only. It isn't persisted, logged, exported or returned by the API; only the program name is shown as a title. Reported directories are also never persisted, except as the launch directory of a pane started from one.
+- The command line is runtime state only. It isn't persisted, logged, exported or returned by the API; only the program name is shown as a title. A reported directory is persisted only as a local shell pane's saved launch directory (FR-SI03, FR-SI07).
 - `session.get` shows `currentDirectory` only to grants with execute permission, as it does for launch directories.
 - bash reports the first simple command of a line (`env` for `env | grep x`). A line that starts with a subshell, such as `(exit 3)`, isn't reported as a command; its prompt and directory still are. bash's login emulation sources the profile files, but `shopt login_shell` is off and `~/.bash_logout` doesn't run.
 - Remote shells aren't covered: an SSH session's marks can't carry the local nonce.

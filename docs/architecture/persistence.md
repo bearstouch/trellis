@@ -23,7 +23,7 @@ Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.dir
 - process IDs and session states
 - custom-process arguments
 
-Saved launch descriptions can refer to a shell, a host or a directory, but they never replay earlier input. A pane that was running a custom process comes back *unconfigured*, because its arguments weren't saved.
+Saved launch descriptions can refer to a shell, a host or a directory, but they never replay earlier input. A local shell pane's directory is the last one its shell reported through [shell integration](../features/shell-integration.md) (FR-SI07), if it still exists; otherwise it's the directory the pane was launched in. A pane that was running a custom process comes back *unconfigured*, because its arguments weren't saved.
 
 ## Writing safely
 

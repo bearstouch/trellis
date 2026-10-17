@@ -26,11 +26,12 @@ final class ShellIntegrationUITests: XCTestCase {
     override func tearDownWithError() throws { try? FileManager.default.removeItem(at: root) }
 
     @MainActor
-    private func makeModel(enabled: Bool? = nil) async throws -> AppWorkspaceModel {
+    private func makeModel(enabled: Bool? = nil, persistence: WorkspacePersistence? = nil) async throws -> AppWorkspaceModel {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis-si-\(UUID().uuidString)"))
         if let enabled { preferences.set(enabled, forKey: "terminal.shellIntegration") }
-        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: persistence)
+        if persistence != nil { _ = await model.loadWorkspace() }
         // Never show the modal close confirmation in tests.
         model.confirmCloseSessions = { _ in true }
         let saved = await model.saveLaunchSettings(shell: root.appendingPathComponent("bin/zsh").path, directory: root.path)
@@ -45,6 +46,7 @@ final class ShellIntegrationUITests: XCTestCase {
         }
     }
 
+    /// Waits for `text`; the fake shell prints its `ARGS=` line before `PWD=`, so wait for `PWD=` to assert a whole `ARGS=` line.
     @MainActor
     private func output(_ model: AppWorkspaceModel, _ pane: UUID, containing text: String) async throws -> String {
         let terminal = try XCTUnwrap(model.terminals[pane])
@@ -66,14 +68,14 @@ final class ShellIntegrationUITests: XCTestCase {
         XCTAssertTrue(model.shellIntegrationEnabled)
         await model.createWindow(name: "On")
         let first = try XCTUnwrap(model.presentation.activePane?.id)
-        let injected = try await output(model, first, containing: "ARGS=")
+        let injected = try await output(model, first, containing: "PWD=")
         XCTAssertTrue(injected.contains("NONCE=set"), injected)
         XCTAssertTrue(injected.contains("ShellIntegration/zsh"), injected)
 
         model.setShellIntegrationEnabled(false)
         await model.createWindow(name: "Off")
         let second = try XCTUnwrap(model.presentation.activePane?.id)
-        let plain = try await output(model, second, containing: "ARGS=")
+        let plain = try await output(model, second, containing: "PWD=")
         XCTAssertTrue(plain.contains("ARGS=-l NONCE= ZDOTDIR=\n"), plain)
 
         let restored = try await makeModel()
@@ -91,7 +93,7 @@ final class ShellIntegrationUITests: XCTestCase {
         _ = try await model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: fake, arguments: ["-i"], directory: "/tmp")))
         await model.refresh()
         await model.start(paneID: pane)
-        let text = try await output(model, pane, containing: "ARGS=")
+        let text = try await output(model, pane, containing: "PWD=")
         XCTAssertTrue(text.contains("ARGS=-i NONCE= ZDOTDIR=\n"), text)
     }
 
@@ -107,7 +109,7 @@ final class ShellIntegrationUITests: XCTestCase {
         _ = try await model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: bash.path, arguments: ["-l"], directory: "/tmp")))
         await model.refresh()
         await model.start(paneID: pane)
-        let text = try await output(model, pane, containing: "ARGS=")
+        let text = try await output(model, pane, containing: "PWD=")
         XCTAssertTrue(text.contains("ARGS=--rcfile "), text)
         XCTAssertTrue(text.contains("NONCE=set"), text)
     }
@@ -205,5 +207,81 @@ final class ShellIntegrationUITests: XCTestCase {
         try emit(model, pane, .promptStart(directory: "/tmp"))
         await model.closePane(pane)
         XCTAssertTrue(model.shellStates.isEmpty)
+    }
+
+    @MainActor
+    func testQuitSavesTheLastReportedDirectoryAndRestoreStartsThere() async throws {
+        let state = root.appendingPathComponent("state")
+        let model = try await makeModel(persistence: WorkspacePersistence(directory: state))
+        defer { cleanUp(model) }
+        await model.createWindow(name: "Resume")
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        _ = try await output(model, pane, containing: "ARGS=")
+        let project = root.appendingPathComponent("project dir").path
+        try emit(model, pane, .promptStart(directory: project))
+
+        // Unreported panes, vanished directories and custom processes keep their launch directory.
+        let quietResult = await model.splitPane(pane, axis: .x, startSession: false)
+        let quiet = try XCTUnwrap(quietResult)
+        let goneResult = await model.splitPane(quiet, axis: .y)
+        let gone = try XCTUnwrap(goneResult)
+        _ = try await output(model, gone, containing: "ARGS=")
+        let vanished = root.appendingPathComponent("vanished")
+        try FileManager.default.createDirectory(at: vanished, withIntermediateDirectories: true)
+        try emit(model, gone, .promptStart(directory: vanished.path))
+        try FileManager.default.removeItem(at: vanished)
+        let customResult = await model.splitPane(gone, axis: .x, startSession: false)
+        let custom = try XCTUnwrap(customResult)
+        let fake = root.appendingPathComponent("bin/zsh").path
+        _ = try await model.service.execute(.configureStoppedSession(paneID: custom, launch: .process(executable: fake, arguments: ["-i"], directory: "/tmp")))
+        await model.refresh()
+        await model.start(paneID: custom)
+        _ = try await output(model, custom, containing: "ARGS=")
+        try emit(model, custom, .promptStart(directory: project))
+        let launches = model.snapshot.panes.mapValues { model.snapshot.sessions[$0.sessionID]?.launch }
+
+        // Quit stops every session, which drops runtime shell state, before the final save.
+        model.stopAll()
+        let closed = await model.shutdown()
+        XCTAssertTrue(closed)
+        XCTAssertNil(model.shellStates[pane])
+        let saved = await model.flushWorkspaceSave()
+        XCTAssertTrue(saved)
+        XCTAssertEqual(model.snapshot.sessions[model.snapshot.panes[pane]!.sessionID]?.launch, launches[pane], "the store keeps the original launch")
+
+        let restored = try await makeModel(persistence: WorkspacePersistence(directory: state))
+        defer { cleanUp(restored) }
+        func launch(_ id: UUID) -> SessionLaunch? { restored.snapshot.panes[id].flatMap { restored.snapshot.sessions[$0.sessionID]?.launch } }
+        XCTAssertEqual(launch(pane), .process(executable: fake, arguments: ["-l"], directory: project))
+        XCTAssertEqual(launch(quiet), .process(executable: fake, arguments: ["-l"], directory: nil))
+        XCTAssertEqual(launch(gone), launches[gone], "a started pane keeps the directory it was launched in")
+        XCTAssertEqual(launch(custom), .process(executable: "", arguments: [], directory: "/tmp"))
+        await restored.start(paneID: pane)
+        let text = try await output(restored, pane, containing: "|")
+        XCTAssertTrue(text.contains("PWD=project dir|"), text)
+    }
+
+    @MainActor
+    func testARestartedPaneDoesNotResumeThePreviousShellsDirectory() async throws {
+        let state = root.appendingPathComponent("state")
+        let model = try await makeModel(persistence: WorkspacePersistence(directory: state))
+        defer { cleanUp(model) }
+        await model.createWindow(name: "Restart")
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        _ = try await output(model, pane, containing: "ARGS=")
+        try emit(model, pane, .promptStart(directory: root.appendingPathComponent("project dir").path))
+        let launch = model.snapshot.panes[pane].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
+        model.terminals[pane]?.requestTermination(force: true)
+        let deadline = Date().addingTimeInterval(5)
+        while model.snapshot.panes[pane].flatMap({ model.snapshot.sessions[$0.sessionID] }).map({ [.exited, .failed].contains($0.state) }) != true, Date() < deadline {
+            await model.waitForUpdates(); try await Task.sleep(for: .milliseconds(20))
+        }
+        await model.restartPane(pane, startSession: false)
+        let saved = await model.flushWorkspaceSave()
+        XCTAssertTrue(saved)
+
+        let restored = try await makeModel(persistence: WorkspacePersistence(directory: state))
+        defer { cleanUp(restored) }
+        XCTAssertEqual(restored.snapshot.panes[pane].flatMap { restored.snapshot.sessions[$0.sessionID]?.launch }, launch)
     }
 }
