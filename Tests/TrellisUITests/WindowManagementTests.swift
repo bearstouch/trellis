@@ -182,4 +182,18 @@ final class WindowManagementTests: XCTestCase {
         await model.shutdown()
         XCTAssertFalse(other.isRunning)
     }
+
+    @MainActor
+    func testSidebarCollapseIsRememberedAcrossLaunches() throws {
+        let suite = "trellis.tests.sidebar.\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite) }
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
+        XCTAssertFalse(model.sidebarCollapsed)
+        model.toggleSidebar()
+        XCTAssertTrue(model.sidebarCollapsed)
+        XCTAssertTrue(AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences).sidebarCollapsed)
+        model.toggleSidebar()
+        XCTAssertFalse(AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences).sidebarCollapsed)
+    }
 }

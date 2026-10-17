@@ -160,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         for action in [ShortcutAction.previousPrompt, .nextPrompt] { edit.submenu?.addItem(item(action)) }
         menu.addItem(edit)
-        let view = submenu("View", [.zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.toggleSidebar, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -227,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .zoomIn: model.zoomTerminalFont(by: 1)
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
+        case .toggleSidebar: model.toggleSidebar()
         case .splitLeftRight, .splitTopBottom:
             if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
         case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
@@ -251,7 +252,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
         if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
-        guard window?.isKeyWindow == true, !model.isRestoring, model.recoveryMessage == nil else { return false }
+        guard window?.isKeyWindow == true else { return false }
+        if action == .toggleSidebar { return true }
+        guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
         case .findInPane, .findNext, .findPrevious: return model.activeTerminal != nil
@@ -281,6 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(performShortcut(_:)) {
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
+            if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
             return validateShortcut(action)
         }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }

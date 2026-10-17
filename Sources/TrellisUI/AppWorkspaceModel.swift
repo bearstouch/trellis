@@ -21,6 +21,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
     public private(set) var diagnosticCodes: [String] = []
     @Published public private(set) var appearance = AppearanceSettings()
+    /// Narrow initials rail instead of the full window list; a per-user UI preference, not workspace data.
+    @Published public private(set) var sidebarCollapsed = false
     /// Advances once per committed settings change; API `expectedRevision` uses it.
     public private(set) var appearanceRevision: UInt64 = 0
     /// Called once per committed change of settings or effective theme, after reconciliation; previews are not commits.
@@ -323,6 +325,7 @@ public final class AppWorkspaceModel: ObservableObject {
         defaultShell = preferences.string(forKey: "terminal.shell") ?? LocalLaunchConfiguration.loginShell().executable
         defaultDirectory = preferences.string(forKey: "terminal.directory") ?? FileManager.default.homeDirectoryForCurrentUser.path
         shellIntegrationEnabled = preferences.object(forKey: "terminal.shellIntegration") as? Bool ?? true
+        sidebarCollapsed = preferences.bool(forKey: "sidebar.collapsed")
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
@@ -421,6 +424,11 @@ public final class AppWorkspaceModel: ObservableObject {
             pendingSaveTask = nil
             _ = await saveWorkspaceNow()
         }
+    }
+
+    public func toggleSidebar() {
+        sidebarCollapsed.toggle()
+        preferences.set(sidebarCollapsed, forKey: "sidebar.collapsed")
     }
 
     public func updateWindowFrame(_ frame: String) {

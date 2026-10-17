@@ -75,3 +75,14 @@ public struct WorkspaceAccessibility: Sendable {
         status = presentation.activePane.flatMap(session).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"
     }
 }
+
+extension WorkspaceAccessibility {
+    /// Short label for the collapsed sidebar: first letters of the first two words,
+    /// or the first two characters of a single word. Graphemes, so emoji stay whole.
+    public static func initials(for name: String) -> String {
+        let words = name.split { $0.isWhitespace || "-_.".contains($0) }
+        guard let first = words.first else { return "?" }
+        let letters = words.count > 1 ? [first.first, words[1].first].compactMap { $0 }.map(String.init).joined() : String(first.prefix(2))
+        return letters.uppercased()
+    }
+}

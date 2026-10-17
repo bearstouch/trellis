@@ -45,7 +45,7 @@ public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts
     case findInPane, findNext, findPrevious, previousPrompt, nextPrompt
-    case zoomIn, zoomOut, actualSize
+    case zoomIn, zoomOut, actualSize, toggleSidebar
     case splitLeftRight, splitTopBottom, maximizePane
     case focusLeft, focusRight, focusUp, focusDown
     case resizeLeft, resizeRight, resizeUp, resizeDown
@@ -71,6 +71,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .zoomIn: "Zoom In"
         case .zoomOut: "Zoom Out"
         case .actualSize: "Actual Size"
+        case .toggleSidebar: "Toggle Sidebar"
         case .splitLeftRight: "Split Left/Right"
         case .splitTopBottom: "Split Top/Bottom"
         case .maximizePane: "Maximize / Restore Pane"
@@ -100,7 +101,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         switch self {
         case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts: .file
         case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt: .edit
-        case .zoomIn, .zoomOut, .actualSize: .view
+        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             .pane
@@ -123,6 +124,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .zoomIn: KeyChord("+")
         case .zoomOut: KeyChord("-")
         case .actualSize: KeyChord("0")
+        case .toggleSidebar: KeyChord("s", [.command, .control])
         case .splitLeftRight: KeyChord("d")
         case .splitTopBottom: KeyChord("d", [.command, .shift])
         case .maximizePane: KeyChord("return", [.command, .shift])
@@ -244,7 +246,7 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
     private struct Override: Codable { var chord: KeyChord? }
 
     /// Actions whose default chord shipped after saved maps already existed.
-    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt]
+    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar]
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
