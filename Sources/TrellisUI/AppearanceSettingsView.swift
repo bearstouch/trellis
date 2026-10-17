@@ -154,6 +154,9 @@ struct AppearanceSettingsView: View {
             Picker("Bell", selection: $draft.bellStyle) {
                 ForEach(TerminalBellStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
+            Toggle("Desktop notifications", isOn: $draft.desktopNotifications)
+            Text("Shows notifications that programs send (OSC 9, OSC 777, OSC 99) when you aren’t looking at their pane. macOS asks for permission the first time.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Ligatures", isOn: $draft.fontLigatures)
             Text("Joins sequences such as -> and != in fonts that include ligatures, such as JetBrains Mono.")
                 .font(.caption).foregroundStyle(.secondary)

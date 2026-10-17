@@ -48,6 +48,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         model.onChromeModeChanged?(model.appearance.chromeMode)
+        if let notifier = SystemDesktopNotifier() {
+            notifier.onActivate = { [weak self] paneID in
+                guard let self else { return }
+                NSApp.activate(); window?.makeKeyAndOrderFront(nil)
+                Task { await self.model.revealPane(paneID) }
+            }
+            model.desktopNotifier = notifier
+        }
+        model.workspaceIsFrontmost = { [weak self] in NSApp.isActive && self?.window?.isKeyWindow == true }
+        model.workspaceIsVisible = { [weak self] in self?.window?.occlusionState.contains(.visible) == true }
         appearanceObserver = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) { [weak self] app, _ in
             MainActor.assumeIsolated {
                 self?.model.systemAppearanceDidChange(isDark: app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)

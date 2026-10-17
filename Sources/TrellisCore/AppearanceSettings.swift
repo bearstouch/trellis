@@ -43,12 +43,14 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var allowItalicFont = true
     public var blinkingText = true
     public var bellStyle: TerminalBellStyle = .sound
+    /// Shows OSC 9/777/99 notifications in Notification Center (FR-T08); the tab's attention label doesn't depend on it.
+    public var desktopNotifications = true
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
-        case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle
+        case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
     }
-    /// Settings saved before the text-rendering and bell keys existed load with their defaults.
+    /// Settings saved before the text-rendering, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         chromeMode = try c.decode(ChromeMode.self, forKey: .chromeMode)
@@ -66,11 +68,13 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         blinkingText = try c.decodeIfPresent(Bool.self, forKey: .blinkingText) ?? true
         // A style added by a newer build falls back to Sound instead of discarding every appearance setting.
         bellStyle = (try? c.decodeIfPresent(TerminalBellStyle.self, forKey: .bellStyle)) ?? .sound
+        desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? true
     }
-    /// True when terminals must be updated: everything except chrome mode and theme selection.
+    /// True when terminals must be updated: everything except chrome mode, theme selection and notifications.
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
+        normalized.desktopNotifications = other.desktopNotifications
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {

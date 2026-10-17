@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 import SwiftTerm
+import TrellisCore
 @testable import TrellisTerminal
 
 final class NativeTerminalTests: XCTestCase {
@@ -119,6 +120,28 @@ final class NativeTerminalTests: XCTestCase {
         // The OSC 9 handler must still hand 9;4 progress to the engine's progress bar.
         let bar = native.view.subviews.first { String(describing: type(of: $0)).contains("ProgressBar") }
         XCTAssertEqual(bar?.isHidden, false, "OSC 9;4 still drives the progress bar")
+    }
+
+    @MainActor
+    func testNotificationTextReachesOnlyTheNotificationCallback() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        var posted: [TerminalNotification] = [], attention = 0, replies = 0
+        native.onNotification = { posted.append($0) }
+        native.onAttentionRequested = { attention += 1 }
+        native.onInput = { replies += 1 }
+        native.adapter.receive(Data("\u{1b}]9;Build done\u{07}\u{1b}]777;notify;Claude;Needs approval\u{07}".utf8))
+        native.adapter.receive(Data("\u{1b}]99;i=1:d=0;Tests\u{1b}\\\u{1b}]99;i=1:p=body;All passed\u{1b}\\\u{1b}]9;4;1;50\u{07}".utf8))
+        XCTAssertEqual(posted.map(\.title), ["", "Claude", "Tests"])
+        XCTAssertEqual(posted.map(\.body), ["Build done", "Needs approval", "All passed"])
+        XCTAssertEqual(attention, 3, "A finished OSC 99 notification labels the tab like OSC 9 and 777; its first chunk doesn't")
+        XCTAssertEqual(replies, 0)
+        native.adapter.receive(Data("\u{1b}]99;i=q:p=?;\u{1b}\\".utf8))
+        XCTAssertEqual(replies, 1, "A p=? query is answered through the PTY")
+        XCTAssertEqual(posted.count, 3)
+        let text = try native.adapter.read(.retainedText)
+        for part in ["Build done", "Needs approval", "All passed", "Tests"] { XCTAssertFalse(text.contains(part), part) }
     }
 
     @MainActor

@@ -12,6 +12,7 @@ final class AppearanceSettingsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
         XCTAssertEqual(decoded.bellStyle, .sound)
         XCTAssertEqual(decoded.chromeMode, .light)
+        XCTAssertTrue(decoded.desktopNotifications, "Settings saved before FR-T08 keep notifications on")
         legacy["bellStyle"] = "chime"
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy)).bellStyle, .sound)
     }
@@ -19,6 +20,7 @@ final class AppearanceSettingsTests: XCTestCase {
         let settings = AppearanceSettings()
         XCTAssertEqual(settings.chromeMode, .dark)
         XCTAssertEqual(settings.bellStyle, .sound)
+        XCTAssertTrue(settings.desktopNotifications)
         XCTAssertEqual(settings.fontName, "RobotoMono-Regular")
         XCTAssertEqual(settings.fontSize, 13)
         XCTAssertEqual(TerminalPalette.builtIn.background, 0x151719)
@@ -80,6 +82,7 @@ final class AppearanceSettingsTests: XCTestCase {
         var settings = AppearanceSettings()
         settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
         settings.allowItalicFont = false; settings.blinkingText = false; settings.bellStyle = .visual
+        settings.desktopNotifications = false
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)), settings)
     }
     func testTerminalRenderingDiffersCoversTextStyleFields() {
@@ -87,6 +90,8 @@ final class AppearanceSettingsTests: XCTestCase {
         var themeOnly = base
         themeOnly.chromeMode = .dark; themeOnly.darkThemeID = "custom-dark"; themeOnly.lightThemeID = "custom-light"
         XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly))
+        themeOnly.desktopNotifications = false
+        XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly), "The notification toggle never touches terminals")
         let changes: [(inout AppearanceSettings) -> Void] = [
             { $0.fontName = "Menlo" }, { $0.fontSize = 14 }, { $0.cursorShape = .bar }, { $0.cursorBlinks = true },
             { $0.scrollbackLines = 1 }, { $0.fontLigatures = false }, { $0.boldAsBright = false },

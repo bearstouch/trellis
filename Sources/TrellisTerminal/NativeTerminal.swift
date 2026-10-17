@@ -41,8 +41,11 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onShellIntegrationEvent: ((ShellIntegrationEvent) -> Void)?
     /// A password-style prompt: the PTY has echo off with line editing on (FR-T06). Fires on change only.
     public var onPasswordPromptChanged: ((Bool) -> Void)?
-    /// The program rang the bell or posted an OSC 9/777 notification (FR-T06). Carries no text.
+    /// The program rang the bell or posted an OSC 9/777/99 notification (FR-T06). Carries no text.
     public var onAttentionRequested: (() -> Void)?
+    /// The program posted a desktop notification (FR-T08); its text is untrusted and shown only in the notification.
+    public var onNotification: ((TerminalNotification) -> Void)?
+    private var kittyNotifications = KittyNotificationAssembler()
     /// The audible half of the bell (FR-T07); injected so tests stay silent.
     var playBell: () -> Void = { NSSound.beep() }
     public private(set) var passwordPromptActive = false
@@ -301,28 +304,30 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         onPasswordPromptChanged?(active)
     }
 
-    /// OSC 9 text and OSC 777 `notify` are attention requests; their text is never kept. Numbered OSC 9 forms
-    /// (`9;4;…` progress and other ConEmu commands) are not notifications.
+    /// OSC 9 text, OSC 777 `notify` and OSC 99 are attention requests (FR-T06) and desktop notifications (FR-T08).
+    /// Their text goes only to `onNotification`; it is never printed, kept or logged.
     private func observeNotifications() {
         let terminal = terminalView.getTerminal()
         // The OSC 9 handler replaces upstream's, so 9;4 progress is forwarded to keep the progress bar.
         terminal.registerOscHandler(code: 9) { [weak self, weak terminal] data in
             if terminal?.handleProgressReport(data) == true { return }
-            guard let self, Self.isNotification(osc9: data) else { return }
+            guard let self, TerminalNotification.isNotification(osc9: data) else { return }
             self.onAttentionRequested?()
+            if let notification = TerminalNotification.parse(osc9: data) { self.onNotification?(notification) }
         }
         terminal.registerOscHandler(code: 777) { [weak self] data in
             guard let self, data.starts(with: Array("notify;".utf8)) else { return }
             self.onAttentionRequested?()
+            if let notification = TerminalNotification.parse(osc777: data) { self.onNotification?(notification) }
         }
-    }
-
-    nonisolated static func isNotification(osc9 data: ArraySlice<UInt8>) -> Bool {
-        guard !data.isEmpty else { return false }
-        let digits = data.prefix { (0x30...0x39).contains($0) }
-        guard !digits.isEmpty else { return true }
-        let rest = data.dropFirst(digits.count)
-        return !(rest.isEmpty || rest.first == UInt8(ascii: ";"))
+        terminal.registerOscHandler(code: 99) { [weak self, weak terminal] data in
+            guard let self else { return }
+            switch self.kittyNotifications.receive(data) {
+            case .notification(let notification): self.onAttentionRequested?(); self.onNotification?(notification)
+            case .reply(let text): terminal?.sendResponse(text: text)
+            case nil: break
+            }
+        }
     }
 
     /// iTerm2's inline image protocol (FR-IM01–FR-IM04) replaces upstream's OSC 1337 handling, which would decode

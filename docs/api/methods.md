@@ -59,7 +59,7 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `theme.export` | `id`, `resolved?` | `{id, resolved, document}`. Built-in themes are always exported complete. |
 | `theme.delete` | `id` | Deletes a custom theme. Any slot that had it selected falls back to the built-in theme. |
 | `appearance.get` | — | Mode, selected theme IDs and the effective theme |
-| `appearance.set` | `mode: system\|dark\|light`, `darkThemeId?`, `lightThemeId?`, `expectedRevision?` | Atomic settings update. A theme in the wrong appearance slot is rejected. Font, cursor, scrollback, text-rendering (FR-TX01, FR-TX03) and bell (FR-T07) settings aren't exposed and are kept unchanged. |
+| `appearance.set` | `mode: system\|dark\|light`, `darkThemeId?`, `lightThemeId?`, `expectedRevision?` | Atomic settings update. A theme in the wrong appearance slot is rejected. Font, cursor, scrollback, text-rendering (FR-TX01, FR-TX03), bell (FR-T07) and desktop-notification (FR-T08) settings aren't exposed and are kept unchanged. |
 | `events.subscribe` | `topics`, `resourceIds?`, `afterSequence?`, `instanceId?` | `{subscriptionId, sequence, instanceId}` |
 | `events.unsubscribe` | `subscriptionId` | The subscription stops |
 

@@ -288,6 +288,13 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Panes whose program waits for the user (FR-T06); runtime-only, never persisted.
     @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:]
     private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
+    /// Posts desktop notifications (FR-T08); nil (tests, `swift run`) posts nothing.
+    public var desktopNotifier: DesktopNotifier?
+    /// Whether the user is looking at the workspace window; the app narrows this to its key window.
+    public var workspaceIsFrontmost: () -> Bool = { NSApp.isActive }
+    /// Whether the workspace window is on screen at all (not hidden, minimized or covered); for OSC 99 `o=invisible`.
+    public var workspaceIsVisible: () -> Bool = { true }
+    private var notificationLimiter = NotificationRateLimiter()
     var activityNow: () -> Date = Date.init
     var activitySleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
     /// Applies to sessions started after a change (FR-SI06).
@@ -528,6 +535,7 @@ public final class AppWorkspaceModel: ObservableObject {
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
         outputActivity.retain(Set(next.panes.keys))
+        notificationLimiter.retain(Set(next.panes.keys))
         if inputWaits.keys.contains(where: { next.panes[$0] == nil }) { inputWaits = inputWaits.filter { next.panes[$0.key] != nil } }
         // Looking at the pane answers a bell; a password prompt stays until echo returns.
         if let viewed = presentation.activePane?.id, inputWaits[viewed] == .attention { inputWaits.removeValue(forKey: viewed) }
@@ -778,6 +786,30 @@ public final class AppWorkspaceModel: ObservableObject {
         refreshTerminalAccessibility()
     }
 
+    /// FR-T08: shown only while the user isn't looking at the pane (or as OSC 99 `o=` asks), never at the shell's own prompt.
+    private func postNotification(_ notification: TerminalNotification, paneID: UUID) {
+        guard appearance.desktopNotifications, let desktopNotifier, !atShellPrompt(paneID), let pane = snapshot.panes[paneID] else { return }
+        let frontmost = workspaceIsFrontmost()
+        switch notification.occasion {
+        case .always: break
+        case .unfocused: guard !frontmost || presentation.activePane?.id != paneID else { return }
+        case .invisible:
+            // kitty: unfocused and not visible. A shown pane counts as visible even while another app is key.
+            let shown = presentation.selectedTab?.id == pane.tabID && (maximizedPanes[pane.tabID] ?? paneID) == paneID
+            guard !shown || !workspaceIsVisible() else { return }
+        }
+        guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
+        let title = notification.title.isEmpty ? paneTitle(paneID) : notification.title
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, body: notification.body))
+    }
+
+    /// Clicking a notification shows its pane, in whichever window and tab it now lives.
+    public func revealPane(_ paneID: UUID) async {
+        guard let pane = snapshot.panes[paneID], let windowID = snapshot.tabs[pane.tabID]?.windowID else { return }
+        await selectWindowTab(windowID: windowID, tabID: pane.tabID)
+        _ = await selectPane(paneID)
+    }
+
     private var automaticTitles: [UUID: String] {
         var titles: [UUID: String] = [:]
         for id in shellStates.keys { if let title = automaticTitle(paneID: id) { titles[id] = title } }
@@ -925,6 +957,10 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.onAttentionRequested = { [weak self, weak terminal] in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
             self.requestAttention(paneID: pane.id)
+        }
+        terminal.onNotification = { [weak self, weak terminal] notification in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.postNotification(notification, paneID: pane.id)
         }
         terminal.onShellIntegrationEvent = { [weak self, weak terminal] event in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
