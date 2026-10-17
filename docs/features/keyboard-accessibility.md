@@ -26,6 +26,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Previous / next prompt (shell integration) | ⌘↑ / ⌘↓ |
 | Zoom in / out / actual size | ⌘+ (⌘= also works) / ⌘- / ⌘0 |
 | Save workspace | ⌘S |
+| Hide / show sidebar | ⌃⌘S |
 | Rename tab, rename window, delete window, show hosts | Unbound by default |
 
 These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q), Undo and Redo, Cut, Copy, Paste, Select All, and Minimize (⌘M).

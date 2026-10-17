@@ -10,6 +10,7 @@ These are the organizing requirements. All are P0. The acceptance check is the o
 | FR-W02 | Keep sessions in inactive windows running and show bounded activity and exit indicators. | Run output in one window, switch away and back, and verify output continued and the process is the same one. |
 | FR-W03 | Remember the active tab and pane per window. | Switch windows repeatedly and verify keyboard focus returns to the right pane. |
 | FR-W04 | Allow an empty application state. | Delete the last window and create a new one from the welcome screen. |
+| FR-W05 | Collapse the sidebar to a narrow rail that shows each window as a square with its initials. Toggle it from the sidebar button or **View → Hide/Show Sidebar** (⌃⌘S). | Collapse the sidebar and check that each window shows its initials (the first letters of its first two words, or the first two characters of a one-word name), the selected window has a border, activity and exit markers stay visible, a click selects the window, the tooltip shows the full name, and the context menu still offers Rename, Move and Delete. Relaunch and confirm the sidebar stays collapsed. The state is a per-user preference and is not part of the workspace. |
 
 ## Tabs
 

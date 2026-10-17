@@ -12,7 +12,8 @@ public struct WorkspaceRootView: View {
     public var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                sidebar.frame(width: 205).disabled(model.isRestoring || model.recoveryMessage != nil)
+                sidebar.frame(width: model.sidebarCollapsed ? 52 : 205).animation(.easeInOut(duration: 0.15), value: model.sidebarCollapsed)
+                    .disabled(model.isRestoring || model.recoveryMessage != nil)
                 Divider().overlay(model.separatorOverlay)
                 mainArea
             }
@@ -93,17 +94,40 @@ public struct WorkspaceRootView: View {
     }
 
     private var sidebar: some View {
+        Group {
+            if model.sidebarCollapsed { collapsedSidebar } else { expandedSidebar }
+        }
+        .font(.system(size: 12)).padding(.top, 20).padding(.bottom, 14)
+        .background(model.themeColor(.sidebarBackground))
+    }
+
+    private var sidebarToggle: some View {
+        Button {
+            model.toggleSidebar()
+        } label: {
+            Image(systemName: "sidebar.left")
+        }
+        .buttonStyle(.plain).help(shortcutHelp(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", .toggleSidebar))
+        .accessibilityLabel(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar")
+    }
+
+    private var newWindowButton: some View {
+        Button {
+            Task { await model.createWindow() }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .buttonStyle(.plain).help(shortcutHelp("New Window", .newWindow)).accessibilityLabel("New Window")
+    }
+
+    private var expandedSidebar: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 10) {
+                sidebarToggle
                 Text("WINDOWS").font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
                 Spacer()
-                Button {
-                    Task { await model.createWindow() }
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.plain).help(shortcutHelp("New Window", .newWindow)).accessibilityLabel("New Window")
+                newWindowButton
             }.padding(.horizontal, 10).padding(.bottom, 8)
             ScrollView {
                 let descriptors = model.accessibility.windows
@@ -128,8 +152,37 @@ public struct WorkspaceRootView: View {
             }
             .buttonStyle(.plain).help("Settings (⌘,)").padding(.horizontal, 10).padding(.top, 6)
         }
-        .font(.system(size: 12)).padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 14)
-        .background(model.themeColor(.sidebarBackground))
+        .padding(.horizontal, 10)
+    }
+
+    private var collapsedSidebar: some View {
+        VStack(spacing: 10) {
+            sidebarToggle
+            newWindowButton
+            ScrollView {
+                let descriptors = model.accessibility.windows
+                VStack(spacing: 8) {
+                    ForEach(model.snapshot.windows) { window in
+                        windowTile(window, descriptor: descriptors.first { $0.id == window.id })
+                    }
+                }.padding(.vertical, 2).accessibilityElement(children: .contain).accessibilityLabel("Windows")
+            }.scrollIndicators(.hidden)
+            Spacer(minLength: 0)
+            Divider().overlay(model.separatorOverlay)
+            Button {
+                model.openHosts?()
+            } label: {
+                Image(systemName: "server.rack")
+            }
+            .buttonStyle(.plain).help("Saved SSH hosts").accessibilityLabel("Hosts")
+            Button {
+                model.openSettings?()
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+            }
+            .buttonStyle(.plain).help("Settings (⌘,)").accessibilityLabel("Settings")
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func windowRow(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
@@ -152,19 +205,33 @@ public struct WorkspaceRootView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(descriptor?.label ?? window.name)
-        .accessibilityValue(descriptor?.value ?? "")
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-        .accessibilityAction(named: "Rename") { beginWindowRename(window) }
-        .contextMenu {
-            Button("Rename…") { beginWindowRename(window) }
-            Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
-                .disabled(model.snapshot.windows.first?.id == window.id)
-            Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
-                .disabled(model.snapshot.windows.last?.id == window.id)
-            Divider().overlay(model.separatorOverlay)
-            Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+        .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+    }
+
+    private func windowTile(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
+        let selected = window.id == model.snapshot.activeWindowID
+        let shape = RoundedRectangle(cornerRadius: 7)
+        return Button {
+            Task { await model.selectWindow(window.id) }
+        } label: {
+            Text(WorkspaceAccessibility.initials(for: window.name))
+                .font(.system(size: 12, weight: selected ? .bold : .medium)).lineLimit(1).minimumScaleFactor(0.6)
+                .frame(width: 32, height: 32)
+                .background(selected ? model.sidebarSelectionBackground : model.themeColor(.surface), in: shape)
+                // Selection is a border too, never color alone.
+                .overlay(shape.strokeBorder(selected ? model.themeColor(.accent) : model.themeColor(.border).opacity(0.6), lineWidth: selected ? 2 : 1))
+                .overlay(alignment: .topTrailing) {
+                    if model.activity[window.id]?.hasExit == true {
+                        Image(systemName: "stop.circle.fill").font(.system(size: 9)).foregroundStyle(model.themeColor(.mutedForeground))
+                            .background(Circle().fill(model.themeColor(.sidebarBackground))).offset(x: 4, y: -4).help("A session exited")
+                    } else if model.activity[window.id]?.hasOutput == true {
+                        Circle().fill(model.themeColor(.accent)).frame(width: 7, height: 7).offset(x: 3, y: -3).help("New terminal output")
+                    }
+                }
+                .contentShape(shape)
         }
+        .buttonStyle(.plain).help(window.name)
+        .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
     }
 
     private func beginWindowRename(_ window: ManagedWindow) {
@@ -348,6 +415,33 @@ extension TabColor {
         }
         image.isTemplate = false
         return Image(nsImage: image)
+    }
+}
+
+/// Shared by the expanded row and the collapsed tile so both expose the same
+/// VoiceOver description and window commands.
+private struct WindowItemActions: ViewModifier {
+    let window: ManagedWindow
+    let descriptor: AccessibilityDescriptor?
+    let selected: Bool
+    @ObservedObject var model: AppWorkspaceModel
+    let rename: (ManagedWindow) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityLabel(descriptor?.label ?? window.name)
+            .accessibilityValue(descriptor?.value ?? "")
+            .accessibilityAddTraits(selected ? [.isSelected] : [])
+            .accessibilityAction(named: "Rename") { rename(window) }
+            .contextMenu {
+                Button("Rename…") { rename(window) }
+                Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
+                    .disabled(model.snapshot.windows.first?.id == window.id)
+                Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
+                    .disabled(model.snapshot.windows.last?.id == window.id)
+                Divider().overlay(model.separatorOverlay)
+                Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+            }
     }
 }
 
