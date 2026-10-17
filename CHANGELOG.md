@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Five more terminal fonts ship with the app: JetBrains Mono, Cascadia Mono NF (includes Nerd Font glyphs for Powerline and icon prompts such as starship, oh-my-posh and powerlevel10k), IBM Plex Mono, Iosevka Fixed (narrow, so more columns fit in splits) and Atkinson Hyperlegible Mono (designed for legibility). Each comes in Regular, Bold, Italic and Bold Italic, appears in Settings → Appearance → Terminal font, and is registered for Trellis only.
+
 ### Changed
 
 - Roboto Mono (Regular, Bold, Italic, Bold Italic) now ships with the app and is the default terminal font. It's registered for Trellis only, so it doesn't need to be installed and doesn't appear in other apps. The app chrome keeps system fonts. Existing workspaces keep the terminal font they saved, including Monaco; choose Roboto Mono in Settings → Appearance to switch.

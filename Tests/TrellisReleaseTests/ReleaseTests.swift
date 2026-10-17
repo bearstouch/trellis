@@ -13,7 +13,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(manifest.bundleIdentifier, "dev.trellis")
         XCTAssertEqual(Set(manifest.architectures), ["arm64", "x86_64"], "Universal 2")
         XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis"), "The CLI is bundled")
-        XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT", "OFL-1.1"])
+        XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT"] + Array(repeating: "OFL-1.1", count: 6))
         // Package.swift's deployment target must match the release policy.
         let package = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)
         let packageMinimum = package.contains(".macOS(.v14)") ? "14.0" : "unknown"

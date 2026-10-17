@@ -16,7 +16,7 @@
 - **MAC-06:**
     - Trellis supports Retina scaling, monitor changes and full-screen layouts. Restored window geometry is constrained to the displays available, and terminal cell sizing is consistent.
     - When the window gets too small, the tree and its ratios are kept in a scrollable, minimum-sized canvas. Trellis never silently deletes panes or shrinks them below their minimum.
-- **MAC-07:** Roboto Mono, bundled with the app and registered for the Trellis process only, is the default terminal font, with a monospace fallback and a notice, while the chrome uses system fonts. IME composition, dead keys, layout differences and the configurable Option-as-Meta setting are all respected. Cmd-C and Cmd-V stay native copy and paste, and Ctrl-C stays the terminal interrupt.
+- **MAC-07:** Six terminal typefaces (Roboto Mono, JetBrains Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed, Atkinson Hyperlegible Mono, each in Regular, Bold, Italic and Bold Italic) are bundled with the app and registered for the Trellis process only. Roboto Mono is the default terminal font, with a monospace fallback and a notice, while the chrome uses system fonts. IME composition, dead keys, layout differences and the configurable Option-as-Meta setting are all respected. Cmd-C and Cmd-V stay native copy and paste, and Ctrl-C stays the terminal interrupt.
 
 ## Files, credentials and permissions
 

@@ -5,7 +5,7 @@
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-U01 | Discoverable, configurable keyboard shortcuts with conflict warnings. | Menus show the shortcuts. A conflict can't silently disable a critical command. |
-| FR-U02 | Readable terminal settings. | Roboto Mono, bundled with the app, is the default terminal font, with Menlo or the system monospace font and a visible notice if it's missing. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
+| FR-U02 | Readable terminal settings. | Roboto Mono, bundled with the app, is the default terminal font; JetBrains Mono, Cascadia Mono NF (with Nerd Font prompt glyphs), IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled alternatives. A missing or non-monospaced saved font falls back to Menlo or the system monospace font with a visible notice. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
 
 ## Default shortcuts
 

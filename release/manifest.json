@@ -5,9 +5,14 @@
   "minimumMacOS": "14.0",
   "architectures": ["arm64", "x86_64"],
   "packageFormat": "dmg",
-  "artifacts": ["Trellis.app/Contents/MacOS/Trellis", "Trellis.app/Contents/Helpers/trellis", "Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt", "Trellis.app/Contents/Resources/RobotoMono-OFL.txt"],
+  "artifacts": ["Trellis.app/Contents/MacOS/Trellis", "Trellis.app/Contents/Helpers/trellis", "Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt", "Trellis.app/Contents/Resources/RobotoMono-OFL.txt", "Trellis.app/Contents/Resources/JetBrainsMono-OFL.txt", "Trellis.app/Contents/Resources/CascadiaMono-OFL.txt", "Trellis.app/Contents/Resources/IBMPlexMono-OFL.txt", "Trellis.app/Contents/Resources/IosevkaFixed-OFL.txt", "Trellis.app/Contents/Resources/AtkinsonHyperlegibleMono-OFL.txt"],
   "dependencies": [
     {"name": "SwiftTerm", "version": "1.20.0", "revision": "5d14406844143538cd8f8851d2d8a67c1fe443e5", "license": "MIT", "licenseFile": "ThirdParty/SwiftTerm-LICENSE.txt"},
-    {"name": "Roboto Mono", "version": "3.001", "revision": "895ec691990d041dd727c7b5afa3ce56525d98e6", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/RobotoMono-OFL.txt"}
+    {"name": "Roboto Mono", "version": "3.001", "revision": "895ec691990d041dd727c7b5afa3ce56525d98e6", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/RobotoMono-OFL.txt"},
+    {"name": "JetBrains Mono", "version": "2.304", "revision": "cd5227bd1f61dff3bbd6c814ceaf7ffd95e947d9", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/JetBrainsMono-OFL.txt"},
+    {"name": "Cascadia Mono NF", "version": "2407.24", "revision": "56bcca3f2c1e4cb19458954f0e2bb4635960df91", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/CascadiaMono-OFL.txt"},
+    {"name": "IBM Plex Mono", "version": "2.005", "revision": "2f9ba1b25957d958db71a849e85d72e3ecfb845a", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/IBMPlexMono-OFL.txt"},
+    {"name": "Iosevka Fixed (terminal subset)", "version": "34.9.0", "revision": "2487637bb71f41b2a66134afd9faa6c316e5a438", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/IosevkaFixed-OFL.txt"},
+    {"name": "Atkinson Hyperlegible Mono", "version": "2.001", "revision": "154d50362016cc3e873eb21d242cd0772384c8f9", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/AtkinsonHyperlegibleMono-OFL.txt"}
   ]
 }

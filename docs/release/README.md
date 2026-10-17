@@ -101,4 +101,13 @@ Only these combinations have been run. Nothing else is claimed.
 
 SwiftTerm is MIT-licensed. Its license ships as `Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt`. Its provenance and Trellis's changes to it are in `ThirdParty/SwiftTerm/`.
 
-The bundled Roboto Mono font (version 3.001, from `googlefonts/RobotoMono`) is licensed under the SIL Open Font License 1.1. Its license ships as `Trellis.app/Contents/Resources/RobotoMono-OFL.txt`. The unmodified font files and a second copy of the license are in `Trellis.app/Contents/Resources/Trellis_TrellisCore.bundle/Fonts`.
+The bundled terminal fonts are all licensed under the SIL Open Font License 1.1. Each family's license ships as `Trellis.app/Contents/Resources/<Family>-OFL.txt`, and the font files and a second copy of each license are in `Trellis.app/Contents/Resources/Trellis_TrellisCore.bundle/Fonts`. Exact revisions are pinned in `release/manifest.json`.
+
+| Family | Version | Source | Files | Notes |
+| --- | --- | --- | --- | --- |
+| Roboto Mono | 3.001 | `googlefonts/RobotoMono` | `RobotoMono-*.ttf` | Unmodified. |
+| JetBrains Mono | 2.304 | `JetBrains/JetBrainsMono` release | `JetBrainsMono-*.ttf` | Unmodified. |
+| Cascadia Mono NF | 2407.24 | `microsoft/cascadia-code` release, `ttf/static` | `CascadiaMonoNF-*.ttf`, `CascadiaMono-OFL.txt` | Unmodified; Reserved Font Name "Cascadia Code". |
+| IBM Plex Mono | 2.005 (`@ibm/plex-mono@2.5.0`) | `IBM/plex` release | `IBMPlexMono-*.ttf` | Unmodified; Reserved Font Name "Plex". |
+| Iosevka Fixed | 34.9.0 | `be5invis/Iosevka` release, unhinted TTF | `IosevkaFixed-*.ttf` | Modified: subset with `pyftsubset` to Latin, Greek, Cyrillic, punctuation, symbols, arrows, math, box drawing, blocks, Braille, Private Use (Powerline) and legacy-computing ranges with default layout features (stylistic alternates dropped), about 0.5 MB per face instead of 7 MB. The Iosevka license reserves no font name, so the name is kept. |
+| Atkinson Hyperlegible Mono | 2.001 | `googlefonts/atkinson-hyperlegible-next-mono`, `fonts/ttf` | `AtkinsonHyperlegibleMono-*.ttf` | Unmodified. |

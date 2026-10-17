@@ -29,6 +29,38 @@ final class BundledFontTests: XCTestCase {
     }
 
     @MainActor
+    func testEveryBundledFamilyIsSelectableMonospaceWithAllStyles() throws {
+        NativeTerminalFont.registerBundledFonts()
+        let installed = NativeTerminalFont.installedNames
+        let manager = NSFontManager.shared
+        let expected = ["Roboto Mono", "JetBrains Mono", "Cascadia Mono NF", "IBM Plex Mono", "Iosevka Fixed", "Atkinson Hyperlegible Mono"]
+        for family in expected {
+            let members = try XCTUnwrap(manager.availableMembers(ofFontFamily: family), family).compactMap { $0.first as? String }
+            let regular = try XCTUnwrap(installed.first { NativeTerminalFont.typefaceName(for: $0) == family }, "\(family) is listed once in Settings")
+            XCTAssertEqual(installed.filter { NativeTerminalFont.typefaceName(for: $0) == family }, [regular])
+            let font = try XCTUnwrap(NSFont(name: regular, size: 13))
+            XCTAssertFalse(manager.traits(of: font).contains(.boldFontMask), family)
+            XCTAssertFalse(manager.traits(of: font).contains(.italicFontMask), family)
+            XCTAssertNil(NativeTerminalFont.choice(for: regular).notice, family)
+            for trait: NSFontTraitMask in [.boldFontMask, .italicFontMask, [.boldFontMask, .italicFontMask]] {
+                let styled = manager.convert(font, toHaveTrait: trait)
+                XCTAssertTrue(members.contains(styled.fontName), "\(family) has a real \(trait.rawValue) face")
+                XCTAssertTrue(manager.traits(of: styled).contains(trait), "\(family) \(trait.rawValue)")
+                XCTAssertTrue(NativeTerminalFont.isMonospaced(styled), styled.fontName)
+            }
+        }
+    }
+
+    @MainActor
+    func testCascadiaNerdFontCarriesPowerlineGlyphs() throws {
+        NativeTerminalFont.registerBundledFonts()
+        let font = try XCTUnwrap(NSFont(name: "CascadiaMonoNF-Regular", size: 13))
+        var characters: [UniChar] = [0xE0B0, 0xE0A0, 0xF015]
+        var glyphs = [CGGlyph](repeating: 0, count: characters.count)
+        XCTAssertTrue(CTFontGetGlyphsForCharacters(font, &characters, &glyphs, characters.count))
+    }
+
+    @MainActor
     func testNewTerminalStartsWithBundledFont() {
         _ = NSApplication.shared
         let native = NativeTerminal()

@@ -76,7 +76,8 @@ def main():
             assert digest(built / "Trellis") == source_hash, "signing changed the Swift build product"
             assert stat.S_IMODE(shader.stat().st_mode) == 0o444
             assert (destination / "Contents/Resources/Trellis_TrellisCore.bundle/Themes/example-minimal.theme.json").is_file()
-            assert (destination / "Contents/Resources/Trellis_TrellisCore.bundle/Fonts/RobotoMono-Regular.ttf").is_file(), "assembled app has no bundled terminal font"
+            for face in ("RobotoMono-Regular", "CascadiaMonoNF-Regular", "IosevkaFixed-BoldItalic"):
+                assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/Fonts/{face}.ttf").is_file(), f"assembled app has no bundled {face}"
             assert digest(destination / "Contents/Resources/AppIcon.icns") == digest(icon)
 
         run("--build-only")
