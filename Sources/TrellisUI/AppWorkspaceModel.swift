@@ -987,6 +987,10 @@ public final class AppWorkspaceModel: ObservableObject {
         do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) } catch { errorMessage = "Use a tab name between 1 and 200 characters." }
     }
 
+    public func setTabColor(_ id: UUID, color: TabColor?) async {
+        do { publish(try await service.execute(.setTabColor(id: id, color: color)).snapshot) } catch { errorMessage = "The tab color could not be changed." }
+    }
+
     public func moveTab(_ id: UUID, offset: Int) async {
         guard let tab = snapshot.tabs[id], let window = snapshot.windows.first(where: { $0.id == tab.windowID }) else { return }
         var order = window.tabIDs

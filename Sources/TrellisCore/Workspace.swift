@@ -39,19 +39,41 @@ public struct ManagedWindow: Identifiable, Equatable, Codable, Sendable {
     }
 }
 
+/// Fixed color labels for tabs (FR-T04), named like Finder tags so they read the
+/// same everywhere; views map them to adaptive system colors.
+public enum TabColor: String, Codable, CaseIterable, Sendable {
+    case red, orange, yellow, green, blue, purple, gray
+
+    public var displayName: String { rawValue.capitalized }
+}
+
 public struct WorkspaceTab: Identifiable, Equatable, Codable, Sendable {
     /// A tab with this title shows an automatic title from shell integration (FR-SI05).
     public static let defaultTitle = "Terminal"
     public let id: UUID
     public let windowID: UUID
     public var title: String
+    public var color: TabColor?
     public var root: PaneLayout
     public var activePaneID: UUID
     public var revision: UInt64
 
-    public init(id: UUID, windowID: UUID, title: String, root: PaneLayout, activePaneID: UUID, revision: UInt64 = 0) {
-        self.id = id; self.windowID = windowID; self.title = title
+    public init(id: UUID, windowID: UUID, title: String, color: TabColor? = nil, root: PaneLayout, activePaneID: UUID, revision: UInt64 = 0) {
+        self.id = id; self.windowID = windowID; self.title = title; self.color = color
         self.root = root; self.activePaneID = activePaneID; self.revision = revision
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, windowID, title, color, root, activePaneID, revision }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        windowID = try values.decode(UUID.self, forKey: .windowID)
+        title = try values.decode(String.self, forKey: .title)
+        // A label from a newer build is dropped, never a reason to treat the workspace as corrupt.
+        color = (try? values.decodeIfPresent(String.self, forKey: .color)).flatMap { $0.flatMap(TabColor.init(rawValue:)) }
+        root = try values.decode(PaneLayout.self, forKey: .root)
+        activePaneID = try values.decode(UUID.self, forKey: .activePaneID)
+        revision = try values.decode(UInt64.self, forKey: .revision)
     }
 }
 

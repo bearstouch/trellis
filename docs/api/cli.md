@@ -39,6 +39,7 @@ trellis <noun> <verb> [options]
 | `tab list` / `get` | `tab.list` / `get` | `--window` / `--tab` |
 | `tab create` | `tab.create` | `--window --title [--start]` |
 | `tab rename` | `tab.update` | `--tab --title --expected-revision` |
+| `tab color` | `tab.update` | `--tab --color <red\|orange\|yellow\|green\|blue\|purple\|gray\|none> --expected-revision` |
 | `tab reorder` | `tab.reorder` | `--window --ids --expected-revision` |
 | `tab focus` / `close` | `tab.focus` / `close` | `--tab [--expected-revision --allow-running --force]` |
 | `pane split` | `pane.split` | `--pane --axis x\|y --ratio [--start]` |

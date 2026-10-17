@@ -102,6 +102,17 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(tabs.mutatingCalls, [])
     }
 
+    func testTabColorSendsNameOrNullForNone() throws {
+        let h = CLIHarness()
+        let tab = UUID().uuidString
+        h.transport.replies["tab.update"] = ["result": .object(["id": .string(tab)])]
+        XCTAssertEqual(h.run(["tab", "color", "--tab", tab, "--color", "purple", "--token-stdin"]), 0)
+        XCTAssertEqual(h.run(["tab", "color", "--tab", tab, "--color", "none", "--token-stdin"]), 0)
+        let updates = h.transport.calls.filter { $0.method == "tab.update" }
+        XCTAssertEqual(updates.map { $0.params["color"] }, [.string("purple"), .null])
+        XCTAssertTrue(updates.allSatisfy { $0.params["title"] == nil })
+    }
+
     func testEventStreamWritesSubscriptionFirstAndReportsClosure() throws {
         let h = CLIHarness()
         h.transport.replies["events.subscribe"] = ["result": .object(["subscriptionId": .string("S"), "sequence": .number(4), "instanceId": .string("I")])]

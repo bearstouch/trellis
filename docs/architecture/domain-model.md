@@ -16,7 +16,7 @@ classDiagram
 | Type | Fields | Notes |
 | --- | --- | --- |
 | `ManagedWindow` | `id`, `name`, `tabIDs`, `activeTabID`, `revision` | A sidebar "window" (workspace) |
-| `WorkspaceTab` | `id`, `windowID`, `title`, `root: PaneLayout`, `activePaneID`, `revision` | |
+| `WorkspaceTab` | `id`, `windowID`, `title`, `color: TabColor?`, `root: PaneLayout`, `activePaneID`, `revision` | `TabColor` is a fixed palette (`FR-T04`); nil means unlabeled |
 | `PaneLayout` | `.pane(UUID)` or `.split(id, axis, ratio, children)` | The binary split tree. `ratio` is the first child's share. `SplitAxis` is `x` (left/right) or `y` (top/bottom). |
 | `WorkspacePane` | `id`, `tabID`, `sessionID`, `profileID` (`"default"`), `title?` | Owns exactly one session |
 | `WorkspaceSession` | `id`, `launch`, `state`, timestamps, `processID`, `exitCode`, `failureMessage`, `launchAttemptID` | Exists only at runtime; never persisted in this form |

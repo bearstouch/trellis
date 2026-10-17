@@ -40,6 +40,31 @@ final class TabManagementTests: XCTestCase {
         XCTAssertEqual(model.snapshot, original)
     }
 
+    @MainActor
+    func testColorLabelIsSpokenCopiedOnDuplicateAndClearable() async throws {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        await model.createWindow(startSession: false)
+        let tab = try XCTUnwrap(model.presentation.selectedTab)
+        XCTAssertNil(tab.color)
+        await model.setTabColor(tab.id, color: .red)
+        let labeled = model.snapshot
+        XCTAssertEqual(labeled.tabs[tab.id]?.color, .red)
+        XCTAssertGreaterThan(try XCTUnwrap(labeled.tabs[tab.id]?.revision), tab.revision)
+        XCTAssertEqual(model.accessibility.tabs.first?.value, "1 of 1, red label", "The label is spoken, not color alone")
+        await model.setTabColor(tab.id, color: .red)
+        XCTAssertEqual(model.snapshot, labeled, "Reapplying the same color changes nothing")
+        let duplicated = try await WorkspaceStore(snapshot: model.snapshot).execute(.duplicateTab(id: tab.id))
+        XCTAssertEqual(duplicated.createdTabID.flatMap { duplicated.snapshot.tabs[$0]?.color }, .red)
+        await model.setTabColor(tab.id, color: nil)
+        XCTAssertNil(model.snapshot.tabs[tab.id]?.color)
+        XCTAssertEqual(model.accessibility.tabs.first?.value, "1 of 1")
+        let missing = model.snapshot
+        await model.setTabColor(UUID(), color: .blue)
+        XCTAssertEqual(model.snapshot, missing, "A failed change keeps the previous state")
+        XCTAssertNotNil(model.errorMessage)
+    }
+
     func testDuplicateRemapsHierarchy() async throws {
         let initial = try await Self.splitFixture()
         let tab = try XCTUnwrap(initial.tabs.values.first)

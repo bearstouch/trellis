@@ -34,7 +34,7 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `window.close` | `id`, `allowRunning?`, `force?`, `expectedRevision?` | A close result or pending cleanup |
 | `tab.list`, `tab.get` | `windowId` / `id` | Ordered tabs / split-tree metadata |
 | `tab.create` | `windowId`, `title?`, `start?` | The tab plus its initial pane and session IDs |
-| `tab.update`, `tab.reorder` | `id`, `title` / `windowId`, `ids`; revision optional | Updated metadata or order |
+| `tab.update`, `tab.reorder` | `id`, `title?`, `color?` / `windowId`, `ids`; revision optional | Updated metadata or order |
 | `tab.focus`, `tab.close` | `id`, plus close flags | Selection / close result |
 | `pane.split` | `paneId`, `axis`, `ratio?`, `start?` | New pane and branch IDs. The existing pane becomes the first child. |
 | `pane.resize` | `branchId`, `ratio`, `expectedRevision?` | Updated branch, with geometry constraints enforced |
@@ -73,6 +73,8 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 - Trees can nest at most 16 levels, and a workspace holds at most 100 panes.
 
 ## Session launch and input
+
+**Tab colors.** `tab.update` takes `title`, `color` or both, and at least one is required. `color` is one of `red`, `orange`, `yellow`, `green`, `blue`, `purple` or `gray`, or `null` to remove the label (`FR-T04`). Any other value returns `-32602` with a `color` field error. When you pass both, they apply together or not at all. Tab results include `color` only when the tab has a label, and a change emits `tab.updated`.
 
 **Launch descriptors.** `session.start` with no `launch` uses the pane's saved shell or approved host. Starting an arbitrary executable uses a descriptor like this, and always needs `session.execute`:
 

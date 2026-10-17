@@ -224,7 +224,8 @@ public struct WorkspaceRootView: View {
         let selected = tab.id == model.presentation.selectedTab?.id
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
         return HStack(spacing: 8) {
-            Image(systemName: "terminal").font(.system(size: 10)).accessibilityHidden(true)
+            Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
+                .accessibilityHidden(true)
             if model.editingTabID == tab.id {
                 TextField("Tab name", text: $model.tabRenameDraft)
                     .textFieldStyle(.plain).focused($tabNameFocused)
@@ -255,7 +256,12 @@ public struct WorkspaceRootView: View {
             .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(model.displayTitle(tab))")
         }.foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
             .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
+            // The tint sits above the opaque active background, so a selected tab keeps it.
+            .background(tab.color.map { $0.swatchColor.opacity(selected ? 0.2 : 0.12) } ?? .clear)
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
+            .overlay(alignment: .top) {
+                if let color = tab.color { Rectangle().fill(color.swatchColor).frame(height: 3).help("\(color.displayName) label") }
+            }
             .overlay(alignment: .bottom) {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
@@ -269,6 +275,16 @@ public struct WorkspaceRootView: View {
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
             .contextMenu {
                 Button("Rename…") { beginTabRename(tab) }
+                Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
+                    Text("None").tag(TabColor?.none)
+                    ForEach(TabColor.allCases, id: \.self) { color in
+                        Label {
+                            Text(color.displayName)
+                        } icon: {
+                            color.swatchImage
+                        }.tag(TabColor?.some(color))
+                    }
+                }
                 Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
                 Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
                     .disabled(model.presentation.visibleTabs.first?.id == tab.id)
@@ -307,6 +323,31 @@ public struct WorkspaceRootView: View {
                 model.terminalBackground
             }
         }
+    }
+}
+
+extension TabColor {
+    /// Adaptive system colors, so labels stay distinct in light and dark chrome.
+    var nsColor: NSColor {
+        switch self {
+        case .red: .systemRed
+        case .orange: .systemOrange
+        case .yellow: .systemYellow
+        case .green: .systemGreen
+        case .blue: .systemBlue
+        case .purple: .systemPurple
+        case .gray: .systemGray
+        }
+    }
+    var swatchColor: Color { Color(nsColor: nsColor) }
+    /// Menus render symbols as templates and drop their tint; a drawn, non-template image keeps the color.
+    var swatchImage: Image {
+        let color = nsColor
+        let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+            color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill(); return true
+        }
+        image.isTemplate = false
+        return Image(nsImage: image)
     }
 }
 

@@ -57,7 +57,9 @@ public struct WorkspaceAccessibility: Sendable {
         let visible = presentation.visibleTabs
         tabs = visible.enumerated().map { index, tab in
             AccessibilityDescriptor(
-                id: tab.id, label: "Tab \(titles[tab.id] ?? tab.title)", value: "\(index + 1) of \(visible.count)",
+                // The label is spoken too, so it never relies on color alone.
+                id: tab.id, label: "Tab \(titles[tab.id] ?? tab.title)",
+                value: "\(index + 1) of \(visible.count)" + (tab.color.map { ", \($0.displayName.lowercased()) label" } ?? ""),
                 isSelected: tab.id == presentation.selectedTab?.id)
         }
         let paneIDs = presentation.selectedTab?.root.paneIDs ?? []
