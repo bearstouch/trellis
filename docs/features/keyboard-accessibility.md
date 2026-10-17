@@ -47,9 +47,13 @@ Rules for shortcuts:
 | Terminal font | Roboto Mono 13 (bundled) | Sizes 8–48, with zoom |
 | Cursor | Block, not blinking | |
 | Scrollback | 10,000 lines | 0–50,000, plus a 16 MiB cap |
+| Ligatures | On | On, Off (FR-TX01); visible only with fonts that have them, such as JetBrains Mono |
+| Bold as bright colors | On | On, Off (FR-TX03) |
+| Use bold fonts / Use italic fonts | On / On | On, Off (FR-TX03) |
+| Allow blinking text | On | On, Off (FR-TX03); always steady under Reduce Motion |
 | Light / dark theme | `trellis-light` / `trellis-dark` | Any installed theme for that appearance |
 
-Changes apply live, without restarting sessions.
+Changes apply live, without restarting sessions. Settings saved by an earlier version, which have no text-rendering values, load with these defaults.
 
 ## Accessibility
 

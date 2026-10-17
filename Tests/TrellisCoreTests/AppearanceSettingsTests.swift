@@ -43,4 +43,45 @@ final class AppearanceSettingsTests: XCTestCase {
         let saved = WorkspaceSettings(appearance: settings)
         XCTAssertEqual(try JSONDecoder().decode(WorkspaceSettings.self, from: JSONEncoder().encode(saved)), saved)
     }
+    func testTextRenderingDefaults() {
+        let settings = AppearanceSettings()
+        XCTAssertTrue(settings.fontLigatures)
+        XCTAssertTrue(settings.boldAsBright)
+        XCTAssertTrue(settings.allowBoldFont)
+        XCTAssertTrue(settings.allowItalicFont)
+        XCTAssertTrue(settings.blinkingText)
+    }
+    func testAppearanceWithoutTextRenderingKeysDecodesWithDefaults() throws {
+        // The appearance object as saved before FR-TX01/FR-TX03.
+        let appearance = #"{"chromeMode":"dark","fontName":"Menlo","fontSize":15,"cursorShape":"bar","cursorBlinks":true,"scrollbackLines":500,"lightThemeID":"trellis-light","darkThemeID":"trellis-dark"}"#
+        let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: Data(appearance.utf8))
+        var expected = AppearanceSettings()
+        expected.chromeMode = .dark; expected.fontName = "Menlo"; expected.fontSize = 15
+        expected.cursorShape = .bar; expected.cursorBlinks = true; expected.scrollbackLines = 500
+        XCTAssertEqual(decoded, expected)
+        let workspace = Data(#"{"shell":"/bin/zsh","directory":"/tmp","appearance":\#(appearance)}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(WorkspaceSettings.self, from: workspace).appearance, expected)
+    }
+    func testTextRenderingRoundTrip() throws {
+        var settings = AppearanceSettings()
+        settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
+        settings.allowItalicFont = false; settings.blinkingText = false
+        XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)), settings)
+    }
+    func testTerminalRenderingDiffersCoversTextStyleFields() {
+        let base = AppearanceSettings()
+        var themeOnly = base
+        themeOnly.chromeMode = .dark; themeOnly.darkThemeID = "custom-dark"; themeOnly.lightThemeID = "custom-light"
+        XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly))
+        let changes: [(inout AppearanceSettings) -> Void] = [
+            { $0.fontName = "Menlo" }, { $0.fontSize = 14 }, { $0.cursorShape = .bar }, { $0.cursorBlinks = true },
+            { $0.scrollbackLines = 1 }, { $0.fontLigatures = false }, { $0.boldAsBright = false },
+            { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false }
+        ]
+        for (index, change) in changes.enumerated() {
+            var changed = base
+            change(&changed)
+            XCTAssertTrue(base.terminalRenderingDiffers(from: changed), "change \(index)")
+        }
+    }
 }

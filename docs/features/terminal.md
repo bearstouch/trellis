@@ -7,12 +7,25 @@ All requirements here are P0.
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-S01 | Run configurable local shells with real PTY behavior. | The default login shell, Ctrl-C, Ctrl-D, job control, resizing and process exit all work. |
-| FR-S02 | Render ordinary terminal applications reliably. | Exercise vim, less, top, colors, the alternate screen, mouse reporting and Unicode. |
+| FR-S02 | Render ordinary terminal applications reliably. | Exercise vim, less, top, colors, the alternate screen, mouse reporting and Unicode. Text styles, ligatures and Unicode widths are detailed in FR-TX01–FR-TX04. |
 | FR-S03 | Show session status and exit code, and allow an explicit restart. | A process that exits with code 7 stays visible, and restarting gives a fresh session ID. |
 | FR-S04 | Keep bounded scrollback and search per pane. | Search forward and backward through retained text, and say when older output has been evicted. |
 | FR-S05 | Let new sessions set a working directory and environment. | Launch in a directory whose name contains spaces, with an override variable. Inaccessible paths are rejected before any process is created. |
 
 Session states and process handling are described in [Sessions and processes](../architecture/sessions.md). Run `swift run Trellis --fixture` to see a fixed shell that exits with code 7 (FR-S03).
+
+## Text rendering
+
+These requirements are P1. They refine FR-S02 for text. The settings are described in [Keyboard, settings and accessibility](keyboard-accessibility.md#settings).
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-TX01 | Draw font ligatures on the cell grid, controlled by a **Ligatures** setting that is on by default. | With JetBrains Mono (the bundled font with programming ligatures), `->`, `!=` and `<=>` show joined glyphs, and text after them keeps its columns. Turning the setting off shows the separate characters, because it disables the `calt`, `liga` and `dlig` font features. It doesn't resize the grid or reset the session. Each part of a ligature keeps its own cell's colour, so colour changes and selections don't break it; a change of face (bold or italic) does. The character under a visible cursor is always drawn on its own, so the cursor never covers half a joined glyph. |
+| FR-TX02 | Render SGR text styles. | Bold (1), dim (2), italic (3), underline (4, and the styles `4:0`–`4:5`: none, single, double, curly, dotted, dashed), double underline (21), underline colour (58, reset with 59), blink (5 and 6), inverse (7), concealed (8, reset with 28), strikethrough (9) and overline (53, reset with 55) all show. Underline, strikethrough and overline cover the full width of wide characters and ligatures. Concealed text hides glyphs and decorations but keeps its background; copy, search and accessibility still read the text, because it is in the buffer. |
+| FR-TX03 | Let users choose how text styles are drawn. | **Bold as bright colors** draws bold text in ANSI colours 0–7 with the bright colours 8–15; explicit bright colours (SGR 90–97) stay bright with it off. **Use bold fonts** and **Use italic fonts** off draw that text with the regular face. **Allow blinking text** off draws blinking text steadily; blinking also stops while Reduce Motion is on or the app is inactive. All four are on by default and apply live. |
+| FR-TX04 | Give emoji and other Unicode text stable cell widths. | Each of these takes a fixed number of cells and moves the cursor by the same amount: ZWJ sequences (`👨‍👩‍👧`, 2), emoji presentation with VS16 (`❤️`, 2) and text presentation with VS15 (`☺︎`, 1), flags (`🇵🇹`, 2), skin tones (`👍🏽`, 2), combining marks (`é` written as `e` + U+0301, 1) and CJK and Hangul (`漢`, `한`, 2 each). Each is one cluster for selection, copy and search. Colour emoji fit within their two cells. |
+
+Known limits: ligatures whose font merges several characters into one glyph take the colour of their first cell. In bidirectional rows the cursor cell isn't drawn on its own, so the cursor can cover part of a joined glyph there. The automation API doesn't expose the text-rendering settings (see [Methods](../api/methods.md)).
 
 ## Copy
 

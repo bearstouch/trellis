@@ -54,8 +54,9 @@ class CaretView: NSView, CALayerDelegate {
     
     func setText (ch: CharData) {
         glyphColumnWidth = max(1, Int(ch.width))
-        let hideBlinkingText = terminal?.textBlinkVisible == false
-            && ch.attribute.style.contains(.blink)
+        // Concealed (SGR 8) text stays hidden under the caret too.
+        let hideBlinkingText = (terminal?.textBlinkVisible == false
+            && ch.attribute.style.contains(.blink)) || ch.attribute.style.contains(.invisible)
         if hideBlinkingText {
             powerlineCodePoint = nil
         } else {

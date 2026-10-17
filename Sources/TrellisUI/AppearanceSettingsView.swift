@@ -144,6 +144,14 @@ struct AppearanceSettingsView: View {
                 ForEach(TerminalCursorShape.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }
             Toggle("Blink cursor", isOn: $draft.cursorBlinks)
+            Toggle("Ligatures", isOn: $draft.fontLigatures)
+            Text("Joins sequences such as -> and != in fonts that include ligatures, such as JetBrains Mono.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Bold as bright colors", isOn: $draft.boldAsBright)
+            Toggle("Use bold fonts", isOn: $draft.allowBoldFont)
+            Toggle("Use italic fonts", isOn: $draft.allowItalicFont)
+            Toggle("Allow blinking text", isOn: $draft.blinkingText)
+            Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary)
             TextField("Scrollback lines (0–50,000)", value: $draft.scrollbackLines, format: .number.grouping(.never))
             Text("History also has a 16 MiB text limit. Reducing history discards older output.")
                 .font(.caption).foregroundStyle(.secondary)

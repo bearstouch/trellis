@@ -4842,6 +4842,7 @@ open class Terminal {
         var bg = curAttr.bg
         var underlineStyle = curAttr.underlineStyle
         var underlineColor = curAttr.underlineColor
+        var extendedStyle = curAttr.extendedStyle
         let def = CharData.defaultAttr
 
         var i = 0
@@ -5018,6 +5019,7 @@ open class Terminal {
                 bg = def.bg
                 underlineStyle = def.underlineStyle
                 underlineColor = def.underlineColor
+                extendedStyle = def.extendedStyle
             case 1:
                 // bold text
                 style = [style, .bold]
@@ -5037,8 +5039,8 @@ open class Terminal {
                     style = [style, .underline]
                     underlineStyle = .single
                 }
-            case 5:
-                // blink
+            case 5, 6:
+                // blink; rapid blink (6) blinks at the same rate
                 style = [style, .blink]
             case 7:
                 // inverse and positive
@@ -5120,6 +5122,12 @@ open class Terminal {
             case 59:
                 // reset underline color
                 underlineColor = nil
+
+            case 53:
+                extendedStyle.insert (.overline)
+            case 55:
+                // not overlined
+                extendedStyle.remove (.overline)
                 
             default:
                 print ("Unknown SGR attribute: \(p) \(pars)")
@@ -5130,7 +5138,8 @@ open class Terminal {
                             bg: bg,
                             style: style,
                             underlineStyle: underlineStyle,
-                            underlineColor: underlineColor)
+                            underlineColor: underlineColor,
+                            extendedStyle: extendedStyle)
     }
 
     //

@@ -13,16 +13,19 @@ The adapter rules:
 
 ## Patches
 
-Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and the exact diff in `ThirdParty/SwiftTerm/trellis.patch`. There are six patched files today:
+Any change to the engine is recorded in `ThirdParty/SwiftTerm/PATCHES.md`, and the exact diff in `ThirdParty/SwiftTerm/trellis.patch`. There are nine patched files today:
 
 | File | Change | Why |
 | --- | --- | --- |
-| `Mac/MacTerminalView.swift` | Mouse-exit and scroll-wheel overrides are `open`; a `doubleClickSelection` hook replaces double-click word selection; `bufferPosition(for:)` exposes the engine's BiDi-aware hit test | Scrollbar reveal, [smart selection](../features/terminal.md#copy) and context-menu link actions |
-| `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset; OSC 8 parameters are split from the URL only at the first `;` | Zooming mustn't reset live parser state such as cursor mode and attributes; URLs containing `;` aren't truncated |
+| `Mac/MacTerminalView.swift` | Mouse-exit and scroll-wheel overrides are `open`; a `doubleClickSelection` hook replaces double-click word selection; `bufferPosition(for:)` exposes the engine's BiDi-aware hit test; `fontLigatures`, `allowBoldFont`, `allowItalicFont`, `boldIsBright` and `textBlinkEnabled` view properties | Scrollbar reveal, [smart selection](../features/terminal.md#copy), context-menu link actions and text-rendering settings |
+| `Apple/AppleTerminalView.swift` | Changing the font resizes without a DECSTR soft reset; OSC 8 parameters are split from the URL only at the first `;`; glyphs and decorations are placed from each run's source cells; concealed text and overline are drawn; the cursor cell is shaped on its own while ligatures are on; text-style flags select fonts, bright colours and blinking | Zooming mustn't reset live parser state such as cursor mode and attributes; URLs containing `;` aren't truncated; [text rendering](../features/terminal.md#text-rendering) (FR-TX01–FR-TX03) |
+| `CharData.swift` | `Attribute.extendedStyle` holds overline | `CharacterStyle`'s eight bits are all taken |
+| `Mac/MacCaretView.swift` | The caret hides concealed text | FR-TX02 |
+| `iOS/iOSTerminalView.swift` | Plain copies of the text-style properties | Keeps the shared renderer compiling for iOS; not built here |
 | `SelectionService.swift` | `setWordSelection(start:end:)` sets a half-open word-mode selection | A smart double-click selection extends by word when dragged and may end in the last column |
 | `Buffer.swift` | Opt-in `reflowCursorLine` for normal-buffer cursor-line reflow | Keeps the cursor and selections correct across font changes |
 | `KittyGraphics.swift` | Refuses file (`t=f`), temp-file (`t=t`) and shared-memory (`t=s`) transmission with `ENOTSUP` | Terminal output is untrusted and must never make the app read or unlink local files |
-| `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes, public `handleSemanticPrompt(_:)` and `handleProgressReport(_:)` forwarders, and `linkIsExplicit(at:)` | Trellis's own 133 handler authenticates [shell-integration](../features/shell-integration.md) marks and still keeps prompt navigation state; file links treat OSC 8 targets differently from detected text |
+| `Terminal.swift` | Exposes the reflow opt-in, which is enabled only during font changes, public `handleSemanticPrompt(_:)` and `handleProgressReport(_:)` forwarders, and `linkIsExplicit(at:)`; parses overline (SGR 53/55) and rapid blink (SGR 6) | Trellis's own 133 handler authenticates [shell-integration](../features/shell-integration.md) marks and still keeps prompt navigation state; file links treat OSC 8 targets differently from detected text; FR-TX02 |
 
 To update SwiftTerm:
 

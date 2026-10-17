@@ -13,10 +13,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Tabs show an animated bar along their top edge while a pane is printing output. Output at a shell-integrated prompt and the echo of your own typing never trigger it. Reduce Motion shows a static bar.
 - Smart selection: double-clicking a URL, email address, file path (with its `:line:column` suffix), UUID, IP address, git hash, or a quote around a quoted string selects the whole thing, even across wrapped lines. Elsewhere double-click still selects a word, and programs that use the mouse (such as vim with `set mouse=a`) still receive the click.
 - ⌘-click opens file paths and OSC 8 `file://` hyperlinks (`ls --hyperlink`, compilers, `rg`) in the file's default app, and the context menu offers **Open Link**, **Copy Link**, **Open**, **Reveal in Finder** and **Copy Path** over links. Apps, executables, scripts, installers and other files that could run code are only revealed in Finder. Files open only from local panes: relative paths need shell integration's directory, saved SSH host panes and panes started as `ssh` or `mosh` never open paths, `file://` links naming another host are refused, and network automount paths (`/net`, `/Network`) are never touched.
+- Font ligatures, on by default and drawn on the cell grid: with JetBrains Mono, `->`, `!=` and `<=>` join, and text after them keeps its columns. The character under the cursor is drawn on its own. Settings → Appearance → **Ligatures** turns them off.
+- Overline text (SGR 53/55), and rapid blink (SGR 6) blinks like SGR 5.
+- Settings → Appearance adds **Bold as bright colors**, **Use bold fonts**, **Use italic fonts** and **Allow blinking text**. All are on by default; settings saved by earlier versions keep these defaults.
 - Tabs show an **Input** label when their program is waiting for you: a password prompt (sudo, ssh, `read -s`) while it lasts, or a bell or terminal notification (OSC 9, OSC 777) from a pane you aren't looking at, such as a coding agent asking for permission. The window list marks windows with a waiting pane, and `session.get` reports `waitingForInput`.
 
 ### Changed
 
+- Bold white text (SGR 1;37) is now drawn bright white, like bold text in the other base colours.
+- Concealed text (SGR 8) is now hidden. Its background still shows, and copy and search still see the text.
+- Underline, strikethrough and overline now cover the whole width of wide characters, emoji and ligatures, and dotted, dashed and curly underlines join up across colour changes.
 - OSC 8 hyperlinks whose URL contains `;` are no longer cut off at the first `;` after the parameters.
 - More space between the sidebar toggle and the New Window button in the collapsed sidebar.
 

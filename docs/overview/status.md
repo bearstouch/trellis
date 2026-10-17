@@ -30,6 +30,7 @@ These checks can't be automated here and haven't been performed. They are record
 | Area | What's pending |
 | --- | --- |
 | Terminal engine | Real IME composition and VoiceOver terminal reading |
+| Text rendering | FR-TX01 ligatures seen in the native app with JetBrains Mono, including the cursor splitting them and colour changes and selections keeping them; FR-TX02 styles seen in vim, `git diff` and a curly-underline test; FR-TX04 emoji and CJK on macOS 14's older Apple Color Emoji; VoiceOver reading concealed text; blinking text with Reduce Motion |
 | Native shell | Lifecycle and display checks on external and non-Retina monitors |
 | Accessibility and input | VoiceOver navigation, a real IME, US and Portuguese keyboard layouts, dead keys |
 | Hosts | Native host-library and alias-discovery demos; Connect in New Window in the native UI |

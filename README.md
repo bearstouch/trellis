@@ -168,6 +168,8 @@ Settings → Appearance includes 10 editor-inspired theme families, each with da
 
 The Terminal font picker lists the monospace typefaces installed on your Mac and previews the selected font. Apply Appearance to save your choice.
 
+Terminals draw font ligatures (with fonts that have them, such as the bundled JetBrains Mono), colour emoji, wide CJK characters and combining marks on the cell grid, along with the usual text styles: bold, dim, italic, underline in single, double, curly, dotted and dashed styles with its own colour, strikethrough, overline, blink, inverse and concealed text. Settings → Appearance turns ligatures, bold-as-bright colours, bold and italic faces, and blinking text on or off.
+
 ## Troubleshooting
 
 - **`swift format` not found:** `xcode-select -p` points at the Command Line Tools. Switch it to Xcode 26.

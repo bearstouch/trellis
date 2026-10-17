@@ -23,7 +23,40 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var scrollbackLines = 10_000
     public var lightThemeID = "trellis-light"
     public var darkThemeID = "trellis-dark"
+    // Text rendering (FR-TX01, FR-TX03).
+    public var fontLigatures = true
+    public var boldAsBright = true
+    public var allowBoldFont = true
+    public var allowItalicFont = true
+    public var blinkingText = true
     public init() {}
+    private enum CodingKeys: String, CodingKey {
+        case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
+        case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText
+    }
+    /// Settings saved before the text-rendering keys existed load with their defaults.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        chromeMode = try c.decode(ChromeMode.self, forKey: .chromeMode)
+        fontName = try c.decode(String.self, forKey: .fontName)
+        fontSize = try c.decode(Double.self, forKey: .fontSize)
+        cursorShape = try c.decode(TerminalCursorShape.self, forKey: .cursorShape)
+        cursorBlinks = try c.decode(Bool.self, forKey: .cursorBlinks)
+        scrollbackLines = try c.decode(Int.self, forKey: .scrollbackLines)
+        lightThemeID = try c.decode(String.self, forKey: .lightThemeID)
+        darkThemeID = try c.decode(String.self, forKey: .darkThemeID)
+        fontLigatures = try c.decodeIfPresent(Bool.self, forKey: .fontLigatures) ?? true
+        boldAsBright = try c.decodeIfPresent(Bool.self, forKey: .boldAsBright) ?? true
+        allowBoldFont = try c.decodeIfPresent(Bool.self, forKey: .allowBoldFont) ?? true
+        allowItalicFont = try c.decodeIfPresent(Bool.self, forKey: .allowItalicFont) ?? true
+        blinkingText = try c.decodeIfPresent(Bool.self, forKey: .blinkingText) ?? true
+    }
+    /// True when terminals must be updated: everything except chrome mode and theme selection.
+    public func terminalRenderingDiffers(from other: Self) -> Bool {
+        var normalized = self
+        (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
+        return normalized != other
+    }
     mutating func migrateLegacyThemeIDs() {
         if lightThemeID == "uterm-light" { lightThemeID = "trellis-light" }
         if darkThemeID == "uterm-dark" { darkThemeID = "trellis-dark" }

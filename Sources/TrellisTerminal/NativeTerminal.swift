@@ -190,6 +190,12 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             terminalView.getTerminal().reflowCursorLine = false
             paneSearch.reset()
         }
+        // Each property redraws only when its value changes; none resizes the grid.
+        terminalView.fontLigatures = settings.fontLigatures
+        terminalView.boldIsBright = settings.boldAsBright
+        terminalView.allowBoldFont = settings.allowBoldFont
+        terminalView.allowItalicFont = settings.allowItalicFont
+        terminalView.textBlinkEnabled = settings.blinkingText
         if terminalView.scrollback.budget.lineLimit != settings.scrollbackLines {
             let old = terminalView.scrollback
             let evicted = old.historyEvicted || old.retainedHistoryRows > settings.scrollbackLines

@@ -161,10 +161,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public func applyAppearance(_ settings: AppearanceSettings) -> Bool {
         guard settings.isValid else { return false }
         let previous = appearance
-        let terminalSettingsChanged =
-            previous.fontName != settings.fontName || previous.fontSize != settings.fontSize
-            || previous.cursorShape != settings.cursorShape || previous.cursorBlinks != settings.cursorBlinks
-            || previous.scrollbackLines != settings.scrollbackLines
+        let terminalSettingsChanged = previous.terminalRenderingDiffers(from: settings)
         appearance = settings
         reconcileThemeSelections()
         if terminalSettingsChanged { for terminal in terminals.values { terminal.applyAppearance(terminalAppearance) } }

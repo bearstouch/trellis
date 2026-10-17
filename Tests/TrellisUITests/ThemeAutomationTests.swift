@@ -106,6 +106,21 @@ final class ThemeAutomationTests: XCTestCase {
     }
 
     @MainActor
+    func testAppearanceSetKeepsTextRenderingSettings() async throws {
+        let h = try Harness(themeDirectory: themes)
+        defer { h.discardPreferences() }
+        try await h.grant("full")
+        var settings = h.model.appearance
+        settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
+        settings.allowItalicFont = false; settings.blinkingText = false
+        XCTAssertTrue(h.model.applyAppearance(settings))
+        _ = try result(try await h.call("appearance.set", ["mode": "dark"]))
+        var expected = settings
+        expected.chromeMode = .dark
+        XCTAssertEqual(h.model.appearance, expected, "appearance.set changes only the mode and theme slots")
+    }
+
+    @MainActor
     func testAppearanceEventHasNoProcessEffects() async throws {
         let h = try Harness(themeDirectory: themes)
         defer {
