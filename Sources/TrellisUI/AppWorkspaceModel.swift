@@ -11,6 +11,19 @@ public struct WindowActivity: Equatable, Sendable {
     public init() {}
 }
 
+/// One tab in the collapsed rail's hover card (FR-W06): live status, never persisted.
+public struct WindowTabPreview: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let title: String
+    public let color: TabColor?
+    public let isActive: Bool
+    public let paneCount: Int
+    public let isBusy: Bool
+    public let inputWait: InputWaitReason?
+    public let failedCommandExit: Int32?
+    public let hasExitedSession: Bool
+}
+
 @MainActor
 public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var snapshot = WorkspaceSnapshot()
@@ -724,6 +737,26 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public var windowsNeedingInput: Set<UUID> {
         Set(inputWaits.keys.compactMap { snapshot.panes[$0].flatMap { snapshot.tabs[$0.tabID]?.windowID } })
+    }
+
+    /// A window's tabs in order with their live status, for the rail's hover card (FR-W06). Unknown window → empty.
+    public func tabPreviews(windowID: UUID) -> [WindowTabPreview] {
+        guard let window = snapshot.windows.first(where: { $0.id == windowID }) else { return [] }
+        return window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in
+            let panes = tab.root.paneIDs
+            return WindowTabPreview(
+                id: tab.id, title: displayTitle(tab), color: tab.color, isActive: tab.id == window.activeTabID, paneCount: panes.count,
+                isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id),
+                failedCommandExit: panes.lazy.compactMap(failedCommandExit(paneID:)).first,
+                hasExitedSession: panes.contains { [.exited, .failed].contains(terminals[$0]?.sessionState) })
+        }
+    }
+
+    /// Selecting a tab only sets its window's active tab, so jumping from another window selects both.
+    public func selectWindowTab(windowID: UUID, tabID: UUID) async {
+        guard snapshot.tabs[tabID]?.windowID == windowID else { return }
+        await selectWindow(windowID)
+        await selectTab(tabID)
     }
 
     /// At the shell prompt (known through integration) nothing is waiting on a program: a completion bell or the

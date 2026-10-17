@@ -239,8 +239,10 @@ public struct WorkspaceRootView: View {
                 }
                 .contentShape(shape)
         }
-        .buttonStyle(.plain).help(window.name)
+        // The hover card carries the full name (FR-W06), so no tooltip competes with it.
+        .buttonStyle(.plain)
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+        .modifier(WindowHoverPreview(window: window, model: model))
     }
 
     private func beginWindowRename(_ window: ManagedWindow) {
@@ -496,6 +498,117 @@ private struct WindowItemActions: ViewModifier {
                 Divider().overlay(model.separatorOverlay)
                 Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
             }
+    }
+}
+
+/// Hovering a rail tile opens a card of the window's tabs (FR-W06). A short grace lets the
+/// pointer cross from the tile into the card without closing it.
+private struct WindowHoverPreview: ViewModifier {
+    let window: ManagedWindow
+    @ObservedObject var model: AppWorkspaceModel
+    @State private var presented = false
+    @State private var overTile = false
+    @State private var overCard = false
+    @State private var pending: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content
+            .onHover {
+                overTile = $0; schedule()
+            }
+            .accessibilityAction(named: "Show Tabs") { presented = true }
+            .popover(isPresented: $presented, arrowEdge: .trailing) {
+                WindowTabsPreviewCard(window: window, model: model) { tabID in
+                    close()
+                    Task { await model.selectWindowTab(windowID: window.id, tabID: tabID) }
+                }
+                .onHover {
+                    overCard = $0; schedule()
+                }
+            }
+            // A card dismissed by an outside click may never report the pointer leaving it.
+            .onChange(of: presented) { _, shown in if !shown { overCard = false } }
+            .onChange(of: model.sidebarCollapsed) { _, _ in close() }
+            .onDisappear { close() }
+    }
+
+    private func schedule() {
+        pending?.cancel()
+        let open = overTile || overCard
+        guard open != presented else { return }
+        pending = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(open ? 400 : 250))
+            guard !Task.isCancelled, (overTile || overCard) == open else { return }
+            presented = open
+        }
+    }
+
+    private func close() {
+        pending?.cancel(); pending = nil
+        overTile = false; overCard = false; presented = false
+    }
+}
+
+private struct WindowTabsPreviewCard: View {
+    let window: ManagedWindow
+    @ObservedObject var model: AppWorkspaceModel
+    let select: (UUID) -> Void
+
+    var body: some View {
+        let tabs = model.tabPreviews(windowID: window.id)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(window.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 12)
+                Text("\(tabs.count) \(tabs.count == 1 ? "tab" : "tabs")").font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
+            }.padding(.horizontal, 6).padding(.bottom, 4).accessibilityElement(children: .combine)
+            ForEach(tabs) { tab in
+                Button {
+                    select(tab.id)
+                } label: {
+                    row(tab)
+                }.buttonStyle(.plain)
+                    .accessibilityLabel(Self.spoken(tab)).accessibilityAddTraits(tab.isActive ? [.isSelected] : [])
+            }
+        }
+        .padding(10).frame(width: 280, alignment: .leading)
+        .foregroundStyle(model.themeColor(.foreground))
+        .background(model.themeColor(.surface))
+        .accessibilityElement(children: .contain).accessibilityLabel("Tabs in \(window.name)")
+    }
+
+    private func row(_ tab: WindowTabPreview) -> some View {
+        HStack(spacing: 6) {
+            // The active tab is marked by a chevron and weight, never color alone.
+            Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).opacity(tab.isActive ? 1 : 0)
+            Circle().fill(tab.color?.swatchColor ?? .clear).frame(width: 7, height: 7)
+            Text(tab.title).lineLimit(1).fontWeight(tab.isActive ? .semibold : .regular)
+            Spacer(minLength: 8)
+            if tab.paneCount > 1 { Text("\(tab.paneCount) panes").foregroundStyle(model.themeColor(.mutedForeground)) }
+            if let code = tab.failedCommandExit { Label("exit \(code)", systemImage: "exclamationmark.circle").labelStyle(.titleAndIcon) }
+            if tab.hasExitedSession { Label("Exited", systemImage: "stop.circle").labelStyle(.titleAndIcon) }
+            if let wait = tab.inputWait {
+                Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
+            } else if tab.isBusy {
+                Label("Busy", systemImage: "waveform").labelStyle(.titleAndIcon).foregroundStyle(model.themeColor(.accent))
+            }
+        }
+        .font(.system(size: 11)).lineLimit(1).padding(.horizontal, 6).padding(.vertical, 5)
+        .background(tab.isActive ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .contentShape(Rectangle())
+    }
+
+    static func spoken(_ tab: WindowTabPreview) -> String {
+        var parts = ["Tab \(tab.title)"]
+        if tab.isActive { parts.append("active") }
+        if let color = tab.color { parts.append("\(color.displayName.lowercased()) label") }
+        if tab.paneCount > 1 { parts.append("\(tab.paneCount) panes") }
+        if let code = tab.failedCommandExit { parts.append(WorkspaceAccessibility.commandFailureText(code)) }
+        if tab.hasExitedSession { parts.append("a session exited") }
+        if let wait = tab.inputWait { parts.append(wait.text.lowercased()) } else if tab.isBusy { parts.append("output in progress") }
+        return parts.joined(separator: ", ")
     }
 }
 

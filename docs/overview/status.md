@@ -33,6 +33,7 @@ These checks can't be automated here and haven't been performed. They are record
 | Text rendering | FR-TX01 in the native app: the cursor splitting ligatures, colour changes and selections keeping them, and the setting turning them off (joined JetBrains Mono ligatures were seen on macOS 26.6.2); FR-TX02 styles seen in vim, `git diff` and a curly-underline test; FR-TX04 emoji and CJK on macOS 14's older Apple Color Emoji; VoiceOver reading concealed text; blinking text with Reduce Motion |
 | Native shell | Lifecycle and display checks on external and non-Retina monitors |
 | Accessibility and input | VoiceOver navigation, a real IME, US and Portuguese keyboard layouts, dead keys |
+| Sidebar | FR-W06 tabs hover card in the native app: open/close delays, moving into the card, live updates, clicking a tab of another window, VoiceOver reading rows and the **Show Tabs** action |
 | Hosts | Native host-library and alias-discovery demos; Connect in New Window in the native UI |
 | Tabs | FR-T05 busy bar: the real animation with `seq`, the static bar under Reduce Motion, VoiceOver reading "output in progress"; FR-T06 input label: a real `sudo` prompt, Claude Code's bell in a background tab, VoiceOver reading "waiting for input" |
 | SSH | Known, unknown and changed host keys; agent, passphrase and password prompts; saved-password login through askpass, with and without Touch ID, and with real `/usr/bin/ssh` retries and host-key prompts; dropped networks, against a controlled SSH server |
