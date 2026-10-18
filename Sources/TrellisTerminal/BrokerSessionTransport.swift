@@ -205,7 +205,8 @@ public final class BrokerSessionClient: SessionBrokerClient {
 
     private var open: BrokerConnection? { connection?.isOpen == true ? connection : nil }
 
-    private enum Found { case none, connected(BrokerConnection), incompatible }
+    /// `busy`: a live broker answered but turned this connection away (another client it hasn't let go of yet).
+    private enum Found { case none, connected(BrokerConnection), incompatible, busy }
 
     private func connectExisting() async -> Found {
         if let open { return .connected(open) }
@@ -229,7 +230,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
             return .none
         }
         do { try await connection.hello() } catch {
-            return (error as? BrokerClientError) == .incompatible ? .incompatible : .none
+            return (error as? BrokerClientError) == .incompatible ? .incompatible : .busy
         }
         adopt(connection)
         return .connected(connection)
@@ -248,7 +249,12 @@ public final class BrokerSessionClient: SessionBrokerClient {
         if let preparing { return await preparing.value }
         let task = Task { @MainActor [weak self] () -> Bool in
             guard let self else { return false }
-            if case .connected = await self.connectExisting() { return true }
+            switch await self.connectExisting() {
+            case .connected: return true
+            // Starting another broker would overwrite `broker.json` and orphan a live one's sessions without a word.
+            case .incompatible, .busy: return false
+            case .none: break
+            }
             let launcher = self.launcher
             guard let socketPath = try? await Task.detached(operation: { () throws(BrokerClientError) -> String in try launcher.spawn() }).value else { return false }
             let deadline = ContinuousClock.now + .seconds(2)
@@ -275,7 +281,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
 
     public func existingSessions() async -> BrokerListing? {
         switch await connectExisting() {
-        case .none: return nil
+        case .none, .busy: return nil
         case .incompatible: return .incompatible
         case .connected(let connection):
             guard case .sessions(let records)? = try? await connection.request(.list) else { return nil }
