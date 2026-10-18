@@ -11,7 +11,7 @@
 - **MAC-04:**
     - Trellis integrates with the menu bar, Settings, the Dock, standard hide, minimize and full-screen, standard dialogs, the system appearance, the clipboard, font selection and the keyboard responder chain.
     - Closing the native window while sessions are live asks once whether to end them. Accepting closes the workspaces and returns the app to its empty state, and reopening the main window shows the current state.
-    - Quitting has its own running-session confirmation.
+    - Quitting has its own running-session confirmation. With **Keep sessions running after quit** on and broker sessions running (FR-R03), it offers **Keep Running** (the default button), **Stop Sessions** and **Cancel** instead; Keep Running sends no signal, and sessions outside the broker still close. At launch, kept sessions no restored pane claims get **Stop Them** / **Leave Running**.
 - **MAC-05:** Trellis's tabs aren't macOS automatic window tabbing, which is disabled. Every workspace tab belongs to Trellis's model and can be controlled through the API.
 - **MAC-06:**
     - Trellis supports Retina scaling, monitor changes and full-screen layouts. Restored window geometry is constrained to the displays available, and terminal cell sizing is consistent.
@@ -20,16 +20,16 @@
 
 ## Files, credentials and permissions
 
-- Durable configuration goes in Application Support, and disposable data in Caches or the runtime directory. The control socket lives in the per-user `$TMPDIR`.
+- Durable configuration goes in Application Support, and disposable data in Caches or the runtime directory. The control socket, and the session broker's socket (FR-R03), live in owner-only directories in the per-user `$TMPDIR`.
 - Preferences use native settings storage. Automation credentials (service `Trellis Automation`) and optional saved-host passwords (service `Trellis SSH Host`, [FR-H06](../features/ssh-hosts.md#saved-passwords)) use the login Keychain, accessible when unlocked, this device only. Private-key contents are never stored. Ad-hoc builds may ask for Keychain access again after a rebuild, because the item's access list names the previous signature.
-- **MAC-08:** shells and SSH run as the current user, with no root helper. Trellis never asks at launch for blanket Accessibility, Screen Recording or Full Disk Access permission. If macOS denies a directory operation, Trellis explains it in context instead of requesting unrelated privileges.
-- **MAC-09:** Trellis is distributed directly, not through the Mac App Store, and without App Sandbox, so that it can run ordinary developer shells. The app and the bundled CLI are signed with the hardened runtime and no entitlements, notarized and stapled. Gatekeeper is verified on a clean machine. A sandboxed build would need its own feasibility decision.
+- **MAC-08:** shells and SSH run as the current user, with no root helper. The optional `trellis-broker` (FR-R03) is a user process started by the app, not a launchd agent or login item; it doesn't survive logout. Trellis never asks at launch for blanket Accessibility, Screen Recording or Full Disk Access permission. If macOS denies a directory operation, Trellis explains it in context instead of requesting unrelated privileges.
+- **MAC-09:** Trellis is distributed directly, not through the Mac App Store, and without App Sandbox, so that it can run ordinary developer shells. The app and the bundled helpers (`trellis`, `trellis-askpass`, `trellis-broker`) are signed with the hardened runtime and no entitlements, notarized and stapled. Gatekeeper is verified on a clean machine. A sandboxed build would need its own feasibility decision.
 
 ## Installation, upgrades and removal
 
 - **MAC-10:** the app ships as a signed DMG with the `trellis` executable in `Contents/Helpers`. Installing a user-local CLI link is an explicit step the user runs. Trellis never silently edits shell startup files or writes to system directories.
 - **MAC-11:** upgrades are manual and signed for the MVP; automatic updates are P1. Persisted state is versioned and migrated safely, a last-known-good backup is kept, and newer formats are rejected without being overwritten. Downgrading has known limits.
-- **MAC-12:** uninstalling removes the app and the optional CLI link. `trellis cli uninstall-plan` lists the app-owned files and both Keychain services. It never touches SSH keys, SSH configuration, known-hosts files or shell history. Deleting a host deletes its metadata and its saved password, if any.
+- **MAC-12:** uninstalling removes the app and the optional CLI link. First quit Trellis with **Stop Sessions**, so no kept session or `trellis-broker` keeps running (`trellis cli uninstall-plan` says so in its `first` field). `trellis cli uninstall-plan` lists the app-owned files, which include saved scrollback and `broker.json`, and both Keychain services. It never touches SSH keys, SSH configuration, known-hosts files or shell history. Deleting a host deletes its metadata and its saved password, if any.
 
 The step-by-step procedures are in the [release guide](../release/README.md).
 

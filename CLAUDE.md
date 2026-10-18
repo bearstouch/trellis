@@ -45,6 +45,7 @@ Always run format + lint + build + test before committing.
 | --- | --- |
 | `TrellisCore` | Engine-independent domain: `WorkspaceStore` (actor, authoritative model), `WorkspaceCommandService` (single mutation path), persistence (`WorkspacePersistence` actor), session lifecycle/closure policy, paste review, themes (`ThemeDocument`, `ThemeJSON`, `ThemeLibrary` actor), appearance settings. Bundled `Resources/Themes`. |
 | `TrellisPOSIX` | Small C target (`spawn.c`) for PTY/process-group spawning. |
+| `TrellisBroker` / `TrellisBrokerMain` | Opt-in `trellis-broker` helper (FR-R03): owns the PTYs of sessions kept after quit, their replay ring and the owner-only AF_UNIX protocol. Depends only on `TrellisPOSIX`. |
 | `TrellisTerminal` | SwiftTerm-specific code only: `NativeTerminal`, `AccessibleTerminalView`, `PTYProcess`, scrollback, search, selection bookmarks, terminal appearance. |
 | `TrellisUI` | SwiftUI/AppKit views and `AppWorkspaceModel` (`@MainActor` `ObservableObject` bridging store ↔ views ↔ terminals). |
 | `TrellisControl` | Local automation: AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, auth-gated `ControlHandler`. |
@@ -71,7 +72,8 @@ change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `Tre
 - PTY I/O and parsing off the main thread; view updates on `@MainActor`. Bound large output.
 - Persistence: versioned Codable JSON, atomic replace, last-known-good backup, owner-only
   permissions (files 0600, dirs 0700), single writer. Never persist terminal output, typed
-  input, secrets, or environment secret values. Corrupt/newer state → recovery, never overwrite.
+  input, secrets, or environment secret values — except the opt-in, redacted scrollback file
+  (FR-R04/FR-R05). Corrupt/newer state → recovery, never overwrite.
 - Terminal output and typed input are never logged.
 - Inject time, filesystem, process, clipboard, Keychain and transport dependencies so tests are
   deterministic (see `SessionClosureCoordinator(now:sleep:)` for the pattern).
@@ -118,4 +120,6 @@ are recorded as **pending**, never as passed. Document blockers instead of fakin
 - `--fixture` runs a fixed shell that exits with code 7; the window stays inspectable.
 - `scripts/run-feasibility.sh` copies the SwiftPM resource bundles (`SwiftTerm_SwiftTerm`,
   `Trellis_TrellisCore`) into the app; a new target with resources must be added there too.
+  It also copies and signs the bundled helpers (`trellis-askpass`, `trellis-broker`); a new helper
+  goes there, in both packaging scripts and in `release/manifest.json`.
 - Settings/theme preview state is never persisted; cancelling must restore exact prior state.

@@ -5,6 +5,9 @@ import TrellisTerminal
 
 public enum TabRenameAction: Sendable { case commit, cancel }
 
+/// What ⌘Q does with sessions the broker holds (FR-R03).
+public enum QuitChoice: Sendable, Equatable { case keepRunning, stopSessions, cancel }
+
 public struct WindowActivity: Equatable, Sendable {
     public var hasOutput = false
     public var hasExit = false
@@ -366,6 +369,17 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Reads a host's Keychain password for one answer, given the connection revision the session started with.
     public var savedPassword: (@Sendable (UUID, UInt64) async -> Data?)?
     private var askpassRegistrations: [UUID: AskpassBroker.Registration] = [:]
+    /// Holds sessions that survive quit (FR-R03); nil (tests, no helper) keeps every session a local PTY.
+    public var sessionBroker: (any SessionBrokerClient)?
+    /// FR-R03, saved per state directory; applies to sessions started after a change.
+    @Published public internal(set) var keepSessionsRunning = false
+    /// FR-R04, saved per state directory.
+    @Published public internal(set) var restoreScrollback = false
+    let scrollbackStore: ScrollbackStore?
+    /// Asked on ⌘Q with broker sessions running: kept count, then sessions that will stop.
+    public var confirmKeepRunning: (Int, Int) -> QuitChoice = { _, _ in .cancel }
+    /// Asked at launch for running sessions no restored pane claims (0: an incompatible broker); true stops them.
+    public var confirmStopOrphans: (Int) -> Bool = { _ in false }
     let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
     private let preferences: UserDefaults
@@ -375,6 +389,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public init(store: WorkspaceStore, preferences: UserDefaults = .standard, persistence: WorkspacePersistence? = nil, themeLibrary: ThemeLibrary? = nil) {
         self.themeLibrary = themeLibrary
         self.persistence = persistence
+        scrollbackStore = persistence.map { ScrollbackStore(directory: $0.directory.appendingPathComponent("Scrollback", isDirectory: true)) }
         self.isRestoring = persistence != nil
         service = WorkspaceCommandService(store: store)
         self.preferences = preferences
@@ -385,6 +400,8 @@ public final class AppWorkspaceModel: ObservableObject {
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
+        confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
+        confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
     }
 
     /// Returns true for an existing document or recovery state, even if empty.
@@ -403,9 +420,19 @@ public final class AppWorkspaceModel: ObservableObject {
         // cancelled by Quit, so shutdown cannot replace saved state with an
         // uninitialized empty snapshot.
         switch result {
-        case .missing: return false
+        case .missing:
+            _ = await reattachBrokerSessions()
+            return false
         case .loaded(let restored):
-            do { try await applyRestored(restored); return true } catch { recoveryMessage = "The saved workspace could not be restored."; return true }
+            do { try await applyRestored(restored) } catch {
+                recoveryMessage = "The saved workspace could not be restored."
+                _ = await reattachBrokerSessions()
+                return true
+            }
+            // A kept session's broker replay replaces its saved text, so adopt first.
+            let replayed = await reattachBrokerSessions()
+            await restoreScrollbackText(skipping: replayed)
+            return true
         case .recovery(let reason, let backup):
             recoveryReason = reason; recoveryBackup = backup; backupAvailable = backup != nil
             if case .unsupportedVersion = reason {
@@ -413,6 +440,8 @@ public final class AppWorkspaceModel: ObservableObject {
             } else {
                 recoveryMessage = "The saved workspace could not be read. Recover the backup or start empty; the original file will be preserved."
             }
+            // No pane can claim a kept session here; the orphan alert still reports them, and Leave Running is safe.
+            _ = await reattachBrokerSessions()
             return true
         }
     }
@@ -422,6 +451,8 @@ public final class AppWorkspaceModel: ObservableObject {
         defaultShell = restored.settings.shell; defaultDirectory = restored.settings.directory
         appearance = restored.settings.appearance
         remoteControl = restored.settings.remoteControl
+        keepSessionsRunning = restored.settings.keepSessionsRunning
+        restoreScrollback = restored.settings.restoreScrollback
         onRemoteControlSettingsChanged?(remoteControl)
         reconcileThemeSelections()
         refreshEffectiveTheme()
@@ -512,7 +543,8 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
         let settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
-            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl)
+            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl,
+            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback)
         do { try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration); return true } catch {
             errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
         }
@@ -531,6 +563,9 @@ public final class AppWorkspaceModel: ObservableObject {
         snapshot = next
         // Replaced or closed sessions drop their output; their cursors become invalid.
         for id in previous.sessions.keys where next.sessions[id] == nil { outputJournal.remove(session: id) }
+        // A closed pane or window, or a restart, discards the saved text of the session it replaced (FR-R04).
+        let removed = previous.sessions.keys.filter { next.sessions[$0] == nil }
+        if restoreScrollback, !removed.isEmpty, let scrollbackStore { Task { await scrollbackStore.delete(sessionIDs: removed) } }
         if let onWorkspaceEvents {
             let events = WorkspaceEvents.diff(previous, next)
             if !events.isEmpty { onWorkspaceEvents(events) }
@@ -615,38 +650,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     ).snapshot)
                 return
             }
-            terminal.onInputError = { [weak self] _ in
-                guard let self, !self.automationInputSessionIDs.contains(request.sessionID) else { return }
-                self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
-            }
-            var launchCompleted = false
-            terminal.onStateChanged = { [weak self, weak terminal] state in
-                if state != .running, self?.pendingPaste?.target.paneID == paneID { self?.cancelPaste() }
-                if !launchCompleted, state == .running || state == .closing, let pid = terminal?.processID {
-                    launchCompleted = true
-                    self?.enqueue(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .started(processID: pid)))
-                }
-                if launchCompleted, state == .closing { self?.enqueue(.markSessionClosing(sessionID: request.sessionID)) }
-            }
-            terminal.onExit = { [weak self, weak terminal] code in
-                guard let self, let terminal else { return }
-                let command: WorkspaceCommand =
-                    !launchCompleted
-                    ? .completeLaunch(
-                        sessionID: request.sessionID, attemptID: request.attemptID,
-                        outcome: .failed(
-                            message: terminal.sessionState == .failed
-                                ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
-                    : .recordSessionExit(sessionID: request.sessionID, code: code)
-                self.closureCoordinator.forget(sessionID: request.sessionID)
-                if let registration = self.askpassRegistrations.removeValue(forKey: request.sessionID) { self.askpass?.unregister(registration) }
-                if self.terminals[paneID] === terminal {
-                    self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
-                    self.clearProgress(paneID: paneID)
-                }
-                self.recordActivity(paneID: paneID, exited: true)
-                self.enqueue(command)
-            }
+            installLifecycle(terminal, paneID: paneID, sessionID: request.sessionID, attemptID: request.attemptID)
             if fixture {
                 await terminal.startFixture()
             } else {
@@ -694,12 +698,65 @@ public final class AppWorkspaceModel: ObservableObject {
                     configuration = LocalLaunchConfiguration(
                         executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
+                if keepSessionsRunning, let sessionBroker {
+                    let ready = await sessionBroker.prepare()
+                    guard terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
+                        if let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
+                        publish(
+                            try await service.execute(
+                                .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: "Session launch was cancelled."))
+                            ).snapshot)
+                        return
+                    }
+                    if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
+                        terminal.useTransport(transport)
+                    } else if !quietly {
+                        errorMessage = "The session broker could not start, so this session will end when Trellis quits."
+                    }
+                }
                 if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
+    }
+
+    /// Feeds a session's state changes and exit back to the store. `attemptID` is nil for a session
+    /// adopted from the broker, which is already running (FR-R03).
+    func installLifecycle(_ terminal: NativeTerminal, paneID: UUID, sessionID: UUID, attemptID: UUID?) {
+        terminal.onInputError = { [weak self] _ in
+            guard let self, !self.automationInputSessionIDs.contains(sessionID) else { return }
+            self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
+        }
+        var launchCompleted = attemptID == nil
+        terminal.onStateChanged = { [weak self, weak terminal] state in
+            if state != .running, self?.pendingPaste?.target.paneID == paneID { self?.cancelPaste() }
+            if !launchCompleted, let attemptID, state == .running || state == .closing, let pid = terminal?.processID {
+                launchCompleted = true
+                self?.enqueue(.completeLaunch(sessionID: sessionID, attemptID: attemptID, outcome: .started(processID: pid)))
+            }
+            if launchCompleted, state == .closing { self?.enqueue(.markSessionClosing(sessionID: sessionID)) }
+        }
+        terminal.onExit = { [weak self, weak terminal] code in
+            guard let self, let terminal else { return }
+            let command: WorkspaceCommand =
+                !launchCompleted
+                ? .completeLaunch(
+                    sessionID: sessionID, attemptID: attemptID ?? UUID(),
+                    outcome: .failed(
+                        message: terminal.sessionState == .failed
+                            ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
+                : .recordSessionExit(sessionID: sessionID, code: code)
+            self.closureCoordinator.forget(sessionID: sessionID)
+            if let registration = self.askpassRegistrations.removeValue(forKey: sessionID) { self.askpass?.unregister(registration) }
+            if self.terminals[paneID] === terminal {
+                self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
+                self.clearProgress(paneID: paneID)
+            }
+            self.recordActivity(paneID: paneID, exited: true)
+            self.enqueue(command)
+        }
     }
 
     /// The default login shell with bundled scripts only; other processes, SSH and fixtures never reach this (FR-SI01).
@@ -928,7 +985,8 @@ public final class AppWorkspaceModel: ObservableObject {
         state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
-        if wasRunning, !state.commandRunning { postCommandFinished(state, paneID: paneID) }
+        // Replayed marks (FR-R03) describe commands that finished while Trellis was closed; they never notify.
+        if wasRunning, !state.commandRunning, terminals[paneID]?.isReplaying != true { postCommandFinished(state, paneID: paneID) }
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
@@ -1371,7 +1429,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
     }
 
-    private func prepareCloseSummary(_ panes: Set<UUID>) {
+    func prepareCloseSummary(_ panes: Set<UUID>) {
         closeSummary = panes.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
             guard terminals[id]?.isRunning == true, let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID],
                 let window = snapshot.windows.first(where: { $0.id == tab.windowID })
@@ -1406,7 +1464,7 @@ public final class AppWorkspaceModel: ObservableObject {
         return accepted
     }
 
-    private func finishClosure(_ panes: Set<UUID>) async -> Bool {
+    func finishClosure(_ panes: Set<UUID>) async -> Bool {
         let affected: [any ClosableSession] = panes.compactMap { terminals[$0] }
         var result = await closureCoordinator.close(affected, allowRunning: true)
         if case .closePending = result {
@@ -1463,7 +1521,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// Preserve callback order across async store calls, including fast exits.
-    private func enqueue(_ command: WorkspaceCommand) {
+    func enqueue(_ command: WorkspaceCommand) {
         let previous = updates
         updates = Task { @MainActor [weak self] in
             await previous?.value

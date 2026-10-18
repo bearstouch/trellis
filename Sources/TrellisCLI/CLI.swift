@@ -238,6 +238,7 @@ public enum CLI {
             let entries: [JSONValue] = items.map { item in .object(["path": .string(item.path), "description": .string(item.description)]) }
             return .object([
                 "dryRun": .bool(true),
+                "first": .string(UninstallPlanner.firstStep),
                 "remove": .array(entries),
                 "keychain": .string(
                     "Delete generic passwords with service "

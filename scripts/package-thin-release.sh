@@ -23,12 +23,13 @@ for pair in arm64:apple-silicon x86_64:intel; do
     rm -rf "$stage"; mkdir -p "$stage"
     app="$stage/Trellis.app"
     cp -R "$universal" "$app"
-    for binary in Contents/MacOS/Trellis Contents/Helpers/trellis Contents/Helpers/trellis-askpass; do
+    for binary in Contents/MacOS/Trellis Contents/Helpers/trellis Contents/Helpers/trellis-askpass Contents/Helpers/trellis-broker; do
         /usr/bin/lipo -thin "$arch" "$app/$binary" -output "$app/$binary.thin"
         mv "$app/$binary.thin" "$app/$binary"
     done
     sign "$app/Contents/Helpers/trellis" dev.trellis.cli
     sign "$app/Contents/Helpers/trellis-askpass" dev.trellis.askpass
+    sign "$app/Contents/Helpers/trellis-broker" dev.trellis.broker
     sign "$app" dev.trellis
     /usr/bin/codesign --verify --deep --strict "$app"
     [ "$(/usr/bin/lipo -archs "$app/Contents/MacOS/Trellis")" = "$arch" ] || { echo "$label app is not $arch" >&2; exit 1; }

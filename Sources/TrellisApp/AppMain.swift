@@ -85,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         model.openHosts = { [weak self] in self?.showHosts() }
         model.resolveHost = { [hosts] id in await hosts.host(id) }
-        if let helper = Self.askpassHelperPath() {
+        if let helper = Self.helperPath(AskpassBroker.helperName) {
             model.askpass = AskpassBroker(helperPath: helper)
             let library = hosts.library, gate = LocalAuthenticationGate()
             hosts.userPresence = gate
@@ -134,11 +134,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop() }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
-    private static func askpassHelperPath() -> String? {
+    static func helperPath(_ name: String) -> String? {
         let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let candidates = [
-            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/\(AskpassBroker.helperName)"),
-            executable.deletingLastPathComponent().appendingPathComponent(AskpassBroker.helperName)
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/\(name)"),
+            executable.deletingLastPathComponent().appendingPathComponent(name)
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }?.path
     }
@@ -526,14 +526,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationPending else { return .terminateLater }
-        guard !closingWindow, confirmSessionClosure() else { return .terminateCancel }
+        guard !closingWindow else { return .terminateCancel }
+        let choice = model.confirmQuit()
+        guard choice != .cancel else { return .terminateCancel }
         terminationPending = true
         startupTask?.cancel()
+        if choice == .keepRunning {
+            // FR-R03: broker sessions get no signal; only sessions outside the broker close.
+            Task {
+                let saved = await model.detachForQuit()
+                if !saved { terminationPending = false; model.cancelShutdown() }
+                NSApp.reply(toApplicationShouldTerminate: saved)
+            }
+            return .terminateLater
+        }
         // Gate pending UI operations before yielding, including launches that
         // are waiting for the shared command store rather than a live PTY.
         model.stopAll()
         Task {
             let closed = await model.shutdown()
+            if closed { await model.saveScrollback() }
             let saved = closed ? await model.flushWorkspaceSave() : false
             if !saved { terminationPending = false; model.cancelShutdown() }
             NSApp.reply(toApplicationShouldTerminate: saved)
@@ -574,6 +586,11 @@ struct TrellisMain {
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
+            // FR-R03: a broker is started only when a session is started with Keep Running on; one left by an
+            // earlier run is always looked for at launch.
+            if let helper = AppDelegate.helperPath(BrokerSessionClient.helperName), let client = BrokerSessionClient.currentExecutable() {
+                model.sessionBroker = BrokerSessionClient(stateDirectory: directory, helperPath: helper, clientPath: client)
+            }
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()

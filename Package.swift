@@ -15,7 +15,9 @@ let package = Package(
         // colliding with the app binary on case-insensitive volumes.
         .executable(name: "trellis-cli", targets: ["TrellisCLIMain"]),
         // SSH_ASKPASS helper for saved-host passwords; bundled beside the app binary.
-        .executable(name: "trellis-askpass", targets: ["TrellisAskpassMain"])
+        .executable(name: "trellis-askpass", targets: ["TrellisAskpassMain"]),
+        // Opt-in session broker that keeps sessions running after quit (FR-R03); bundled beside the app binary.
+        .executable(name: "trellis-broker", targets: ["TrellisBrokerMain"])
     ],
     dependencies: [
         .package(path: "ThirdParty/SwiftTerm")
@@ -25,7 +27,10 @@ let package = Package(
         .executableTarget(name: "TrellisAskpassMain", dependencies: ["TrellisAskpass"]),
         .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon")]),
         .target(name: "TrellisPOSIX"),
-        .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "SwiftTerm"]),
+        // The broker's resident code depends only on the POSIX shim: no Core resources, no engine.
+        .target(name: "TrellisBroker", dependencies: ["TrellisPOSIX"]),
+        .executableTarget(name: "TrellisBrokerMain", dependencies: ["TrellisBroker"]),
+        .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "TrellisBroker", "SwiftTerm"]),
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),
         .target(name: "TrellisMCP", dependencies: ["TrellisControl", "TrellisCore"]),
         .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
@@ -39,7 +44,8 @@ let package = Package(
         .testTarget(name: "TrellisControlTests", dependencies: ["TrellisControl", "TrellisCore"]),
         .testTarget(name: "TrellisMCPTests", dependencies: ["TrellisMCP", "TrellisControl", "TrellisCore"]),
         .testTarget(name: "TrellisCLITests", dependencies: ["TrellisCLI", "TrellisControl", "TrellisRelease"]),
-        .testTarget(name: "TrellisReleaseTests", dependencies: ["TrellisRelease"])
+        .testTarget(name: "TrellisReleaseTests", dependencies: ["TrellisRelease"]),
+        .testTarget(name: "TrellisBrokerTests", dependencies: ["TrellisBroker", "TrellisPOSIX"])
     ],
     swiftLanguageModes: [.v6]
 )

@@ -16,7 +16,7 @@
 - Stream cursors belong to one session UUID and one app instance. A cursor from another session or instance returns `INVALID_CURSOR`, and a restart invalidates every cursor.
 - When output older than the cursor has been evicted, the response sets `gap: true`.
 
-The output journal behind `stream` is an in-memory ring with a global budget of **8 MiB** shared by all sessions. The oldest output is evicted first, and the journal is never persisted.
+The output journal behind `stream` is an in-memory ring with a global budget of **8 MiB** shared by all sessions. The oldest output is evicted first, and the journal is never persisted. Output replayed from the session broker when a kept session is reattached (FR-R03), and text restored from the scrollback file (FR-R04), are display only: they never enter the journal and are never streamed. A reattached session's journal starts with its first live output.
 
 ## Subscribing to events
 

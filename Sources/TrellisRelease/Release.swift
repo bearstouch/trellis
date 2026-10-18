@@ -116,10 +116,15 @@ public enum UninstallPlanner {
     public static let keychainService = "Trellis Automation"
     /// Every Keychain service Trellis creates items under: automation grants and saved-host passwords.
     public static let keychainServices = [keychainService, "Trellis SSH Host"]
+    /// Before removing anything: sessions kept after quit (FR-R03) live in `trellis-broker`, outside the app.
+    public static let firstStep =
+        "Open Trellis, quit it and choose Stop Sessions, so no kept session or trellis-broker helper keeps running (or end them with: pkill -HUP -x trellis-broker)."
 
     public static func items(home: String, bundleIdentifier: String = "dev.trellis", cliLink: String? = nil) -> [Item] {
         var items = [
-            Item(path: "\(home)/Library/Application Support/\(bundleIdentifier)", description: "Workspace, themes, saved hosts, grants, and layout bindings"),
+            Item(
+                path: "\(home)/Library/Application Support/\(bundleIdentifier)",
+                description: "Workspace, themes, saved hosts, grants, layout bindings, saved scrollback, and the session broker record"),
             Item(path: "\(home)/Library/Preferences/\(bundleIdentifier).plist", description: "Preferences"),
             Item(path: "\(home)/Library/Caches/\(bundleIdentifier)", description: "Caches"),
             Item(path: "\(home)/Library/Saved Application State/\(bundleIdentifier).savedState", description: "Window restoration state")

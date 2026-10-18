@@ -17,11 +17,16 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     private let paneSearch = PaneTextSearch()
     public let view: NSView
     private let terminalView: AccessibleTerminalView
-    private let process: PTYProcess
+    private var transport: any TerminalProcessTransport
     public private(set) var adapter: TerminalAdapter!
     private let session: LocalSessionController
     public var isRunning: Bool { [.starting, .running, .closing].contains(session.state) }
-    public var requiresTermination: Bool { process.isRunning || (isRunning && processID == nil) }
+    public var requiresTermination: Bool { transport.isRunning || (isRunning && processID == nil) }
+    /// The session is held by the broker and survives quitting with Keep Running (FR-R03).
+    public var survivesQuit: Bool { transport.survivesQuit }
+    /// True while replayed or restored output is parsed: replies to the program, attention,
+    /// notifications, progress and the bell are all suppressed (FR-R03, FR-R04).
+    public private(set) var isReplaying = false
     public var sessionID: UUID { session.id }
     public var exitCode: Int32? { session.exitCode }
     public var processID: Int32? { session.processID }
@@ -71,7 +76,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         set { terminalView.searchChord = newValue }
     }
 
-    public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard) {
+    public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard, transport: (any TerminalProcessTransport)? = nil) {
         let surface = AccessibleTerminalView(
             frame: NSRect(x: 0, y: 0, width: 900, height: 520),
             font: NativeTerminalFont.font(NativeTerminalFont.choice(for: AppearanceSettings.defaultFontName), size: 13))
@@ -79,10 +84,11 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.scrollback = TerminalScrollback(budget: scrollbackBudget)
         surface.changeScrollback(scrollbackBudget.lineLimit)
         view = surface
-        let process = PTYProcess()
-        self.process = process
-        session = LocalSessionController(id: sessionID, transport: process)
+        let transport = transport ?? PTYProcess()
+        self.transport = transport
+        session = LocalSessionController(id: sessionID, transport: transport)
         super.init()
+        observePrompt(transport)
         TerminalPalette.builtIn.apply(to: surface)
         surface.optionAsMetaKey = false
         // Engine diagnostics can echo sequence contents; never print them, in any build.
@@ -93,7 +99,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
         surface.onSearchRequested = { [weak self] in self?.showSearch() }
         surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
-        surface.onBell = { [weak self] in self?.onAttentionRequested?() }
+        surface.onBell = { [weak self] in if self?.isReplaying == false { self?.onAttentionRequested?() } }
         surface.doubleClickSelection = { [weak surface] position in
             guard let surface else { return nil }
             return TerminalLogicalLine.smartSelection(in: surface.getTerminal(), at: position)
@@ -171,6 +177,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// Graceful close never silently escalates. Force is a separate user/API action.
     public func stop() { requestTermination(force: false) }
     public func requestTermination(force: Bool) {
+        // A session kept for the next launch is never signalled, including by the adapter's detach cleanup.
+        guard !keptAlive else { return }
         // Interactive shells ignore SIGTERM. A terminal close is a hangup;
         // SIGHUP lets the shell exit and notify its jobs normally.
         session.stop(signal: force ? SIGKILL : SIGHUP)
@@ -183,7 +191,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         try? adapter.resize(size)
     }
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
-        guard !inputSuspended else { return }
+        // Replayed queries (DA, DSR, cursor reports, kitty `p=?`) were answered when first printed; never again.
+        guard !inputSuspended, !isReplaying else { return }
         onInput?()
         do { try adapter.send(Data(data)) } catch { onInputError?(error) }
         schedulePasswordCheck()
@@ -301,7 +310,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             try? await Task.sleep(for: .seconds(Self.passwordCheckDelay))
             guard let self, !Task.isCancelled else { return }
             self.passwordCheck = nil
-            self.updatePasswordPrompt(self.process.passwordPromptActive)
+            self.updatePasswordPrompt(self.transport.passwordPromptActive)
         }
     }
 
@@ -317,18 +326,21 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         let terminal = terminalView.getTerminal()
         // The OSC 9 handler replaces upstream's, so 9;4 progress reaches only `onProgress` and the engine's bar stays hidden.
         terminal.registerOscHandler(code: 9) { [weak self, weak terminal] data in
-            if let report = terminal?.parseProgressReport(data) { self?.onProgress?(TerminalProgressReport(report)); return }
-            guard let self, TerminalNotification.isNotification(osc9: data) else { return }
+            if let report = terminal?.parseProgressReport(data) {
+                if self?.isReplaying == false { self?.onProgress?(TerminalProgressReport(report)) }
+                return
+            }
+            guard let self, !self.isReplaying, TerminalNotification.isNotification(osc9: data) else { return }
             self.onAttentionRequested?()
             if let notification = TerminalNotification.parse(osc9: data) { self.onNotification?(notification) }
         }
         terminal.registerOscHandler(code: 777) { [weak self] data in
-            guard let self, data.starts(with: Array("notify;".utf8)) else { return }
+            guard let self, !self.isReplaying, data.starts(with: Array("notify;".utf8)) else { return }
             self.onAttentionRequested?()
             if let notification = TerminalNotification.parse(osc777: data) { self.onNotification?(notification) }
         }
         terminal.registerOscHandler(code: 99) { [weak self, weak terminal] data in
-            guard let self else { return }
+            guard let self, !self.isReplaying else { return }
             switch self.kittyNotifications.receive(data) {
             case .notification(let notification): self.onAttentionRequested?(); self.onNotification?(notification)
             case .reply(let text): terminal?.sendResponse(text: text)
@@ -398,6 +410,80 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             self.onShellIntegrationEvent?(event)
         }
     }
+
+    private func observePrompt(_ transport: any TerminalProcessTransport) {
+        transport.onPasswordPromptChanged = { [weak self] active in self?.updatePasswordPrompt(active) }
+    }
+
+    /// Uses another process owner for a session that never started (a broker-held one, FR-R03).
+    @discardableResult
+    public func useTransport(_ next: any TerminalProcessTransport) -> Bool {
+        guard !adapter.isDetached, session.replaceTransport(next) else { return false }
+        transport.onPasswordPromptChanged = nil
+        transport = next
+        observePrompt(next)
+        return true
+    }
+
+    /// Takes over a session the broker kept while the app was closed: its marks, then its replay with
+    /// every reply suppressed, then live I/O at this view's size. Never starts a process.
+    @discardableResult
+    public func adopt(_ adoption: BrokerAdoption) -> Bool {
+        guard session.state == .stopped, let transport = adoption.transport, let pid = adoption.processID, useTransport(transport) else { return false }
+        if let nonce = adoption.nonce, shellMarkOrigin == nil { observeShellIntegration(nonce: nonce) }
+        replay(adoption.replay)
+        guard session.adopt(processID: pid) else { return false }
+        updatePasswordPrompt(transport.passwordPromptActive)
+        transport.beginDelivery()
+        let size = getWindowSize()
+        if let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) { session.resize(dimensions) }
+        return true
+    }
+
+    /// A kept session that ended while the app was closed: its replay, then a notice; the pane stays stopped.
+    public func showEndedSession(replay data: Data, exitCode: Int32?) {
+        guard session.state == .stopped else { return }
+        replay(data)
+        replay(Data("\r\n\u{1b}[0m\u{1b}[2m— Session ended while Trellis was closed\(exitCode.map { " (exit \($0))" } ?? "") —\u{1b}[0m\r\n".utf8))
+    }
+
+    /// Restored plain text from the scrollback file (FR-R04), cleaned to printable text first.
+    public func showRestoredOutput(_ text: String, savedAt: Date) {
+        guard session.state == .stopped, !text.isEmpty else { return }
+        let date = savedAt.formatted(date: .abbreviated, time: .shortened)
+        replay(Data((Self.printable(text) + "\r\n\u{1b}[2m— Restored output from \(date) —\u{1b}[0m\r\n").utf8))
+    }
+
+    /// Only printable characters, tabs and line breaks survive: no escape sequence can reach the parser.
+    static func printable(_ text: String) -> String {
+        var result = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            switch scalar.value {
+            case 0x0a: result.append("\r"); result.append(scalar)
+            case 0x09: result.append(scalar)
+            case 0x00..<0x20, 0x7f..<0xa0: continue
+            default: result.append(scalar)
+            }
+        }
+        return String(result)
+    }
+
+    private func replay(_ data: Data) {
+        guard !data.isEmpty else { return }
+        isReplaying = true
+        defer { isReplaying = false }
+        adapter.receive(data)
+    }
+
+    /// The pane's retained plain text, for the scrollback file (FR-R04).
+    public var retainedText: String { terminalView.retainedText }
+
+    /// Quitting with Keep Running: the broker keeps the process, so nothing here may signal it. A cancelled quit turns it back off.
+    public func prepareForKeepRunning(_ on: Bool = true) {
+        keptAlive = on && survivesQuit
+        transport.setKeepAlive(keptAlive)
+    }
+    private var keptAlive = false
 
     /// Scrolls to the previous or next shell prompt marked through OSC 133 (FR-SI06).
     @discardableResult
@@ -480,7 +566,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Reveal in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
         }
     }
-    public func bell(source: TerminalView) { playBell() }
+    public func bell(source: TerminalView) { if !isReplaying { playBell() } }
     static func bellStyle(_ style: TerminalBellStyle) -> BellStyle {
         switch style {
         case .sound: .sound;

@@ -13,7 +13,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 - **One mutation path.** The UI, the CLI and automation all change state through `WorkspaceCommandService` and `WorkspaceStore`. Tree invariants and lifecycle rules live there, never in views or in `AutomationService`. See [Architecture](../architecture/index.md#one-mutation-path).
 - **Commands don't do I/O.** A process launch is an effect that happens after the commit, and its result is reported back with the launch attempt ID.
 - **Domain shape:** Window → ordered Tabs → binary split tree (`PaneLayout`, axis `x|y`, ratio = first child's share) → Pane → Session. UUIDs stay stable across saves and stopped restores.
-- **Session lifecycle:** `stopped → starting → running → exited|failed`, and `running → closing → exited`. Restarting creates a new session UUID in the same pane. Restored workspaces start **stopped**, and typed input is never replayed.
+- **Session lifecycle:** `stopped → starting → running → exited|failed`, and `running → closing → exited`. Restarting creates a new session UUID in the same pane. Restored workspaces start **stopped**, and typed input is never replayed. A stopped pane may afterwards adopt a session the broker kept running (`stopped → running`, FR-R03); nothing is spawned for it.
 - **Closing a running pane** needs confirmation. Terminate the process group gracefully, wait 2 seconds, and force only when explicitly asked. **Never signal a reused PID.** Check `OwnedProcessIdentity` first.
 - **Threading:** PTY I/O and parsing run off the main thread, and view updates run on `@MainActor`. Bound every buffer that grows with output.
 - **Engine boundary:** only `TrellisTerminal` imports SwiftTerm. Record every change to `ThirdParty/SwiftTerm` in `PATCHES.md`, and regenerate `trellis.patch`.
@@ -29,7 +29,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 
 ## Security and privacy
 
-- **Never log or persist** terminal output, typed input, tokens, passwords, private keys, or environment variable values.
+- **Never log or persist** terminal output, typed input, tokens, passwords, private keys, or environment variable values. The one exception is the opt-in, redacted scrollback file (FR-R04/FR-R05): plain text only, off by default, deleted with its pane. See [Persistence](../architecture/persistence.md#opt-in-scrollback-file).
 - Terminal output is untrusted. Don't add features where the terminal triggers clipboard access, file access or URL opening without a user gesture.
 - Build processes from an executable plus an argument array. Never interpolate into a shell command line, and never add SSH trust-bypass flags.
 - Tokens never go in argv, environment variables or error messages.

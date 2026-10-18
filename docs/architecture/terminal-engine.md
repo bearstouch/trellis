@@ -47,6 +47,8 @@ Children get `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Trel
 | Per-pane scrollback | 10,000 lines by default (configurable from 0 to 50,000) **and** 16 MiB. The newest contiguous lines are kept. | `ScrollbackBudget`, `TerminalScrollback` |
 | Automation output journal | 8 MiB shared by all sessions, oldest evicted first, in memory only. Small reads are coalesced into 16 KiB chunks. | `OutputJournal` |
 | Event ring | 1,000 metadata events | `EventHub` |
+| Broker replay ring (FR-R03, opt-in) | 4 MiB per kept session and 64 MiB per broker, largest trimmed first; in the broker's memory only. A truncated replay restarts at a line (or at the cut, with no line break in the first 64 KiB) after a reset and the modes in force there. | `OutputRing`, `OutputBudget`, `ModeTracker` |
+| Scrollback file (FR-R04, opt-in) | 1 MiB per pane and 64 MiB in all, redacted plain text, newest lines kept | `ScrollbackStore` |
 
 Output must keep the PTY's byte order. The UI may coalesce frames, but it never reorders data. When history has been evicted, search and `readOutput` say so instead of pretending it never existed.
 

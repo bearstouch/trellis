@@ -877,6 +877,22 @@ public struct LaunchSettingsView: View {
             ).accessibilityIdentifier("settings.shellIntegration")
             Text("Tracks the current directory, command status and prompts without editing your dotfiles. Applies to new sessions.")
                 .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            Toggle(
+                "Keep sessions running after quit",
+                isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) })
+            ).accessibilityIdentifier("settings.keepSessionsRunning")
+            Text(
+                "Sessions started from now on run in a background helper. Quitting offers Keep Running, and they reconnect with their recent output when Trellis opens again. Closing the window still ends them; logging out or restarting ends them too."
+            )
+            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            Toggle(
+                "Restore scrollback after quit",
+                isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
+            ).accessibilityIdentifier("settings.restoreScrollback")
+            Text(
+                "Saves each pane's text when Trellis quits and shows it in the stopped pane next time. The file is stored unencrypted in the workspace folder; passwords, tokens and keys are removed on a best-effort basis, so don't rely on it for secrets. Turning this off deletes the saved text."
+            )
+            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             HStack {
                 Spacer()
                 Button("Save") {

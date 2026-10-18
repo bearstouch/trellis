@@ -3,16 +3,35 @@ import Foundation
 import TrellisCore
 import TrellisPOSIX
 
+/// What a `NativeTerminal` needs from whoever owns its process: a local PTY, or a session kept by `trellis-broker` (FR-R03).
+@MainActor
+public protocol TerminalProcessTransport: LocalSessionTransport {
+    var isRunning: Bool { get }
+    var passwordPromptActive: Bool { get }
+    /// Pushed prompt-state changes, for transports that can't read the PTY modes themselves.
+    var onPasswordPromptChanged: ((Bool) -> Void)? { get set }
+    /// The process outlives the app when it quits with Keep Running.
+    var survivesQuit: Bool { get }
+    /// While on, no signal is sent: not by close, not by detaching, not on deinit.
+    func setKeepAlive(_ on: Bool)
+    /// Starts delivering output and exit held back while an adopted session was being attached.
+    func beginDelivery()
+}
+
 /// DispatchIO performs reads/writes off the main thread. Each bounded read must
 /// finish delivery before the next read is armed; at most 16 KiB is queued for UI.
 @MainActor
-final class PTYProcess: LocalSessionTransport {
+final class PTYProcess: TerminalProcessTransport {
     private(set) var pid: pid_t = 0
     private(set) var descriptor: Int32 = -1
     private(set) var isRunning = false
     var onOutput: ((Data) -> Void)?
     var onExit: ((Int32?) -> Void)?
     var onInputError: ((Error) -> Void)?
+    var onPasswordPromptChanged: ((Bool) -> Void)?
+    var survivesQuit: Bool { false }
+    func setKeepAlive(_ on: Bool) {}
+    func beginDelivery() {}
     static let inputQueueLimit = 1_048_576
     private(set) var pendingInputCount = 0
     private var io: DispatchIO?

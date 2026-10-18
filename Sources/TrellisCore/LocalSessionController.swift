@@ -25,7 +25,7 @@ public final class LocalSessionController {
     public var onStateChanged: ((SessionState) -> Void)?
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
-    private let transport: any LocalSessionTransport
+    private var transport: any LocalSessionTransport
     private let validator: LocalLaunchValidator
     private var starting = false
     private var exitReceived = false
@@ -39,9 +39,32 @@ public final class LocalSessionController {
         validator: LocalLaunchValidator = LocalLaunchValidator()
     ) {
         self.id = id; self.transport = transport; self.validator = validator
+        bind(transport)
+    }
+
+    private func bind(_ transport: any LocalSessionTransport) {
         transport.onOutput = { [weak self] in self?.onOutput?($0) }
         transport.onInputError = { [weak self] in self?.onInputError?($0) }
         transport.onExit = { [weak self] in self?.receivedExit($0) }
+    }
+
+    /// Swaps the process owner of a session that never started, for example to a broker-held one (FR-R03).
+    @discardableResult
+    public func replaceTransport(_ next: any LocalSessionTransport) -> Bool {
+        guard state == .stopped, !starting, !exitReceived else { return false }
+        transport.onOutput = nil; transport.onInputError = nil; transport.onExit = nil
+        transport = next
+        bind(next)
+        return true
+    }
+
+    /// Takes over a process that is already running (a session kept by the broker); never spawns.
+    @discardableResult
+    public func adopt(processID: Int32) -> Bool {
+        guard state == .stopped, !starting, !exitReceived, processID > 0 else { return false }
+        self.processID = processID
+        changeState(.running)
+        return true
     }
 
     public func start(_ configuration: LocalLaunchConfiguration, size: TerminalSize) async {

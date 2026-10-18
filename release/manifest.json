@@ -5,7 +5,7 @@
   "minimumMacOS": "14.0",
   "architectures": ["arm64", "x86_64"],
   "packageFormat": "dmg",
-  "artifacts": ["Trellis.app/Contents/MacOS/Trellis", "Trellis.app/Contents/Helpers/trellis", "Trellis.app/Contents/Helpers/trellis-askpass", "Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt", "Trellis.app/Contents/Resources/RobotoMono-OFL.txt", "Trellis.app/Contents/Resources/JetBrainsMono-OFL.txt", "Trellis.app/Contents/Resources/CascadiaMono-OFL.txt", "Trellis.app/Contents/Resources/IBMPlexMono-OFL.txt", "Trellis.app/Contents/Resources/IosevkaFixed-OFL.txt", "Trellis.app/Contents/Resources/AtkinsonHyperlegibleMono-OFL.txt"],
+  "artifacts": ["Trellis.app/Contents/MacOS/Trellis", "Trellis.app/Contents/Helpers/trellis", "Trellis.app/Contents/Helpers/trellis-askpass", "Trellis.app/Contents/Helpers/trellis-broker", "Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt", "Trellis.app/Contents/Resources/RobotoMono-OFL.txt", "Trellis.app/Contents/Resources/JetBrainsMono-OFL.txt", "Trellis.app/Contents/Resources/CascadiaMono-OFL.txt", "Trellis.app/Contents/Resources/IBMPlexMono-OFL.txt", "Trellis.app/Contents/Resources/IosevkaFixed-OFL.txt", "Trellis.app/Contents/Resources/AtkinsonHyperlegibleMono-OFL.txt"],
   "dependencies": [
     {"name": "SwiftTerm", "version": "1.20.0", "revision": "5d14406844143538cd8f8851d2d8a67c1fe443e5", "license": "MIT", "licenseFile": "ThirdParty/SwiftTerm-LICENSE.txt"},
     {"name": "Roboto Mono", "version": "3.001", "revision": "895ec691990d041dd727c7b5afa3ce56525d98e6", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/RobotoMono-OFL.txt"},
