@@ -45,6 +45,16 @@ On Railway, add `SITE_URL` as a service variable; the Dockerfile passes it to th
 
 The share card `public/og.png` (1200×630) is rendered from `og/og.html` with `npm run og`, which needs Google Chrome. Rerun it after changing the hero screenshot.
 
+The site icons in `public/` come from the app icon artwork in `Design/AppIcon`; regenerate them with `npm run icons` (needs `rsvg-convert` and ImageMagick):
+
+| File | Use |
+| --- | --- |
+| `favicon.ico` | 16, 32 and 48 px, for browsers and tools that only read `.ico` |
+| `favicon.svg` | Sharp tab icon in modern browsers (the simplified 16–32 px artwork), also used in the nav and footer |
+| `apple-touch-icon.png` | 180 px, opaque, for iOS home screens |
+| `icon-192.png`, `icon-512.png` | Web manifest icons, transparent |
+| `icon-maskable-512.png` | Opaque, for Android's masked icon shapes |
+
 ## Deploying on Railway
 
 The `Dockerfile` builds the site with Node 22 and serves `dist/` with nginx. nginx listens on `$PORT`, which Railway injects; it defaults to 8080. The config (`nginx/default.conf.template`) sets gzip, immutable caching for hashed `/assets/`, `no-cache` for HTML, and security headers including a CSP that only allows `api.github.com` for fetches.
