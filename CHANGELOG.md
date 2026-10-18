@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The DMG now opens as a drag-to-install window: the Trellis icon beside an **Applications** shortcut, over a background with an arrow, and with the Trellis icon on the mounted volume. `scripts/make-dmg.sh` builds it for both the Universal and the single-architecture DMGs.
 - The status bar now always reads **Trellis** followed by the app version on the left (also in `swift run` builds), and shows the selected window's name at the right end.
 
+### Security
+
+- A kitty graphics image sent compressed (`o=z`) no longer hangs Trellis. Any program's output, or a file shown with `cat`, could freeze every window. Compressed images now decode correctly, and malformed or oversized ones are refused.
+
 ## [0.10.0] - 2026-10-17
 
 This release adds an optional MCP server, saved SSH passwords in the Keychain, richer text rendering, inline images, smart selection and file links, attention and activity cues on tabs, and a terminal bell setting. Trellis now opens in dark mode on first launch.

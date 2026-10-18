@@ -701,7 +701,7 @@ extension Terminal {
         guard compression == "z" else {
             return nil
         }
-        guard let inflated = decompressZlib(data), inflated.count <= Terminal.kittyMaxImageBytes else {
+        guard let inflated = decompressZlib(data, limit: Terminal.kittyMaxImageBytes) else {
             return nil
         }
         return inflated
@@ -1875,8 +1875,19 @@ extension Terminal {
         return col >= left && col <= right
     }
 
-    private func decompressZlib(_ data: Data) -> Data? {
+    /// Kitty's `o=z` is RFC 1950 zlib, but `COMPRESSION_ZLIB` decodes raw RFC 1951 deflate, so the header
+    /// and Adler-32 trailer are checked here. Terminal output is untrusted: the output is capped at `limit`
+    /// and a stream that stops making progress fails instead of looping on the main thread.
+    private func decompressZlib(_ data: Data, limit: Int) -> Data? {
 #if canImport(Compression)
+        let bytes = [UInt8](data)
+        guard bytes.count >= 6, bytes[0] & 0x0f == 8, bytes[0] >> 4 <= 7, bytes[1] & 0x20 == 0,
+              (Int(bytes[0]) << 8 | Int(bytes[1])) % 31 == 0 else {
+            return nil
+        }
+        let deflate = Array(bytes[2..<(bytes.count - 4)])
+        let expectedAdler = bytes[(bytes.count - 4)...].reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+
         let dummyDst = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
         let dummySrc = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
         var stream = compression_stream(dst_ptr: dummyDst,
@@ -1900,39 +1911,67 @@ extension Terminal {
         let dstSize = 64 * 1024
         var dstBuffer = [UInt8](repeating: 0, count: dstSize)
 
-        return data.withUnsafeBytes { srcPtr -> Data? in
-            guard let srcBase = srcPtr.bindMemory(to: UInt8.self).baseAddress else {
+        let inflated = deflate.withUnsafeBufferPointer { srcPtr -> Data? in
+            guard let srcBase = srcPtr.baseAddress else {
                 return nil
             }
             stream.src_ptr = srcBase
-            stream.src_size = data.count
+            stream.src_size = srcPtr.count
 
             while true {
+                let remaining = stream.src_size
                 let status = dstBuffer.withUnsafeMutableBytes { dstPtr -> compression_status in
                     guard let dstBase = dstPtr.bindMemory(to: UInt8.self).baseAddress else {
                         return COMPRESSION_STATUS_ERROR
                     }
                     stream.dst_ptr = dstBase
                     stream.dst_size = dstSize
-                    return compression_stream_process(&stream, 0)
+                    return compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
                 }
                 let produced = dstSize - stream.dst_size
+                guard output.count + produced <= limit else {
+                    return nil
+                }
                 if produced > 0 {
                     output.append(dstBuffer, count: produced)
                 }
 
                 switch status {
                 case COMPRESSION_STATUS_END:
-                    return output
+                    return stream.src_size == 0 ? output : nil
                 case COMPRESSION_STATUS_OK:
-                    continue
+                    if produced == 0 && stream.src_size == remaining {
+                        return nil
+                    }
                 default:
                     return nil
                 }
             }
         }
+        guard let inflated, adler32(inflated) == expectedAdler else {
+            return nil
+        }
+        return inflated
 #else
         return nil
 #endif
+    }
+    private func adler32(_ data: Data) -> UInt32 {
+        var a: UInt32 = 1, b: UInt32 = 0
+        data.withUnsafeBytes { raw in
+            var index = 0
+            while index < raw.count {
+                // 5552 is the largest run whose sums cannot overflow 32 bits before the modulo.
+                let end = min(index + 5552, raw.count)
+                for byte in raw[index..<end] {
+                    a &+= UInt32(byte)
+                    b &+= a
+                }
+                a %= 65521
+                b %= 65521
+                index = end
+            }
+        }
+        return b << 16 | a
     }
 }
