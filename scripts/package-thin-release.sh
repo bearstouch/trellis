@@ -35,7 +35,7 @@ for pair in arm64:apple-silicon x86_64:intel; do
     [ "$(/usr/bin/lipo -archs "$app/Contents/Helpers/trellis")" = "$arch" ] || { echo "$label CLI is not $arch" >&2; exit 1; }
 
     dmg="$PWD/dist/Trellis-$version-$label.dmg"
-    /usr/bin/hdiutil create -quiet -volname "Trellis $version" -srcfolder "$app" -ov -format UDZO "$dmg"
+    scripts/make-dmg.sh "$app" "$dmg" "Trellis $version"
     if [ "$identity" != "-" ]; then
         /usr/bin/codesign --force --timestamp --sign "$identity" "$dmg"
         if [ -n "${TRELLIS_NOTARY_PROFILE:-}" ]; then

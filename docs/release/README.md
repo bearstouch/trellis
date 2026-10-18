@@ -24,11 +24,12 @@ The script produces `dist/Trellis.app`, `dist/Trellis-<version>.dmg`, and `dist/
 
 - **Signing:** the CLI and the app are signed with the hardened runtime and no entitlements, so there is no root helper and no blanket Accessibility, Screen Recording, or Full Disk Access request.
 - **Notarization:** with a Developer ID and a notary profile, the DMG is submitted with `notarytool` and the DMG is stapled; its ticket covers the app it contains. The `dist/Trellis.app` copy outside the DMG is stapled separately.
+- **DMG layout:** `scripts/make-dmg.sh` puts the app beside an `Applications` shortcut over `Design/DMG/background.png` (regenerate with `swift Design/DMG/make-background.swift Design/DMG`) and sets the app icon as the volume icon. The window layout is applied through Finder AppleScript; where Finder automation is unavailable it prints a warning and the DMG keeps the shortcut without the arranged layout.
 - **Checks recorded:** the strict signature check, the hardened-runtime flag, the architectures of both binaries, the minimum OS, the artifacts listed in the manifest, and the local `spctl` result.
 
 ## Installing
 
-1. Open the DMG and drag **Trellis** to Applications.
+1. Open the DMG and drag the **Trellis** icon onto the **Applications** shortcut beside it.
 2. Launch it. A notarized build opens normally. An ad-hoc development build is rejected by Gatekeeper and is not for distribution.
 3. Optional, to use the CLI as `trellis`:
 

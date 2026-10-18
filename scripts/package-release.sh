@@ -70,7 +70,7 @@ sign "$app/Contents/Helpers/trellis-askpass" dev.trellis.askpass
 sign "$app" dev.trellis
 
 dmg="$dist/Trellis-$version.dmg"
-/usr/bin/hdiutil create -quiet -volname "Trellis $version" -srcfolder "$app" -ov -format UDZO "$dmg"
+scripts/make-dmg.sh "$app" "$dmg" "Trellis $version"
 if [ "$identity" != "-" ]; then /usr/bin/codesign --force --timestamp --sign "$identity" "$dmg"; fi
 
 notarized=false
