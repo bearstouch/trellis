@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
-- A kitty graphics image sent compressed (`o=z`) no longer hangs Trellis. Any program's output, or a file shown with `cat`, could freeze every window. Compressed images now decode correctly, and malformed or oversized ones are refused.
+- A kitty graphics image sent compressed (`o=z`) no longer hangs Trellis. Any program's output, or a file shown with `cat`, could freeze every window. Compressed images now decode correctly, and malformed or oversized ones are refused. A kitty image sent in chunks is limited to the same size, so endless chunks can't use up memory.
 - Sixel images with very long numbers no longer crash Trellis, and sixel images over the inline image limits (10,000 px a side, 40 MP) are dropped rather than allocated.
 - Pasted text can no longer end a bracketed paste early. Trellis removes `ESC[200~` and `ESC[201~` markers from the text, so text copied from a web page can't run commands after you confirm the paste review. The review also says when a long paste has escape characters beyond the part it shows (FR-C03, FR-C04).
 - An automation grant with `host.write` but not `session.execute` can no longer clear a saved host's user, port or identity file by sending `null`. That changed where the host connected and deleted its saved password. Clearing a connection field now needs `session.execute`, like changing one.

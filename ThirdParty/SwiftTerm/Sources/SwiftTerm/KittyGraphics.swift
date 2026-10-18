@@ -132,6 +132,8 @@ struct KittyGraphicsImage {
 struct KittyGraphicsPending {
     let control: KittyGraphicsControl
     var base64Payload: [UInt8]
+    /// Set once the chunks pass `KittyGraphicsState.maxPendingBytes`; the rest are discarded.
+    var overflowed = false
 }
 
 final class KittyGraphicsState {
@@ -140,6 +142,8 @@ final class KittyGraphicsState {
     var nextImageId: UInt32 = 1
     var nextPlacementId: UInt32 = 1
     var pending: KittyGraphicsPending?
+    /// Chunked (`m=1`) payloads are capped like a single sequence: base64 of the largest image allowed.
+    var maxPendingBytes = (400 * 1024 * 1024 / 3 + 1) * 4
     var placementsByKey: [KittyPlacementKey: KittyPlacementRecord] = [:]
     var totalImageBytes: Int = 0
     var nextImageAccessTick: UInt64 = 1
@@ -161,21 +165,39 @@ extension Terminal {
 
         if control.more == 1 {
             if kittyGraphicsState.pending == nil {
-                kittyGraphicsState.pending = KittyGraphicsPending(control: control, base64Payload: Array(payload))
-            } else {
-                kittyGraphicsState.pending?.base64Payload.append(contentsOf: payload)
+                kittyGraphicsState.pending = KittyGraphicsPending(control: control, base64Payload: [])
             }
+            appendKittyPending(payload)
             return
         }
 
-        if var pending = kittyGraphicsState.pending {
-            pending.base64Payload.append(contentsOf: payload)
+        if kittyGraphicsState.pending != nil {
+            appendKittyPending(payload)
+            guard let pending = kittyGraphicsState.pending else { return }
             kittyGraphicsState.pending = nil
+            if pending.overflowed {
+                sendKittyError(control: pending.control, message: "EFBIG: image too large")
+                return
+            }
             processKittyGraphics(control: pending.control, base64Payload: pending.base64Payload)
             return
         }
 
         processKittyGraphics(control: control, base64Payload: Array(payload))
+    }
+
+    /// Each chunk is capped by the parser, but chunks could otherwise accumulate without limit, so an
+    /// oversized transfer frees what it holds and only reports an error when it ends.
+    private func appendKittyPending(_ payload: ArraySlice<UInt8>) {
+        guard var pending = kittyGraphicsState.pending, !pending.overflowed else { return }
+        kittyGraphicsState.pending = nil  // keep the buffer uniquely referenced while appending
+        if pending.base64Payload.count + payload.count > kittyGraphicsState.maxPendingBytes {
+            pending.base64Payload = []
+            pending.overflowed = true
+        } else {
+            pending.base64Payload.append(contentsOf: payload)
+        }
+        kittyGraphicsState.pending = pending
     }
 
     private func parseKittyGraphicsControl(_ data: ArraySlice<UInt8>) -> (KittyGraphicsControl, ArraySlice<UInt8>)? {
