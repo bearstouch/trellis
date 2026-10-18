@@ -115,8 +115,14 @@ public enum BrokerFiles {
     public static func configure(_ fd: Int32) {
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        _ = preventSigPipe(fd)
+    }
+
+    /// Must run before the socket can be disconnected: Darwin refuses `setsockopt` on a socket whose peer already
+    /// closed, and a write to it would then raise SIGPIPE in the app (or the test runner) instead of failing.
+    public static func preventSigPipe(_ fd: Int32) -> Bool {
         var one: Int32 = 1
-        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
+        return setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size)) == 0
     }
 
     /// Reads a small owner-only regular file without following symlinks.

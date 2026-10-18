@@ -18,7 +18,8 @@ public enum BrokerClientError: Error, Equatable, Sendable {
 }
 
 /// The app's single connection to its broker. Reads and frame decoding run off the main thread;
-/// frames are delivered in order on the main actor. Writes are bounded by `outboxLimit`.
+/// frames are delivered in order on the main actor, one read (at most `chunkLimit` bytes) at a time.
+/// Writes are bounded by `outboxLimit`.
 @MainActor
 public final class BrokerConnection {
     public static let outboxLimit = 4 * 1_048_576
@@ -41,6 +42,7 @@ public final class BrokerConnection {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw .unavailable }
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+        guard BrokerFiles.preventSigPipe(fd) else { Darwin.close(fd); throw .unavailable }
         let connected = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
         guard connected == 0 else { Darwin.close(fd); throw .unavailable }
         guard BrokerFiles.peerRuns(fd, executable: brokerExecutable) else { Darwin.close(fd); throw .untrustedPeer }
@@ -122,10 +124,12 @@ public final class BrokerConnection {
                 MainActor.assumeIsolated {
                     guard let connection else { return }
                     connection.receive(deliver)
-                    if failed { connection.close() }
+                    if failed { connection.close(); return }
+                    // The next read waits for the main actor to take this one, so a flood can't queue
+                    // unbounded output for the UI; the broker then pauses its PTY reads (backpressure).
+                    if done, connection.isOpen { connection.readNext(box) }
                 }
             }
-            if !failed, done { connection?.readNext(box) }
         }
     }
 

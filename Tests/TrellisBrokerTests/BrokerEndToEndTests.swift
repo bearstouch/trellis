@@ -124,6 +124,17 @@ final class BrokerEndToEndTests: XCTestCase {
         XCTAssertEqual(r5, .failed(code: "SESSION_RUNNING", errno: 0))
     }
 
+    /// Review: the app reads one chunk at a time (bounded UI backlog); a large burst must still arrive whole and in order.
+    func testLargeOutputArrivesWholeWithOneReadInFlight() async throws {
+        let launcher = try launcher()
+        let (_, connection) = try await start(launcher)
+        let sink = Sink()
+        _ = try await spawn(connection, "stty -opost; head -c 3000000 /dev/zero | tr '\\0' a; printf END", sink: sink)
+        try await waitFor(20) { sink.output.count >= 3_000_003 }
+        XCTAssertEqual(sink.output.count, 3_000_003)
+        XCTAssertTrue(sink.text.hasSuffix("aEND"))
+    }
+
     func testOnlyTheNamedClientMayConnect() async throws {
         let launcher = try launcher(client: "/usr/bin/true")
         let socket = try launcher.spawn()
@@ -155,7 +166,8 @@ final class BrokerEndToEndTests: XCTestCase {
         try await waitFor { sink.exit != nil }
         connection.close()
         try await waitFor(10) { !FileManager.default.fileExists(atPath: socket) }
-        XCTAssertFalse(FileManager.default.fileExists(atPath: (socket as NSString).deletingLastPathComponent))
+        // The socket is unlinked just before its directory; give the broker the moment between them.
+        try await waitFor(2) { !FileManager.default.fileExists(atPath: (socket as NSString).deletingLastPathComponent) }
     }
 }
 

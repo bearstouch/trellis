@@ -558,6 +558,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 @main
 struct TrellisMain {
     @MainActor static func main() {
+        // A peer (broker, askpass helper, control client) that closes first must fail a write, never kill the app;
+        // `trellis_spawn_*` restore the default disposition in every child.
+        signal(SIGPIPE, SIG_IGN)
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         NativeTerminalFont.registerBundledFonts()
