@@ -59,12 +59,21 @@ public struct TerminalPastePlan: Equatable, Sendable {
 
     /// An embedded end marker would end a bracketed paste early and run the rest as typed input, so both markers
     /// are removed from the payload, as xterm, iTerm2 and kitty do. Bytes, not characters, are matched, so a
-    /// combining mark after `~` can't hide a marker, and removal repeats so nested markers can't reassemble one.
+    /// combining mark after `~` can't hide a marker. A marker is removed as soon as it completes at the tail, so
+    /// nested markers can't reassemble one; neither marker overlaps itself or the other, so this equals repeated
+    /// removal, in linear time even for a clipboard full of markers.
     public func data(bracketed: Bool) -> Data {
         guard bracketed else { return Data(text.utf8) }
-        var body = Array(text.utf8)
-        while let marker = body.firstRange(of: Self.pasteStart) ?? body.firstRange(of: Self.pasteEnd) { body.removeSubrange(marker) }
-        return Data(Self.pasteStart + body + Self.pasteEnd)
+        var body = Self.pasteStart
+        body.reserveCapacity(text.utf8.count + 12)
+        let floor = Self.pasteStart.count, width = Self.pasteStart.count
+        for byte in text.utf8 {
+            body.append(byte)
+            guard byte == 0x7E, body.count - floor >= width else { continue }
+            let tail = body[(body.count - width)...]
+            if tail.elementsEqual(Self.pasteStart) || tail.elementsEqual(Self.pasteEnd) { body.removeLast(width) }
+        }
+        return Data(body + Self.pasteEnd)
     }
 
     private static let pasteStart = Array("\u{1b}[200~".utf8), pasteEnd = Array("\u{1b}[201~".utf8)
