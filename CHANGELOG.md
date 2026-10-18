@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A kitty graphics image sent compressed (`o=z`) no longer hangs Trellis. Any program's output, or a file shown with `cat`, could freeze every window. Compressed images now decode correctly, and malformed or oversized ones are refused.
 - Sixel images with very long numbers no longer crash Trellis, and sixel images over the inline image limits (10,000 px a side, 40 MP) are dropped rather than allocated.
+- Device control strings (DCS), such as sixel images and DECRQSS requests, are limited to 8 MiB like OSC and APC sequences. An endless one in a program's output could otherwise use up memory.
 
 ## [0.10.0] - 2026-10-17
 

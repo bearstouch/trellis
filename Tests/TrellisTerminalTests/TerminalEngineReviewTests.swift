@@ -13,9 +13,12 @@ final class TerminalEngineReviewTests: XCTestCase {
 
     /// Feeds `sequences` off the main thread and fails, rather than hanging the suite, if the engine stalls.
     @discardableResult
-    private func feed(_ sequences: [String], timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) -> Replies {
+    private func feed(
+        _ sequences: [String], timeout: TimeInterval = 10, payloadLimit: Int? = nil, file: StaticString = #filePath, line: UInt = #line
+    ) -> Replies {
         let replies = Replies()
         nonisolated(unsafe) let terminal = Terminal(delegate: replies)
+        if let payloadLimit { terminal.parser.maxStringPayloadBytes = payloadLimit }
         let done = DispatchSemaphore(value: 0)
         Thread {
             for sequence in sequences { terminal.feed(text: sequence) }
@@ -74,5 +77,24 @@ final class TerminalEngineReviewTests: XCTestCase {
                 sixel("#0" + String(repeating: "!10000~$", count: 10_000))  // 100 million sixels redrawn over one band
             ], timeout: 5)
         XCTAssertTrue(replies.images.isEmpty)
+    }
+
+    func testDcsPayloadsAreBoundedAcrossReads() {
+        let status = "\u{1b}[5n"
+        // A request within the limit is answered; one over the limit, even split across reads, is dropped whole.
+        let replies = feed(
+            ["\u{1b}P$qm\u{1b}\\", "\u{1b}P$q" + String(repeating: "m", count: 600), String(repeating: "m", count: 600) + "\u{1b}\\", status],
+            payloadLimit: 1_024)
+        XCTAssertEqual(replies.text.components(separatedBy: "$r").count - 1, 1, replies.text)
+        XCTAssertTrue(replies.text.hasSuffix("\u{1b}[0n"), "Parsing continues normally after the dropped sequence")
+
+        let images = feed([sixel("#0" + String(repeating: "~", count: 2_000)), sixel("#0~~-")], payloadLimit: 1_024).images
+        XCTAssertEqual(images.map(\.width), [2], "An oversized sixel is dropped and the next one still draws")
+    }
+
+    func testDecrqssKeepsOnlyARequestSizedBuffer() {
+        let replies = feed(["\u{1b}P$q" + String(repeating: "m", count: 100_000) + "\u{1b}\\", "\u{1b}P$qr\u{1b}\\"])
+        XCTAssertTrue(replies.text.contains("P0$r"), "An overlong request is answered as invalid")
+        XCTAssertTrue(replies.text.contains("P1$r"), "A valid request still gets its status string")
     }
 }

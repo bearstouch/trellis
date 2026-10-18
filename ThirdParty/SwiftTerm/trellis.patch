@@ -1033,22 +1033,23 @@
      /// ```
      public var oscHandlers: [Int:OscHandler] = [:]
  
-+    /// OSC and APC payloads longer than this are dropped whole instead of
-+    /// growing parser state without bound.
++    /// OSC, APC and DCS payloads longer than this are dropped whole instead of
++    /// growing parser or handler state without bound.
 +    public var maxStringPayloadBytes = 8 * 1024 * 1024
 +
      var activeDcsHandler: DcsHandler? = nil
      var errorHandler: (ParsingState) -> ParsingState = { (state : ParsingState) -> ParsingState in return state; }
  
-@@ -346,6 +350,7 @@ public class EscapeSequenceParser {
+@@ -346,6 +350,8 @@ public class EscapeSequenceParser {
      var _parsTxt: [UInt8]
      var _collect: cstring
      var _parameterLimitExceeded: Bool
 +    var _stringPayloadOverflow: Bool
++    var _dcsPayloadBytes = 0
      var printHandler: PrintHandler = { (slice : ArraySlice<UInt8>) -> () in }
      var printStateReset: () -> () = {  }
      
-@@ -368,6 +373,7 @@ public class EscapeSequenceParser {
+@@ -368,6 +374,7 @@ public class EscapeSequenceParser {
          _parsTxt = []
          _collect = []
          _parameterLimitExceeded = false
@@ -1056,15 +1057,16 @@
      }
  
      @inline(__always)
-@@ -646,6 +652,7 @@ public class EscapeSequenceParser {
+@@ -646,6 +653,8 @@ public class EscapeSequenceParser {
          _parsTxt = []
          _collect = []
          _parameterLimitExceeded = false
 +        _stringPayloadOverflow = false
++        _dcsPayloadBytes = 0
          activeDcsHandler = nil
          printStateReset()
      }
-@@ -690,6 +697,8 @@ public class EscapeSequenceParser {
+@@ -690,8 +699,23 @@ public class EscapeSequenceParser {
          var pars = self._pars
          var parsTxt = self._parsTxt
          var parameterLimitExceeded = self._parameterLimitExceeded
@@ -1072,8 +1074,32 @@
 +        let maxStringPayloadBytes = self.maxStringPayloadBytes
          let tableData = table.table
          var dcsHandler = activeDcsHandler
++        var dcsPayloadBytes = self._dcsPayloadBytes
++
++        // A DCS handler buffers what it is given, so an oversized sequence drops the handler:
++        // the rest of the sequence is ignored and it is never unhooked (dispatched).
++        func putDcs(_ slice: ArraySlice<UInt8>) {
++            guard let handler = dcsHandler else { return }
++            dcsPayloadBytes += slice.count
++            if dcsPayloadBytes > maxStringPayloadBytes {
++                dcsHandler = nil
++            } else {
++                handler.put(data: slice)
++            }
++        }
          
-@@ -820,6 +829,7 @@ public class EscapeSequenceParser {
+         //dump (data)
+             
+@@ -745,7 +769,7 @@ public class EscapeSequenceParser {
+                     printHandler (data [print..<i])
+                     print = -1
+                 } else if ~dcs != 0 {
+-                    dcsHandler?.put (data: data [dcs..<i])
++                    putDcs(data [dcs..<i])
+                     dcs = -1
+                 }
+             case .error:
+@@ -820,21 +844,23 @@ public class EscapeSequenceParser {
                  parsTxt = []
                  collect = []
                  parameterLimitExceeded = false
@@ -1081,7 +1107,26 @@
                  dcs = -1
                  printStateReset()
              case .dcsHook:
-@@ -847,6 +857,7 @@ public class EscapeSequenceParser {
+                 if !parameterLimitExceeded,
+                    let handler = dispatchDcs(collect: collect, code: code, pars: pars) {
+                     dcsHandler = handler
++                    dcsPayloadBytes = 0
+                     handler.hook(collect: collect, parameters: pars, flag: code)
+                 }
+             case .dcsPut:
+                 dcs = (~dcs != 0) ? dcs : i
+             case .dcsUnhook:
+-                if let d = dcsHandler {
++                if dcsHandler != nil {
+                     if ~dcs != 0 {
+-                        d.put (data: data[dcs..<i])
+-                        d.unhook ()
++                        putDcs(data[dcs..<i])
++                        dcsHandler?.unhook ()
+                         dcsHandler = nil
+                     }
+                 }
+@@ -847,6 +873,7 @@ public class EscapeSequenceParser {
                  parsTxt = []
                  collect = []
                  parameterLimitExceeded = false
@@ -1089,7 +1134,7 @@
                  dcs = -1
                  printStateReset()
              case .oscStart:
-@@ -860,6 +871,7 @@ public class EscapeSequenceParser {
+@@ -860,6 +887,7 @@ public class EscapeSequenceParser {
                  } else {
                      osc = []
                  }
@@ -1097,7 +1142,7 @@
              case .oscPut:
                  var j = i
                  while j < end {
-@@ -867,7 +879,9 @@ public class EscapeSequenceParser {
+@@ -867,7 +895,9 @@ public class EscapeSequenceParser {
                      if c == ControlCodes.BEL || c == ControlCodes.CAN || c == ControlCodes.ESC {
                          break
                      } else if c >= 0x20 {
@@ -1108,7 +1153,7 @@
                              apc.append (c)
                          } else {
                              osc.append (c)
-@@ -878,13 +892,13 @@ public class EscapeSequenceParser {
+@@ -878,13 +908,13 @@ public class EscapeSequenceParser {
                  i = j - 1
              case .oscEnd:
                  if currentState == .apcString {
@@ -1124,7 +1169,7 @@
                          let oscCode: Int?
                          var content: ArraySlice<UInt8>
                          let semiColonAscii = 59 // ';'
-@@ -910,6 +924,7 @@ public class EscapeSequenceParser {
+@@ -910,6 +940,7 @@ public class EscapeSequenceParser {
                  parsTxt = []
                  collect = []
                  parameterLimitExceeded = false
@@ -1132,11 +1177,21 @@
                  dcs = -1
                  printStateReset()
              }
-@@ -929,6 +944,7 @@ public class EscapeSequenceParser {
+@@ -920,7 +951,7 @@ public class EscapeSequenceParser {
+         if currentState == .ground && (~print != 0) {
+             printHandler (data [print..<end])
+         } else if currentState == .dcsPassthrough && (~dcs != 0) && dcsHandler != nil {
+-            dcsHandler!.put (data: data [dcs..<end])
++            putDcs(data [dcs..<end])
+         }
+         // save non pushable buffers
+         _osc = osc
+@@ -929,6 +960,8 @@ public class EscapeSequenceParser {
          _pars = pars
          _parsTxt = parsTxt
          _parameterLimitExceeded = parameterLimitExceeded
 +        _stringPayloadOverflow = stringPayloadOverflow
++        _dcsPayloadBytes = dcsPayloadBytes
          
          // save active dcs handler reference
          activeDcsHandler = dcsHandler
@@ -1302,7 +1357,25 @@
      /**
       * Returns the active buffer (either the normal buffer or the alternative buffer)
       */
-@@ -1180,6 +1186,21 @@ open class Terminal {
+@@ -1099,11 +1105,14 @@ open class Terminal {
+             data = []
+         }
+         
++        // Valid requests are at most two bytes; anything longer is answered as invalid
++        // without being kept.
++        static let maxRequestBytes = 16
++
+         func put (data : ArraySlice<UInt8>)
+         {
+-            for x in data {
+-                self.data.append(x)
+-            }
++            guard self.data.count <= DECRQSS.maxRequestBytes else { return }
++            self.data.append(contentsOf: data.prefix(DECRQSS.maxRequestBytes + 1 - self.data.count))
+         }
+         
+         func unhook ()
+@@ -1180,6 +1189,21 @@ open class Terminal {
      {
          parser.oscHandlers [code] = handler
      }
@@ -1324,7 +1397,7 @@
      
      func cmdSet8BitControls ()
      {
-@@ -4821,6 +4842,7 @@ open class Terminal {
+@@ -4821,6 +4845,7 @@ open class Terminal {
          var bg = curAttr.bg
          var underlineStyle = curAttr.underlineStyle
          var underlineColor = curAttr.underlineColor
@@ -1332,7 +1405,7 @@
          let def = CharData.defaultAttr
  
          var i = 0
-@@ -4997,6 +5019,7 @@ open class Terminal {
+@@ -4997,6 +5022,7 @@ open class Terminal {
                  bg = def.bg
                  underlineStyle = def.underlineStyle
                  underlineColor = def.underlineColor
@@ -1340,7 +1413,7 @@
              case 1:
                  // bold text
                  style = [style, .bold]
-@@ -5016,8 +5039,8 @@ open class Terminal {
+@@ -5016,8 +5042,8 @@ open class Terminal {
                      style = [style, .underline]
                      underlineStyle = .single
                  }
@@ -1351,7 +1424,7 @@
                  style = [style, .blink]
              case 7:
                  // inverse and positive
-@@ -5099,6 +5122,12 @@ open class Terminal {
+@@ -5099,6 +5125,12 @@ open class Terminal {
              case 59:
                  // reset underline color
                  underlineColor = nil
@@ -1364,7 +1437,7 @@
                  
              default:
                  print ("Unknown SGR attribute: \(p) \(pars)")
-@@ -5109,7 +5138,8 @@ open class Terminal {
+@@ -5109,7 +5141,8 @@ open class Terminal {
                              bg: bg,
                              style: style,
                              underlineStyle: underlineStyle,
@@ -1374,7 +1447,7 @@
      }
  
      //
-@@ -7204,6 +7234,13 @@ open class Terminal {
+@@ -7204,6 +7237,13 @@ open class Terminal {
          return linkMatch(at: location, mode: mode)?.text
      }
  

@@ -1105,11 +1105,14 @@ open class Terminal {
             data = []
         }
         
+        // Valid requests are at most two bytes; anything longer is answered as invalid
+        // without being kept.
+        static let maxRequestBytes = 16
+
         func put (data : ArraySlice<UInt8>)
         {
-            for x in data {
-                self.data.append(x)
-            }
+            guard self.data.count <= DECRQSS.maxRequestBytes else { return }
+            self.data.append(contentsOf: data.prefix(DECRQSS.maxRequestBytes + 1 - self.data.count))
         }
         
         func unhook ()
