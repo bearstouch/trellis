@@ -56,6 +56,22 @@ final class TerminalPasteTests: XCTestCase {
         XCTAssertEqual(plan.data(bracketed: true), Data("\u{1b}[200~".utf8) + Data(text.utf8) + Data("\u{1b}[201~".utf8))
     }
 
+    func testBracketedPasteCannotEndEarly() {
+        let start = "\u{1b}[200~", end = "\u{1b}[201~"
+        for (text, body) in [
+            ("echo safe\(end)rm -rf ~\n", "echo saferm -rf ~\n"), ("a\(start)b\(end)c", "abc"), ("x\u{1b}[20\(end)1~y", "xy"),
+            ("a\(end)\u{301}b", "a\u{301}b")
+        ] {
+            let plan = TerminalPastePlan(input: .text(text), shell: nil)
+            XCTAssertTrue(plan.requiresReview)
+            XCTAssertEqual(plan.data(bracketed: true), Data((start + body + end).utf8), text.debugDescription)
+            XCTAssertEqual(plan.data(bracketed: false), Data(text.utf8), "Without bracketed paste nothing is removed")
+        }
+        let long = TerminalPastePlan(input: .text(String(repeating: "a", count: 9_000) + end + "id\n"), shell: nil)
+        XCTAssertTrue(long.preview.contains("escape (ESC) characters not shown"), "An escape past the preview is called out")
+        XCTAssertFalse(TerminalPastePlan(input: .text(String(repeating: "a\n", count: 9_000)), shell: nil).preview.contains("ESC"))
+    }
+
     func testEscapePathByShell() {
         let path = "/tmp/a b's $HOME\nfile"
         for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {

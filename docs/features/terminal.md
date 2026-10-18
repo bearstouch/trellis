@@ -45,8 +45,8 @@ Known limits: ligatures whose font merges several characters into one glyph take
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| FR-C03 | Paste only into the focused pane, using bracketed paste when the shell has negotiated it. | With two panes, only the focused pane receives the pasted bytes. |
-| FR-C04 | Review multiline pastes and text with control characters before sending them. | The review shows the line count, invisible control characters and the target pane. Cancelling sends zero bytes. Paste never adds a newline that wasn't in the clipboard. |
+| FR-C03 | Paste only into the focused pane, using bracketed paste when the shell has negotiated it. | With two panes, only the focused pane receives the pasted bytes. Bracketed-paste start and end markers (`ESC[200~`, `ESC[201~`) inside the pasted text are removed, so the paste can't end early and run the rest as typed commands. |
+| FR-C04 | Review multiline pastes and text with control characters before sending them. | The review shows the line count, invisible control characters and the target pane. A preview cut off after 8,192 characters says when the hidden rest contains escape characters. Cancelling sends zero bytes. Paste never adds a newline that wasn't in the clipboard. |
 | FR-C05 | Paste file paths through an explicit action. | **Paste Escaped Path** escapes paths for the configured shell; shells it doesn't support get a quoted-path preview. Ordinary paste stays plain text. |
 
 The UI paste review is mandatory. API input (`session.sendInput`) doesn't show it, because the grant itself authorizes input. See [Methods](../api/methods.md#session-launch-and-input).
