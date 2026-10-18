@@ -37,8 +37,11 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
-    /// Authenticated shell-integration marks only (FR-SI02); forged output never reaches this.
+    /// Authenticated shell-integration marks (FR-SI02), or an SSH pane's unverified marks (FR-SI09) once
+    /// `observeRemoteShellMarks()` chose that; forged output in a local pane never reaches this.
     public var onShellIntegrationEvent: ((ShellIntegrationEvent) -> Void)?
+    /// Which marks this session accepts, fixed before launch; nil accepts none.
+    public private(set) var shellMarkOrigin: ShellMarkOrigin?
     /// A password-style prompt: the PTY has echo off with line editing on (FR-T06). Fires on change only.
     public var onPasswordPromptChanged: ((Bool) -> Void)?
     /// The program rang the bell or posted an OSC 9/777/99 notification (FR-T06). Carries no text.
@@ -130,7 +133,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard !adapter.isDetached else { return }
         let size = getWindowSize()
         guard let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) else { return }
-        if session.state == .stopped, let nonce = configuration.shellIntegration?.nonce { observeShellIntegration(nonce: nonce) }
+        if session.state == .stopped, shellMarkOrigin == nil, let nonce = configuration.shellIntegration?.nonce { observeShellIntegration(nonce: nonce) }
         await session.start(configuration, size: dimensions)
         if session.state == .failed {
             adapter.receive(Data("Unable to start the terminal session. Check its executable, directory, and environment.\r\n".utf8))
@@ -354,7 +357,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             imageTransfer.reset()
             let metrics = terminalView.cellMetrics
             terminalView.getTerminal().sendResponse(text: InlineImageCommand.cellSizeReport(size: metrics.size, scale: metrics.scale))
-        case .other: imageTransfer.reset()
+        case .other:
+            imageTransfer.reset()
+            if shellMarkOrigin == .remote, let event = ShellIntegrationEvent.parseRemote(osc1337: data) { onShellIntegrationEvent?(event) }
         }
     }
 
@@ -368,10 +373,28 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// Every 133 mark keeps upstream prompt handling; only marks with this session's
     /// nonce become events. The nonce lives only in memory for this session.
     private func observeShellIntegration(nonce: String) {
+        shellMarkOrigin = .authenticated
         let terminal = terminalView.getTerminal()
         terminal.registerOscHandler(code: 133) { [weak self, weak terminal] data in
             terminal?.handleSemanticPrompt(data)
             guard let self, let event = ShellIntegrationEvent.parse(data, nonce: nonce) else { return }
+            self.onShellIntegrationEvent?(event)
+        }
+    }
+
+    /// FR-SI09: an SSH pane's nonce-less OSC 133 marks, OSC 7 and OSC 1337 `CurrentDir=` become display-only events.
+    /// Call before starting; a session observes either these or its nonce, never both.
+    public func observeRemoteShellMarks() {
+        guard shellMarkOrigin == nil, session.state == .stopped else { return }
+        shellMarkOrigin = .remote
+        let terminal = terminalView.getTerminal()
+        terminal.registerOscHandler(code: 133) { [weak self, weak terminal] data in
+            terminal?.handleSemanticPrompt(data)
+            guard let self, let event = ShellIntegrationEvent.parseRemote(data) else { return }
+            self.onShellIntegrationEvent?(event)
+        }
+        terminal.registerOscHandler(code: 7) { [weak self] data in
+            guard let self, let event = ShellIntegrationEvent.parseRemote(osc7: data) else { return }
             self.onShellIntegrationEvent?(event)
         }
     }

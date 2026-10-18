@@ -694,6 +694,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     configuration = LocalLaunchConfiguration(
                         executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
+                if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
@@ -719,16 +720,31 @@ public final class AppWorkspaceModel: ObservableObject {
         preferences.set(enabled, forKey: "terminal.shellIntegration")
     }
 
-    /// The shell's reported directory; nil without integration (INT-01).
-    public func currentDirectory(paneID: UUID) -> String? { shellStates[paneID]?.currentDirectory }
+    /// The local shell's authenticated directory; nil without integration (INT-01) and for remote marks (FR-SI09),
+    /// so file links, new splits and tabs, saved launches and `session.get` never use a remote path.
+    public func currentDirectory(paneID: UUID) -> String? {
+        guard let state = shellStates[paneID], state.origin == .authenticated else { return nil }
+        return state.currentDirectory
+    }
+
+    /// An SSH pane's unverified reported location for display only (FR-SI09): `host:/path`, or the path alone.
+    public func remoteDirectory(paneID: UUID) -> String? {
+        guard let state = shellStates[paneID], state.origin == .remote, let directory = state.currentDirectory else { return nil }
+        return state.remoteHost.map { "\($0):\(directory)" } ?? directory
+    }
+
+    /// A saved SSH host, or a pane started straight into `ssh`, `mosh` or `autossh`: its paths name remote files.
+    public static func isRemote(_ launch: SessionLaunch) -> Bool {
+        switch launch {
+        case .host: true
+        case .process(let executable, _, _): ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent)
+        case .shell: false
+        }
+    }
 
     /// File links resolve only in local panes, read at click time so a restart is seen (FR-L04).
-    /// A saved SSH host's (or a direct `ssh` command's) paths name files on the remote machine.
     func fileLinkContext(paneID: UUID) -> FileLinkContext? {
-        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return nil }
-        if case .host = launch { return nil }
-        // A pane started straight into `ssh` or `mosh` shows remote paths too.
-        if case .process(let executable, _, _) = launch, ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent) { return nil }
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch) else { return nil }
         return FileLinkContext(currentDirectory: currentDirectory(paneID: paneID), homeDirectory: NSHomeDirectory())
     }
 
@@ -891,7 +907,8 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let state = shellStates[paneID] else { return nil }
         if let name = state.commandName { return name }
         guard let directory = state.currentDirectory else { return nil }
-        if directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
+        // A remote path is never this Mac's home, even when it is spelled the same.
+        if state.origin == .authenticated, directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
         let name = (directory as NSString).lastPathComponent
         return name.isEmpty ? directory : name
     }
@@ -899,20 +916,20 @@ public final class AppWorkspaceModel: ObservableObject {
     private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
         switch event {
         case .commandFinished, .promptStart: settleOutput(paneID: paneID)
-        case .commandInputStart, .commandStart: break
+        case .commandInputStart, .commandStart, .reportedDirectory, .reportedHost: break
         }
         // Back at the prompt, the program that asked (or reported progress) is gone.
         if case .promptStart = event {
             if inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
             clearProgress(paneID: paneID)
         }
-        var state = shellStates[paneID] ?? ShellIntegrationState()
+        var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
         let wasRunning = state.commandRunning
         state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
         if wasRunning, !state.commandRunning { postCommandFinished(state, paneID: paneID) }
-        if let directory = state.currentDirectory, let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
+        if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
         refreshTerminalAccessibility()

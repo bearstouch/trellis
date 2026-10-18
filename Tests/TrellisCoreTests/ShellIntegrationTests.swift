@@ -163,6 +163,56 @@ final class ShellIntegrationTests: XCTestCase {
         XCTAssertEqual(state.durationText, "20 s")
     }
 
+    func testRemoteMarksNeedNoNonceButOnlyCarryPromptAndCommandState() {
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(mark("A")), .promptStart(directory: nil))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(mark("A;cwd=/etc")), .promptStart(directory: nil), "a remote directory comes from OSC 7 or 1337")
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(mark("C")), .commandStart(commandLine: nil))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(mark("C;cmdline_url=make%20all")), .commandStart(commandLine: "make all"))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(mark("D;3")), .commandFinished(exitCode: 3))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(mark("D")), .commandFinished(exitCode: nil))
+        for payload in ["B", "Z", "AA", "", "D;1;k=a;k=b"] { XCTAssertNil(ShellIntegrationEvent.parseRemote(mark(payload)), payload) }
+        XCTAssertNil(ShellIntegrationEvent.parseRemote([0xFF]))
+        XCTAssertNil(ShellIntegrationEvent.parseRemote(mark("C;cmdline_url=" + String(repeating: "a", count: ShellIntegrationEvent.maximumPayloadBytes))))
+    }
+
+    func testLocalParsingStillRejectsNonceLessMarks() {
+        for payload in ["A", "A;cwd=/tmp", "C", "D;0", "D;1"] { XCTAssertNil(ShellIntegrationEvent.parse(mark(payload), nonce: nonce), payload) }
+    }
+
+    func testRemoteDirectoryReportsAreDecodedAndBounded() {
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(osc7: mark("file://web-1.example/srv/my%20app")), .reportedDirectory("/srv/my app", host: "web-1.example"))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(osc7: mark("FILE:///var/log")), .reportedDirectory("/var/log", host: nil))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(osc7: mark("file://[::1]/tmp")), .reportedDirectory("/tmp", host: "[::1]"))
+        for payload in [
+            "file://host", "file://host/tmp/%1B%5D", "file://host/%00", "http://host/tmp", "file://bad host/tmp", "file://h%C3%A9/tmp",
+            "file://" + String(repeating: "h", count: 254) + "/tmp", "file://host/" + String(repeating: "a/", count: Int(PATH_MAX))
+        ] {
+            XCTAssertNil(ShellIntegrationEvent.parseRemote(osc7: mark(payload)), payload)
+        }
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(osc1337: mark("CurrentDir=/home/deploy/100%")), .reportedDirectory("/home/deploy/100%", host: nil))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(osc1337: mark("RemoteHost=deploy@web-1")), .reportedHost("web-1"))
+        XCTAssertEqual(ShellIntegrationEvent.parseRemote(osc1337: mark("RemoteHost=web-1")), .reportedHost("web-1"))
+        for payload in ["CurrentDir=relative", "CurrentDir=/tmp/\u{1B}[31m", "RemoteHost=deploy@", "RemoteHost=a@b c", "File=inline=1:AAAA", "SetMark"] {
+            XCTAssertNil(ShellIntegrationEvent.parseRemote(osc1337: mark(payload)), payload)
+        }
+    }
+
+    func testOnlyRemoteStateTakesReportedLocations() {
+        var local = ShellIntegrationState()
+        local.apply(.reportedDirectory("/srv", host: "web"), at: Date())
+        local.apply(.reportedHost("web"), at: Date())
+        XCTAssertNil(local.currentDirectory)
+        XCTAssertNil(local.remoteHost)
+        var remote = ShellIntegrationState(origin: .remote)
+        remote.apply(.reportedDirectory("/srv", host: "web"), at: Date())
+        remote.apply(.reportedDirectory("/srv/app", host: nil), at: Date())
+        XCTAssertEqual(remote.currentDirectory, "/srv/app")
+        XCTAssertEqual(remote.remoteHost, "web", "a path without a host keeps the last host")
+        remote.apply(.reportedHost("db"), at: Date())
+        XCTAssertEqual(remote.remoteHost, "db")
+        XCTAssertEqual(remote.origin, .remote)
+    }
+
     func testDurationTextUsesWholeUnits() {
         XCTAssertEqual(ShellIntegrationState.durationText(0.4), "0 s")
         XCTAssertEqual(ShellIntegrationState.durationText(59.9), "59 s")

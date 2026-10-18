@@ -131,6 +131,36 @@ final class NativeTerminalTests: XCTestCase {
     }
 
     @MainActor
+    func testRemoteShellMarksAreObservedOnlyWhenChosen() throws {
+        _ = NSApplication.shared
+        let marks =
+            "\u{1b}]133;A\u{07}\u{1b}]7;file://web/srv/app\u{07}\u{1b}]1337;CurrentDir=/srv\u{07}\u{1b}]1337;RemoteHost=u@web\u{07}"
+            + "\u{1b}]133;C\u{07}\u{1b}]133;D;2\u{07}"
+        let local = NativeTerminal()
+        defer { local.adapter.detach() }
+        var localEvents: [ShellIntegrationEvent] = []
+        local.onShellIntegrationEvent = { localEvents.append($0) }
+        local.adapter.receive(Data(marks.utf8))
+        XCTAssertEqual(localEvents, [], "Without a choice, nonce-less marks change nothing")
+        XCTAssertNil(local.shellMarkOrigin)
+
+        let remote = NativeTerminal()
+        defer { remote.adapter.detach() }
+        var events: [ShellIntegrationEvent] = []
+        remote.onShellIntegrationEvent = { events.append($0) }
+        remote.observeRemoteShellMarks()
+        XCTAssertEqual(remote.shellMarkOrigin, .remote)
+        remote.adapter.receive(Data(marks.utf8))
+        XCTAssertEqual(
+            events,
+            [
+                .promptStart(directory: nil), .reportedDirectory("/srv/app", host: "web"), .reportedDirectory("/srv", host: nil), .reportedHost("web"),
+                .commandStart(commandLine: nil), .commandFinished(exitCode: 2)
+            ])
+        XCTAssertFalse(try remote.adapter.read(.retainedText).contains("srv"), "Marks are never printed")
+    }
+
+    @MainActor
     func testNotificationTextReachesOnlyTheNotificationCallback() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
