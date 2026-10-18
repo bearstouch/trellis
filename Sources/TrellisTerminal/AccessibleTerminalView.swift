@@ -56,7 +56,12 @@ final class AccessibleTerminalView: TerminalView {
     private(set) var metalUnavailable = false
 
     func applyRendererPreference() {
-        if metalRendererStatus.state == .fellBackToCoreGraphics { metalUnavailable = true }
+        if metalRendererStatus.state == .fellBackToCoreGraphics {
+            // Acknowledge the fallback (the state becomes disabled), or turning the setting back on would
+            // read it again and never retry.
+            metalUnavailable = true
+            try? setUseMetal(false)
+        }
         let wanted = prefersMetal && !metalUnavailable
         guard wanted != isUsingMetalRenderer, !wanted || window != nil else { return }
         do { try setUseMetal(wanted) } catch { metalUnavailable = true }

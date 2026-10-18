@@ -3113,10 +3113,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             + Bundle.allBundles + Bundle.allFrameworks
         for container in containerBundles {
             // SwiftPM puts resource bundles next to a test bundle, not inside it.
+            // Only a test bundle: next to an app is outside its signed bundle,
+            // where anyone who can write that folder could supply shaders.
             let urls = [
                 container.resourceURL?.appendingPathComponent(bundleName),
                 container.bundleURL.appendingPathComponent(bundleName),
-                container.bundleURL.deletingLastPathComponent().appendingPathComponent(bundleName)
+                container.bundleURL.pathExtension == "xctest"
+                    ? container.bundleURL.deletingLastPathComponent().appendingPathComponent(bundleName) : nil
             ]
             for url in urls.compactMap({ $0 }) {
                 if let resourceBundle = Bundle(url: url),
