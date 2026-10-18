@@ -24,6 +24,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Next / previous window | ⌃⌘] / ⌃⌘[ |
 | Find in pane / next / previous | ⌘F / ⌘G / ⇧⌘G |
 | Previous / next prompt (shell integration) | ⌘↑ / ⌘↓ |
+| Clear the focused pane (FR-C07) | ⌘K |
 | Zoom in / out / actual size | ⌘+ (⌘= also works) / ⌘- / ⌘0 |
 | Save workspace | ⌘S |
 | Hide / show sidebar | ⌃⌘S |
@@ -34,7 +35,7 @@ These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q)
 Rules for shortcuts:
 
 - Every configurable shortcut must include ⌘, so terminal key combinations (Ctrl-C, Option sequences) always reach the shell.
-- Conflicts are rejected before they're saved. Previous/Next Prompt (added with shell integration) yield to a shortcut you had already assigned to ⌘↑ or ⌘↓: that prompt action starts unbound instead of discarding your saved shortcuts.
+- Conflicts are rejected before they're saved. Previous/Next Prompt (added with shell integration) yield to a shortcut you had already assigned to ⌘↑ or ⌘↓, and Clear yields to one you had assigned to ⌘K: that action starts unbound instead of discarding your saved shortcuts.
 - Settings are stored under the `keyboard.settings` user default.
 - **Option as Meta** is a terminal setting and is off by default.
 - Cmd-C and Cmd-V are always native copy and paste, and Ctrl-C always sends the terminal interrupt. Clipboard actions and terminal input must not fight over the responder chain.

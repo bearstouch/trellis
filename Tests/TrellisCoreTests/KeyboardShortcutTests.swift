@@ -96,6 +96,18 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(KeyboardSettings.self, from: Data(#"{"optionAsMeta":false,"overrides":{}}"#.utf8)).shortcuts[.toggleSidebar], KeyChord("s", [.command, .control]))
     }
 
+    func testClearDefaultsToCommandKAndYieldsToASavedChord() throws {
+        XCTAssertEqual(ShortcutMap.defaults[.clearPane], KeyChord("k"))
+        XCTAssertEqual(ShortcutAction.clearPane.menu, .edit)
+        XCTAssertTrue(ShortcutMap.defaults.issues().isEmpty)
+        // Saved before ⌘K became Clear: the user's choice wins and Clear starts unbound.
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"renameTab":{"chord":{"key":"k","modifiers":1}}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.renameTab], KeyChord("k"))
+        XCTAssertNil(loaded.shortcuts[.clearPane])
+        XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
+    }
+
     func testAccessibilityStateReflectsSelection() throws {
         let windowA = UUID(), windowB = UUID(), tab1 = UUID(), tab2 = UUID(), tabB = UUID()
         let paneLeft = UUID(), paneRight = UUID(), paneOther = UUID(), paneB = UUID()

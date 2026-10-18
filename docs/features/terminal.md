@@ -35,6 +35,12 @@ Known limits: ligatures whose font merges several characters into one glyph take
 | FR-C02 | Support plain-text copy, Select All, and word and line selection. | Unicode and multiline text copy without terminal escape sequences, and Copy All covers the whole retained buffer. |
 | FR-C06 | Double-click selects the whole recognized token under the pointer (smart selection): a URL, an email address, a file path with an optional `:line[:column]` suffix, a UUID, an IPv4 address with optional port, an IPv6 address, a git hash, or a quoted string when the click lands on one of its quotes. Elsewhere it selects a word as before. | Double-clicking any part of `https://en.wikipedia.org/wiki/A_(b)).` selects the URL without the trailing `).`, `src/main.swift:12:5` and `~/notes/todo.md` are selected whole, a path that soft-wraps across rows is selected across them, and wide characters keep their columns. A clock time such as `12:34:56` is not an IPv6 address. Dragging after the double-click extends from the whole token. While a program captures the mouse (mouse reporting), the double-click goes to the program. Triple-click still selects the line. |
 
+## Clear
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-C07 | **Edit → Clear** (⌘K, also in the pane's context menu) clears the focused pane, like Terminal's ⌘K: it drops the scrollback and every row above the cursor's line, and moves that line to the top so the prompt and anything typed stay. Nothing is sent to the program. | After `seq 1 500` and typing `echo hi` without Return, ⌘K leaves only the prompt and `echo hi` at the top, Copy All copies only that line, and Return still runs `echo hi`. A command line that soft-wraps is kept whole. In `vim` or `less` (alternate screen) the program's screen stays; the shell's scrollback is still dropped. Other panes in the tab are unchanged. |
+
 ## Paste
 
 | ID | Requirement | Acceptance check |

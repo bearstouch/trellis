@@ -140,6 +140,35 @@ final class AccessibleTerminalView: TerminalView {
 
     @objc func copyAllRetainedText(_ sender: Any?) { writePlainText(retainedText) }
 
+    /// Like Terminal's ⌘K (FR-C07): drops the scrollback and the screen above the cursor's logical
+    /// line, which moves to the top so the prompt and typed text stay. Nothing is sent to the PTY,
+    /// so a running program is unaffected; an alternate-screen program keeps its screen.
+    @objc func clearTerminal(_ sender: Any?) {
+        let terminal = getTerminal(), buffer = terminal.buffer
+        if !terminal.isCurrentBufferAlternate {
+            var count = 0
+            while terminal.bufferLine(atRow: count) != nil { count += 1 }
+            let top = max(0, count - terminal.rows)
+            var start = buffer.y
+            while start > 0, terminal.bufferLine(atRow: top + start)?.isWrapped == true { start -= 1 }
+            // Scroll the whole screen, not the program's scroll region or left/right margins
+            // (which scroll in place), so those rows reach history.
+            let region = (buffer.scrollTop, buffer.scrollBottom, buffer.marginLeft, buffer.marginRight)
+            buffer.scrollTop = 0; buffer.scrollBottom = terminal.rows - 1; buffer.marginLeft = 0; buffer.marginRight = terminal.cols - 1
+            for _ in 0..<start { terminal.scroll() }
+            (buffer.scrollTop, buffer.scrollBottom, buffer.marginLeft, buffer.marginRight) = region
+            buffer.y -= start; buffer.savedY = max(0, buffer.savedY - start)
+        }
+        selection.selectNone()
+        clearScrollback()
+        // A viewport scrolled up into the dropped history must follow output again.
+        scrollTo(row: 0)
+        terminal.updateFullScreen()
+        scrollback.enforce(on: self)
+        onContentsChanged?()
+        NSAccessibility.post(element: self, notification: .valueChanged)
+    }
+
     @objc func selectAllTerminalText(_ sender: Any?) {
         // SwiftTerm's Select All ends at cols-1 even though text ranges are
         // half-open. Use its public selection operations to include that cell.
@@ -211,7 +240,7 @@ final class AccessibleTerminalView: TerminalView {
         }
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
         if item.action == #selector(pasteEscapedPath(_:)) { return true }
-        if item.action == #selector(showPaneSearch(_:)) { return true }
+        if item.action == #selector(showPaneSearch(_:)) || item.action == #selector(clearTerminal(_:)) { return true }
         if item.action == #selector(openContextLink(_:)) || item.action == #selector(copyContextLink(_:)) { return contextLink != nil }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
@@ -241,7 +270,8 @@ final class AccessibleTerminalView: TerminalView {
             ("Select All", #selector(selectAllTerminalText(_:))),
             ("Paste", #selector(paste(_:))),
             ("Paste Escaped Path", #selector(pasteEscapedPath(_:))),
-            ("Find…", #selector(showPaneSearch(_:)))
+            ("Find…", #selector(showPaneSearch(_:))),
+            ("Clear", #selector(clearTerminal(_:)))
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self

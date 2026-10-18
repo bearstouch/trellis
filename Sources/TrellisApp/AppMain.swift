@@ -202,6 +202,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         for action in [ShortcutAction.findInPane, .findNext, .findPrevious] { edit.submenu?.addItem(item(action)) }
         edit.submenu?.addItem(.separator())
         for action in [ShortcutAction.previousPrompt, .nextPrompt] { edit.submenu?.addItem(item(action)) }
+        edit.submenu?.addItem(.separator())
+        edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
         let view = submenu("View", [.toggleSidebar, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
@@ -267,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .findPrevious: model.activeTerminal?.findInPane(forward: false)
         case .previousPrompt: model.activeTerminal?.scrollToPrompt(forward: false)
         case .nextPrompt: model.activeTerminal?.scrollToPrompt(forward: true)
+        case .clearPane: model.activeTerminal?.clear()
         case .zoomIn: model.zoomTerminalFont(by: 1)
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
@@ -300,7 +303,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
-        case .findInPane, .findNext, .findPrevious: return model.activeTerminal != nil
+        case .findInPane, .findNext, .findPrevious, .clearPane: return model.activeTerminal != nil
         // ⌘↑/⌘↓ stay text navigation while a field (rename, search) is editing.
         case .previousPrompt, .nextPrompt: return model.activeTerminal != nil && !(window?.firstResponder is NSText)
         case .splitLeftRight, .splitTopBottom:

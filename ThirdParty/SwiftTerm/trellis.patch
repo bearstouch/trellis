@@ -923,7 +923,17 @@
      }
      
      /// Removes the scrollback history (the lines above the visible screen)
-@@ -1135,14 +1191,15 @@ public final class Buffer {
+@@ -912,7 +968,8 @@ public final class Buffer {
+         lines.trimStart (count: amountToTrim)
+         yBase = 0
+         yDisp = 0
+-        savedY = max (savedY - amountToTrim, 0)
++        // savedY is viewport-relative and the viewport is unchanged; adjusting it
++        // moved a DECSC/1049-saved cursor to row 0.
+     }
+ 
+     public func changeHistorySize (_ newScrollback: Int?)
+@@ -1135,14 +1192,15 @@ public final class Buffer {
  
              // If these lines contain the cursor don't touch them, the program will handle fixing up wrapped
              // lines with the cursor
@@ -941,7 +951,7 @@
              var srcLineIndex = 1
              var srcCol = 0
              while srcLineIndex < wrappedLines.count {
-@@ -1200,6 +1257,7 @@ public final class Buffer {
+@@ -1200,6 +1258,7 @@ public final class Buffer {
                  toRemove.append (countToRemove)
              }
  
@@ -949,7 +959,7 @@
              y += wrappedLines.count - 1
          }
  
-@@ -1366,7 +1424,7 @@ public final class Buffer {
+@@ -1366,7 +1425,7 @@ public final class Buffer {
              // wrapped lines with the cursor
              let absoluteY = yBase + self.y
  
@@ -958,7 +968,7 @@
                  continue
              }
  
-@@ -1407,6 +1465,7 @@ public final class Buffer {
+@@ -1407,6 +1466,7 @@ public final class Buffer {
              for line in wrappedLines {
                  line.bidiState = paragraphBidiState
              }

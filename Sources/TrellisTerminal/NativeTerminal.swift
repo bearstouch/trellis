@@ -245,6 +245,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if terminalView.getTerminal().isCurrentBufferAlternate { return "Current screen only · No scrollback" }
         return terminalView.scrollback.historyEvicted ? "Earlier output was evicted" : "Retained output only"
     }
+    /// Clears the pane's scrollback and the screen above the prompt (FR-C07); the session is untouched.
+    public func clear() { terminalView.clearTerminal(nil) }
     public func showSearch() {
         searchVisible = true
         searchFocusRequest = UUID()

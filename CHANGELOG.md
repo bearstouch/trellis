@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Edit → Clear** (⌘K, also in the pane's context menu) clears the focused pane like Terminal's ⌘K: the scrollback and the output above the prompt go, and the prompt line with anything you've typed moves to the top. Programs in the alternate screen (vim, less) keep their screen. A ⌘K you had already bound to another action keeps working, and Clear starts unbound (FR-C07).
 - Desktop notifications: programs can post macOS notifications with OSC 9, OSC 777 `notify` and kitty's OSC 99 (with chunked, base64 and query forms). They appear when you aren't looking at the pane, and clicking one jumps to it. Notification text is cleaned of control characters, length-capped and limited to 5 per pane every 10 seconds. **Settings → Appearance → Desktop notifications** turns them off; the tab's **Input** label still shows (FR-T08).
 
 ### Changed
