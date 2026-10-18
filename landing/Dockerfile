@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Absolute URL for canonical, Open Graph and the sitemap; set it as a Railway service variable.
+ARG SITE_URL
 RUN npm run build
 
 FROM nginx:1.27-alpine

@@ -1,0 +1,13 @@
+{
+  "name": "Trellis",
+  "short_name": "Trellis",
+  "description": "A calm, native terminal for macOS.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#0c0c0e",
+  "theme_color": "#0c0c0e",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "256x256", "type": "image/png" }
+  ]
+}

@@ -33,13 +33,26 @@ swift run Trellis --state-directory "$PWD/.build/demo-state"
 
 On load the page asks the GitHub API for the star count and the latest release tag. If that fails (offline, rate-limited), the static labels stay: "GitHub" and "Download for macOS".
 
+## SEO and sharing
+
+`index.html` carries the canonical URL, Open Graph and Twitter tags, and `SoftwareApplication` JSON-LD. The build also writes `robots.txt` and `sitemap.xml`. Absolute URLs come from `SITE_URL`, which defaults to `https://trellis.layerx.xyz`:
+
+```sh
+SITE_URL=https://your.domain npm run build
+```
+
+On Railway, add `SITE_URL` as a service variable; the Dockerfile passes it to the build.
+
+The share card `public/og.png` (1200×630) is rendered from `og/og.html` with `npm run og`, which needs Google Chrome. Rerun it after changing the hero screenshot.
+
 ## Deploying on Railway
 
 The `Dockerfile` builds the site with Node 22 and serves `dist/` with nginx. nginx listens on `$PORT`, which Railway injects; it defaults to 8080. The config (`nginx/default.conf.template`) sets gzip, immutable caching for hashed `/assets/`, `no-cache` for HTML, and security headers including a CSP that only allows `api.github.com` for fetches.
 
 1. In Railway, create a service from the `layerx-labs/trellis` GitHub repo.
 2. Set **Settings → Root Directory** to `landing`. `railway.json` selects the Dockerfile builder.
-3. Generate a domain, or attach your own.
+3. Add a `SITE_URL` variable with the public address, e.g. `https://trellis.layerx.xyz`.
+4. Generate a domain, or attach your own.
 
 Locally:
 

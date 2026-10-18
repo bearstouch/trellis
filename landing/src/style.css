@@ -15,6 +15,8 @@
     --purple: #8e7fca;
     --purple-deep: #6954b8;
     --phosphor: #9cff62;
+    /* Sampled from the hero screenshot's macOS wallpaper, so every window capture sits on the same backdrop. */
+    --wallpaper: linear-gradient(135deg, #ffcfe5 0%, #ffb384 16%, #ff9c75 28%, #f4899f 42%, #d27fac 50%, #8f5ca4 63%, #5746b2 74%, #072ba6 88%, #021e87 100%);
 
     --font: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
     --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -135,6 +137,7 @@ strong { color: var(--heading); font-weight: 600; }
 
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 4rem; align-items: center; }
 .split + .split { margin-top: 6rem; }
+.split-rev { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
 .split-rev > :first-child { order: 2; }
 .split-title { font-size: 1.625rem; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 1.25rem; }
 .split-copy .section-lead { margin-bottom: 1.5rem; }
@@ -145,7 +148,9 @@ strong { color: var(--heading); font-weight: 600; }
 /* Screenshots */
 .shot { margin: 0; }
 .shot-open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: var(--radius-lg); }
-.shot img, .shot-open img { width: 100%; height: auto; border-radius: var(--radius-lg); box-shadow: 0 1.5rem 4rem -1rem rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06); }
+/* Window captures carry their own macOS shadow on a transparent margin; they sit on the hero's wallpaper. */
+.shot img, .shot-open img { width: 100%; height: auto; }
+.shot .shot-open { padding: clamp(0.75rem, 4%, 2.25rem); border-radius: var(--radius-lg); background: var(--wallpaper); box-shadow: 0 1.5rem 4rem -1rem rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06); }
 .shot-placeholder {
     aspect-ratio: 16 / 10; display: grid; place-items: center; text-align: center; padding: 1.5rem;
     border-radius: var(--radius-lg); color: var(--dimmer); font-size: 0.875rem;

@@ -4,15 +4,57 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Trellis: a calm, native terminal for macOS</title>
-    <meta name="description" content="Trellis is an open-source native Swift terminal for macOS: managed windows, renameable tabs, nested splits, saved SSH hosts and a local automation API with a CLI and MCP server." />
+    <meta name="description" content="Trellis is a free, open-source native Swift terminal for macOS: managed windows, renameable tabs, nested splits, saved SSH hosts and a local automation API with a CLI and MCP server." />
+    <meta name="keywords" content="macOS terminal, terminal emulator, Swift, SwiftUI, SSH client, split panes, open source terminal, MCP, Claude Code, automation API" />
+    <meta name="author" content="LayerX Labs" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="%SITE_URL%/" />
     <meta name="theme-color" content="#0c0c0e" />
+    <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Trellis" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="%SITE_URL%/" />
     <meta property="og:title" content="Trellis: a calm, native terminal for macOS" />
-    <meta property="og:description" content="Open source. Managed windows, nested splits, SSH hosts and an automation API for scripts and agents." />
-    <meta property="og:image" content="/og.png" />
+    <meta property="og:description" content="Free and open source. Managed windows, nested splits, saved SSH hosts and an automation API for scripts and AI agents." />
+    <meta property="og:image" content="%SITE_URL%/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Trellis, a calm terminal for busy work: the app window with tabs and a terminal session" />
+
+    <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Trellis: a calm, native terminal for macOS" />
+    <meta name="twitter:description" content="Free and open source. Managed windows, nested splits, saved SSH hosts and an automation API for scripts and AI agents." />
+    <meta name="twitter:image" content="%SITE_URL%/og.png" />
+    <meta name="twitter:image:alt" content="Trellis, a calm terminal for busy work: the app window with tabs and a terminal session" />
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Trellis",
+        "description": "A free, open-source native Swift terminal for macOS with managed windows, nested splits, saved SSH hosts and a local automation API.",
+        "url": "%SITE_URL%/",
+        "image": "%SITE_URL%/og.png",
+        "screenshot": "%SITE_URL%/og.png",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS 14 or later",
+        "processorRequirements": "Apple silicon or Intel (Universal 2)",
+        "downloadUrl": "https://github.com/layerx-labs/trellis/releases/latest",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@type": "Organization", "name": "LayerX", "url": "https://layerx.xyz" },
+        "sameAs": ["https://github.com/layerx-labs/trellis"]
+    }
+    </script>
 </head>
 <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -82,7 +124,7 @@
                             <li>Programs can post desktop notifications (OSC 9, 777 and 99). Click one to jump straight to the pane.</li>
                         </ul>
                     </div>
-                    <figure class="shot" data-shot="tabs" data-alt="Trellis sidebar with several managed windows and color-labeled tabs"></figure>
+                    <figure class="shot" data-shot="tabs" data-alt="Trellis with managed windows in the sidebar and five color-labeled tabs"></figure>
                 </div>
 
                 <div class="split split-rev reveal">
@@ -94,7 +136,7 @@
                             <li>Restored workspaces start with every session <strong>stopped</strong>. Typed input is never replayed.</li>
                         </ul>
                     </div>
-                    <figure class="shot" data-shot="splits" data-alt="A Trellis tab split into several panes running different programs"></figure>
+                    <figure class="shot" data-shot="splits" data-alt="A Trellis tab split into two panes, git log on the left and htop on the right"></figure>
                 </div>
 
                 <div class="split reveal">
@@ -106,7 +148,7 @@
                             <li>On by default. Turn it off in Settings → Sessions.</li>
                         </ul>
                     </div>
-                    <figure class="shot" data-shot="shell" data-alt="A failed command flagged in the Trellis scrollback"></figure>
+                    <figure class="shot" data-shot="shell" data-alt="A tab waiting for a password: the Input label shows on the tab and its window in the sidebar"></figure>
                 </div>
             </div>
         </section>
@@ -197,7 +239,7 @@
                         <li>An optional per-host password lives in the macOS Keychain, optionally behind Touch ID, and is given to ssh only at its password prompt.</li>
                     </ul>
                 </div>
-                <figure class="shot reveal" data-shot="hosts" data-alt="The Trellis Hosts window listing saved SSH hosts"></figure>
+                <figure class="shot reveal" data-shot="hosts" data-alt="The Trellis Hosts window editing a saved SSH host"></figure>
             </div>
         </section>
 
@@ -214,7 +256,7 @@
                         <li>A JSON theme library you can import, edit and share. Bundled Roboto Mono, JetBrains Mono and four more typefaces.</li>
                     </ul>
                 </div>
-                <figure class="shot reveal" data-shot="themes" data-alt="Trellis theme settings with a live preview"></figure>
+                <figure class="shot reveal" data-shot="themes" data-alt="Trellis in a green-tinted theme with shell integration showing the directory and git branch"></figure>
             </div>
         </section>
 
