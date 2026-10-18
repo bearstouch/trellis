@@ -157,6 +157,11 @@ struct AppearanceSettingsView: View {
             Toggle("Desktop notifications", isOn: $draft.desktopNotifications)
             Text("Shows notifications that programs send (OSC 9, OSC 777, OSC 99) when you aren’t looking at their pane. macOS asks for permission the first time.")
                 .font(.caption).foregroundStyle(.secondary)
+            Picker("Notify when a command finishes", selection: $draft.commandFinishedNotificationSeconds) {
+                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? "Off" : "After \($0) s").tag($0) }
+            }.disabled(!draft.desktopNotifications)
+            Text("With shell integration, a command that ran at least this long notifies when it finishes out of view. Only the program name is shown, never the command line.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Ligatures", isOn: $draft.fontLigatures)
             Text("Joins sequences such as -> and != in fonts that include ligatures, such as JetBrains Mono.")
                 .font(.caption).foregroundStyle(.secondary)

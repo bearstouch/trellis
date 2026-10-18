@@ -13,6 +13,12 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.bellStyle, .sound)
         XCTAssertEqual(decoded.chromeMode, .light)
         XCTAssertTrue(decoded.desktopNotifications, "Settings saved before FR-T08 keep notifications on")
+        XCTAssertEqual(decoded.commandFinishedNotificationSeconds, 10, "Settings saved before FR-SI08 notify after 10 s")
+        legacy["commandFinishedNotificationSeconds"] = 7
+        let unknown = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(unknown.commandFinishedNotificationSeconds, 10, "An unoffered threshold falls back to the default")
+        XCTAssertEqual(unknown.chromeMode, .light)
+        legacy["commandFinishedNotificationSeconds"] = nil
         legacy["bellStyle"] = "chime"
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy)).bellStyle, .sound)
     }
@@ -21,6 +27,7 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(settings.chromeMode, .dark)
         XCTAssertEqual(settings.bellStyle, .sound)
         XCTAssertTrue(settings.desktopNotifications)
+        XCTAssertEqual(settings.commandFinishedNotificationSeconds, 10)
         XCTAssertEqual(settings.fontName, "RobotoMono-Regular")
         XCTAssertEqual(settings.fontSize, 13)
         XCTAssertEqual(TerminalPalette.builtIn.background, 0x151719)
@@ -82,7 +89,7 @@ final class AppearanceSettingsTests: XCTestCase {
         var settings = AppearanceSettings()
         settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
         settings.allowItalicFont = false; settings.blinkingText = false; settings.bellStyle = .visual
-        settings.desktopNotifications = false
+        settings.desktopNotifications = false; settings.commandFinishedNotificationSeconds = 0
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)), settings)
     }
     func testTerminalRenderingDiffersCoversTextStyleFields() {
@@ -92,6 +99,11 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly))
         themeOnly.desktopNotifications = false
         XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly), "The notification toggle never touches terminals")
+        themeOnly.commandFinishedNotificationSeconds = 60
+        XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly), "Nor does the command-finished threshold")
+        var invalid = base
+        invalid.commandFinishedNotificationSeconds = 7
+        XCTAssertFalse(invalid.isValid)
         let changes: [(inout AppearanceSettings) -> Void] = [
             { $0.fontName = "Menlo" }, { $0.fontSize = 14 }, { $0.cursorShape = .bar }, { $0.cursorBlinks = true },
             { $0.scrollbackLines = 1 }, { $0.fontLigatures = false }, { $0.boldAsBright = false },

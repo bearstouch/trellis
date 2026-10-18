@@ -139,6 +139,8 @@ public struct ShellIntegrationState: Equatable, Sendable {
     public private(set) var commandStartedAt: Date?
     public private(set) var lastExitCode: Int32?
     public private(set) var lastDuration: TimeInterval?
+    /// Program name of the last finished command (FR-SI08); the command line itself is never kept past `finish`.
+    public private(set) var lastCommandName: String?
 
     public init() {}
 
@@ -160,6 +162,7 @@ public struct ShellIntegrationState: Equatable, Sendable {
     }
 
     private mutating func finish(exitCode: Int32?, at now: Date) {
+        lastCommandName = commandName
         lastExitCode = exitCode; lastDuration = commandStartedAt.map { now.timeIntervalSince($0) }
         commandRunning = false; commandLine = nil; commandStartedAt = nil
     }
@@ -174,5 +177,16 @@ public struct ShellIntegrationState: Equatable, Sendable {
         }
         let name = String((word as NSString).lastPathComponent.unicodeScalars.filter { $0.properties.generalCategory != .control })
         return name.isEmpty ? nil : String(name.prefix(64))
+    }
+
+    /// The last command's duration in whole seconds: "12 s", "2 min 5 s", "1 h 3 min".
+    public var durationText: String? { lastDuration.map(Self.durationText) }
+
+    public static func durationText(_ duration: TimeInterval) -> String {
+        let total = duration.isFinite ? Int(max(0, min(duration, 8_640_000))) : 0
+        let (hours, minutes, seconds) = (total / 3600, total % 3600 / 60, total % 60)
+        if hours > 0 { return minutes > 0 ? "\(hours) h \(minutes) min" : "\(hours) h" }
+        if minutes > 0 { return seconds > 0 ? "\(minutes) min \(seconds) s" : "\(minutes) min" }
+        return "\(seconds) s"
     }
 }

@@ -815,6 +815,21 @@ public final class AppWorkspaceModel: ObservableObject {
         desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, body: notification.body))
     }
 
+    /// FR-SI08: a long command finished while the user wasn't looking at its pane. Unlike `postNotification` this runs
+    /// at the prompt by design, and it never labels the tab. The body names the program only, never the command line.
+    private func postCommandFinished(_ state: ShellIntegrationState, paneID: UUID) {
+        let threshold = appearance.commandFinishedNotificationSeconds
+        guard appearance.desktopNotifications, threshold > 0, let desktopNotifier, snapshot.panes[paneID] != nil,
+            let duration = state.lastDuration, duration >= TimeInterval(threshold), let durationText = state.durationText
+        else { return }
+        guard !workspaceIsFrontmost() || presentation.activePane?.id != paneID else { return }
+        guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
+        let title = state.lastCommandFailed ? "Command failed (exit \(state.lastExitCode ?? 0))" : "Command finished"
+        // The program name is untrusted output, so it gets the same cleaning as OSC notification text.
+        guard let text = TerminalNotification(title: title, body: "\(state.lastCommandName ?? paneTitle(paneID)) ran for \(durationText)") else { return }
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, body: text.body))
+    }
+
     /// Progress never labels the tab as waiting (FR-T09); it only refreshes the bar, text and spoken status.
     private func applyProgress(_ report: TerminalProgressReport, paneID: UUID) {
         var tracker = progressTrackers[paneID] ?? PaneProgressTracker()
@@ -892,9 +907,11 @@ public final class AppWorkspaceModel: ObservableObject {
             clearProgress(paneID: paneID)
         }
         var state = shellStates[paneID] ?? ShellIntegrationState()
-        state.apply(event, at: Date())
+        let wasRunning = state.commandRunning
+        state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
+        if wasRunning, !state.commandRunning { postCommandFinished(state, paneID: paneID) }
         if let directory = state.currentDirectory, let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }

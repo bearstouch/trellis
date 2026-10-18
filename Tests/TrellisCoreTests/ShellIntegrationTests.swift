@@ -147,6 +147,33 @@ final class ShellIntegrationTests: XCTestCase {
         XCTAssertEqual(state.lastExitCode, 0, "a finish without a start is ignored")
     }
 
+    func testFinishedCommandKeepsOnlyItsProgramNameAndDuration() {
+        var state = ShellIntegrationState()
+        let start = Date(timeIntervalSince1970: 100)
+        state.apply(.commandStart(commandLine: "env TOKEN=s3cret /usr/bin/make release"), at: start)
+        XCTAssertNil(state.lastCommandName)
+        state.apply(.commandFinished(exitCode: 0), at: start.addingTimeInterval(125))
+        XCTAssertEqual(state.lastCommandName, "make")
+        XCTAssertNil(state.commandLine, "the command line is gone once the command finishes")
+        XCTAssertEqual(state.durationText, "2 min 5 s")
+        state.apply(.commandStart(commandLine: "sleep 20"), at: start)
+        state.apply(.promptStart(directory: nil), at: start.addingTimeInterval(20))
+        XCTAssertEqual(state.lastCommandName, "sleep", "a prompt while running finishes the command too")
+        XCTAssertNil(state.lastExitCode)
+        XCTAssertEqual(state.durationText, "20 s")
+    }
+
+    func testDurationTextUsesWholeUnits() {
+        XCTAssertEqual(ShellIntegrationState.durationText(0.4), "0 s")
+        XCTAssertEqual(ShellIntegrationState.durationText(59.9), "59 s")
+        XCTAssertEqual(ShellIntegrationState.durationText(60), "1 min")
+        XCTAssertEqual(ShellIntegrationState.durationText(3600), "1 h")
+        XCTAssertEqual(ShellIntegrationState.durationText(3725), "1 h 2 min")
+        XCTAssertEqual(ShellIntegrationState.durationText(-5), "0 s", "a clock step backwards never shows a negative time")
+        XCTAssertEqual(ShellIntegrationState.durationText(.infinity), "0 s")
+        XCTAssertNil(ShellIntegrationState().durationText)
+    }
+
     func testBundledScriptsArePackaged() throws {
         let directory = try XCTUnwrap(BundledShellIntegration.directory())
         for kind in ShellIntegrationKind.allCases {
