@@ -22,7 +22,7 @@ def main():
         raise SystemExit(__doc__)
     products = Path(sys.argv[1]).resolve()
     project = Path(__file__).resolve().parent.parent
-    if not (products / "Trellis").is_file():
+    if not all((products / name).is_file() for name in ("Trellis", "trellis-askpass", "trellis-broker")):
         raise SystemExit("Build the app first and supply its Swift bin path.")
     with tempfile.TemporaryDirectory(prefix="trellis launcher ") as temporary:
         root = Path(temporary)
@@ -36,6 +36,9 @@ def main():
         built = root / "Swift build products"
         built.mkdir()
         shutil.copy2(products / "Trellis", built / "Trellis")
+        helpers = ("trellis-askpass", "trellis-broker")
+        for helper in helpers:
+            shutil.copy2(products / helper, built / helper)
         resources = built / "SwiftTerm_SwiftTerm.bundle"
         shutil.copytree(products / "SwiftTerm_SwiftTerm.bundle", resources)
         theme_resources = built / "Trellis_TrellisCore.bundle"
@@ -81,6 +84,10 @@ def main():
             for script in ("zsh/.zshenv", "bash/trellis.bash", "fish/vendor_conf.d/trellis-shell-integration.fish"):
                 assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/ShellIntegration/{script}").is_file(), f"assembled app has no {script}"
             assert digest(destination / "Contents/Resources/AppIcon.icns") == digest(icon)
+            for helper in helpers:
+                installed = destination / "Contents/Helpers" / helper
+                assert installed.is_file() and os.access(installed, os.X_OK), f"assembled app has no executable {helper}"
+                subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(installed)], check=True)
 
         run("--build-only")
         verify()
@@ -105,7 +112,13 @@ def main():
         missing_themes.rename(theme_resources)
         verify()
         assert before == (digest(executable), digest(seal), log.read_bytes())
-    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, unchanged source, argument forwarding, build-only, and failed-build preservation")
+        missing_broker = built / "missing-broker"
+        (built / "trellis-broker").rename(missing_broker)
+        run("--build-only", success=False)
+        missing_broker.rename(built / "trellis-broker")
+        verify()
+        assert before == (digest(executable), digest(seal), log.read_bytes())
+    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, unchanged source, bundled helpers, argument forwarding, build-only, and failed-build preservation")
 
 
 if __name__ == "__main__":
