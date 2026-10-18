@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Large output is faster: `cat` of a big file into a pane runs about 27% faster for plain text, 13% for coloured output and 43% for Unicode-heavy text. Keeping scrollback within its size limit no longer builds a string for every cell of each new history line, and rows dropped from history are freed at once.
 - The DMG now opens as a drag-to-install window: the Trellis icon beside an **Applications** shortcut, over a background with an arrow, and with the Trellis icon on the mounted volume. `scripts/make-dmg.sh` builds it for both the Universal and the single-architecture DMGs.
 - The status bar now always reads **Trellis** followed by the app version on the left (also in `swift run` builds), and shows the selected window's name at the right end.
 

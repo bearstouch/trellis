@@ -1617,6 +1617,15 @@ open class Terminal {
         return character (for: charData.code)
     }
 
+    /// UTF-8 length of the cell's text without building a `Character`; 0 for an empty cell.
+    public func utf8Count (for charData: CharData) -> Int
+    {
+        let code = charData.code
+        if code == 0 { return 0 }
+        if code > Int32(CharData.maxRune) { return indexToCharMap [code]?.utf8.count ?? 1 }
+        return Unicode.Scalar (UInt32 (code))?.utf8.count ?? 1
+    }
+
     public func makeCharData (attribute: Attribute, code: Int32, size: Int8 = 1) -> CharData
     {
         return CharData (attribute: attribute, code: code, size: size)

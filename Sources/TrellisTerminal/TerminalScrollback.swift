@@ -4,7 +4,10 @@ import TrellisCore
 @MainActor
 final class TerminalScrollback {
     private struct CachedCost {
-        weak var line: BufferLine?
+        // Strong, not weak: a weak reference gives every row a side table, which puts
+        // all its retains and releases (the parser's too) on the slow path. Entries
+        // behind `head` drop it, so rows the engine evicted are freed at once.
+        var line: BufferLine?
         let generation: UInt64
         let bytes: Int
     }
@@ -54,7 +57,7 @@ final class TerminalScrollback {
                 || (matches(history[head + removed], row: 0)
                     && matches(history[history.count - 1], row: survivors - 1)))
         if incremental {
-            for index in head..<(head + removed) { retainedHistoryBytes -= history[index].bytes }
+            for index in head..<(head + removed) { retainedHistoryBytes -= history[index].bytes; history[index].line = nil }
             head += removed
         } else {
             history.removeAll(keepingCapacity: true)
@@ -71,6 +74,7 @@ final class TerminalScrollback {
         var keep = history.count - head
         while keep > budget.lineLimit || retainedHistoryBytes > budget.byteLimit {
             retainedHistoryBytes -= history[head].bytes
+            history[head].line = nil
             head += 1
             keep -= 1
         }
@@ -103,10 +107,9 @@ final class TerminalScrollback {
         var bytes = 1, col = 0
         let end = line.getTrimmedLength()
         while col < end {
-            let cell = line[col]
-            let character = terminal.getCharacter(for: cell)
-            if character == "\0" && col > 0 && line[col - 1].width == 2 { col += 1; continue }
-            let count = character == "\0" ? 1 : String(character).utf8.count
+            let length = terminal.utf8Count(for: line[col])
+            if length == 0 && col > 0 && line[col - 1].width == 2 { col += 1; continue }
+            let count = max(length, 1)
             if count > budget.byteLimit - min(bytes, budget.byteLimit) { return budget.byteLimit + 1 }
             bytes += count
             col += 1
