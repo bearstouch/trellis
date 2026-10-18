@@ -31,7 +31,7 @@ Tokens never go on a command line. The CLI reads the token from standard input (
 | `theme.read` | Read installed themes and global appearance settings |
 | `theme.write` | Import, replace and delete custom themes and change appearance. Requires all-windows scope. |
 | `host.read` | Read saved host metadata, including aliases and identity-file references |
-| `host.write` | Create, update and delete host metadata |
+| `host.write` | Create, update and delete host metadata. Creating a host also needs `session.execute`. |
 
 `clipboard.read` and `clipboard.write` are reserved for a future clipboard API and don't exist in v1. Agents get no clipboard access.
 
@@ -49,6 +49,7 @@ Tokens never go on a command line. The CLI reads the token from standard input (
 | Start a pane with its saved shell or approved host | `session.start` |
 | Start with an arbitrary launch descriptor (`kind: process`, a directory, arguments, environment) | `session.start` + `session.execute` |
 | Connect a saved host | `session.start` + `layout.write`, and both the host and the window must be in scope |
+| Create a host | `host.write` + `session.execute`, because a new host chooses where ssh connects and is connectable at once with all-hosts scope |
 | Change a host's destination, user, port or identity file | `host.write` + `session.execute`. Clearing one with `null` counts as a change. Changing only the name or tags needs just `host.write`. |
 | Close a container that holds running sessions (`allowRunning` or `force`) | `layout.write` + `session.close` |
 | Create with `start: true`, or apply with `startNew: true` | The creating capability + `session.start` |

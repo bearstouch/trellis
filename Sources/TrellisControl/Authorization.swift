@@ -100,7 +100,9 @@ public enum AuthorizationPolicy {
         "session.readOutput": needs(.sessionOutputRead, resources: [(.session, "id")]),
         "host.list": needs(.hostRead),
         "host.get": needs(.hostRead, resources: [(.host, "id")]),
-        "host.create": needs(.hostWrite),
+        // A new host chooses where ssh connects, like changing a destination; with all-hosts scope it is
+        // connectable at once.
+        "host.create": needs(.hostWrite, .sessionExecute),
         "host.update": needs(.hostWrite, resources: [(.host, "id")], when: [(.sessionExecute, hostUpdateMayChangeConnection)]),
         "host.delete": needs(.hostWrite, resources: [(.host, "id")]),
         "host.connect": needs(.sessionStart, .layoutWrite, resources: [(.host, "hostId"), (.window, "windowId")]),

@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Sixel images with very long numbers no longer crash Trellis, and sixel images over the inline image limits (10,000 px a side, 40 MP) are dropped rather than allocated.
 - Pasted text can no longer end a bracketed paste early. Trellis removes `ESC[200~` and `ESC[201~` markers from the text, so text copied from a web page can't run commands after you confirm the paste review. The review also says when a long paste has escape characters beyond the part it shows (FR-C03, FR-C04).
 - An automation grant with `host.write` but not `session.execute` can no longer clear a saved host's user, port or identity file by sending `null`. That changed where the host connected and deleted its saved password. Clearing a connection field now needs `session.execute`, like changing one.
+- Creating a saved host through the automation API, CLI or MCP now needs `session.execute` as well as `host.write`. With all-hosts scope, a grant could otherwise create a host pointing at any server and connect to it without the permission that changing a destination needs.
 - Device control strings (DCS), such as sixel images and DECRQSS requests, are limited to 8 MiB like OSC and APC sequences. An endless one in a program's output could otherwise use up memory.
 
 ## [0.10.0] - 2026-10-17

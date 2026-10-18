@@ -205,7 +205,9 @@ final class GrantAuthorizationTests: XCTestCase {
             // null clears a connection field, so it changes where the host connects too.
             ("host.update", ["id": id(host.id), "user": .null], "PERMISSION_DENIED"),
             ("host.update", ["id": id(host.id), "port": .null, "identityFile": .null], "PERMISSION_DENIED"),
-            ("host.update", ["id": id(host.id), "destination": .null], "PERMISSION_DENIED")
+            ("host.update", ["id": id(host.id), "destination": .null], "PERMISSION_DENIED"),
+            // Creating a host picks its destination, user, port and key, so it needs execute like changing them.
+            ("host.create", ["name": .string("Evil"), "destination": .string("evil.example")], "PERMISSION_DENIED")
         ]
         let scoped = ControlSession(peerUID: geteuid(), handler: handler)
         _ = try await authenticate(scoped, token: scopedToken)
