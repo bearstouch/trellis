@@ -23,6 +23,22 @@ Release build of commit `ee87a38`, Apple M1 Pro, macOS 26.6.2, measured with `sc
 | 10 MiB/s flood for 60 s | 9.96 MiB/s consumed over 60.3 s (meets; the script's pass mark is 9.9 MiB/s against a writer paced at 10 MiB/s); navigation p95 6.8 ms, peak app memory 185 MiB |
 | 100 create/close cycles | No leaked descriptors or children |
 
+## Renderer benchmark (FR-TX05)
+
+Release build of commit `92fd666`, Apple M1 Pro, macOS 26.6.2, one display, measured with `scripts/bench-renderer.py` on 2026-10-19: each workload ran 20 s, three times per renderer with the renderers alternated; medians shown. Throughput is what the app consumed from the PTY. Run `python3 scripts/bench-renderer.py` to reproduce (its windows must stay visible).
+
+| Workload | CoreGraphics | Metal |
+| --- | --- | --- |
+| Cold launch to API ready (median) | 258 ms | 274 ms (+6%) |
+| Idle, 4 visible panes: app CPU / RSS | 0.1% / 101 MiB | 0.1% / 123 MiB |
+| Plain flood paced at 10 MiB/s: app CPU | 88% | 63% (−29%) |
+| Plain flood, unpaced: throughput / CPU per MiB | 11.9 MiB/s / 99 ms | 22.8 MiB/s (+92%) / 59 ms (−40%) |
+| 256-colour and truecolor SGR, unpaced | 5.8 MiB/s / 188 ms | 9.8 MiB/s (+69%) / 119 ms (−37%) |
+| Full-screen repaint, every cell restyled: throughput / frames per second | 3.2 MiB/s / 20 fps | 4.7 MiB/s (+47%) / 30 fps (+50%) |
+| 4 visible panes at 2 MiB/s each: app CPU / peak RSS | 90% / 165 MiB | 88% / 188 MiB |
+
+Metal uses more memory: each Metal pane keeps its own glyph atlas, about 5 MiB (10 idle panes: 163 MiB with Metal against 122 MiB with CoreGraphics in `scripts/qualify.py`). GPU utilization sampled from IOAccelerator stayed at 0% at this sampling rate in every workload, and WindowServer CPU stayed within 1–2.2% for both renderers. Full `scripts/qualify.py` runs with `--renderer metal` and `--renderer coregraphics` met every target except the 10 MiB/s flood, which both missed (1.07 and 0.66 MiB/s), with tab-switch p95 near 74 ms. The base commit `6cfa650`, without this change, gave the same results on the same machine that day (0.71 MiB/s, 80 ms), so the miss isn't caused by the renderer. It is open against the `ee87a38` run above, and quick runs on the same day (`--quick`) gave 13 ms switching for all three.
+
 ## Pending verification
 
 These checks can't be automated here and haven't been performed. They are recorded as pending, never as passed.
@@ -31,6 +47,7 @@ These checks can't be automated here and haven't been performed. They are record
 | --- | --- |
 | Terminal engine | Real IME composition and VoiceOver terminal reading |
 | Text rendering | FR-TX01 in the native app: the cursor splitting ligatures, colour changes and selections keeping them, and the setting turning them off (joined JetBrains Mono ligatures were seen on macOS 26.6.2); FR-TX02 styles seen in vim, `git diff` and a curly-underline test; FR-TX04 emoji and CJK on macOS 14's older Apple Color Emoji; VoiceOver reading concealed text; blinking text with Reduce Motion |
+| GPU rendering | FR-TX05 in the native app: Metal and CoreGraphics side by side for ligatures, decorations, emoji, BiDi rows, inline images, selection and the cursor; the setting switching live; a pane moved to a display with another scale; the CoreGraphics fallback after a GPU failure and the setting turned off and on retrying Metal (only unit tests have exercised it); the qualification run above predates Metal as the default |
 | Native shell | Lifecycle and display checks on external and non-Retina monitors |
 | Accessibility and input | VoiceOver navigation, a real IME, US and Portuguese keyboard layouts, dead keys |
 | Sidebar | FR-W06 tabs hover card in the native app: open/close delays, moving into the card, live updates, clicking a tab of another window, VoiceOver reading rows and the **Show Tabs** action |
