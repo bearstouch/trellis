@@ -4,6 +4,8 @@
 
 A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), dark terminal panes in bundled Roboto Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
+![Trellis with managed windows in the sidebar, color-labeled tabs and a terminal session](docs/images/trellis-workspace.png)
+
 ## Features
 
 - **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Tabs show a busy bar while printing and an **Input** label when a program waits for a password or rings for your attention. Programs can post desktop notifications (OSC 9, OSC 777, OSC 99), which you can turn off in Settings. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
