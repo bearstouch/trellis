@@ -1,26 +1,26 @@
 # Status and known limits
 
-**Version 0.10.0, pre-release.** The MVP feature set is implemented and the full automated suite passes. Trellis isn't qualified for a 1.0 release yet: some manual and platform checks haven't been run, and two release blockers remain. The [changelog](https://github.com/layerx-labs/trellis/blob/master/CHANGELOG.md) lists what shipped.
+**Version 0.10.0, pre-release.** The MVP feature set is implemented and the full automated suite passes. Trellis isn't qualified for a 1.0 release yet: some manual and platform checks haven't been run, and one release blocker remains. The [changelog](https://github.com/layerx-labs/trellis/blob/master/CHANGELOG.md) lists what shipped.
 
 ## Release blockers
 
 | Area | Blocker |
 | --- | --- |
-| Flood throughput | A 10 MiB/s output flood is consumed at about 5–7.6 MiB/s, short of the target. Navigation stays responsive during the flood. Typing and tab-switch latency meet their targets, but they were measured through API proxies rather than UI frame timing. Run `python3 scripts/qualify.py` to reproduce. |
 | Distribution | Universal 2 packaging, the CLI link, the release gate and the release docs are done. Developer ID signing, notarization, clean-machine Gatekeeper checks and the OS/CPU matrix are still pending. |
 
 ## Latest qualification run
 
-Release build, Apple M1 Pro, macOS 26.6.2, measured with `scripts/qualify.py`:
+Release build of commit `ee87a38`, Apple M1 Pro, macOS 26.6.2, measured with `scripts/qualify.py` on 2026-10-18 (one machine, with other applications open). Typing and tab-switch latency are measured through API proxies rather than UI frame timing; an instrumented UI run is still pending. Run `python3 scripts/qualify.py` to reproduce.
+
 
 | Target | Result |
 | --- | --- |
-| Cold launch ≤ 2 s p95 | p95 348 ms |
-| Typing echo ≤ 50 ms p95 (API proxy) | p95 0.4 ms |
-| Tab switch ≤ 100 ms p95 with live panes (API proxy) | p95 11 ms with 100 panes |
+| Cold launch ≤ 2 s p95 | p95 349 ms (n=20) |
+| Typing echo ≤ 50 ms p95 (API proxy) | p95 0.5 ms |
+| Tab switch ≤ 100 ms p95 with live panes (API proxy) | p95 13 ms with 100 panes |
 | 10 windows, 50 tabs, 100 sessions | Met, with unique IDs and all sessions running |
-| Idle memory ≤ 300 MiB and CPU < 2% with 10 panes | 73 MiB, 0.38% |
-| 10 MiB/s flood for 60 s | 5.15 MiB/s consumed (**misses**); navigation p95 60 ms |
+| Idle memory ≤ 300 MiB and CPU < 2% with 10 panes | 114 MiB, 0.23% |
+| 10 MiB/s flood for 60 s | 9.96 MiB/s consumed over 60.3 s (meets; the script's pass mark is 9.9 MiB/s against a writer paced at 10 MiB/s); navigation p95 6.8 ms, peak app memory 185 MiB |
 | 100 create/close cycles | No leaked descriptors or children |
 
 ## Pending verification

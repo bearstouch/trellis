@@ -92,7 +92,6 @@ Only these combinations have been run. Nothing else is claimed.
 ## Known limits
 
 - **Signing:** no Developer ID signing, notarization, or clean-machine Gatekeeper verification has been performed. The current builds are ad-hoc.
-- **Flood throughput:** a 10 MiB/s output flood is consumed at about 5–7.6 MiB/s.
 - **Latency:** typing and switching latency are measured through API proxies, not UI frame timing.
 - **Accessibility and input:** VoiceOver, real IME, and keyboard-layout checks are pending.
 - **SSH:** checks against a real server are pending.

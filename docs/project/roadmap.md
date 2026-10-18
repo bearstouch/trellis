@@ -4,8 +4,7 @@
 
 Everything in [Status](../overview/status.md) under *Release blockers* and *Pending verification*:
 
-- raise flood throughput to the 10 MiB/s target
-- measure UI frame latency
+- measure UI frame latency (typing and tab switching currently meet their targets through API proxies)
 - Developer ID signing and notarization
 - the macOS 14 and 15, native Intel and clean-machine matrix
 - VoiceOver, IME and keyboard layouts
