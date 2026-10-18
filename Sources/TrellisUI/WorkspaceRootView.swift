@@ -370,24 +370,11 @@ public struct WorkspaceRootView: View {
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
             .contextMenu {
-                Button("Rename…") { beginTabRename(tab) }
-                Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
-                    Text("None").tag(TabColor?.none)
-                    ForEach(TabColor.allCases, id: \.self) { color in
-                        Label {
-                            Text(color.displayName)
-                        } icon: {
-                            color.swatchImage
-                        }.tag(TabColor?.some(color))
-                    }
-                }
-                Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
-                Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
-                    .disabled(model.presentation.visibleTabs.first?.id == tab.id)
-                Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }
-                    .disabled(model.presentation.visibleTabs.last?.id == tab.id)
-                Divider().overlay(model.separatorOverlay)
-                Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
+                TabContextMenu(
+                    model: model, tab: tab, canMoveLeft: model.presentation.visibleTabs.first?.id != tab.id,
+                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay,
+                    rename: { beginTabRename(tab) }
+                ).equatable()
             }
     }
 
@@ -447,13 +434,52 @@ extension TabColor {
     }
     var swatchColor: Color { Color(nsColor: nsColor) }
     /// Menus render symbols as templates and drop their tint; a drawn, non-template image keeps the color.
-    var swatchImage: Image {
-        let color = nsColor
-        let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
-            color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill(); return true
+    /// One image per color: a fresh image on every redraw makes an open menu look changed, which closes it.
+    @MainActor var swatchImage: Image { Self.swatchImages[self]! }
+
+    @MainActor private static let swatchImages: [TabColor: Image] = Dictionary(
+        uniqueKeysWithValues: allCases.map { label in
+            let color = label.nsColor
+            let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+                color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill(); return true
+            }
+            image.isTemplate = false
+            return (label, Image(nsImage: image))
+        })
+}
+
+/// The tab's context menu. Equatable on what it shows, so a busy tab redrawing every second (FR-T05) leaves an
+/// open menu alone instead of rebuilding and closing it.
+private struct TabContextMenu: View, Equatable {
+    let model: AppWorkspaceModel
+    let tab: WorkspaceTab
+    let canMoveLeft: Bool
+    let canMoveRight: Bool
+    let separator: Color
+    let rename: () -> Void
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.tab.id == rhs.tab.id && lhs.tab.color == rhs.tab.color && lhs.canMoveLeft == rhs.canMoveLeft && lhs.canMoveRight == rhs.canMoveRight
+            && lhs.separator == rhs.separator
+    }
+
+    var body: some View {
+        Button("Rename…", action: rename)
+        Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
+            Text("None").tag(TabColor?.none)
+            ForEach(TabColor.allCases, id: \.self) { color in
+                Label {
+                    Text(color.displayName)
+                } icon: {
+                    color.swatchImage
+                }.tag(TabColor?.some(color))
+            }
         }
-        image.isTemplate = false
-        return Image(nsImage: image)
+        Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
+        Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
+        Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
+        Divider().overlay(separator)
+        Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
     }
 }
 
