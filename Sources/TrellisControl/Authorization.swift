@@ -41,9 +41,10 @@ public enum AuthorizationPolicy {
     }
 
     /// Only renames and retags avoid `session.execute`; any other field could change where the host connects.
+    /// A present `null` counts too, because it clears the user, port or identity file.
     private static let hostUpdateMayChangeConnection: @Sendable (JSONValue?) -> Bool = { params in
         guard case .object(let object)? = params else { return false }
-        return object.contains { !["id", "name", "tags", "expectedRevision", "idempotencyKey"].contains($0.key) && $0.value != .null }
+        return object.keys.contains { !["id", "name", "tags", "expectedRevision", "idempotencyKey"].contains($0) }
     }
 
     /// Output-read unless `topics` explicitly lists only non-output topics.

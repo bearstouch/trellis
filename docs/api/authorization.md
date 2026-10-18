@@ -49,7 +49,7 @@ Tokens never go on a command line. The CLI reads the token from standard input (
 | Start a pane with its saved shell or approved host | `session.start` |
 | Start with an arbitrary launch descriptor (`kind: process`, a directory, arguments, environment) | `session.start` + `session.execute` |
 | Connect a saved host | `session.start` + `layout.write`, and both the host and the window must be in scope |
-| Change a host's destination, user, port or identity file | `host.write` + `session.execute`. Changing only the name or tags needs just `host.write`. |
+| Change a host's destination, user, port or identity file | `host.write` + `session.execute`. Clearing one with `null` counts as a change. Changing only the name or tags needs just `host.write`. |
 | Close a container that holds running sessions (`allowRunning` or `force`) | `layout.write` + `session.close` |
 | Create with `start: true`, or apply with `startNew: true` | The creating capability + `session.start` |
 | Subscribe to output events | `metadata.read` + `session.output.read` |

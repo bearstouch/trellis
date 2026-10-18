@@ -201,7 +201,11 @@ final class GrantAuthorizationTests: XCTestCase {
             ("events.subscribe", [:], "PERMISSION_DENIED"),
             ("host.update", ["id": id(host.id), "name": .string("Production"), "tags": .array([])], "OK"),
             ("host.update", ["id": id(host.id), "destination": .string("evil")], "PERMISSION_DENIED"),
-            ("host.update", ["id": id(host.id), "host": .object(["destination": .string("evil")])], "PERMISSION_DENIED")
+            ("host.update", ["id": id(host.id), "host": .object(["destination": .string("evil")])], "PERMISSION_DENIED"),
+            // null clears a connection field, so it changes where the host connects too.
+            ("host.update", ["id": id(host.id), "user": .null], "PERMISSION_DENIED"),
+            ("host.update", ["id": id(host.id), "port": .null, "identityFile": .null], "PERMISSION_DENIED"),
+            ("host.update", ["id": id(host.id), "destination": .null], "PERMISSION_DENIED")
         ]
         let scoped = ControlSession(peerUID: geteuid(), handler: handler)
         _ = try await authenticate(scoped, token: scopedToken)
