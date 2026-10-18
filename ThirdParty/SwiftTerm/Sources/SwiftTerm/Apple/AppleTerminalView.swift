@@ -2717,6 +2717,11 @@ extension TerminalView {
     }
 
 #if canImport(MetalKit)
+    func takeMetalDirtyRange() -> ClosedRange<Int>? {
+        defer { pendingMetalDirtyRange = nil }
+        return pendingMetalDirtyRange
+    }
+
     func requestMetalDisplay() {
         guard let metalView = metalView else {
             return
