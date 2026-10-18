@@ -1,7 +1,7 @@
 {
   "name": "Trellis",
   "short_name": "Trellis",
-  "description": "A calm, native terminal for macOS.",
+  "description": "An organized, native terminal for macOS.",
   "start_url": "/",
   "display": "browser",
   "background_color": "#0c0c0e",

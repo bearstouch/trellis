@@ -68,6 +68,8 @@ strong { color: var(--heading); font-weight: 600; }
     -webkit-background-clip: text; background-clip: text;
     -webkit-text-fill-color: transparent; color: transparent;
 }
+/* Emoji keep their own colors inside gradient headings. */
+.gradient-text .emoji { -webkit-text-fill-color: initial; color: initial; background: none; }
 .icon { width: 1.1em; height: 1.1em; flex: none; }
 
 /* Nav */
