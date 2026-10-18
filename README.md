@@ -153,6 +153,10 @@ python3 -m venv .venv-docs && .venv-docs/bin/pip install mkdocs-material
 .venv-docs/bin/mkdocs serve    # http://127.0.0.1:8000
 ```
 
+## Website
+
+The landing page lives in [`landing/`](landing/README.md). It's a static Vite site served by nginx in a Docker image for Railway: `cd landing && npm install && npm run dev`.
+
 ## Data and migration
 
 User data lives in `~/Library/Application Support/dev.trellis/`. Files there are owner-only and written atomically, with last-known-good backups. Newer or corrupt state opens in recovery mode and is never overwritten.

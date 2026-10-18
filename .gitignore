@@ -7,3 +7,5 @@ dist/
 xcuserdata/
 site/
 .venv-docs/
+landing/node_modules/
+landing/dist/
