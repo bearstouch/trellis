@@ -1454,7 +1454,23 @@
      
      func cmdSet8BitControls ()
      {
-@@ -2737,7 +2753,9 @@ open class Terminal {
+@@ -1601,6 +1617,15 @@ open class Terminal {
+         return character (for: charData.code)
+     }
+ 
++    /// UTF-8 length of the cell's text without building a `Character`; 0 for an empty cell.
++    public func utf8Count (for charData: CharData) -> Int
++    {
++        let code = charData.code
++        if code == 0 { return 0 }
++        if code > Int32(CharData.maxRune) { return indexToCharMap [code]?.utf8.count ?? 1 }
++        return Unicode.Scalar (UInt32 (code))?.utf8.count ?? 1
++    }
++
+     public func makeCharData (attribute: Attribute, code: Int32, size: Int8 = 1) -> CharData
+     {
+         return CharData (attribute: attribute, code: code, size: size)
+@@ -2737,7 +2762,9 @@ open class Terminal {
          return true
      }
  
@@ -1465,7 +1481,7 @@
          guard let text = String(bytes: data, encoding: .ascii) else {
              return nil
          }
-@@ -4821,6 +4839,7 @@ open class Terminal {
+@@ -4821,6 +4848,7 @@ open class Terminal {
          var bg = curAttr.bg
          var underlineStyle = curAttr.underlineStyle
          var underlineColor = curAttr.underlineColor
@@ -1473,7 +1489,7 @@
          let def = CharData.defaultAttr
  
          var i = 0
-@@ -4997,6 +5016,7 @@ open class Terminal {
+@@ -4997,6 +5025,7 @@ open class Terminal {
                  bg = def.bg
                  underlineStyle = def.underlineStyle
                  underlineColor = def.underlineColor
@@ -1481,7 +1497,7 @@
              case 1:
                  // bold text
                  style = [style, .bold]
-@@ -5016,8 +5036,8 @@ open class Terminal {
+@@ -5016,8 +5045,8 @@ open class Terminal {
                      style = [style, .underline]
                      underlineStyle = .single
                  }
@@ -1492,7 +1508,7 @@
                  style = [style, .blink]
              case 7:
                  // inverse and positive
-@@ -5099,6 +5119,12 @@ open class Terminal {
+@@ -5099,6 +5128,12 @@ open class Terminal {
              case 59:
                  // reset underline color
                  underlineColor = nil
@@ -1505,7 +1521,7 @@
                  
              default:
                  print ("Unknown SGR attribute: \(p) \(pars)")
-@@ -5109,7 +5135,8 @@ open class Terminal {
+@@ -5109,7 +5144,8 @@ open class Terminal {
                              bg: bg,
                              style: style,
                              underlineStyle: underlineStyle,
@@ -1515,7 +1531,7 @@
      }
  
      //
-@@ -7204,6 +7231,13 @@ open class Terminal {
+@@ -7204,6 +7240,13 @@ open class Terminal {
          return linkMatch(at: location, mode: mode)?.text
      }
  
