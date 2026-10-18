@@ -106,8 +106,9 @@ final class NativeTerminalTests: XCTestCase {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }
-        var count = 0
+        var count = 0, reports: [TerminalProgressReport] = []
         native.onAttentionRequested = { count += 1 }
+        native.onProgress = { reports.append($0) }
         for (bytes, expected) in [
             ("\u{07}", 1), ("\u{1b}]9;Build done\u{07}", 1), ("\u{1b}]777;notify;Title;Body\u{07}", 1), ("\u{1b}]9;3 tests failed\u{07}", 1),
             ("\u{1b}]9;4;1;50\u{07}", 0), ("\u{1b}]9;1\u{07}", 0), ("\u{1b}]777;other;x\u{07}", 0), ("plain text", 0)
@@ -117,9 +118,16 @@ final class NativeTerminalTests: XCTestCase {
             XCTAssertEqual(count, expected, bytes.debugDescription)
         }
         XCTAssertFalse(try native.adapter.read(.retainedText).contains("Build done"), "Notification text is not printed")
-        // The OSC 9 handler must still hand 9;4 progress to the engine's progress bar.
+        XCTAssertEqual(reports, [TerminalProgressReport(kind: .set, value: 50)], "9;4 progress reaches only onProgress")
+        native.adapter.receive(Data("\u{1b}]9;4;2\u{07}\u{1b}]9;4;3;\u{07}\u{1b}]9;4;4;250\u{07}\u{1b}]9;4;0\u{07}\u{1b}]9;4;9\u{07}".utf8))
+        XCTAssertEqual(
+            reports.dropFirst(), [.init(kind: .error), .init(kind: .indeterminate), .init(kind: .pause, value: 100), .init(kind: .remove)],
+            "Unknown states are dropped, values clamped")
+        XCTAssertEqual(count, 0)
+        // Trellis draws progress on the tab and pane (FR-T09); the engine's own bar never shows.
+        native.adapter.receive(Data("\u{1b}]9;4;1;50\u{07}".utf8))
         let bar = native.view.subviews.first { String(describing: type(of: $0)).contains("ProgressBar") }
-        XCTAssertEqual(bar?.isHidden, false, "OSC 9;4 still drives the progress bar")
+        XCTAssertNotEqual(bar?.isHidden, false, "The engine's progress bar stays hidden")
     }
 
     @MainActor

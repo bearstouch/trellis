@@ -1196,14 +1196,6 @@ open class Terminal {
     {
         oscSemanticPrompt(data)
     }
-
-    /// Runs the built-in OSC 9;4 progress-report handling, so an embedder that
-    /// registers its own OSC 9 handler keeps the progress bar. Returns false for other OSC 9 forms.
-    @discardableResult
-    public func handleProgressReport (_ data: ArraySlice<UInt8>) -> Bool
-    {
-        oscProgressReport(data)
-    }
     
     func cmdSet8BitControls ()
     {
@@ -2761,7 +2753,9 @@ open class Terminal {
         return true
     }
 
-    private func parseProgressReport(_ data: ArraySlice<UInt8>) -> ProgressReport? {
+    /// Parses an OSC 9;4 progress report without acting on it, so an embedder that
+    /// registers its own OSC 9 handler can show progress itself. Returns nil for other OSC 9 forms.
+    public func parseProgressReport(_ data: ArraySlice<UInt8>) -> ProgressReport? {
         guard let text = String(bytes: data, encoding: .ascii) else {
             return nil
         }

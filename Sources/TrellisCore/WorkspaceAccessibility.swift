@@ -37,8 +37,12 @@ public struct WorkspaceAccessibility: Sendable {
         /// Exit status of the shell's last command, from shell integration; nil when unknown or zero.
         public var failedCommandExit: Int32?
         public var inputWait: InputWaitReason?
-        public init(state: SessionState, exitCode: Int32? = nil, failedCommandExit: Int32? = nil, inputWait: InputWaitReason? = nil) {
-            self.state = state; self.exitCode = exitCode; self.failedCommandExit = failedCommandExit; self.inputWait = inputWait
+        /// OSC 9;4 progress (FR-T09).
+        public var progress: TerminalProgress?
+        public init(
+            state: SessionState, exitCode: Int32? = nil, failedCommandExit: Int32? = nil, inputWait: InputWaitReason? = nil, progress: TerminalProgress? = nil
+        ) {
+            self.state = state; self.exitCode = exitCode; self.failedCommandExit = failedCommandExit; self.inputWait = inputWait; self.progress = progress
         }
     }
 
@@ -80,6 +84,7 @@ public struct WorkspaceAccessibility: Sendable {
             var state = session(pane).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"
             if let code = live[pane.id]?.failedCommandExit { state += ", " + Self.commandFailureText(code) }
             if let wait = live[pane.id]?.inputWait { state += ", " + wait.text }
+            if let progress = live[pane.id]?.progress { state += ", " + progress.spokenText }
             let focused = id == presentation.selectedTab?.activePaneID
             return AccessibilityDescriptor(
                 id: id, label: "Terminal \(pane.title ?? titles[id] ?? "pane \(index + 1)")",

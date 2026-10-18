@@ -45,6 +45,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onAttentionRequested: (() -> Void)?
     /// The program posted a desktop notification (FR-T08); its text is untrusted and shown only in the notification.
     public var onNotification: ((TerminalNotification) -> Void)?
+    /// OSC 9;4 progress reports (FR-T09); never an attention request.
+    public var onProgress: ((TerminalProgressReport) -> Void)?
     private var kittyNotifications = KittyNotificationAssembler()
     /// The audible half of the bell (FR-T07); injected so tests stay silent.
     var playBell: () -> Void = { NSSound.beep() }
@@ -310,9 +312,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// Their text goes only to `onNotification`; it is never printed, kept or logged.
     private func observeNotifications() {
         let terminal = terminalView.getTerminal()
-        // The OSC 9 handler replaces upstream's, so 9;4 progress is forwarded to keep the progress bar.
+        // The OSC 9 handler replaces upstream's, so 9;4 progress reaches only `onProgress` and the engine's bar stays hidden.
         terminal.registerOscHandler(code: 9) { [weak self, weak terminal] data in
-            if terminal?.handleProgressReport(data) == true { return }
+            if let report = terminal?.parseProgressReport(data) { self?.onProgress?(TerminalProgressReport(report)); return }
             guard let self, TerminalNotification.isNotification(osc9: data) else { return }
             self.onAttentionRequested?()
             if let notification = TerminalNotification.parse(osc9: data) { self.onNotification?(notification) }
@@ -468,4 +470,18 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
     public func scrolled(source: TerminalView, position: Double) {}
     public func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+}
+
+extension TerminalProgressReport {
+    init(_ report: Terminal.ProgressReport) {
+        let kind: Kind =
+            switch report.state {
+            case .remove: .remove
+            case .set: .set
+            case .error: .error
+            case .indeterminate: .indeterminate
+            case .pause: .pause
+            }
+        self.init(kind: kind, value: report.progress.map(Int.init))
+    }
 }

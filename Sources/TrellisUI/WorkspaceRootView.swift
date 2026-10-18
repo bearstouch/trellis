@@ -311,8 +311,10 @@ public struct WorkspaceRootView: View {
         let selected = tab.id == model.presentation.selectedTab?.id
         let busy = model.busyTabIDs.contains(tab.id)
         let wait = model.inputWait(tabID: tab.id)
+        let progress = model.progress(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }
+            .joined(separator: ", ")
         return HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
@@ -346,6 +348,12 @@ public struct WorkspaceRootView: View {
                     .overlay(Capsule().strokeBorder(model.themeColor(.accent).opacity(0.6), lineWidth: 1))
                     .fixedSize().help(wait.text).accessibilityHidden(true)
             }
+            if let progress {
+                // The bar's state in words (FR-T09); the tab's value speaks it.
+                Text(progress.visibleText).font(.system(size: 10, weight: .medium)).monospacedDigit().lineLimit(1).fixedSize()
+                    .foregroundStyle(progress.state == .error ? Color.red : progress.state == .paused ? Color.orange : model.themeColor(.mutedForeground))
+                    .accessibilityHidden(true)
+            }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
@@ -357,7 +365,7 @@ public struct WorkspaceRootView: View {
             // The tint sits above the opaque active background, so a selected tab keeps it.
             .background(tab.color.map { $0.swatchColor.opacity(selected ? 0.2 : 0.12) } ?? .clear)
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
-            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy) }
+            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy, progress: progress) }
             .overlay(alignment: .bottom) {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
@@ -378,8 +386,17 @@ public struct WorkspaceRootView: View {
             }
     }
 
-    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool) -> some View {
-        if busy {
+    /// Progress outranks the busy bar, which outranks the color label stripe.
+    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool, progress: TerminalProgress?) -> some View {
+        if let progress {
+            let fill =
+                switch progress.state {
+                case .error: Color.red
+                case .paused: Color.orange
+                default: tab.color?.swatchColor ?? model.themeColor(.accent)
+                }
+            TabProgressBar(progress: progress, fill: fill, animated: !model.reduceMotion).help("Progress: \(progress.visibleText)")
+        } else if busy {
             let fill = tab.color?.swatchColor ?? model.themeColor(.accent)
             TabBusyBar(fill: fill, track: tab.color?.swatchColor.opacity(0.3) ?? .clear, animated: !model.reduceMotion)
                 .help(tab.color.map { "Printing output · \($0.displayName) label" } ?? "Printing output")
@@ -546,6 +563,38 @@ private struct TabBusyBar: View {
     }
 }
 
+/// OSC 9;4 progress along the tab's top edge (FR-T09). Indeterminate sweeps, or fills statically under Reduce Motion.
+private struct TabProgressBar: View {
+    let progress: TerminalProgress
+    let fill: Color
+    let animated: Bool
+    @State private var swept = false
+
+    private var sweeping: Bool { animated && progress.state == .indeterminate }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                fill.opacity(0.25)
+                if sweeping {
+                    fill.frame(width: geometry.size.width * 0.3).offset(x: swept ? geometry.size.width * 0.7 : 0)
+                } else {
+                    fill.frame(width: geometry.size.width * CGFloat(progress.state == .indeterminate ? 100 : progress.percent ?? 100) / 100)
+                }
+            }
+        }
+        .frame(height: 3).clipped()
+        .onAppear { start(sweeping) }
+        .onChange(of: sweeping) { _, next in start(next) }
+    }
+
+    private func start(_ sweeping: Bool) {
+        swept = false
+        guard sweeping else { return }
+        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { swept = true }
+    }
+}
+
 /// Shared by the expanded row and the collapsed tile so both expose the same
 /// VoiceOver description and window commands.
 private struct WindowItemActions: ViewModifier {
@@ -663,6 +712,9 @@ private struct WindowTabsPreviewCard: View {
                 Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
+            } else if let progress = tab.progress {
+                Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").labelStyle(.titleAndIcon)
+                    .monospacedDigit()
             } else if tab.isBusy {
                 Label("Busy", systemImage: "waveform").labelStyle(.titleAndIcon).foregroundStyle(model.themeColor(.accent))
             }
@@ -679,7 +731,13 @@ private struct WindowTabsPreviewCard: View {
         if tab.paneCount > 1 { parts.append("\(tab.paneCount) panes") }
         if let code = tab.failedCommandExit { parts.append(WorkspaceAccessibility.commandFailureText(code)) }
         if tab.hasExitedSession { parts.append("a session exited") }
-        if let wait = tab.inputWait { parts.append(wait.text.lowercased()) } else if tab.isBusy { parts.append("output in progress") }
+        if let wait = tab.inputWait {
+            parts.append(wait.text.lowercased())
+        } else if let progress = tab.progress {
+            parts.append(progress.spokenText)
+        } else if tab.isBusy {
+            parts.append("output in progress")
+        }
         return parts.joined(separator: ", ")
     }
 }

@@ -20,6 +20,7 @@ public struct WindowTabPreview: Identifiable, Equatable, Sendable {
     public let paneCount: Int
     public let isBusy: Bool
     public let inputWait: InputWaitReason?
+    public let progress: TerminalProgress?
     public let failedCommandExit: Int32?
     public let hasExitedSession: Bool
 }
@@ -257,7 +258,7 @@ public final class AppWorkspaceModel: ObservableObject {
             live: terminals.reduce(into: [:]) { live, entry in
                 live[entry.key] = WorkspaceAccessibility.LiveSession(
                     state: entry.value.sessionState, exitCode: entry.value.exitCode, failedCommandExit: failedCommandExit(paneID: entry.key),
-                    inputWait: inputWaits[entry.key])
+                    inputWait: inputWaits[entry.key], progress: progress[entry.key])
             },
             windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys),
             windowsNeedingInput: windowsNeedingInput, titles: automaticTitles)
@@ -287,6 +288,10 @@ public final class AppWorkspaceModel: ObservableObject {
     private var outputActivity = PaneOutputActivity()
     /// Panes whose program waits for the user (FR-T06); runtime-only, never persisted.
     @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:]
+    /// Panes reporting OSC 9;4 progress (FR-T09); runtime-only, never persisted.
+    @Published public private(set) var progress: [UUID: TerminalProgress] = [:]
+    private var progressTrackers: [UUID: PaneProgressTracker] = [:]
+    private var progressExpiryTask: Task<Void, Never>?
     private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
     /// Posts desktop notifications (FR-T08); nil (tests, `swift run`) posts nothing.
     public var desktopNotifier: DesktopNotifier?
@@ -537,6 +542,7 @@ public final class AppWorkspaceModel: ObservableObject {
         outputActivity.retain(Set(next.panes.keys))
         notificationLimiter.retain(Set(next.panes.keys))
         if inputWaits.keys.contains(where: { next.panes[$0] == nil }) { inputWaits = inputWaits.filter { next.panes[$0.key] != nil } }
+        for id in progressTrackers.keys where next.panes[id] == nil { clearProgress(paneID: id) }
         // Looking at the pane answers a bell; a password prompt stays until echo returns.
         if let viewed = presentation.activePane?.id, inputWaits[viewed] == .attention { inputWaits.removeValue(forKey: viewed) }
         for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
@@ -636,6 +642,7 @@ public final class AppWorkspaceModel: ObservableObject {
                 if let registration = self.askpassRegistrations.removeValue(forKey: request.sessionID) { self.askpass?.unregister(registration) }
                 if self.terminals[paneID] === terminal {
                     self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
+                    self.clearProgress(paneID: paneID)
                 }
                 self.recordActivity(paneID: paneID, exited: true)
                 self.enqueue(command)
@@ -743,6 +750,11 @@ public final class AppWorkspaceModel: ObservableObject {
         return waits.contains(.password) ? .password : waits.first
     }
 
+    /// The most urgent progress among a tab's panes (FR-T09).
+    public func progress(tabID: UUID) -> TerminalProgress? {
+        TerminalProgress.aggregate(snapshot.tabs[tabID]?.root.paneIDs.compactMap { progress[$0] } ?? [])
+    }
+
     public var windowsNeedingInput: Set<UUID> {
         Set(inputWaits.keys.compactMap { snapshot.panes[$0].flatMap { snapshot.tabs[$0.tabID]?.windowID } })
     }
@@ -754,7 +766,7 @@ public final class AppWorkspaceModel: ObservableObject {
             let panes = tab.root.paneIDs
             return WindowTabPreview(
                 id: tab.id, title: displayTitle(tab), color: tab.color, isActive: tab.id == window.activeTabID, paneCount: panes.count,
-                isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id),
+                isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id), progress: progress(tabID: tab.id),
                 failedCommandExit: panes.lazy.compactMap(failedCommandExit(paneID:)).first,
                 hasExitedSession: panes.contains { [.exited, .failed].contains(terminals[$0]?.sessionState) })
         }
@@ -803,6 +815,45 @@ public final class AppWorkspaceModel: ObservableObject {
         desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, body: notification.body))
     }
 
+    /// Progress never labels the tab as waiting (FR-T09); it only refreshes the bar, text and spoken status.
+    private func applyProgress(_ report: TerminalProgressReport, paneID: UUID) {
+        var tracker = progressTrackers[paneID] ?? PaneProgressTracker()
+        let next = tracker.apply(report, at: activityNow())
+        progressTrackers[paneID] = next == nil ? nil : tracker
+        if progress[paneID] != next { progress[paneID] = next; refreshTerminalAccessibility() }
+        scheduleProgressExpiry()
+    }
+
+    private func clearProgress(paneID: UUID) {
+        progressTrackers.removeValue(forKey: paneID)
+        if progress.removeValue(forKey: paneID) != nil { refreshTerminalAccessibility() }
+    }
+
+    /// One task for every pane: it sleeps until the earliest deadline, so updates never spawn timers.
+    private func scheduleProgressExpiry() {
+        guard progressExpiryTask == nil, !progressTrackers.isEmpty else { return }
+        progressExpiryTask = Task { [weak self] in
+            while !Task.isCancelled, let delay = self?.nextProgressExpiry() {
+                guard let sleep = self?.activitySleep else { return }
+                await sleep(delay)
+                self?.expireProgress()
+            }
+            self?.progressExpiryTask = nil
+        }
+    }
+
+    private func nextProgressExpiry() -> TimeInterval? {
+        progressTrackers.values.compactMap(\.expiresAt).min().map { max(0.05, $0.timeIntervalSince(activityNow())) }
+    }
+
+    private func expireProgress() {
+        let now = activityNow()
+        for (id, tracker) in progressTrackers {
+            var tracker = tracker
+            if tracker.expire(at: now) { clearProgress(paneID: id) }
+        }
+    }
+
     /// Clicking a notification shows its pane, in whichever window and tab it now lives.
     public func revealPane(_ paneID: UUID) async {
         guard let pane = snapshot.panes[paneID], let windowID = snapshot.tabs[pane.tabID]?.windowID else { return }
@@ -835,8 +886,11 @@ public final class AppWorkspaceModel: ObservableObject {
         case .commandFinished, .promptStart: settleOutput(paneID: paneID)
         case .commandInputStart, .commandStart: break
         }
-        // Back at the prompt, the program that asked is gone.
-        if case .promptStart = event, inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
+        // Back at the prompt, the program that asked (or reported progress) is gone.
+        if case .promptStart = event {
+            if inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
+            clearProgress(paneID: paneID)
+        }
         var state = shellStates[paneID] ?? ShellIntegrationState()
         state.apply(event, at: Date())
         guard state != shellStates[paneID] else { return }
@@ -950,6 +1004,7 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         shellStates.removeValue(forKey: pane.id)
         inputWaits.removeValue(forKey: pane.id)
+        clearProgress(paneID: pane.id)
         terminal.onPasswordPromptChanged = { [weak self, weak terminal] active in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
             self.setPasswordPrompt(active, paneID: pane.id)
@@ -961,6 +1016,10 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.onNotification = { [weak self, weak terminal] notification in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
             self.postNotification(notification, paneID: pane.id)
+        }
+        terminal.onProgress = { [weak self, weak terminal] report in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.applyProgress(report, paneID: pane.id)
         }
         terminal.onShellIntegrationEvent = { [weak self, weak terminal] event in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }

@@ -71,6 +71,11 @@ struct PaneTreeView: View {
                         Label(wait == .password ? "Password" : "Needs input", systemImage: "keyboard").lineLimit(1)
                             .help(wait.text).accessibilityLabel(wait.text)
                     }
+                    if let progress = model.progress[id] {
+                        // Text with the symbol, never the tab bar's color alone (FR-T09).
+                        Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
+                            .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
+                    }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.

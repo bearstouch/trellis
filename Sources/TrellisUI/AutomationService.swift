@@ -847,6 +847,11 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         if let started = session.startedAt { object["startedAt"] = .string(ISO8601DateFormatter().string(from: started)) }
         if let message = session.failureMessage { object["failureMessage"] = .string(message) }
         if terminal?.sessionID == id, let wait = model.inputWaits[pane.id] { object["waitingForInput"] = .string(wait.rawValue) }
+        if terminal?.sessionID == id, let progress = model.progress[pane.id] {
+            var report: [String: JSONValue] = ["state": .string(progress.state.rawValue)]
+            if let percent = progress.percent { report["percent"] = .number(Double(percent)) }
+            object["progress"] = .object(report)
+        }
         // Present only after an authenticated mark; never includes command text (FR-SI04).
         if terminal?.sessionID == id, let state = model.shellStates[pane.id] {
             var shell: [String: JSONValue] = ["commandRunning": .bool(state.commandRunning)]
