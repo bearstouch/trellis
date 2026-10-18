@@ -75,7 +75,9 @@ if [ "$identity" != "-" ]; then /usr/bin/codesign --force --timestamp --sign "$i
 
 notarized=false
 stapled=false
+notary_requested=false
 if [ -n "${TRELLIS_NOTARY_PROFILE:-}" ] && [ "$identity" != "-" ]; then
+    notary_requested=true
     /usr/bin/xcrun notarytool submit "$dmg" --keychain-profile "$TRELLIS_NOTARY_PROFILE" --wait && notarized=true
     if [ "$notarized" = true ]; then
         /usr/bin/xcrun stapler staple "$app" && /usr/bin/xcrun stapler staple "$dmg" && stapled=true
@@ -90,9 +92,9 @@ runtime=false
     /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && \
     /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis-askpass" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && runtime=true
 gatekeeper=$(/usr/sbin/spctl --assess --type execute --verbose=2 "$app" 2>&1 || true)
-python3 - "$app" "$dmg" "$identity" "$verified" "$runtime" "$notarized" "$stapled" "$gatekeeper" <<'PY'
+python3 - "$app" "$dmg" "$identity" "$verified" "$runtime" "$notarized" "$stapled" "$gatekeeper" "$notary_requested" <<'PY'
 import json, plistlib, subprocess, sys, os
-app, dmg, identity, verified, runtime, notarized, stapled, gatekeeper = sys.argv[1:]
+app, dmg, identity, verified, runtime, notarized, stapled, gatekeeper, notary_requested = sys.argv[1:]
 manifest = json.load(open("release/manifest.json"))
 info = plistlib.load(open(os.path.join(app, "Contents/Info.plist"), "rb"))
 archs = lambda p: sorted(subprocess.run(["lipo", "-archs", p], capture_output=True, text=True).stdout.split())
@@ -104,6 +106,8 @@ for binary in ["Contents/MacOS/Trellis", "Contents/Helpers/trellis", "Contents/H
     missing = set(manifest["architectures"]) - set(archs(os.path.join(app, binary)))
     if missing: problems.append(f"{binary} lacks {sorted(missing)}")
 problems += [f"missing {a}" for a in manifest["artifacts"] if a not in files]
+# A requested notarization that fails must not leave a "successful" signed build behind.
+if notary_requested == "true" and stapled != "true": problems.append("notarization or stapling failed")
 evidence = {
     "version": manifest["version"], "dmg": os.path.basename(dmg), "signingIdentity": "ad-hoc (not distributable)" if identity == "-" else identity,
     "architectures": {"app": archs(os.path.join(app, "Contents/MacOS/Trellis")), "cli": archs(os.path.join(app, "Contents/Helpers/trellis"))},

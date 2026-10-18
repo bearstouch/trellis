@@ -32,7 +32,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Select Xcode 26
         run: |
@@ -96,7 +96,7 @@ jobs:
           cd dist
           shasum -a 256 Trellis-*.dmg | tee SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Trellis-${{ steps.version.outputs.version }}
           path: |
@@ -111,6 +111,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
+          notarized=$(python3 -c 'import json;print(str(json.load(open("dist/release-evidence.json"))["notarized"]).lower())')
           # Release notes are the matching CHANGELOG.md section.
           awk -v v="$VERSION" '
             $0 ~ "^## \\[" v "\\]" { found = 1; next }
@@ -121,9 +122,11 @@ jobs:
           printf '\n### Downloads\n\n- `Trellis-%s.dmg`: Universal 2, runs on Apple silicon and Intel (recommended)\n- `Trellis-%s-apple-silicon.dmg`: Apple silicon (arm64) only\n- `Trellis-%s-intel.dmg`: Intel (x86_64) only\n\nVerify with `shasum -a 256 -c SHA256SUMS.txt`. Requires macOS 14 or later.\n' "$VERSION" "$VERSION" "$VERSION" >> "$RUNNER_TEMP/notes.md"
           if [ "$SIGNED" != true ]; then
             printf '\n> **Note:** this build is ad-hoc signed and is not notarized. Gatekeeper will block it; build from source or wait for a signed release.\n' >> "$RUNNER_TEMP/notes.md"
+          elif [ "$notarized" != true ]; then
+            printf '\n> **Note:** this build is signed but not notarized, so Gatekeeper will warn before opening it.\n' >> "$RUNNER_TEMP/notes.md"
           fi
           flags=(--title "Trellis $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag)
-          if [ "$SIGNED" != true ] || [[ "$VERSION" == 0.* ]] || [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          if [ "$SIGNED" != true ] || [ "$notarized" != true ] || [[ "$VERSION" == 0.* ]] || [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             "dist/Trellis-$VERSION.dmg#Trellis $VERSION (Universal: Apple silicon + Intel)" \
             "dist/Trellis-$VERSION-apple-silicon.dmg#Trellis $VERSION (Apple silicon)" \
