@@ -408,6 +408,38 @@ share one process and the engine is fed on the main thread.
     build.
   - The I1 Keychain behavior was not tested on a device.
 
+## Remediation status
+
+All High and Medium findings were fixed on `develop`, with one commit for each finding. Each fix has
+regression tests where the code can be tested.
+
+| Finding | Status | Commit | Tests |
+| --- | --- | --- | --- |
+| H1 Kitty `o=z` infinite loop | Fixed | `fix(terminal): bound and validate kitty zlib image payloads` | `TerminalEngineReviewTests` (time out on the old engine) |
+| H2 Sixel overflow / unbounded allocation | Fixed | `fix(terminal): saturate sixel numbers and bound sixel images` | `TerminalEngineReviewTests` (the old engine crashes with SIGTRAP) |
+| M3 Unbounded DCS buffering | Fixed | `fix(terminal): cap DCS payloads like OSC and APC` | `TerminalEngineReviewTests` (fail on the old parser) |
+| M4 Bracketed-paste end marker | Fixed | `fix(core): strip bracketed-paste markers from pasted text` | `TerminalPasteTests.testBracketedPasteCannotEndEarly` |
+| M1 `host.update` null bypass | Fixed | `fix(control): require session.execute to clear host connection fields` | `GrantAuthorizationTests` (fail on the old policy) |
+| M2 `host.create` without execute | Fixed. `host.create` now needs `host.write` + `session.execute`. | `fix(control): require session.execute to create saved hosts` | `GrantAuthorizationTests` |
+| M5 Release pipeline integrity | Fixed. Actions are pinned to SHAs, Dependabot is added, a failed notarization fails the build, and an unnotarized build is published as a pre-release. | `fix(release): pin workflow actions and fail on notarization errors` | No unit test. Checked with `bash -n` and an ad-hoc `package-release.sh` run. The signed and notarized path is **pending**, because no Developer ID is available here. |
+
+An independent review of these commits found two more Medium issues. Both are fixed in follow-up commits:
+
+| Follow-up | Commit | Tests |
+| --- | --- | --- |
+| Chunked kitty transfers (`m=1`) piled up without limit (same class as M3) | `fix(terminal): cap chunked kitty graphics transfers` | `TerminalEngineReviewTests.testKittyChunkedPayloadsAreBounded` |
+| The first M4 fix removed markers in O(n²) time, so a paste full of markers hung the main thread | `fix(core): strip paste markers in linear time` | `TerminalPasteTests.testBracketedPasteMarkerRemovalMatchesRepeatedRemovalInLinearTime` |
+
+The review also noted these hardening items. They are open, at Low severity:
+
+- A kitty `o=z` payload of about 400 KB can still inflate up to the 400 MiB cap on the main thread. For raw formats, the cap could be width × height × bytes per pixel.
+- About 28 KB of sixel repeats still buys the full 40M-sixel draw budget on the main thread.
+- The sixel and DECRQSS handlers keep their last buffer (up to 8 MiB) until the next sequence.
+- Upstream: when ST arrives in a read that holds no payload bytes, the DCS handler isn't unhooked, so a DECRQSS reply can be lost.
+- Upstream: DECRQSS writes request bytes to the engine log. Trellis sets `silentLog`, and requests are now capped at 17 bytes.
+
+The original Low and Informational findings remain open.
+
 ## Recommended remediation order
 
 1. **H1, H2, M3:** harden the vendored engine. Refuse `o=z` (or fix it), clamp sixel parsing, and
