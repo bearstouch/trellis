@@ -736,7 +736,18 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         let settings = model.appearance
         return .object([
             "mode": .string(settings.chromeMode.rawValue), "lightThemeId": .string(settings.lightThemeID), "darkThemeId": .string(settings.darkThemeID),
-            "effectiveThemeId": .string(model.effectiveTheme.id), "revision": revision(model.appearanceRevision)
+            "effectiveThemeId": .string(model.effectiveTheme.id), "revision": revision(model.appearanceRevision),
+            "rendering": renderingJSON()
+        ])
+    }
+
+    /// FR-TX05: the GPU setting and which renderer each pane is actually using.
+    @MainActor private func renderingJSON() -> JSONValue {
+        let stats = model.renderingStats
+        return .object([
+            "gpuRendering": .bool(model.terminalAppearance.gpuRendering),
+            "metalPanes": .number(Double(stats.metalPanes)), "coreGraphicsPanes": .number(Double(stats.coreGraphicsPanes)),
+            "metalFrames": .number(Double(stats.metalFrames)), "coreGraphicsFrames": .number(Double(stats.coreGraphicsFrames))
         ])
     }
 

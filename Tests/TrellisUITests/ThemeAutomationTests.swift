@@ -122,6 +122,23 @@ final class ThemeAutomationTests: XCTestCase {
     }
 
     @MainActor
+    func testAppearanceGetReportsTheRendererAndTheLaunchOverride() async throws {
+        let h = try Harness(themeDirectory: themes)
+        defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
+        try await h.grant("full")
+        _ = try await h.code("window.create", ["name": "Render"])
+        var appearance = try result(try await h.call("appearance.get", [:]))
+        var rendering = try XCTUnwrap(appearance["rendering"] as? [String: Any])
+        XCTAssertEqual(rendering["gpuRendering"] as? Bool, true, "FR-TX05: on by default")
+        XCTAssertEqual((rendering["metalPanes"] as? Double ?? -1) + (rendering["coreGraphicsPanes"] as? Double ?? -1), 1, "every pane is counted once")
+        h.model.rendererOverride = false
+        appearance = try result(try await h.call("appearance.get", [:]))
+        rendering = try XCTUnwrap(appearance["rendering"] as? [String: Any])
+        XCTAssertEqual(rendering["gpuRendering"] as? Bool, false, "--renderer coregraphics wins for this launch")
+        XCTAssertTrue(h.model.appearance.gpuRendering, "the override isn't saved")
+    }
+
+    @MainActor
     func testAppearanceEventHasNoProcessEffects() async throws {
         let h = try Harness(themeDirectory: themes)
         defer {

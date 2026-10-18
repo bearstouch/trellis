@@ -41,6 +41,26 @@ final class AccessibleTerminalView: TerminalView {
     private var scrollbarHideTask: Task<Void, Never>?
     var scrollbarIdleDelay: Duration = .seconds(1)
     private var terminalScroller: NSScroller? { subviews.compactMap { $0 as? NSScroller }.first }
+    /// Draws with the Metal renderer (FR-TX05). Metal needs a window, so it's applied
+    /// when the view gets one; until then, and whenever Metal fails, CoreGraphics draws.
+    var prefersMetal = false {
+        didSet {
+            guard prefersMetal != oldValue else { return }
+            // Turning the setting back on retries a renderer that failed.
+            metalUnavailable = false
+            applyRendererPreference()
+        }
+    }
+    /// Set when Metal couldn't start or the engine fell back to CoreGraphics; not retried
+    /// on every window move, so a failing GPU doesn't flap between renderers.
+    private(set) var metalUnavailable = false
+
+    func applyRendererPreference() {
+        if metalRendererStatus.state == .fellBackToCoreGraphics { metalUnavailable = true }
+        let wanted = prefersMetal && !metalUnavailable
+        guard wanted != isUsingMetalRenderer, !wanted || window != nil else { return }
+        do { try setUseMetal(wanted) } catch { metalUnavailable = true }
+    }
 
     /// Every BEL counts as an attention request, whatever the bell style.
     override func bell(source: Terminal) {
@@ -53,6 +73,7 @@ final class AccessibleTerminalView: TerminalView {
         scrollbarHideTask?.cancel()
         scrollbarHovered = false
         terminalScroller?.alphaValue = 0
+        applyRendererPreference()
     }
 
     override func updateTrackingAreas() {

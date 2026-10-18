@@ -42,6 +42,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var allowBoldFont = true
     public var allowItalicFont = true
     public var blinkingText = true
+    /// Draws terminals with the Metal renderer; CoreGraphics when off or when Metal fails (FR-TX05).
+    public var gpuRendering = true
     public var bellStyle: TerminalBellStyle = .sound
     /// Shows OSC 9/777/99 notifications in Notification Center (FR-T08); the tab's attention label doesn't depend on it.
     public var desktopNotifications = true
@@ -52,9 +54,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
-        case commandFinishedNotificationSeconds
+        case commandFinishedNotificationSeconds, gpuRendering
     }
-    /// Settings saved before the text-rendering, bell and notification keys existed load with their defaults.
+    /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         chromeMode = try c.decode(ChromeMode.self, forKey: .chromeMode)
@@ -70,6 +72,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         allowBoldFont = try c.decodeIfPresent(Bool.self, forKey: .allowBoldFont) ?? true
         allowItalicFont = try c.decodeIfPresent(Bool.self, forKey: .allowItalicFont) ?? true
         blinkingText = try c.decodeIfPresent(Bool.self, forKey: .blinkingText) ?? true
+        gpuRendering = try c.decodeIfPresent(Bool.self, forKey: .gpuRendering) ?? true
         // A style added by a newer build falls back to Sound instead of discarding every appearance setting.
         bellStyle = (try? c.decodeIfPresent(TerminalBellStyle.self, forKey: .bellStyle)) ?? .sound
         desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? true

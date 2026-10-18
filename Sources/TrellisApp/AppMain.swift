@@ -589,6 +589,15 @@ struct TrellisMain {
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))
+            // --renderer metal|coregraphics picks the renderer for this launch only, for benchmarks (FR-TX05).
+            if let index = CommandLine.arguments.firstIndex(of: "--renderer"), CommandLine.arguments.indices.contains(index + 1) {
+                switch CommandLine.arguments[index + 1] {
+                case "metal": model.rendererOverride = true
+                case "coregraphics": model.rendererOverride = false
+                default: break
+                }
+            }
+            if model.rendererOverride != false { NativeTerminal.prepareGPURendering() }
             // FR-R03: a broker is started only when a session is started with Keep Running on; one left by an
             // earlier run is always looked for at launch.
             if let helper = AppDelegate.helperPath(BrokerSessionClient.helperName), let client = BrokerSessionClient.currentExecutable() {
