@@ -1,6 +1,6 @@
 # Trellis
 
-[![CI](https://github.com/layerx-labs/trellis/actions/workflows/ci.yml/badge.svg)](https://github.com/layerx-labs/trellis/actions/workflows/ci.yml)
+[![CI](https://github.com/bearstouch/trellis/actions/workflows/ci.yml/badge.svg)](https://github.com/bearstouch/trellis/actions/workflows/ci.yml)
 
 A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), dark terminal panes in bundled Roboto Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
@@ -22,7 +22,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 ## Quick start
 
 ```sh
-git clone https://github.com/layerx-labs/trellis.git
+git clone https://github.com/bearstouch/trellis.git
 cd trellis
 swift build
 swift run Trellis --state-directory "$PWD/.build/dev-state"

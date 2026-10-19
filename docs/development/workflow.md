@@ -63,7 +63,7 @@ Don't paste terminal output that contains secrets, tokens or private hostnames.
 
 ## Security issues
 
-**Don't open a public issue.** Report vulnerabilities through GitHub's [private vulnerability reporting](https://github.com/layerx-labs/trellis/security/advisories/new). Include the affected version, the impact and minimal reproduction steps.
+**Don't open a public issue.** Report vulnerabilities through GitHub's [private vulnerability reporting](https://github.com/bearstouch/trellis/security/advisories/new). Include the affected version, the impact and minimal reproduction steps.
 
 ## Releasing
 

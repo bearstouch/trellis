@@ -1,6 +1,6 @@
 # Trellis landing page
 
-The static product page for Trellis, built with [Vite](https://vite.dev). It's plain HTML, CSS and a small script, with no framework. The design follows the LayerX look: Inter with `cv05`, LayerX greys and blue/purple accents, and Trellis's phosphor green for small touches.
+The static product page for Trellis, built with [Vite](https://vite.dev). It's plain HTML, CSS and a small script, with no framework. The design uses Inter with `cv05`, neutral greys and blue/purple accents, and Trellis's phosphor green for small touches.
 
 ```sh
 cd landing
@@ -35,7 +35,7 @@ On load the page asks the GitHub API for the star count and the latest release t
 
 ## SEO and sharing
 
-`index.html` carries the canonical URL, Open Graph and Twitter tags, and `SoftwareApplication` JSON-LD. The build also writes `robots.txt` and `sitemap.xml`. Absolute URLs come from `SITE_URL`, which defaults to `https://trellis.layerx.xyz`:
+`index.html` carries the canonical URL, Open Graph and Twitter tags, and `SoftwareApplication` JSON-LD. The build also writes `robots.txt` and `sitemap.xml`. Absolute URLs come from `SITE_URL`, which defaults to `https://trellis.bearstouch.com`:
 
 ```sh
 SITE_URL=https://your.domain npm run build
@@ -59,9 +59,9 @@ The site icons in `public/` come from the app icon artwork in `Design/AppIcon`; 
 
 The `Dockerfile` builds the site with Node 22 and serves `dist/` with nginx. nginx listens on `$PORT`, which Railway injects; it defaults to 8080. The config (`nginx/default.conf.template`) sets gzip, immutable caching for hashed `/assets/`, `no-cache` for HTML, and security headers including a CSP that only allows `api.github.com` for fetches.
 
-1. In Railway, create a service from the `layerx-labs/trellis` GitHub repo.
+1. In Railway, create a service from the `bearstouch/trellis` GitHub repo.
 2. Set **Settings → Root Directory** to `landing`. `railway.json` selects the Dockerfile builder.
-3. Add a `SITE_URL` variable with the public address, e.g. `https://trellis.layerx.xyz`.
+3. Add a `SITE_URL` variable with the public address, e.g. `https://trellis.bearstouch.com`.
 4. Generate a domain, or attach your own.
 
 Locally:

@@ -50,4 +50,4 @@ Manual checks that can't run here, such as VoiceOver, real IME, keyboard layouts
 
 ## CI
 
-[`ci.yml`](https://github.com/layerx-labs/trellis/blob/master/.github/workflows/ci.yml) runs lint, the build (no new warnings in project sources), the full test suite and the launcher regression on `macos-26` with Xcode 26. It runs for every pull request and push to `master` or `develop`.
+[`ci.yml`](https://github.com/bearstouch/trellis/blob/master/.github/workflows/ci.yml) runs lint, the build (no new warnings in project sources), the full test suite and the launcher regression on `macos-26` with Xcode 26. It runs for every pull request and push to `master` or `develop`.

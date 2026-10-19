@@ -20,7 +20,7 @@ function seo(siteURL) {
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), "");
-    const siteURL = (process.env.SITE_URL || env.SITE_URL || "https://trellis.layerx.xyz").replace(/\/+$/, "");
+    const siteURL = (process.env.SITE_URL || env.SITE_URL || "https://trellis.bearstouch.com").replace(/\/+$/, "");
     return {
         base: "/",
         plugins: [seo(siteURL)],

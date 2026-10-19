@@ -1,4 +1,4 @@
-/* Tokens: LayerX greys and accents (layerx.xyz), Trellis phosphor green for small touches. */
+/* Tokens: neutral greys and blue/purple accents, Trellis phosphor green for small touches. */
 :root {
     --bg: #0c0c0e;
     --card: #17171c;
@@ -248,7 +248,7 @@ strong { color: var(--heading); font-weight: 600; }
 .footer-links a, .built-by { color: var(--dim); text-decoration: none; transition: color 0.2s; }
 .footer-links a:hover, .built-by:hover { color: var(--heading); }
 .built-by { display: inline-flex; align-items: center; gap: 0.6rem; }
-.built-by img { height: 1.1rem; width: auto; opacity: 0.9; }
+.built-by img { height: 1.75rem; width: auto; opacity: 0.9; }
 
 /* Lightbox */
 .lightbox { max-width: min(96vw, 110rem); max-height: 94vh; padding: 0; border: 0; background: transparent; overflow: visible; }

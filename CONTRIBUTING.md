@@ -106,7 +106,7 @@ Don't paste terminal output that contains secrets, tokens or private hostnames.
 
 ## Reporting security issues
 
-**Don't open a public issue for security vulnerabilities.** Report them privately through GitHub's [private vulnerability reporting](https://github.com/layerx-labs/trellis/security/advisories/new) for this repository. Include the affected version, the impact, and minimal reproduction steps. We will acknowledge your report and coordinate a fix and disclosure with you.
+**Don't open a public issue for security vulnerabilities.** Report them privately through GitHub's [private vulnerability reporting](https://github.com/bearstouch/trellis/security/advisories/new) for this repository. Include the affected version, the impact, and minimal reproduction steps. We will acknowledge your report and coordinate a fix and disclosure with you.
 
 Areas that are especially security-sensitive include the control socket and grants (`TrellisControl`), terminal escape-sequence handling (OSC 52, file transfer, links), paste review, SSH invocation, and persistence permissions.
 

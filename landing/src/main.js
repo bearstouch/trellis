@@ -2,7 +2,7 @@ import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
 import "./style.css";
 
-const REPO = "layerx-labs/trellis";
+const REPO = "bearstouch/trellis";
 document.documentElement.classList.add("js");
 
 // Screenshots: any slot whose file is missing from src/assets/shots shows a placeholder,
