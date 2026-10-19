@@ -597,7 +597,7 @@ struct TrellisMain {
                 default: break
                 }
             }
-            if model.rendererOverride != false { NativeTerminal.prepareGPURendering() }
+            if model.rendererOverride == true { NativeTerminal.prepareGPURendering() }
             // FR-R03: a broker is started only when a session is started with Keep Running on; one left by an
             // earlier run is always looked for at launch.
             if let helper = AppDelegate.helperPath(BrokerSessionClient.helperName), let client = BrokerSessionClient.currentExecutable() {

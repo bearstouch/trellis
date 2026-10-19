@@ -129,13 +129,13 @@ final class ThemeAutomationTests: XCTestCase {
         _ = try await h.code("window.create", ["name": "Render"])
         var appearance = try result(try await h.call("appearance.get", [:]))
         var rendering = try XCTUnwrap(appearance["rendering"] as? [String: Any])
-        XCTAssertEqual(rendering["gpuRendering"] as? Bool, true, "FR-TX05: on by default")
+        XCTAssertEqual(rendering["gpuRendering"] as? Bool, false, "FR-TX05: off by default")
         XCTAssertEqual((rendering["metalPanes"] as? Double ?? -1) + (rendering["coreGraphicsPanes"] as? Double ?? -1), 1, "every pane is counted once")
-        h.model.rendererOverride = false
+        h.model.rendererOverride = true
         appearance = try result(try await h.call("appearance.get", [:]))
         rendering = try XCTUnwrap(appearance["rendering"] as? [String: Any])
-        XCTAssertEqual(rendering["gpuRendering"] as? Bool, false, "--renderer coregraphics wins for this launch")
-        XCTAssertTrue(h.model.appearance.gpuRendering, "the override isn't saved")
+        XCTAssertEqual(rendering["gpuRendering"] as? Bool, true, "--renderer metal wins for this launch")
+        XCTAssertFalse(h.model.appearance.gpuRendering, "the override isn't saved")
     }
 
     @MainActor

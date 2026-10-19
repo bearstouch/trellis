@@ -106,7 +106,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .appearance: "Customize the window, terminal text, and cursor."
-        case .sessions: "Choose how new local sessions start."
+        case .sessions: "Choose how sessions start, draw, and keep their output."
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
         case .automation: "Manage access for scripts and agents."
@@ -170,18 +170,12 @@ struct AppearanceSettingsView: View {
             Toggle("Use italic fonts", isOn: $draft.allowItalicFont)
             Toggle("Allow blinking text", isOn: $draft.blinkingText)
             Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary)
-            Toggle("GPU rendering (Metal)", isOn: $draft.gpuRendering)
-            Text("Draws terminals on the GPU. If Metal isn’t available or stops working, Trellis draws with the CPU instead.")
-                .font(.caption).foregroundStyle(.secondary)
-            TextField("Scrollback lines (0–50,000)", value: $draft.scrollbackLines, format: .number.grouping(.never))
-            Text("History also has a 16 MiB text limit. Reducing history discards older output.")
-                .font(.caption).foregroundStyle(.secondary)
             if let notice = model.appearanceNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
             if let message { Text(message).font(.caption) }
             HStack {
                 Spacer()
                 Button("Apply Appearance") {
-                    message = model.applyAppearance(draft) ? "Appearance saved." : "Use a font name, 8–48 pt, and 0–50,000 scrollback lines."
+                    message = model.applyAppearance(draft) ? "Appearance saved." : "Use a font name and 8–48 pt."
                 }.disabled(!draft.isValid)
             }
         }

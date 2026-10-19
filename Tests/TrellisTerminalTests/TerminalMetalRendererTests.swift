@@ -9,7 +9,7 @@ import TrellisCore
 final class TerminalMetalRendererTests: XCTestCase {
     /// A terminal in a window (Metal needs one) with the given settings.
     @MainActor
-    private func hostedTerminal(_ settings: AppearanceSettings = AppearanceSettings()) throws -> (NativeTerminal, AccessibleTerminalView) {
+    private func hostedTerminal(_ settings: AppearanceSettings = TerminalMetalRendererTests.metalOn()) throws -> (NativeTerminal, AccessibleTerminalView) {
         _ = NSApplication.shared
         guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("No Metal device") }
         NativeTerminalFont.registerBundledFonts()
@@ -23,9 +23,15 @@ final class TerminalMetalRendererTests: XCTestCase {
         return (native, view)
     }
 
+    private static func metalOn() -> AppearanceSettings {
+        var settings = AppearanceSettings()
+        settings.gpuRendering = true
+        return settings
+    }
+
     @MainActor
     private func jetBrains(ligatures: Bool = true) -> AppearanceSettings {
-        var settings = AppearanceSettings()
+        var settings = Self.metalOn()
         settings.fontName = "JetBrainsMono-Regular"
         settings.fontLigatures = ligatures
         return settings
@@ -56,21 +62,19 @@ final class TerminalMetalRendererTests: XCTestCase {
     func testGPURenderingSettingSwitchesRendererOnceInAWindow() throws {
         _ = NSApplication.shared
         guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("No Metal device") }
-        XCTAssertTrue(AppearanceSettings().gpuRendering, "on by default")
+        XCTAssertFalse(AppearanceSettings().gpuRendering, "off by default")
         let native = NativeTerminal()
         defer { native.adapter.detach() }
-        native.applyAppearance(AppearanceSettings())
+        native.applyAppearance(Self.metalOn())
         XCTAssertFalse(native.isUsingMetalRenderer, "Metal waits for a window")
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         addTeardownBlock { @MainActor in window.close() }
         window.contentView?.addSubview(native.view)
         XCTAssertTrue(native.isUsingMetalRenderer)
-        var off = AppearanceSettings()
-        off.gpuRendering = false
-        native.applyAppearance(off)
-        XCTAssertFalse(native.isUsingMetalRenderer)
         native.applyAppearance(AppearanceSettings())
+        XCTAssertFalse(native.isUsingMetalRenderer)
+        native.applyAppearance(Self.metalOn())
         XCTAssertTrue(native.isUsingMetalRenderer)
         // Panes move between containers; Metal stays on across the move.
         native.view.removeFromSuperview()

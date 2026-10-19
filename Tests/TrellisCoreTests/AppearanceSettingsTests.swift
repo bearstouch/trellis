@@ -22,11 +22,11 @@ final class AppearanceSettingsTests: XCTestCase {
         legacy["bellStyle"] = "chime"
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy)).bellStyle, .sound)
     }
-    func testSettingsSavedBeforeGPURenderingLoadWithMetalOn() throws {
+    func testSettingsSavedBeforeGPURenderingLoadWithMetalOff() throws {
         var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
         legacy["gpuRendering"] = nil; legacy["fontLigatures"] = false
         let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
-        XCTAssertTrue(decoded.gpuRendering)
+        XCTAssertFalse(decoded.gpuRendering)
         XCTAssertFalse(decoded.fontLigatures, "other settings are kept")
     }
     func testFirstLaunchPalette() {
@@ -80,7 +80,7 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertTrue(settings.allowBoldFont)
         XCTAssertTrue(settings.allowItalicFont)
         XCTAssertTrue(settings.blinkingText)
-        XCTAssertTrue(settings.gpuRendering, "FR-TX05: Metal is on by default")
+        XCTAssertFalse(settings.gpuRendering, "FR-TX05: Metal is opt-in")
     }
     func testAppearanceWithoutTextRenderingKeysDecodesWithDefaults() throws {
         // The appearance object as saved before FR-TX01/FR-TX03.
@@ -98,7 +98,7 @@ final class AppearanceSettingsTests: XCTestCase {
         settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
         settings.allowItalicFont = false; settings.blinkingText = false; settings.bellStyle = .visual
         settings.desktopNotifications = false; settings.commandFinishedNotificationSeconds = 0
-        settings.gpuRendering = false
+        settings.gpuRendering = true
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)), settings)
     }
     func testTerminalRenderingDiffersCoversTextStyleFields() {
@@ -116,7 +116,7 @@ final class AppearanceSettingsTests: XCTestCase {
         let changes: [(inout AppearanceSettings) -> Void] = [
             { $0.fontName = "Menlo" }, { $0.fontSize = 14 }, { $0.cursorShape = .bar }, { $0.cursorBlinks = true },
             { $0.scrollbackLines = 1 }, { $0.fontLigatures = false }, { $0.boldAsBright = false },
-            { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false }, { $0.gpuRendering = false },
+            { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false }, { $0.gpuRendering = true },
             { $0.bellStyle = .off }
         ]
         for (index, change) in changes.enumerated() {

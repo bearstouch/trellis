@@ -218,6 +218,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.allowItalicFont = settings.allowItalicFont
         terminalView.textBlinkEnabled = settings.blinkingText
         terminalView.bellStyle = Self.bellStyle(settings.bellStyle)
+        if settings.gpuRendering { Self.prepareGPURendering() }
         terminalView.prefersMetal = settings.gpuRendering
         if terminalView.scrollback.budget.lineLimit != settings.scrollbackLines {
             let old = terminalView.scrollback

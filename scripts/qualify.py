@@ -164,7 +164,7 @@ def first_pane(client, window_id):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="shorter runs for smoke testing (not a qualification)")
-    parser.add_argument("--renderer", choices=["metal", "coregraphics"], help="renderer for every launch (default: the GPU rendering setting, on)")
+    parser.add_argument("--renderer", choices=["metal", "coregraphics"], help="renderer for every launch (default: the GPU rendering setting, off)")
     parser.add_argument("--report", default=os.path.join(ROOT, ".build/qualification-results.md"))
     args = parser.parse_args()
     extra = ["--renderer", args.renderer] if args.renderer else []
@@ -364,7 +364,7 @@ def write_report(args, results, notes):
         "Release build, launched directly (no debugger) on isolated temporary state directories with a seeded test grant.", "",
         "## Environment", "",
         f"- Hardware: {hardware['model']}, {hardware['cpu']}, {hardware['memory_gib']} GiB RAM, {hardware['arch']}",
-        f"- macOS: {hardware['macos']}", f"- Engine: {engine}", f"- Renderer: {args.renderer or 'setting default (Metal)'}",
+        f"- macOS: {hardware['macos']}", f"- Engine: {engine}", f"- Renderer: {args.renderer or 'setting default (CoreGraphics)'}",
         "- Conditions: an interactive desktop session with other applications open; warm OS file cache after the first launch.", "",
         "## Results", "",
         "| Requirement | Measurement | Result |", "| --- | --- | --- |",

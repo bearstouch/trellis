@@ -827,6 +827,7 @@ public struct LaunchSettingsView: View {
     @State private var message = ""
     @State private var saving = false
     @State private var customShell: Bool
+    @State private var scrollbackLines: Int
     private let shells: [ShellOption]
     private static let customTag = ""
     public init(model: AppWorkspaceModel) {
@@ -836,6 +837,17 @@ public struct LaunchSettingsView: View {
         _shell = State(initialValue: model.defaultShell)
         _directory = State(initialValue: model.defaultDirectory)
         _customShell = State(initialValue: !shells.contains { $0.path == model.defaultShell })
+        _scrollbackLines = State(initialValue: model.appearance.scrollbackLines)
+    }
+    /// The GPU setting lives with the appearance settings (FR-TX05) but applies at once, like the other toggles here.
+    private var gpuRendering: Binding<Bool> {
+        Binding(
+            get: { model.appearance.gpuRendering },
+            set: { enabled in
+                var settings = model.appearance
+                settings.gpuRendering = enabled
+                _ = model.applyAppearance(settings)
+            })
     }
     private var shellSelection: Binding<String> {
         Binding(
@@ -870,6 +882,10 @@ public struct LaunchSettingsView: View {
                 .accessibilityIdentifier("settings.shellIntegrationNote")
             TextField("Working directory", text: $directory)
             Text("Applies to new local sessions. Use absolute paths.").font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            TextField("Scrollback lines (0–50,000)", value: $scrollbackLines, format: .number.grouping(.never))
+                .accessibilityIdentifier("settings.scrollbackLines")
+            Text("Applies to every pane. History also has a 16 MiB text limit. Reducing history discards older output.")
+                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             if !message.isEmpty { Text(message).font(.caption).accessibilityIdentifier("settings.result") }
             Toggle(
                 "Shell integration (zsh, bash, fish)",
@@ -893,17 +909,28 @@ public struct LaunchSettingsView: View {
                 "Saves each pane's text when Trellis quits and shows it in the stopped pane next time. The file is stored unencrypted in the workspace folder; passwords, tokens and keys are removed on a best-effort basis, so don't rely on it for secrets. Turning this off deletes the saved text."
             )
             .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            Toggle("GPU rendering (Metal)", isOn: gpuRendering).accessibilityIdentifier("settings.gpuRendering")
+            Text("Draws terminals on the GPU. If Metal isn’t available or stops working, Trellis draws with the CPU instead. Applies to every pane.")
+                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             HStack {
                 Spacer()
                 Button("Save") {
+                    guard (0...50_000).contains(scrollbackLines) else { message = "Use 0–50,000 scrollback lines."; return }
                     saving = true
                     Task {
-                        let saved = await model.saveLaunchSettings(shell: shell, directory: directory)
-                        message = saved ? "Saved for new sessions." : "Check that the shell is executable and the directory is accessible."
+                        // Nothing is saved unless the shell and directory are valid.
+                        var saved = await model.saveLaunchSettings(shell: shell, directory: directory)
+                        if saved {
+                            var settings = model.appearance
+                            settings.scrollbackLines = scrollbackLines
+                            saved = model.applyAppearance(settings)
+                        }
+                        message = saved ? "Saved." : "Check that the shell is executable and the directory is accessible."
                         saving = false
                     }
                 }.disabled(saving)
             }
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
     }
 }

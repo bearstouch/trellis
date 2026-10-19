@@ -43,7 +43,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var allowItalicFont = true
     public var blinkingText = true
     /// Draws terminals with the Metal renderer; CoreGraphics when off or when Metal fails (FR-TX05).
-    public var gpuRendering = true
+    public var gpuRendering = false
     public var bellStyle: TerminalBellStyle = .sound
     /// Shows OSC 9/777/99 notifications in Notification Center (FR-T08); the tab's attention label doesn't depend on it.
     public var desktopNotifications = true
@@ -72,7 +72,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         allowBoldFont = try c.decodeIfPresent(Bool.self, forKey: .allowBoldFont) ?? true
         allowItalicFont = try c.decodeIfPresent(Bool.self, forKey: .allowItalicFont) ?? true
         blinkingText = try c.decodeIfPresent(Bool.self, forKey: .blinkingText) ?? true
-        gpuRendering = try c.decodeIfPresent(Bool.self, forKey: .gpuRendering) ?? true
+        gpuRendering = try c.decodeIfPresent(Bool.self, forKey: .gpuRendering) ?? false
         // A style added by a newer build falls back to Sound instead of discarding every appearance setting.
         bellStyle = (try? c.decodeIfPresent(TerminalBellStyle.self, forKey: .bellStyle)) ?? .sound
         desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? true
