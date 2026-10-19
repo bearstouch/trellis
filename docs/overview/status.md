@@ -1,6 +1,6 @@
 # Status and known limits
 
-**Version 0.11.0, pre-release.** The MVP feature set is implemented and the full automated suite passes. Trellis isn't qualified for a 1.0 release yet: some manual and platform checks haven't been run, and one release blocker remains. The [changelog](https://github.com/layerx-labs/trellis/blob/master/CHANGELOG.md) lists what shipped.
+**Version 0.11.0, pre-release.** The MVP feature set is implemented and the full automated suite passes. Trellis isn't qualified for a 1.0 release yet: some manual and platform checks haven't been run, and one release blocker remains. The [changelog](https://github.com/bearstouch/trellis/blob/master/CHANGELOG.md) lists what shipped.
 
 ## Release blockers
 

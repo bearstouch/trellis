@@ -250,9 +250,9 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.11.0...HEAD
-[0.11.0]: https://github.com/layerx-labs/trellis/compare/v0.10.0...v0.11.0
-[0.10.0]: https://github.com/layerx-labs/trellis/compare/v0.9.2...v0.10.0
-[0.9.2]: https://github.com/layerx-labs/trellis/compare/v0.9.1...v0.9.2
-[0.9.1]: https://github.com/layerx-labs/trellis/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/layerx-labs/trellis/releases/tag/v0.9.0
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/bearstouch/trellis/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/bearstouch/trellis/compare/v0.9.2...v0.10.0
+[0.9.2]: https://github.com/bearstouch/trellis/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/bearstouch/trellis/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/bearstouch/trellis/releases/tag/v0.9.0

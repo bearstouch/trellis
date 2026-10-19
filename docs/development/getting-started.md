@@ -19,7 +19,7 @@ You don't need an Apple Developer account, Homebrew packages or a package-manage
 ## Clone, build, run
 
 ```sh
-git clone https://github.com/layerx-labs/trellis.git
+git clone https://github.com/bearstouch/trellis.git
 cd trellis
 swift build
 swift run Trellis --state-directory "$PWD/.build/dev-state"

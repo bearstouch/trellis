@@ -59,7 +59,7 @@ The site icons in `public/` come from the app icon artwork in `Design/AppIcon`; 
 
 The `Dockerfile` builds the site with Node 22 and serves `dist/` with nginx. nginx listens on `$PORT`, which Railway injects; it defaults to 8080. The config (`nginx/default.conf.template`) sets gzip, immutable caching for hashed `/assets/`, `no-cache` for HTML, and security headers including a CSP that only allows `api.github.com` for fetches.
 
-1. In Railway, create a service from the `layerx-labs/trellis` GitHub repo.
+1. In Railway, create a service from the `bearstouch/trellis` GitHub repo.
 2. Set **Settings → Root Directory** to `landing`. `railway.json` selects the Dockerfile builder.
 3. Add a `SITE_URL` variable with the public address, e.g. `https://trellis.layerx.xyz`.
 4. Generate a domain, or attach your own.

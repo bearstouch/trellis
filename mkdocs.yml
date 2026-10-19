@@ -1,6 +1,6 @@
 site_name: Trellis
 site_description: Native Swift terminal for macOS — behavior contract and contributor guide
-repo_url: https://github.com/layerx-labs/trellis
+repo_url: https://github.com/bearstouch/trellis
 edit_uri: edit/master/docs/
 docs_dir: docs
 

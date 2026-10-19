@@ -362,7 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 string: "MIT License",
                 attributes: [
                     .font: NSFont.systemFont(ofSize: 12),
-                    .link: URL(string: "https://github.com/layerx-labs/trellis/blob/main/LICENSE")!
+                    .link: URL(string: "https://github.com/bearstouch/trellis/blob/master/LICENSE")!
                 ]))
         credits.append(NSAttributedString(string: ".\n\n© 2026 ", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
         // The standard Copyright option is plain text, so the linked copyright line lives in the credits.
