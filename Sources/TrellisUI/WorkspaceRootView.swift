@@ -839,13 +839,14 @@ public struct LaunchSettingsView: View {
         _customShell = State(initialValue: !shells.contains { $0.path == model.defaultShell })
         _scrollbackLines = State(initialValue: model.appearance.scrollbackLines)
     }
-    /// The GPU setting lives with the appearance settings (FR-TX05) but applies at once, like the other toggles here.
-    private var gpuRendering: Binding<Bool> {
+    /// GPU rendering (FR-TX05) and notifications (FR-T08, FR-SI08) are saved with the appearance settings
+    /// but apply at once, like the other toggles here.
+    private func appearanceSetting<Value>(_ keyPath: WritableKeyPath<AppearanceSettings, Value>) -> Binding<Value> {
         Binding(
-            get: { model.appearance.gpuRendering },
-            set: { enabled in
+            get: { model.appearance[keyPath: keyPath] },
+            set: { value in
                 var settings = model.appearance
-                settings.gpuRendering = enabled
+                settings[keyPath: keyPath] = value
                 _ = model.applyAppearance(settings)
             })
     }
@@ -867,7 +868,7 @@ public struct LaunchSettingsView: View {
     }
     /// A wrapping caption: the form never grows wider than the pane.
     private func caption(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
+        Text(text).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
     }
     public var body: some View {
         Form {
@@ -888,7 +889,7 @@ public struct LaunchSettingsView: View {
             TextField("Scrollback lines (0–50,000)", value: $scrollbackLines, format: .number.grouping(.never))
                 .accessibilityIdentifier("settings.scrollbackLines")
             caption("For every pane, up to 16 MiB of text. Lowering it drops older output.")
-            if !message.isEmpty { Text(message).font(.caption).accessibilityIdentifier("settings.result") }
+            if !message.isEmpty { Text(message).font(.caption).wrappingSettingsCaption().accessibilityIdentifier("settings.result") }
             Toggle(
                 "Shell integration (zsh, bash, fish)",
                 isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
@@ -904,7 +905,13 @@ public struct LaunchSettingsView: View {
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
             ).accessibilityIdentifier("settings.restoreScrollback")
             caption("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis.")
-            Toggle("GPU rendering (Metal)", isOn: gpuRendering).accessibilityIdentifier("settings.gpuRendering")
+            Toggle("Desktop notifications", isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
+            caption("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane.")
+            Picker("Notify when a command finishes", selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {
+                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? "Off" : "After \($0) s").tag($0) }
+            }.disabled(!model.appearance.desktopNotifications).accessibilityIdentifier("settings.commandFinishedNotification")
+            caption("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line.")
+            Toggle("GPU rendering (Metal)", isOn: appearanceSetting(\.gpuRendering)).accessibilityIdentifier("settings.gpuRendering")
             caption("Draws terminals with Metal, or with the CPU if Metal fails.")
             HStack {
                 Spacer()

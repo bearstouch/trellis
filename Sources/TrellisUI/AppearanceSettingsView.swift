@@ -12,6 +12,14 @@ extension ChromeMode {
     }
 }
 
+extension View {
+    /// Settings forms size their columns from each row's one-line width, so a caption gets
+    /// a capped width to wrap within the pane instead of widening it.
+    func wrappingSettingsCaption() -> some View {
+        fixedSize(horizontal: false, vertical: true).frame(maxWidth: 360, alignment: .leading)
+    }
+}
+
 public struct AppSettingsView: View {
     @ObservedObject var model: AppWorkspaceModel
     @State private var selection: SettingsSection = .appearance
@@ -77,10 +85,11 @@ public struct AppSettingsView: View {
                         }
                     }
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.vertical, 12).padding(.leading, 12).padding(.trailing, 28)
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // minWidth 0: a pane's long captions wrap instead of widening the window past the sidebar.
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .foregroundStyle(model.themeColor(.foreground))
             .background(model.themeColor(.background))
         }
@@ -125,7 +134,7 @@ struct AppearanceSettingsView: View {
             Picker("Application appearance", selection: $draft.chromeMode) {
                 ForEach(ChromeMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }.pickerStyle(.segmented)
-            Text("Choose matching light and dark palettes for the app and terminal.").font(.caption).foregroundStyle(.secondary)
+            Text("Choose matching light and dark palettes for the app and terminal.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker("Light theme", selection: $draft.lightThemeID) {
                 ForEach(model.availableThemes(for: .light), id: \.id) { Text($0.name).tag($0.id) }
             }
@@ -140,13 +149,13 @@ struct AppearanceSettingsView: View {
                     Text(NativeTerminalFont.typefaceName(for: name)).tag(name)
                 }
             }
-            Text("Installed monospace typefaces on this Mac.").font(.caption).foregroundStyle(.secondary)
+            Text("Installed monospace typefaces on this Mac.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Text("The quick brown fox jumps over 0123456789")
                 .font(.custom(draft.fontName, size: draft.fontSize))
                 .lineLimit(1)
             Stepper("Font size: \(draft.fontSize, specifier: "%.0f") pt", value: $draft.fontSize, in: 8...48)
             Text("Use View → Zoom In / Zoom Out, or ⌘+ / ⌘−. Actual Size restores 13 pt.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker("Cursor", selection: $draft.cursorShape) {
                 ForEach(TerminalCursorShape.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }
@@ -154,24 +163,16 @@ struct AppearanceSettingsView: View {
             Picker("Bell", selection: $draft.bellStyle) {
                 ForEach(TerminalBellStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
-            Toggle("Desktop notifications", isOn: $draft.desktopNotifications)
-            Text("Shows notifications that programs send (OSC 9, OSC 777, OSC 99) when you aren’t looking at their pane. macOS asks for permission the first time.")
-                .font(.caption).foregroundStyle(.secondary)
-            Picker("Notify when a command finishes", selection: $draft.commandFinishedNotificationSeconds) {
-                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? "Off" : "After \($0) s").tag($0) }
-            }.disabled(!draft.desktopNotifications)
-            Text("With shell integration, a command that ran at least this long notifies when it finishes out of view. Only the program name is shown, never the command line.")
-                .font(.caption).foregroundStyle(.secondary)
             Toggle("Ligatures", isOn: $draft.fontLigatures)
             Text("Joins sequences such as -> and != in fonts that include ligatures, such as JetBrains Mono.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Toggle("Bold as bright colors", isOn: $draft.boldAsBright)
             Toggle("Use bold fonts", isOn: $draft.allowBoldFont)
             Toggle("Use italic fonts", isOn: $draft.allowItalicFont)
             Toggle("Allow blinking text", isOn: $draft.blinkingText)
-            Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary)
-            if let notice = model.appearanceNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-            if let message { Text(message).font(.caption) }
+            Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
+            if let notice = model.appearanceNotice { Text(notice).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption() }
+            if let message { Text(message).font(.caption).wrappingSettingsCaption() }
             HStack {
                 Spacer()
                 Button("Apply Appearance") {

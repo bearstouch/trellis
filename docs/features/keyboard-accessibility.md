@@ -56,7 +56,7 @@ Rules for shortcuts:
 | Light / dark theme | `trellis-light` / `trellis-dark` | Any installed theme for that appearance |
 | Remote Control: MCP server | Off, `127.0.0.1`, port 7777 | Interface IP literal, port 1024–65535 ([MCP server](../api/mcp.md#settings), FR-RC01–FR-RC03) |
 
-Scrollback and GPU rendering are in **Settings → Sessions** (the GPU toggle applies at once; scrollback is saved with **Save**); the font, cursor, theme and text-rendering settings are in **Settings → Appearance**. Changes apply live, without restarting sessions. Settings saved by an earlier version, which have no text-rendering or GPU rendering values, load with these defaults.
+Scrollback, desktop notifications, command-finished notifications and GPU rendering are in **Settings → Sessions** (the toggles and the notification picker apply at once; scrollback is saved with **Save**); the font, cursor, theme and text-rendering settings are in **Settings → Appearance**. Changes apply live, without restarting sessions. Settings saved by an earlier version, which have no text-rendering or GPU rendering values, load with these defaults.
 
 ## Accessibility
 
