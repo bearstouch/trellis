@@ -6,32 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-19
+
+This release adds sessions that keep running after quit, restored scrollback, desktop and long-command notifications, progress on tabs, shell marks over SSH, ⌘K Clear and opt-in Metal rendering, plus several security fixes.
+
 ### Added
 
-- **Edit → Clear** (⌘K, also in the pane's context menu) clears the focused pane like Terminal's ⌘K: the scrollback and the output above the prompt go, and the prompt line with anything you've typed moves to the top. Programs in the alternate screen (vim, less) keep their screen. A ⌘K you had already bound to another action keeps working, and Clear starts unbound (FR-C07).
-- Desktop notifications: programs can post macOS notifications with OSC 9, OSC 777 `notify` and kitty's OSC 99 (with chunked, base64 and query forms). They appear when you aren't looking at the pane, and clicking one jumps to it. Notification text is cleaned of control characters, length-capped and limited to 5 per pane every 10 seconds. **Settings → Sessions → Desktop notifications** turns them off; the tab's **Input** label still shows (FR-T08).
-- Progress on tabs and panes: programs that report OSC 9;4 progress fill the tab's top edge to the percentage, red for an error and orange when paused, and the tab and pane header read "50%", "Paused 50%", "Error" or "Working". VoiceOver reads the same. Progress clears when the program removes it, after 15 seconds without an update, at the next prompt, and on exit or restart. `session.get` reports it as `progress` (FR-T09).
-- Shell marks over SSH: in a saved host's pane, or a pane started as `ssh`, `mosh` or `autossh`, the remote shell's own integration marks (OSC 133, OSC 7 and iTerm2's OSC 1337 `CurrentDir`/`RemoteHost`) now show the remote directory in the pane header as "SSH · host:/path", give the pane an automatic title and an exit badge, and trigger long-command notifications. Nothing is installed on the remote host. These marks are unverified, so they're display-only: a remote path is never used for file links, new splits or tabs, the saved launch directory or `session.get`'s `currentDirectory`, and `session.get` reports `shellIntegration.remote: true` (FR-SI09).
-- Long-command notifications: with shell integration, a command that ran at least 10 seconds posts a desktop notification when it finishes while you aren't looking at its pane, reading "Command finished" or "Command failed (exit N)" with the program name and how long it ran. The command line itself is never shown. **Settings → Sessions → Notify when a command finishes** picks Off, 5, 10, 30 or 60 seconds; the Desktop notifications toggle turns these off too (FR-SI08).
-- Sessions that keep running after quit, opt-in: with **Settings → Sessions → Keep sessions running after quit**, new sessions run in a bundled `trellis-broker` helper. ⌘Q then offers **Keep Running**, **Stop Sessions** or **Cancel**; kept sessions reconnect to their panes at the next launch with up to 4 MiB of their recent output, and a session that ended meanwhile comes back stopped with its output and exit status. Sessions from an earlier run that no pane claims are never ended silently: Trellis asks to **Stop Them** or **Leave Running**. Closing the window still ends every session, and nothing survives logging out (FR-R03).
-- Restored scrollback, opt-in: **Settings → Sessions → Restore scrollback after quit** saves each pane's text when Trellis quits and shows it in the stopped pane next time, marked "Restored output from <date>". Passwords, tokens, keys and similar secrets are removed first on a best-effort basis; the file is stored unencrypted, 1 MiB per pane, and deleted when the pane closes or restarts or the setting is turned off (FR-R04, FR-R05).
+- **Edit → Clear** (⌘K, also in the pane's context menu) clears scrollback and the screen above the prompt, like Terminal. Alternate-screen programs keep their screen; an existing ⌘K binding wins (FR-C07).
+- Desktop notifications from OSC 9, OSC 777 and kitty's OSC 99, shown when you aren't looking at the pane; clicking one jumps to it. Text is sanitized, length-capped and rate-limited (FR-T08).
+- OSC 9;4 progress on tabs and panes: a filled top edge plus a "50%", "Paused", "Error" or "Working" label, also read by VoiceOver and reported by `session.get` (FR-T09).
+- Long-command notifications: with shell integration, a command that ran past a threshold (default 10 s, set in Settings → Sessions) notifies when it finishes out of view. The command line is never shown (FR-SI08).
+- Shell marks over SSH: a remote shell's OSC 133/7/1337 marks show "SSH · host:/path", titles, exit badges and notifications. They're display-only and never used for local paths (FR-SI09).
+- **Keep sessions running after quit** (opt-in): sessions run in a bundled `trellis-broker` helper and reconnect at next launch with up to 4 MiB of recent output. ⌘Q offers Keep Running, Stop Sessions or Cancel (FR-R03).
+- **Restore scrollback after quit** (opt-in): each pane's text, with secrets redacted best-effort, is shown in the stopped pane next launch; 1 MiB per pane, stored unencrypted (FR-R04, FR-R05).
+- The empty workspace shows the Trellis prompt mark with a blinking cursor (solid with Reduce Motion).
 
 ### Changed
 
-- Terminals can draw on the GPU with Metal, off by default: **Settings → Sessions → GPU rendering (Metal)** turns it on. Ligatures, wide characters, decorations, overline, concealed text and the cursor look the same as with the CPU (CoreGraphics) renderer, and a pane falls back to CoreGraphics on its own if Metal can't start or keeps failing. `appearance.get` reports which renderer each pane uses (FR-TX05). On an M1 Pro, plain output is read about 90% faster, coloured output about 70% faster and full-screen repaints about 50% faster, at about 30–40% less CPU per MiB; each Metal pane uses about 5 MiB more memory. `scripts/bench-renderer.py` compares the two renderers.
-- **Scrollback lines**, **Desktop notifications** and **Notify when a command finishes** moved from Settings → Appearance to Settings → Sessions, next to the GPU rendering toggle. The notification settings apply as soon as they change; scrollback is saved with the pane's **Save** button. The Sessions captions are shorter and wrap to the window.
-- Large output is faster: `cat` of a big file into a pane runs about 27% faster for plain text, 13% for coloured output and 43% for Unicode-heavy text. Keeping scrollback within its size limit no longer builds a string for every cell of each new history line, and rows dropped from history are freed at once.
-- The DMG now opens as a drag-to-install window: the Trellis icon beside an **Applications** shortcut, over a background with an arrow, and with the Trellis icon on the mounted volume. `scripts/make-dmg.sh` builds it for both the Universal and the single-architecture DMGs.
-- The status bar now always reads **Trellis** followed by the app version on the left (also in `swift run` builds), and shows the selected window's name at the right end.
+- Opt-in GPU rendering with Metal (**Settings → Sessions → GPU rendering**), matching CoreGraphics output and falling back to it automatically. Roughly 50–90% faster output on an M1 Pro; `appearance.get` reports each pane's renderer (FR-TX05).
+- Scrollback and notification settings moved from Appearance to Settings → Sessions.
+- Large output is faster: up to 43% for `cat` of big files.
+- The DMG opens as a drag-to-Applications window.
+- The status bar shows **Trellis** and the app version on the left and the window name on the right.
+
+### Fixed
+
+- A busy tab's context menu (including the Color submenu) no longer closes on its own.
 
 ### Security
 
-- A kitty graphics image sent compressed (`o=z`) no longer hangs Trellis. Any program's output, or a file shown with `cat`, could freeze every window. Compressed images now decode correctly, and malformed or oversized ones are refused. A kitty image sent in chunks is limited to the same size, so endless chunks can't use up memory.
-- Sixel images with very long numbers no longer crash Trellis, and sixel images over the inline image limits (10,000 px a side, 40 MP) are dropped rather than allocated.
-- Pasted text can no longer end a bracketed paste early. Trellis removes `ESC[200~` and `ESC[201~` markers from the text, so text copied from a web page can't run commands after you confirm the paste review. The review also says when a long paste has escape characters beyond the part it shows (FR-C03, FR-C04).
-- An automation grant with `host.write` but not `session.execute` can no longer clear a saved host's user, port or identity file by sending `null`. That changed where the host connected and deleted its saved password. Clearing a connection field now needs `session.execute`, like changing one.
-- Creating a saved host through the automation API, CLI or MCP now needs `session.execute` as well as `host.write`. With all-hosts scope, a grant could otherwise create a host pointing at any server and connect to it without the permission that changing a destination needs.
-- Device control strings (DCS), such as sixel images and DECRQSS requests, are limited to 8 MiB like OSC and APC sequences. An endless one in a program's output could otherwise use up memory.
+- Compressed (`o=z`) and chunked kitty graphics images can no longer hang Trellis or exhaust memory.
+- Oversized sixel images and numbers are refused instead of crashing or allocating.
+- Pasted text can't end a bracketed paste early; `ESC[200~`/`ESC[201~` markers are stripped (FR-C03, FR-C04).
+- Creating a saved host, or clearing its user, port or identity file, through the API now also needs `session.execute`.
+- DCS sequences are capped at 8 MiB like OSC and APC.
+- Release workflow actions are pinned to commit SHAs, and packaging fails when requested notarization fails.
 
 ## [0.10.0] - 2026-10-17
 
@@ -241,7 +250,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/layerx-labs/trellis/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/layerx-labs/trellis/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/layerx-labs/trellis/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/layerx-labs/trellis/compare/v0.9.0...v0.9.1
