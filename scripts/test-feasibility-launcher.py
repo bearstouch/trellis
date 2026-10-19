@@ -22,7 +22,7 @@ def main():
         raise SystemExit(__doc__)
     products = Path(sys.argv[1]).resolve()
     project = Path(__file__).resolve().parent.parent
-    if not all((products / name).is_file() for name in ("Trellis", "trellis-askpass")):
+    if not all((products / name).is_file() for name in ("Trellis", "trellis-askpass", "trellis-broker")):
         raise SystemExit("Build the app first and supply its Swift bin path.")
     with tempfile.TemporaryDirectory(prefix="trellis launcher ") as temporary:
         root = Path(temporary)
@@ -36,8 +36,9 @@ def main():
         built = root / "Swift build products"
         built.mkdir()
         shutil.copy2(products / "Trellis", built / "Trellis")
-        askpass = built / "trellis-askpass"
-        shutil.copy2(products / "trellis-askpass", askpass)
+        helpers = ("trellis-askpass", "trellis-broker")
+        for helper in helpers:
+            shutil.copy2(products / helper, built / helper)
         resources = built / "SwiftTerm_SwiftTerm.bundle"
         shutil.copytree(products / "SwiftTerm_SwiftTerm.bundle", resources)
         theme_resources = built / "Trellis_TrellisCore.bundle"
@@ -45,7 +46,7 @@ def main():
         shader = resources / "Shaders.metal"
         shader.chmod(0o444)
         source_hash = digest(built / "Trellis")
-        askpass_hash = digest(askpass)
+        helper_hashes = {helper: digest(built / helper) for helper in helpers}
         tools = root / "tools"
         tools.mkdir()
         (tools / "swift").write_text(
@@ -77,10 +78,6 @@ def main():
             subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(destination)], check=True)
             assert seal.is_file(), "assembled app has no sealed resources"
             assert digest(built / "Trellis") == source_hash, "signing changed the Swift build product"
-            helper = destination / "Contents/Helpers/trellis-askpass"
-            assert os.access(helper, os.X_OK), "assembled app has no executable askpass helper"
-            subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(helper)], check=True)
-            assert digest(askpass) == askpass_hash, "signing changed the askpass build product"
             assert stat.S_IMODE(shader.stat().st_mode) == 0o444
             assert (destination / "Contents/Resources/Trellis_TrellisCore.bundle/Themes/example-minimal.theme.json").is_file()
             for face in ("RobotoMono-Regular", "CascadiaMonoNF-Regular", "IosevkaFixed-BoldItalic"):
@@ -88,6 +85,11 @@ def main():
             for script in ("zsh/.zshenv", "bash/trellis.bash", "fish/vendor_conf.d/trellis-shell-integration.fish"):
                 assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/ShellIntegration/{script}").is_file(), f"assembled app has no {script}"
             assert digest(destination / "Contents/Resources/AppIcon.icns") == digest(icon)
+            for helper in helpers:
+                installed = destination / "Contents/Helpers" / helper
+                assert installed.is_file() and os.access(installed, os.X_OK), f"assembled app has no executable {helper}"
+                subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(installed)], check=True)
+                assert digest(built / helper) == helper_hashes[helper], f"signing changed the {helper} build product"
 
         run("--build-only")
         verify()
@@ -112,13 +114,14 @@ def main():
         missing_themes.rename(theme_resources)
         verify()
         assert before == (digest(executable), digest(seal), log.read_bytes())
-        missing_askpass = built / "missing-askpass"
-        askpass.rename(missing_askpass)
-        run("--build-only", success=False)
-        missing_askpass.rename(askpass)
-        verify()
-        assert before == (digest(executable), digest(seal), log.read_bytes())
-    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, signed askpass helper, unchanged source, argument forwarding, build-only, and failed-build preservation")
+        for helper in helpers:
+            missing_helper = built / f"missing-{helper}"
+            (built / helper).rename(missing_helper)
+            run("--build-only", success=False)
+            missing_helper.rename(built / helper)
+            verify()
+            assert before == (digest(executable), digest(seal), log.read_bytes())
+    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, signed bundled helpers, unchanged source, argument forwarding, build-only, and failed-build preservation")
 
 
 if __name__ == "__main__":

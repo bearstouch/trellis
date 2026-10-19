@@ -736,7 +736,18 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         let settings = model.appearance
         return .object([
             "mode": .string(settings.chromeMode.rawValue), "lightThemeId": .string(settings.lightThemeID), "darkThemeId": .string(settings.darkThemeID),
-            "effectiveThemeId": .string(model.effectiveTheme.id), "revision": revision(model.appearanceRevision)
+            "effectiveThemeId": .string(model.effectiveTheme.id), "revision": revision(model.appearanceRevision),
+            "rendering": renderingJSON()
+        ])
+    }
+
+    /// FR-TX05: the GPU setting and which renderer each pane is actually using.
+    @MainActor private func renderingJSON() -> JSONValue {
+        let stats = model.renderingStats
+        return .object([
+            "gpuRendering": .bool(model.terminalAppearance.gpuRendering),
+            "metalPanes": .number(Double(stats.metalPanes)), "coreGraphicsPanes": .number(Double(stats.coreGraphicsPanes)),
+            "metalFrames": .number(Double(stats.metalFrames)), "coreGraphicsFrames": .number(Double(stats.coreGraphicsFrames))
         ])
     }
 
@@ -847,11 +858,18 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         if let started = session.startedAt { object["startedAt"] = .string(ISO8601DateFormatter().string(from: started)) }
         if let message = session.failureMessage { object["failureMessage"] = .string(message) }
         if terminal?.sessionID == id, let wait = model.inputWaits[pane.id] { object["waitingForInput"] = .string(wait.rawValue) }
-        // Present only after an authenticated mark; never includes command text (FR-SI04).
+        if terminal?.sessionID == id, let progress = model.progress[pane.id] {
+            var report: [String: JSONValue] = ["state": .string(progress.state.rawValue)]
+            if let percent = progress.percent { report["percent"] = .number(Double(percent)) }
+            object["progress"] = .object(report)
+        }
+        // Present only after an authenticated mark, or an SSH pane's unverified one (`remote`, FR-SI09, never with a
+        // directory); never includes command text (FR-SI04).
         if terminal?.sessionID == id, let state = model.shellStates[pane.id] {
             var shell: [String: JSONValue] = ["commandRunning": .bool(state.commandRunning)]
             if let code = state.lastExitCode { shell["lastExitStatus"] = .number(Double(code)) }
-            if access.allows(.sessionExecute), let directory = state.currentDirectory { shell["currentDirectory"] = .string(directory) }
+            if state.origin == .remote { shell["remote"] = .bool(true) }
+            if access.allows(.sessionExecute), let directory = model.currentDirectory(paneID: pane.id) { shell["currentDirectory"] = .string(directory) }
             object["shellIntegration"] = .object(shell)
         }
         // Launch details only with execute (paths/arguments) or host-read (host identity).

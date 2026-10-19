@@ -109,3 +109,58 @@ struct trellis_spawn_result trellis_spawn_pty(const char *executable, char *cons
     result.master_fd = master;
     return result;
 }
+
+int trellis_spawn_detached(const char *executable, char *const argv[], char *const envp[]) {
+    int errors[2];
+    if (pipe(errors) < 0) return errno;
+    // stdio is replaced in the daemon; keep the handshake above it, like trellis_spawn_pty.
+    for (int i = 0; i < 2; i++) {
+        int replacement = fcntl(errors[i], F_DUPFD_CLOEXEC, 3);
+        if (replacement < 0) { int failure = errno; close(errors[0]); close(errors[1]); return failure; }
+        close(errors[i]);
+        errors[i] = replacement;
+    }
+    int descriptor_limit = getdtablesize();
+    pid_t middle = fork();
+    if (middle < 0) { int failure = errno; close(errors[0]); close(errors[1]); return failure; }
+    if (middle == 0) {
+        close(errors[0]);
+        if (setsid() < 0) report_child_error(errors[1], errno);
+        pid_t daemon = fork();
+        if (daemon < 0) report_child_error(errors[1], errno);
+        if (daemon > 0) _exit(0); /* the daemon is reparented to launchd and can never reacquire a terminal */
+        struct sigaction defaults = { .sa_handler = SIG_DFL, .sa_flags = 0 };
+        sigemptyset(&defaults.sa_mask);
+        for (int number = 1; number < NSIG; number++) {
+            if (number != SIGKILL && number != SIGSTOP) sigaction(number, &defaults, NULL);
+        }
+        sigset_t unblocked;
+        sigemptyset(&unblocked);
+        sigprocmask(SIG_SETMASK, &unblocked, NULL);
+        int null = open("/dev/null", O_RDWR);
+        if (null < 0) report_child_error(errors[1], errno);
+        if (dup2(null, 0) < 0 || dup2(null, 1) < 0 || dup2(null, 2) < 0) report_child_error(errors[1], errno);
+        for (int fd = 3; fd < descriptor_limit; fd++) {
+            if (fd != errors[1]) close(fd);
+        }
+        if (chdir("/") < 0) report_child_error(errors[1], errno);
+        execve(executable, argv, envp);
+        report_child_error(errors[1], errno);
+    }
+    close(errors[1]);
+    int status = 0;
+    while (waitpid(middle, &status, 0) < 0 && errno == EINTR) {}
+    int failure = 0;
+    size_t count = 0;
+    while (count < sizeof(failure)) {
+        ssize_t n = read(errors[0], (char *)&failure + count, sizeof(failure) - count);
+        if (n > 0) count += (size_t)n;
+        else if (n == 0) break; /* exec closed the last write end */
+        else if (errno == EINTR) continue;
+        else { failure = errno; break; }
+    }
+    close(errors[0]);
+    if (count > 0 && count != sizeof(failure)) failure = EIO;
+    if (!failure && !(WIFEXITED(status) && WEXITSTATUS(status) == 0)) failure = ECHILD;
+    return failure;
+}

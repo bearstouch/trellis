@@ -42,13 +42,21 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var allowBoldFont = true
     public var allowItalicFont = true
     public var blinkingText = true
+    /// Draws terminals with the Metal renderer; CoreGraphics when off or when Metal fails (FR-TX05).
+    public var gpuRendering = false
     public var bellStyle: TerminalBellStyle = .sound
+    /// Shows OSC 9/777/99 notifications in Notification Center (FR-T08); the tab's attention label doesn't depend on it.
+    public var desktopNotifications = true
+    /// Notifies when a command that ran at least this long finishes out of view (FR-SI08); 0 is Off.
+    public var commandFinishedNotificationSeconds = 10
+    public static let commandFinishedNotificationChoices = [0, 5, 10, 30, 60]
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
-        case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle
+        case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
+        case commandFinishedNotificationSeconds, gpuRendering
     }
-    /// Settings saved before the text-rendering and bell keys existed load with their defaults.
+    /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         chromeMode = try c.decode(ChromeMode.self, forKey: .chromeMode)
@@ -64,13 +72,20 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         allowBoldFont = try c.decodeIfPresent(Bool.self, forKey: .allowBoldFont) ?? true
         allowItalicFont = try c.decodeIfPresent(Bool.self, forKey: .allowItalicFont) ?? true
         blinkingText = try c.decodeIfPresent(Bool.self, forKey: .blinkingText) ?? true
+        gpuRendering = try c.decodeIfPresent(Bool.self, forKey: .gpuRendering) ?? false
         // A style added by a newer build falls back to Sound instead of discarding every appearance setting.
         bellStyle = (try? c.decodeIfPresent(TerminalBellStyle.self, forKey: .bellStyle)) ?? .sound
+        desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? true
+        // A threshold this build doesn't offer falls back to the default instead of discarding every appearance setting.
+        let seconds = (try? c.decodeIfPresent(Int.self, forKey: .commandFinishedNotificationSeconds)) ?? 10
+        commandFinishedNotificationSeconds = Self.commandFinishedNotificationChoices.contains(seconds) ? seconds : 10
     }
-    /// True when terminals must be updated: everything except chrome mode and theme selection.
+    /// True when terminals must be updated: everything except chrome mode, theme selection and notifications.
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
+        normalized.desktopNotifications = other.desktopNotifications
+        normalized.commandFinishedNotificationSeconds = other.commandFinishedNotificationSeconds
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {
@@ -79,6 +94,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     }
     public var isValid: Bool {
         fontSize.isFinite && (8...48).contains(fontSize) && (0...50_000).contains(scrollbackLines)
+            && Self.commandFinishedNotificationChoices.contains(commandFinishedNotificationSeconds)
             && [fontName, lightThemeID, darkThemeID].allSatisfy {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.utf8.count <= 256
             }

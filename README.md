@@ -4,11 +4,13 @@
 
 A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), dark terminal panes in bundled Roboto Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
+![Trellis with managed windows in the sidebar, color-labeled tabs and a terminal session](docs/images/trellis-workspace.png)
+
 ## Features
 
-- **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Tabs show a busy bar while printing and an **Input** label when a program waits for a password or rings for your attention. Restored workspaces open with sessions **stopped**, and typed input is never replayed.
+- **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Tabs show a busy bar while printing and an **Input** label when a program waits for a password or rings for your attention. Programs can post desktop notifications (OSC 9, OSC 777, OSC 99), and with shell integration a long command notifies when it finishes out of view; both can be turned off in Settings. Restored workspaces open with sessions **stopped**, and typed input is never replayed. Optionally, sessions keep running after you quit and reconnect at the next launch, and each pane's scrollback can be restored as redacted text (both off by default, in Settings → Sessions).
 - **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Includes scrollback search, safe paste review, copy, and Cmd-click links (http/https/mailto only).
-- **Shell integration:** zsh, bash and fish report their current directory and each command's exit status, with no dotfile edits. New splits and tabs open where you are, failed commands are flagged, and ⌘↑/⌘↓ jump between prompts. On by default; turn it off in Settings → Sessions.
+- **Shell integration:** zsh, bash and fish report their current directory and each command's exit status, with no dotfile edits. New splits and tabs open where you are, failed commands are flagged, and ⌘↑/⌘↓ jump between prompts. Over SSH, a remote shell's own integration marks show the remote directory, titles and exit status (display-only; nothing is installed remotely). On by default; turn it off in Settings → Sessions.
 - **Appearance:** separate Light/Dark theme slots and a JSON theme library with live preview (Settings → Themes).
 - **Keyboard and accessibility:** rebindable menu shortcuts (conflicts are rejected before saving), Option-as-Meta toggle, and accessibility labels throughout.
 - **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust. An optional per-host password is kept in the macOS Keychain (optionally behind Touch ID) and given to ssh only for its password prompt.
@@ -101,7 +103,8 @@ The packaged app ships this binary as `trellis` (see the [release guide](docs/re
 
 ```sh
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"  # launcher regression, no windows
-python3 scripts/qualify.py [--quick]          # release qualification, about 5 min; opens isolated app windows
+python3 scripts/qualify.py [--quick] [--renderer metal|coregraphics]  # release qualification, about 5 min; opens isolated app windows
+python3 scripts/bench-renderer.py [--quick] [--only NAMES]  # Metal vs CoreGraphics benchmarks, about 25 min; keep its windows visible
 scripts/package-release.sh                    # Universal 2 app + DMG (ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE)
 scripts/generate-app-icon.sh                  # regenerate icons from Design/AppIcon/*.svg (needs rsvg-convert)
 ```
@@ -151,6 +154,10 @@ python3 -m venv .venv-docs && .venv-docs/bin/pip install mkdocs-material
 .venv-docs/bin/mkdocs serve    # http://127.0.0.1:8000
 ```
 
+## Website
+
+The landing page lives in [`landing/`](landing/README.md). It's a static Vite site served by nginx in a Docker image for Railway: `cd landing && npm install && npm run dev`.
+
 ## Data and migration
 
 User data lives in `~/Library/Application Support/dev.trellis/`. Files there are owner-only and written atomically, with last-known-good backups. Newer or corrupt state opens in recovery mode and is never overwritten.
@@ -170,6 +177,8 @@ Settings → Appearance includes 10 editor-inspired theme families, each with da
 The Terminal font picker lists the monospace typefaces installed on your Mac and previews the selected font. Apply Appearance to save your choice.
 
 Terminals draw font ligatures (with fonts that have them, such as the bundled JetBrains Mono), colour emoji, wide CJK characters and combining marks on the cell grid, along with the usual text styles: bold, dim, italic, underline in single, double, curly, dotted and dashed styles with its own colour, strikethrough, overline, blink, inverse and concealed text. Settings → Appearance turns ligatures, bold-as-bright colours, bold and italic faces, and blinking text on or off.
+
+Terminals can draw on the GPU with Metal, with the same text rendering as the default CPU (CoreGraphics) renderer: turn on **Settings → Sessions → GPU rendering (Metal)**. Trellis falls back to CoreGraphics on its own if Metal isn't available. `swift run Trellis --renderer coregraphics` (or `metal`) picks a renderer for one launch, and `scripts/bench-renderer.py` compares the two.
 
 Programs can show images inline with iTerm2's image protocol, so `imgcat`, `yazi`, `timg` and `chafa -f iterm` work as they do in iTerm2.
 

@@ -264,7 +264,22 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// last frame. When `viewDidMoveToWindow` fires with a different window,
     /// we rebuild the MTKView so a fresh CAMetalLayer binds to it.
     private weak var metalBoundWindow: NSWindow?
-    var metalDirtyRange: ClosedRange<Int>?
+    /// Rows the next Metal frame rebuilds. Assigning a range widens the
+    /// pending one rather than replacing it, so an invalidation that lands
+    /// before the frame draws is never lost; assigning nil leaves it as is.
+    /// The renderer takes it with `takeMetalDirtyRange()`.
+    var metalDirtyRange: ClosedRange<Int>? {
+        get { pendingMetalDirtyRange }
+        set {
+            guard let newValue else { return }
+            if let pending = pendingMetalDirtyRange {
+                pendingMetalDirtyRange = min(pending.lowerBound, newValue.lowerBound)...max(pending.upperBound, newValue.upperBound)
+            } else {
+                pendingMetalDirtyRange = newValue
+            }
+        }
+    }
+    var pendingMetalDirtyRange: ClosedRange<Int>?
     var pendingMetalDisplay: Bool = false
     /// The cursor position last submitted to the Metal renderer. Used to
     /// detect pure cursor-only moves (no rows dirty) such as the
@@ -294,6 +309,16 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
             guard useMetalRenderer else { return }
             requestMetalDisplay()
         }
+    }
+
+    /// Starts compiling the Metal shaders in the background, ahead of the first ``setUseMetal(_:)``.
+    public static func prewarmMetal() {
+        MetalTerminalRenderer.prewarmLibrary()
+    }
+
+    /// What the Metal renderer draws for a visible row, or nil when Metal is off. For tests.
+    public func metalRenderedRowForTesting(_ screenRow: Int) -> MetalRenderedRowForTesting? {
+        metalRenderer?.renderedRowForTesting(screenRow)
     }
 
     /// Whether the terminal view is currently using the Metal GPU renderer.
@@ -631,6 +656,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         metalRenderer = nil
         metalBoundWindow = nil
         useMetalRenderer = false
+        // Metal's clear color was painting the background; CoreGraphics needs the layer's again.
+        layer?.backgroundColor = effectiveNativeBackgroundColor.cgColor
         if let caretView = caretView {
             caretView.isHidden = false
             caretView.updateCursorStyle()
@@ -808,6 +835,15 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         if currentWindow !== metalBoundWindow {
             rebindMetalRendererToWindow(currentWindow)
         }
+        requestMetalDisplay()
+#endif
+    }
+
+    open override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+#if canImport(MetalKit)
+        // The paused MTKView only draws on request; moving to a display with
+        // another scale must re-rasterize at the new scale.
         requestMetalDisplay()
 #endif
     }
@@ -1065,6 +1101,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         set {
             cursorColorIsDefault = false
             caretView.caretColor = newValue
+#if canImport(MetalKit)
+            // The Metal renderer draws the cursor itself.
+            queueMetalDisplay()
+#endif
         }
     }
 
@@ -1075,6 +1115,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         set {
             cursorTextColorIsDefault = newValue == nil
             caretView.caretTextColor = newValue
+#if canImport(MetalKit)
+            queueMetalDisplay()
+#endif
         }
     }
 
@@ -1303,6 +1346,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         NSGraphicsContext.current?.cgContext
     }
     
+    /// Passes the CoreGraphics renderer has drawn, for comparing it with Metal's presented frames.
+    public private(set) var coreGraphicsDrawCount = 0
+
     override public func draw (_ dirtyRect: NSRect) {
 #if canImport(MetalKit)
         if metalView != nil {
@@ -1312,6 +1358,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         guard let currentContext = getCurrentGraphicsContext() else {
             return
         }
+        coreGraphicsDrawCount &+= 1
         drawTerminalContents (dirtyRect: dirtyRect, context: currentContext, bufferOffset: terminal.displayBuffer.yDisp)
     }
     

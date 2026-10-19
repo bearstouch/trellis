@@ -41,9 +41,10 @@ public enum AuthorizationPolicy {
     }
 
     /// Only renames and retags avoid `session.execute`; any other field could change where the host connects.
+    /// A present `null` counts too, because it clears the user, port or identity file.
     private static let hostUpdateMayChangeConnection: @Sendable (JSONValue?) -> Bool = { params in
         guard case .object(let object)? = params else { return false }
-        return object.contains { !["id", "name", "tags", "expectedRevision", "idempotencyKey"].contains($0.key) && $0.value != .null }
+        return object.keys.contains { !["id", "name", "tags", "expectedRevision", "idempotencyKey"].contains($0) }
     }
 
     /// Output-read unless `topics` explicitly lists only non-output topics.
@@ -99,7 +100,9 @@ public enum AuthorizationPolicy {
         "session.readOutput": needs(.sessionOutputRead, resources: [(.session, "id")]),
         "host.list": needs(.hostRead),
         "host.get": needs(.hostRead, resources: [(.host, "id")]),
-        "host.create": needs(.hostWrite),
+        // A new host chooses where ssh connects, like changing a destination; with all-hosts scope it is
+        // connectable at once.
+        "host.create": needs(.hostWrite, .sessionExecute),
         "host.update": needs(.hostWrite, resources: [(.host, "id")], when: [(.sessionExecute, hostUpdateMayChangeConnection)]),
         "host.delete": needs(.hostWrite, resources: [(.host, "id")]),
         "host.connect": needs(.sessionStart, .layoutWrite, resources: [(.host, "hostId"), (.window, "windowId")]),

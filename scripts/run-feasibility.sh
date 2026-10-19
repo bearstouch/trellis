@@ -31,6 +31,9 @@ chmod u+x "$bundle/Contents/MacOS/Trellis"
 # SSH_ASKPASS helper for saved-host passwords (FR-H08).
 cp "$bin_path/trellis-askpass" "$bundle/Contents/Helpers/trellis-askpass"
 chmod u+x "$bundle/Contents/Helpers/trellis-askpass"
+# Opt-in session broker that keeps sessions running after quit (FR-R03).
+cp "$bin_path/trellis-broker" "$bundle/Contents/Helpers/trellis-broker"
+chmod u+x "$bundle/Contents/Helpers/trellis-broker"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -52,6 +55,7 @@ cp Design/AppIcon/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 # Sign the completed development bundle; no certificate or account is required.
 # dev.trellis.dev keeps its own instance lock and state, apart from an installed Trellis.
 /usr/bin/codesign --force --sign - --identifier dev.trellis.dev.askpass "$bundle/Contents/Helpers/trellis-askpass"
+/usr/bin/codesign --force --sign - --identifier dev.trellis.dev.broker "$bundle/Contents/Helpers/trellis-broker"
 /usr/bin/codesign --force --sign - --identifier dev.trellis.dev "$bundle"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$bundle"
 if [ -e "$destination" ]; then

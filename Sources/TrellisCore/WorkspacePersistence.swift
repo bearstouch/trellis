@@ -7,15 +7,20 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public var windowFrame: String?
     public var appearance: AppearanceSettings
     public var remoteControl: RemoteControlSettings
+    /// FR-R03: quitting can leave sessions running in `trellis-broker`. Off by default, per state directory.
+    public var keepSessionsRunning: Bool
+    /// FR-R04: quitting saves each pane's redacted plain text for the next launch. Off by default.
+    public var restoreScrollback: Bool
     public init(
         shell: String = LocalLaunchConfiguration.loginShell().executable,
         directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
-        appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init()
+        appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init(), keepSessionsRunning: Bool = false, restoreScrollback: Bool = false
     ) {
         self.shell = shell; self.directory = directory; self.windowFrame = windowFrame
         self.appearance = appearance; self.remoteControl = remoteControl
+        self.keepSessionsRunning = keepSessionsRunning; self.restoreScrollback = restoreScrollback
     }
-    private enum CodingKeys: String, CodingKey { case shell, directory, windowFrame, appearance, remoteControl }
+    private enum CodingKeys: String, CodingKey { case shell, directory, windowFrame, appearance, remoteControl, keepSessionsRunning, restoreScrollback }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         shell = try values.decode(String.self, forKey: .shell)
@@ -29,6 +34,8 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
         // An unusable value turns the server off instead of failing the whole workspace.
         let remote = try? values.decodeIfPresent(RemoteControlSettings.self, forKey: .remoteControl)
         remoteControl = remote.flatMap { $0 }.flatMap { $0.isValid ? $0 : nil } ?? .init()
+        keepSessionsRunning = (try? values.decodeIfPresent(Bool.self, forKey: .keepSessionsRunning)) ?? false
+        restoreScrollback = (try? values.decodeIfPresent(Bool.self, forKey: .restoreScrollback)) ?? false
     }
 }
 
@@ -211,25 +218,36 @@ public actor WorkspacePersistence {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
 
-    private func read(_ url: URL) throws -> Data? {
+    private func read(_ url: URL) throws -> Data? { try OwnerOnlyStorage.read(url, limit: 4_194_304) }
+
+    private func atomicWrite(_ data: Data, to target: URL) throws {
+        try OwnerOnlyStorage.atomicWrite(data, to: target, temporaryPrefix: ".workspace.", beforeReplace: beforeReplace)
+    }
+}
+
+/// Owner-only file I/O shared by workspace persistence and the scrollback store: reads never follow
+/// symlinks; writes go to an `O_EXCL` 0600 temporary, are synced, renamed over the target, and the directory is synced.
+public enum OwnerOnlyStorage {
+    public static func read(_ url: URL, limit: Int) throws(WorkspacePersistenceError) -> Data? {
         let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
-        if fd < 0 { if errno == ENOENT { return nil }; throw WorkspacePersistenceError.io(errno) }
+        if fd < 0 { if errno == ENOENT { return nil }; throw .io(errno) }
         defer { _ = close(fd) }
         var info = stat()
-        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= 4_194_304 else { throw WorkspacePersistenceError.corrupt }
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= limit else { throw .corrupt }
         var result = Data()
         var buffer = [UInt8](repeating: 0, count: 16_384)
         while true {
             let count = buffer.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
             if count == 0 { return result }
-            if count < 0 { if errno == EINTR { continue }; throw WorkspacePersistenceError.io(errno) }
+            if count < 0 { if errno == EINTR { continue }; throw .io(errno) }
             result.append(contentsOf: buffer.prefix(count))
-            guard result.count <= 4_194_304 else { throw WorkspacePersistenceError.corrupt }
+            guard result.count <= limit else { throw .corrupt }
         }
     }
 
-    private func atomicWrite(_ data: Data, to target: URL) throws {
-        let temporary = directory.appendingPathComponent(".workspace.\(UUID().uuidString).tmp")
+    public static func atomicWrite(_ data: Data, to target: URL, temporaryPrefix: String, beforeReplace: (URL) throws -> Void = { _ in }) throws {
+        let directory = target.deletingLastPathComponent()
+        let temporary = directory.appendingPathComponent("\(temporaryPrefix)\(UUID().uuidString).tmp")
         let fd = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { throw WorkspacePersistenceError.io(errno) }
         var openDescriptor = true

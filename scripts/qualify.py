@@ -5,7 +5,7 @@ Runs the release app on isolated temporary state directories, drives it over
 the real control socket with a seeded test grant, and writes a Markdown report.
 It never touches the user's workspace, Keychain, or saved hosts.
 
-Usage: scripts/qualify.py [--quick] [--report PATH]
+Usage: scripts/qualify.py [--quick] [--renderer metal|coregraphics] [--report PATH]
 """
 import argparse, base64, datetime, hashlib, json, math, os, platform, shutil, signal, socket, subprocess, sys, tempfile, time, uuid
 
@@ -69,7 +69,7 @@ class Client:
 class App:
     """One isolated release-app instance with a seeded all-capability grant."""
 
-    def __init__(self, binary):
+    def __init__(self, binary, extra_args=()):
         self.state = tempfile.mkdtemp(prefix="trellis-q-")
         os.chmod(self.state, 0o700)
         self.token = "trl_QUALIFY_" + uuid.uuid4().hex
@@ -87,7 +87,7 @@ class App:
         os.chmod(path, 0o600)
         self.started = time.perf_counter()
         # --fixture: the initial window runs a fixed `zsh -f` demo, never the user's login shell.
-        self.process = subprocess.Popen([binary, "--fixture", "--state-directory", self.state], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.process = subprocess.Popen([binary, "--fixture", "--state-directory", self.state, *extra_args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def wait_ready(self, timeout=20):
         """Seconds from exec until the control API answers and the startup workspace window exists."""
@@ -164,8 +164,10 @@ def first_pane(client, window_id):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="shorter runs for smoke testing (not a qualification)")
+    parser.add_argument("--renderer", choices=["metal", "coregraphics"], help="renderer for every launch (default: the GPU rendering setting, off)")
     parser.add_argument("--report", default=os.path.join(ROOT, ".build/qualification-results.md"))
     args = parser.parse_args()
+    extra = ["--renderer", args.renderer] if args.renderer else []
     launches, idle_seconds, flood_seconds = (5, 10, 10) if args.quick else (20, 60, 60)
 
     subprocess.run(["swift", "build", "-c", "release", "--product", "Trellis"], cwd=ROOT, check=True, capture_output=True)
@@ -175,14 +177,14 @@ def main():
     # cold launch to a responding app (the window is ordered front before the socket starts).
     samples = []
     for _ in range(launches):
-        app = App(binary)
+        app = App(binary, extra)
         try:
             samples.append(app.wait_ready() * 1000)
         finally:
             app.stop()
     results["launch_ms"] = p95(samples, minimum=launches)
 
-    app = App(binary)
+    app = App(binary, extra)
     try:
         app.wait_ready()
         c = app.client
@@ -362,7 +364,7 @@ def write_report(args, results, notes):
         "Release build, launched directly (no debugger) on isolated temporary state directories with a seeded test grant.", "",
         "## Environment", "",
         f"- Hardware: {hardware['model']}, {hardware['cpu']}, {hardware['memory_gib']} GiB RAM, {hardware['arch']}",
-        f"- macOS: {hardware['macos']}", f"- Engine: {engine}",
+        f"- macOS: {hardware['macos']}", f"- Engine: {engine}", f"- Renderer: {args.renderer or 'setting default (CoreGraphics)'}",
         "- Conditions: an interactive desktop session with other applications open; warm OS file cache after the first launch.", "",
         "## Results", "",
         "| Requirement | Measurement | Result |", "| --- | --- | --- |",

@@ -5,6 +5,9 @@ import TrellisTerminal
 
 public enum TabRenameAction: Sendable { case commit, cancel }
 
+/// What ⌘Q does with sessions the broker holds (FR-R03).
+public enum QuitChoice: Sendable, Equatable { case keepRunning, stopSessions, cancel }
+
 public struct WindowActivity: Equatable, Sendable {
     public var hasOutput = false
     public var hasExit = false
@@ -20,6 +23,7 @@ public struct WindowTabPreview: Identifiable, Equatable, Sendable {
     public let paneCount: Int
     public let isBusy: Bool
     public let inputWait: InputWaitReason?
+    public let progress: TerminalProgress?
     public let failedCommandExit: Int32?
     public let hasExitedSession: Bool
 }
@@ -199,11 +203,24 @@ public final class AppWorkspaceModel: ObservableObject {
         scheduleWorkspaceSave()
         return true
     }
+    /// The `--renderer` launch choice (true is Metal); overrides the GPU rendering setting without saving it.
+    public var rendererOverride: Bool?
     /// Reduce Motion keeps the cursor steady without changing the saved preference.
     var terminalAppearance: AppearanceSettings {
         var settings = appearance
         if reduceMotion { settings.cursorBlinks = false }
+        if let rendererOverride { settings.gpuRendering = rendererOverride }
         return settings
+    }
+    /// How many panes each renderer draws, and the frames they have drawn (FR-TX05).
+    public var renderingStats: (metalPanes: Int, coreGraphicsPanes: Int, metalFrames: Int, coreGraphicsFrames: Int) {
+        var stats = (metalPanes: 0, coreGraphicsPanes: 0, metalFrames: 0, coreGraphicsFrames: 0)
+        for terminal in terminals.values {
+            if terminal.isUsingMetalRenderer { stats.metalPanes += 1 } else { stats.coreGraphicsPanes += 1 }
+            stats.metalFrames += terminal.renderedFrames.metal
+            stats.coreGraphicsFrames += terminal.renderedFrames.coreGraphics
+        }
+        return stats
     }
 
     public func accessibilityDisplayOptionsDidChange(increaseContrast: Bool, reduceMotion: Bool) {
@@ -257,7 +274,7 @@ public final class AppWorkspaceModel: ObservableObject {
             live: terminals.reduce(into: [:]) { live, entry in
                 live[entry.key] = WorkspaceAccessibility.LiveSession(
                     state: entry.value.sessionState, exitCode: entry.value.exitCode, failedCommandExit: failedCommandExit(paneID: entry.key),
-                    inputWait: inputWaits[entry.key])
+                    inputWait: inputWaits[entry.key], progress: progress[entry.key])
             },
             windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys),
             windowsNeedingInput: windowsNeedingInput, titles: automaticTitles)
@@ -287,7 +304,18 @@ public final class AppWorkspaceModel: ObservableObject {
     private var outputActivity = PaneOutputActivity()
     /// Panes whose program waits for the user (FR-T06); runtime-only, never persisted.
     @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:]
+    /// Panes reporting OSC 9;4 progress (FR-T09); runtime-only, never persisted.
+    @Published public private(set) var progress: [UUID: TerminalProgress] = [:]
+    private var progressTrackers: [UUID: PaneProgressTracker] = [:]
+    private var progressExpiryTask: Task<Void, Never>?
     private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
+    /// Posts desktop notifications (FR-T08); nil (tests, `swift run`) posts nothing.
+    public var desktopNotifier: DesktopNotifier?
+    /// Whether the user is looking at the workspace window; the app narrows this to its key window.
+    public var workspaceIsFrontmost: () -> Bool = { NSApp.isActive }
+    /// Whether the workspace window is on screen at all (not hidden, minimized or covered); for OSC 99 `o=invisible`.
+    public var workspaceIsVisible: () -> Bool = { true }
+    private var notificationLimiter = NotificationRateLimiter()
     var activityNow: () -> Date = Date.init
     var activitySleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
     /// Applies to sessions started after a change (FR-SI06).
@@ -354,6 +382,17 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Reads a host's Keychain password for one answer, given the connection revision the session started with.
     public var savedPassword: (@Sendable (UUID, UInt64) async -> Data?)?
     private var askpassRegistrations: [UUID: AskpassBroker.Registration] = [:]
+    /// Holds sessions that survive quit (FR-R03); nil (tests, no helper) keeps every session a local PTY.
+    public var sessionBroker: (any SessionBrokerClient)?
+    /// FR-R03, saved per state directory; applies to sessions started after a change.
+    @Published public internal(set) var keepSessionsRunning = false
+    /// FR-R04, saved per state directory.
+    @Published public internal(set) var restoreScrollback = false
+    let scrollbackStore: ScrollbackStore?
+    /// Asked on ⌘Q with broker sessions running: kept count, then sessions that will stop.
+    public var confirmKeepRunning: (Int, Int) -> QuitChoice = { _, _ in .cancel }
+    /// Asked at launch for running sessions no restored pane claims (0: an incompatible broker); true stops them.
+    public var confirmStopOrphans: (Int) -> Bool = { _ in false }
     let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
     private let preferences: UserDefaults
@@ -363,6 +402,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public init(store: WorkspaceStore, preferences: UserDefaults = .standard, persistence: WorkspacePersistence? = nil, themeLibrary: ThemeLibrary? = nil) {
         self.themeLibrary = themeLibrary
         self.persistence = persistence
+        scrollbackStore = persistence.map { ScrollbackStore(directory: $0.directory.appendingPathComponent("Scrollback", isDirectory: true)) }
         self.isRestoring = persistence != nil
         service = WorkspaceCommandService(store: store)
         self.preferences = preferences
@@ -373,6 +413,8 @@ public final class AppWorkspaceModel: ObservableObject {
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
+        confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
+        confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
     }
 
     /// Returns true for an existing document or recovery state, even if empty.
@@ -391,9 +433,19 @@ public final class AppWorkspaceModel: ObservableObject {
         // cancelled by Quit, so shutdown cannot replace saved state with an
         // uninitialized empty snapshot.
         switch result {
-        case .missing: return false
+        case .missing:
+            _ = await reattachBrokerSessions()
+            return false
         case .loaded(let restored):
-            do { try await applyRestored(restored); return true } catch { recoveryMessage = "The saved workspace could not be restored."; return true }
+            do { try await applyRestored(restored) } catch {
+                recoveryMessage = "The saved workspace could not be restored."
+                _ = await reattachBrokerSessions()
+                return true
+            }
+            // A kept session's broker replay replaces its saved text, so adopt first.
+            let replayed = await reattachBrokerSessions()
+            await restoreScrollbackText(skipping: replayed)
+            return true
         case .recovery(let reason, let backup):
             recoveryReason = reason; recoveryBackup = backup; backupAvailable = backup != nil
             if case .unsupportedVersion = reason {
@@ -401,6 +453,8 @@ public final class AppWorkspaceModel: ObservableObject {
             } else {
                 recoveryMessage = "The saved workspace could not be read. Recover the backup or start empty; the original file will be preserved."
             }
+            // No pane can claim a kept session here; the orphan alert still reports them, and Leave Running is safe.
+            _ = await reattachBrokerSessions()
             return true
         }
     }
@@ -410,6 +464,8 @@ public final class AppWorkspaceModel: ObservableObject {
         defaultShell = restored.settings.shell; defaultDirectory = restored.settings.directory
         appearance = restored.settings.appearance
         remoteControl = restored.settings.remoteControl
+        keepSessionsRunning = restored.settings.keepSessionsRunning
+        restoreScrollback = restored.settings.restoreScrollback
         onRemoteControlSettingsChanged?(remoteControl)
         reconcileThemeSelections()
         refreshEffectiveTheme()
@@ -500,7 +556,8 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
         let settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
-            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl)
+            windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl,
+            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback)
         do { try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration); return true } catch {
             errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
         }
@@ -519,6 +576,9 @@ public final class AppWorkspaceModel: ObservableObject {
         snapshot = next
         // Replaced or closed sessions drop their output; their cursors become invalid.
         for id in previous.sessions.keys where next.sessions[id] == nil { outputJournal.remove(session: id) }
+        // A closed pane or window, or a restart, discards the saved text of the session it replaced (FR-R04).
+        let removed = previous.sessions.keys.filter { next.sessions[$0] == nil }
+        if restoreScrollback, !removed.isEmpty, let scrollbackStore { Task { await scrollbackStore.delete(sessionIDs: removed) } }
         if let onWorkspaceEvents {
             let events = WorkspaceEvents.diff(previous, next)
             if !events.isEmpty { onWorkspaceEvents(events) }
@@ -528,7 +588,9 @@ public final class AppWorkspaceModel: ObservableObject {
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
         if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
         outputActivity.retain(Set(next.panes.keys))
+        notificationLimiter.retain(Set(next.panes.keys))
         if inputWaits.keys.contains(where: { next.panes[$0] == nil }) { inputWaits = inputWaits.filter { next.panes[$0.key] != nil } }
+        for id in progressTrackers.keys where next.panes[id] == nil { clearProgress(paneID: id) }
         // Looking at the pane answers a bell; a password prompt stays until echo returns.
         if let viewed = presentation.activePane?.id, inputWaits[viewed] == .attention { inputWaits.removeValue(forKey: viewed) }
         for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
@@ -601,37 +663,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     ).snapshot)
                 return
             }
-            terminal.onInputError = { [weak self] _ in
-                guard let self, !self.automationInputSessionIDs.contains(request.sessionID) else { return }
-                self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
-            }
-            var launchCompleted = false
-            terminal.onStateChanged = { [weak self, weak terminal] state in
-                if state != .running, self?.pendingPaste?.target.paneID == paneID { self?.cancelPaste() }
-                if !launchCompleted, state == .running || state == .closing, let pid = terminal?.processID {
-                    launchCompleted = true
-                    self?.enqueue(.completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .started(processID: pid)))
-                }
-                if launchCompleted, state == .closing { self?.enqueue(.markSessionClosing(sessionID: request.sessionID)) }
-            }
-            terminal.onExit = { [weak self, weak terminal] code in
-                guard let self, let terminal else { return }
-                let command: WorkspaceCommand =
-                    !launchCompleted
-                    ? .completeLaunch(
-                        sessionID: request.sessionID, attemptID: request.attemptID,
-                        outcome: .failed(
-                            message: terminal.sessionState == .failed
-                                ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
-                    : .recordSessionExit(sessionID: request.sessionID, code: code)
-                self.closureCoordinator.forget(sessionID: request.sessionID)
-                if let registration = self.askpassRegistrations.removeValue(forKey: request.sessionID) { self.askpass?.unregister(registration) }
-                if self.terminals[paneID] === terminal {
-                    self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
-                }
-                self.recordActivity(paneID: paneID, exited: true)
-                self.enqueue(command)
-            }
+            installLifecycle(terminal, paneID: paneID, sessionID: request.sessionID, attemptID: request.attemptID)
             if fixture {
                 await terminal.startFixture()
             } else {
@@ -679,11 +711,65 @@ public final class AppWorkspaceModel: ObservableObject {
                     configuration = LocalLaunchConfiguration(
                         executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
+                if keepSessionsRunning, let sessionBroker {
+                    let ready = await sessionBroker.prepare()
+                    guard terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
+                        if let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
+                        publish(
+                            try await service.execute(
+                                .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: "Session launch was cancelled."))
+                            ).snapshot)
+                        return
+                    }
+                    if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
+                        terminal.useTransport(transport)
+                    } else if !quietly {
+                        errorMessage = "The session broker could not start, so this session will end when Trellis quits."
+                    }
+                }
+                if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
+    }
+
+    /// Feeds a session's state changes and exit back to the store. `attemptID` is nil for a session
+    /// adopted from the broker, which is already running (FR-R03).
+    func installLifecycle(_ terminal: NativeTerminal, paneID: UUID, sessionID: UUID, attemptID: UUID?) {
+        terminal.onInputError = { [weak self] _ in
+            guard let self, !self.automationInputSessionIDs.contains(sessionID) else { return }
+            self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
+        }
+        var launchCompleted = attemptID == nil
+        terminal.onStateChanged = { [weak self, weak terminal] state in
+            if state != .running, self?.pendingPaste?.target.paneID == paneID { self?.cancelPaste() }
+            if !launchCompleted, let attemptID, state == .running || state == .closing, let pid = terminal?.processID {
+                launchCompleted = true
+                self?.enqueue(.completeLaunch(sessionID: sessionID, attemptID: attemptID, outcome: .started(processID: pid)))
+            }
+            if launchCompleted, state == .closing { self?.enqueue(.markSessionClosing(sessionID: sessionID)) }
+        }
+        terminal.onExit = { [weak self, weak terminal] code in
+            guard let self, let terminal else { return }
+            let command: WorkspaceCommand =
+                !launchCompleted
+                ? .completeLaunch(
+                    sessionID: sessionID, attemptID: attemptID ?? UUID(),
+                    outcome: .failed(
+                        message: terminal.sessionState == .failed
+                            ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
+                : .recordSessionExit(sessionID: sessionID, code: code)
+            self.closureCoordinator.forget(sessionID: sessionID)
+            if let registration = self.askpassRegistrations.removeValue(forKey: sessionID) { self.askpass?.unregister(registration) }
+            if self.terminals[paneID] === terminal {
+                self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
+                self.clearProgress(paneID: paneID)
+            }
+            self.recordActivity(paneID: paneID, exited: true)
+            self.enqueue(command)
+        }
     }
 
     /// The default login shell with bundled scripts only; other processes, SSH and fixtures never reach this (FR-SI01).
@@ -704,16 +790,31 @@ public final class AppWorkspaceModel: ObservableObject {
         preferences.set(enabled, forKey: "terminal.shellIntegration")
     }
 
-    /// The shell's reported directory; nil without integration (INT-01).
-    public func currentDirectory(paneID: UUID) -> String? { shellStates[paneID]?.currentDirectory }
+    /// The local shell's authenticated directory; nil without integration (INT-01) and for remote marks (FR-SI09),
+    /// so file links, new splits and tabs, saved launches and `session.get` never use a remote path.
+    public func currentDirectory(paneID: UUID) -> String? {
+        guard let state = shellStates[paneID], state.origin == .authenticated else { return nil }
+        return state.currentDirectory
+    }
+
+    /// An SSH pane's unverified reported location for display only (FR-SI09): `host:/path`, or the path alone.
+    public func remoteDirectory(paneID: UUID) -> String? {
+        guard let state = shellStates[paneID], state.origin == .remote, let directory = state.currentDirectory else { return nil }
+        return state.remoteHost.map { "\($0):\(directory)" } ?? directory
+    }
+
+    /// A saved SSH host, or a pane started straight into `ssh`, `mosh` or `autossh`: its paths name remote files.
+    public static func isRemote(_ launch: SessionLaunch) -> Bool {
+        switch launch {
+        case .host: true
+        case .process(let executable, _, _): ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent)
+        case .shell: false
+        }
+    }
 
     /// File links resolve only in local panes, read at click time so a restart is seen (FR-L04).
-    /// A saved SSH host's (or a direct `ssh` command's) paths name files on the remote machine.
     func fileLinkContext(paneID: UUID) -> FileLinkContext? {
-        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return nil }
-        if case .host = launch { return nil }
-        // A pane started straight into `ssh` or `mosh` shows remote paths too.
-        if case .process(let executable, _, _) = launch, ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent) { return nil }
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch) else { return nil }
         return FileLinkContext(currentDirectory: currentDirectory(paneID: paneID), homeDirectory: NSHomeDirectory())
     }
 
@@ -735,6 +836,11 @@ public final class AppWorkspaceModel: ObservableObject {
         return waits.contains(.password) ? .password : waits.first
     }
 
+    /// The most urgent progress among a tab's panes (FR-T09).
+    public func progress(tabID: UUID) -> TerminalProgress? {
+        TerminalProgress.aggregate(snapshot.tabs[tabID]?.root.paneIDs.compactMap { progress[$0] } ?? [])
+    }
+
     public var windowsNeedingInput: Set<UUID> {
         Set(inputWaits.keys.compactMap { snapshot.panes[$0].flatMap { snapshot.tabs[$0.tabID]?.windowID } })
     }
@@ -746,7 +852,7 @@ public final class AppWorkspaceModel: ObservableObject {
             let panes = tab.root.paneIDs
             return WindowTabPreview(
                 id: tab.id, title: displayTitle(tab), color: tab.color, isActive: tab.id == window.activeTabID, paneCount: panes.count,
-                isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id),
+                isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id), progress: progress(tabID: tab.id),
                 failedCommandExit: panes.lazy.compactMap(failedCommandExit(paneID:)).first,
                 hasExitedSession: panes.contains { [.exited, .failed].contains(terminals[$0]?.sessionState) })
         }
@@ -778,6 +884,84 @@ public final class AppWorkspaceModel: ObservableObject {
         refreshTerminalAccessibility()
     }
 
+    /// FR-T08: shown only while the user isn't looking at the pane (or as OSC 99 `o=` asks), never at the shell's own prompt.
+    private func postNotification(_ notification: TerminalNotification, paneID: UUID) {
+        guard appearance.desktopNotifications, let desktopNotifier, !atShellPrompt(paneID), let pane = snapshot.panes[paneID] else { return }
+        let frontmost = workspaceIsFrontmost()
+        switch notification.occasion {
+        case .always: break
+        case .unfocused: guard !frontmost || presentation.activePane?.id != paneID else { return }
+        case .invisible:
+            // kitty: unfocused and not visible. A shown pane counts as visible even while another app is key.
+            let shown = presentation.selectedTab?.id == pane.tabID && (maximizedPanes[pane.tabID] ?? paneID) == paneID
+            guard !shown || !workspaceIsVisible() else { return }
+        }
+        guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
+        let title = notification.title.isEmpty ? paneTitle(paneID) : notification.title
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, body: notification.body))
+    }
+
+    /// FR-SI08: a long command finished while the user wasn't looking at its pane. Unlike `postNotification` this runs
+    /// at the prompt by design, and it never labels the tab. The body names the program only, never the command line.
+    private func postCommandFinished(_ state: ShellIntegrationState, paneID: UUID) {
+        let threshold = appearance.commandFinishedNotificationSeconds
+        guard appearance.desktopNotifications, threshold > 0, let desktopNotifier, snapshot.panes[paneID] != nil,
+            let duration = state.lastDuration, duration >= TimeInterval(threshold), let durationText = state.durationText
+        else { return }
+        guard !workspaceIsFrontmost() || presentation.activePane?.id != paneID else { return }
+        guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
+        let title = state.lastCommandFailed ? "Command failed (exit \(state.lastExitCode ?? 0))" : "Command finished"
+        // The program name is untrusted output, so it gets the same cleaning as OSC notification text.
+        guard let text = TerminalNotification(title: title, body: "\(state.lastCommandName ?? paneTitle(paneID)) ran for \(durationText)") else { return }
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, body: text.body))
+    }
+
+    /// Progress never labels the tab as waiting (FR-T09); it only refreshes the bar, text and spoken status.
+    private func applyProgress(_ report: TerminalProgressReport, paneID: UUID) {
+        var tracker = progressTrackers[paneID] ?? PaneProgressTracker()
+        let next = tracker.apply(report, at: activityNow())
+        progressTrackers[paneID] = next == nil ? nil : tracker
+        if progress[paneID] != next { progress[paneID] = next; refreshTerminalAccessibility() }
+        scheduleProgressExpiry()
+    }
+
+    private func clearProgress(paneID: UUID) {
+        progressTrackers.removeValue(forKey: paneID)
+        if progress.removeValue(forKey: paneID) != nil { refreshTerminalAccessibility() }
+    }
+
+    /// One task for every pane: it sleeps until the earliest deadline, so updates never spawn timers.
+    private func scheduleProgressExpiry() {
+        guard progressExpiryTask == nil, !progressTrackers.isEmpty else { return }
+        progressExpiryTask = Task { [weak self] in
+            while !Task.isCancelled, let delay = self?.nextProgressExpiry() {
+                guard let sleep = self?.activitySleep else { return }
+                await sleep(delay)
+                self?.expireProgress()
+            }
+            self?.progressExpiryTask = nil
+        }
+    }
+
+    private func nextProgressExpiry() -> TimeInterval? {
+        progressTrackers.values.compactMap(\.expiresAt).min().map { max(0.05, $0.timeIntervalSince(activityNow())) }
+    }
+
+    private func expireProgress() {
+        let now = activityNow()
+        for (id, tracker) in progressTrackers {
+            var tracker = tracker
+            if tracker.expire(at: now) { clearProgress(paneID: id) }
+        }
+    }
+
+    /// Clicking a notification shows its pane, in whichever window and tab it now lives.
+    public func revealPane(_ paneID: UUID) async {
+        guard let pane = snapshot.panes[paneID], let windowID = snapshot.tabs[pane.tabID]?.windowID else { return }
+        await selectWindowTab(windowID: windowID, tabID: pane.tabID)
+        _ = await selectPane(paneID)
+    }
+
     private var automaticTitles: [UUID: String] {
         var titles: [UUID: String] = [:]
         for id in shellStates.keys { if let title = automaticTitle(paneID: id) { titles[id] = title } }
@@ -793,7 +977,8 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let state = shellStates[paneID] else { return nil }
         if let name = state.commandName { return name }
         guard let directory = state.currentDirectory else { return nil }
-        if directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
+        // A remote path is never this Mac's home, even when it is spelled the same.
+        if state.origin == .authenticated, directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
         let name = (directory as NSString).lastPathComponent
         return name.isEmpty ? directory : name
     }
@@ -801,15 +986,21 @@ public final class AppWorkspaceModel: ObservableObject {
     private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
         switch event {
         case .commandFinished, .promptStart: settleOutput(paneID: paneID)
-        case .commandInputStart, .commandStart: break
+        case .commandInputStart, .commandStart, .reportedDirectory, .reportedHost: break
         }
-        // Back at the prompt, the program that asked is gone.
-        if case .promptStart = event, inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
-        var state = shellStates[paneID] ?? ShellIntegrationState()
-        state.apply(event, at: Date())
+        // Back at the prompt, the program that asked (or reported progress) is gone.
+        if case .promptStart = event {
+            if inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
+            clearProgress(paneID: paneID)
+        }
+        var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
+        let wasRunning = state.commandRunning
+        state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
-        if let directory = state.currentDirectory, let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
+        // Replayed marks (FR-R03) describe commands that finished while Trellis was closed; they never notify.
+        if wasRunning, !state.commandRunning, terminals[paneID]?.isReplaying != true { postCommandFinished(state, paneID: paneID) }
+        if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
         refreshTerminalAccessibility()
@@ -918,6 +1109,7 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         shellStates.removeValue(forKey: pane.id)
         inputWaits.removeValue(forKey: pane.id)
+        clearProgress(paneID: pane.id)
         terminal.onPasswordPromptChanged = { [weak self, weak terminal] active in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
             self.setPasswordPrompt(active, paneID: pane.id)
@@ -925,6 +1117,14 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.onAttentionRequested = { [weak self, weak terminal] in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
             self.requestAttention(paneID: pane.id)
+        }
+        terminal.onNotification = { [weak self, weak terminal] notification in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.postNotification(notification, paneID: pane.id)
+        }
+        terminal.onProgress = { [weak self, weak terminal] report in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.applyProgress(report, paneID: pane.id)
         }
         terminal.onShellIntegrationEvent = { [weak self, weak terminal] event in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
@@ -1242,7 +1442,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
     }
 
-    private func prepareCloseSummary(_ panes: Set<UUID>) {
+    func prepareCloseSummary(_ panes: Set<UUID>) {
         closeSummary = panes.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
             guard terminals[id]?.isRunning == true, let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID],
                 let window = snapshot.windows.first(where: { $0.id == tab.windowID })
@@ -1277,7 +1477,7 @@ public final class AppWorkspaceModel: ObservableObject {
         return accepted
     }
 
-    private func finishClosure(_ panes: Set<UUID>) async -> Bool {
+    func finishClosure(_ panes: Set<UUID>) async -> Bool {
         let affected: [any ClosableSession] = panes.compactMap { terminals[$0] }
         var result = await closureCoordinator.close(affected, allowRunning: true)
         if case .closePending = result {
@@ -1334,7 +1534,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// Preserve callback order across async store calls, including fast exits.
-    private func enqueue(_ command: WorkspaceCommand) {
+    func enqueue(_ command: WorkspaceCommand) {
         let previous = updates
         updates = Task { @MainActor [weak self] in
             await previous?.value

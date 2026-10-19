@@ -21,7 +21,8 @@ public struct WorkspaceRootView: View {
             HStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
-                    Text(model.presentation.selectedWindow?.name ?? "Trellis")
+                    Text("Trellis")
+                    Text(AppVersion.current).monospacedDigit().opacity(0.7).accessibilityLabel("Version \(AppVersion.current)")
                 }
                 Spacer()
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
@@ -29,6 +30,10 @@ public struct WorkspaceRootView: View {
                 if let notice = model.appearanceNotice { Text(notice).lineLimit(1).help(notice) }
                 Text(model.accessibility.status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(model.accessibility.status)")
                 Text("·  UTF-8  ·  Local")
+                if let name = model.presentation.selectedWindow?.name {
+                    Text("·").accessibilityHidden(true)
+                    Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Window \(name)")
+                }
             }
             .font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 12).frame(height: 28)
             .background(model.themeColor(.surface))
@@ -274,7 +279,7 @@ public struct WorkspaceRootView: View {
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.presentation.isEmpty {
             VStack(spacing: 14) {
-                Image(systemName: "terminal").font(.system(size: 34, weight: .light)).foregroundStyle(model.themeColor(.mutedForeground))
+                TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
                 Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n")
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
@@ -306,8 +311,10 @@ public struct WorkspaceRootView: View {
         let selected = tab.id == model.presentation.selectedTab?.id
         let busy = model.busyTabIDs.contains(tab.id)
         let wait = model.inputWait(tabID: tab.id)
+        let progress = model.progress(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }
+            .joined(separator: ", ")
         return HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
@@ -341,6 +348,12 @@ public struct WorkspaceRootView: View {
                     .overlay(Capsule().strokeBorder(model.themeColor(.accent).opacity(0.6), lineWidth: 1))
                     .fixedSize().help(wait.text).accessibilityHidden(true)
             }
+            if let progress {
+                // The bar's state in words (FR-T09); the tab's value speaks it.
+                Text(progress.visibleText).font(.system(size: 10, weight: .medium)).monospacedDigit().lineLimit(1).fixedSize()
+                    .foregroundStyle(progress.state == .error ? Color.red : progress.state == .paused ? Color.orange : model.themeColor(.mutedForeground))
+                    .accessibilityHidden(true)
+            }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
@@ -352,7 +365,7 @@ public struct WorkspaceRootView: View {
             // The tint sits above the opaque active background, so a selected tab keeps it.
             .background(tab.color.map { $0.swatchColor.opacity(selected ? 0.2 : 0.12) } ?? .clear)
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
-            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy) }
+            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy, progress: progress) }
             .overlay(alignment: .bottom) {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
@@ -365,29 +378,25 @@ public struct WorkspaceRootView: View {
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
             .contextMenu {
-                Button("Rename…") { beginTabRename(tab) }
-                Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
-                    Text("None").tag(TabColor?.none)
-                    ForEach(TabColor.allCases, id: \.self) { color in
-                        Label {
-                            Text(color.displayName)
-                        } icon: {
-                            color.swatchImage
-                        }.tag(TabColor?.some(color))
-                    }
-                }
-                Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
-                Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
-                    .disabled(model.presentation.visibleTabs.first?.id == tab.id)
-                Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }
-                    .disabled(model.presentation.visibleTabs.last?.id == tab.id)
-                Divider().overlay(model.separatorOverlay)
-                Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
+                TabContextMenu(
+                    model: model, tab: tab, canMoveLeft: model.presentation.visibleTabs.first?.id != tab.id,
+                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay,
+                    rename: { beginTabRename(tab) }
+                ).equatable()
             }
     }
 
-    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool) -> some View {
-        if busy {
+    /// Progress outranks the busy bar, which outranks the color label stripe.
+    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool, progress: TerminalProgress?) -> some View {
+        if let progress {
+            let fill =
+                switch progress.state {
+                case .error: Color.red
+                case .paused: Color.orange
+                default: tab.color?.swatchColor ?? model.themeColor(.accent)
+                }
+            TabProgressBar(progress: progress, fill: fill, animated: !model.reduceMotion).help("Progress: \(progress.visibleText)")
+        } else if busy {
             let fill = tab.color?.swatchColor ?? model.themeColor(.accent)
             TabBusyBar(fill: fill, track: tab.color?.swatchColor.opacity(0.3) ?? .clear, animated: !model.reduceMotion)
                 .help(tab.color.map { "Printing output · \($0.displayName) label" } ?? "Printing output")
@@ -442,17 +451,93 @@ extension TabColor {
     }
     var swatchColor: Color { Color(nsColor: nsColor) }
     /// Menus render symbols as templates and drop their tint; a drawn, non-template image keeps the color.
-    var swatchImage: Image {
-        let color = nsColor
-        let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
-            color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill(); return true
+    /// One image per color: a fresh image on every redraw makes an open menu look changed, which closes it.
+    @MainActor var swatchImage: Image { Self.swatchImages[self]! }
+
+    @MainActor private static let swatchImages: [TabColor: Image] = Dictionary(
+        uniqueKeysWithValues: allCases.map { label in
+            let color = label.nsColor
+            let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+                color.setFill(); NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill(); return true
+            }
+            image.isTemplate = false
+            return (label, Image(nsImage: image))
+        })
+}
+
+/// The tab's context menu. Equatable on what it shows, so a busy tab redrawing every second (FR-T05) leaves an
+/// open menu alone instead of rebuilding and closing it.
+private struct TabContextMenu: View, Equatable {
+    let model: AppWorkspaceModel
+    let tab: WorkspaceTab
+    let canMoveLeft: Bool
+    let canMoveRight: Bool
+    let separator: Color
+    let rename: () -> Void
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.tab.id == rhs.tab.id && lhs.tab.color == rhs.tab.color && lhs.canMoveLeft == rhs.canMoveLeft && lhs.canMoveRight == rhs.canMoveRight
+            && lhs.separator == rhs.separator
+    }
+
+    var body: some View {
+        Button("Rename…", action: rename)
+        Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
+            Text("None").tag(TabColor?.none)
+            ForEach(TabColor.allCases, id: \.self) { color in
+                Label {
+                    Text(color.displayName)
+                } icon: {
+                    color.swatchImage
+                }.tag(TabColor?.some(color))
+            }
         }
-        image.isTemplate = false
-        return Image(nsImage: image)
+        Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
+        Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
+        Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
+        Divider().overlay(separator)
+        Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
     }
 }
 
 /// A tab's top edge filling and unfilling while its panes print output (FR-T05). Static under Reduce Motion.
+/// The app icon's prompt mark (geometry from `Design/AppIcon/Trellis-small.svg`, 824-unit
+/// canvas) with a terminal-style blinking cursor block.
+private struct TrellisLogoMark: View {
+    let blinks: Bool
+    private static let green = Color(red: 0x9C / 255, green: 1, blue: 0x62 / 255)
+
+    var body: some View {
+        if blinks {
+            TimelineView(.periodic(from: .now, by: 0.53)) { context in
+                mark(cursorVisible: Int(context.date.timeIntervalSinceReferenceDate / 0.53).isMultiple(of: 2))
+            }
+        } else {
+            mark(cursorVisible: true)
+        }
+    }
+
+    private func mark(cursorVisible: Bool) -> some View {
+        GeometryReader { geometry in
+            let s = min(geometry.size.width, geometry.size.height) / 824
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 185 * s, style: .continuous).fill(Color(red: 0x14 / 255, green: 0x14 / 255, blue: 0x17 / 255))
+                RoundedRectangle(cornerRadius: 130 * s, style: .continuous).fill(Color(red: 0x02 / 255, green: 0x03 / 255, blue: 0x02 / 255))
+                    .frame(width: 684 * s, height: 684 * s).offset(x: 70 * s, y: 70 * s)
+                Path { path in
+                    path.move(to: CGPoint(x: 200 * s, y: 300 * s)); path.addLine(to: CGPoint(x: 370 * s, y: 412 * s)); path.addLine(to: CGPoint(x: 200 * s, y: 524 * s))
+                }
+                .stroke(Self.green, style: StrokeStyle(lineWidth: 86 * s, lineCap: .round, lineJoin: .round))
+                .shadow(color: Self.green.opacity(0.6), radius: 22 * s)
+                RoundedRectangle(cornerRadius: 10 * s).fill(Self.green).frame(width: 170 * s, height: 280 * s).offset(x: 440 * s, y: 272 * s)
+                    .shadow(color: Self.green.opacity(0.6), radius: 22 * s).opacity(cursorVisible ? 1 : 0)
+            }
+            .frame(width: 824 * s, height: 824 * s)
+        }
+        .accessibilityElement().accessibilityLabel("Trellis").accessibilityAddTraits(.isImage)
+    }
+}
+
 private struct TabBusyBar: View {
     let fill: Color
     let track: Color
@@ -475,6 +560,38 @@ private struct TabBusyBar: View {
         filled = false
         guard animated else { return }
         withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { filled = true }
+    }
+}
+
+/// OSC 9;4 progress along the tab's top edge (FR-T09). Indeterminate sweeps, or fills statically under Reduce Motion.
+private struct TabProgressBar: View {
+    let progress: TerminalProgress
+    let fill: Color
+    let animated: Bool
+    @State private var swept = false
+
+    private var sweeping: Bool { animated && progress.state == .indeterminate }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                fill.opacity(0.25)
+                if sweeping {
+                    fill.frame(width: geometry.size.width * 0.3).offset(x: swept ? geometry.size.width * 0.7 : 0)
+                } else {
+                    fill.frame(width: geometry.size.width * CGFloat(progress.state == .indeterminate ? 100 : progress.percent ?? 100) / 100)
+                }
+            }
+        }
+        .frame(height: 3).clipped()
+        .onAppear { start(sweeping) }
+        .onChange(of: sweeping) { _, next in start(next) }
+    }
+
+    private func start(_ sweeping: Bool) {
+        swept = false
+        guard sweeping else { return }
+        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { swept = true }
     }
 }
 
@@ -595,6 +712,9 @@ private struct WindowTabsPreviewCard: View {
                 Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
+            } else if let progress = tab.progress {
+                Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").labelStyle(.titleAndIcon)
+                    .monospacedDigit()
             } else if tab.isBusy {
                 Label("Busy", systemImage: "waveform").labelStyle(.titleAndIcon).foregroundStyle(model.themeColor(.accent))
             }
@@ -611,7 +731,13 @@ private struct WindowTabsPreviewCard: View {
         if tab.paneCount > 1 { parts.append("\(tab.paneCount) panes") }
         if let code = tab.failedCommandExit { parts.append(WorkspaceAccessibility.commandFailureText(code)) }
         if tab.hasExitedSession { parts.append("a session exited") }
-        if let wait = tab.inputWait { parts.append(wait.text.lowercased()) } else if tab.isBusy { parts.append("output in progress") }
+        if let wait = tab.inputWait {
+            parts.append(wait.text.lowercased())
+        } else if let progress = tab.progress {
+            parts.append(progress.spokenText)
+        } else if tab.isBusy {
+            parts.append("output in progress")
+        }
         return parts.joined(separator: ", ")
     }
 }
@@ -701,6 +827,7 @@ public struct LaunchSettingsView: View {
     @State private var message = ""
     @State private var saving = false
     @State private var customShell: Bool
+    @State private var scrollbackLines: Int
     private let shells: [ShellOption]
     private static let customTag = ""
     public init(model: AppWorkspaceModel) {
@@ -710,6 +837,18 @@ public struct LaunchSettingsView: View {
         _shell = State(initialValue: model.defaultShell)
         _directory = State(initialValue: model.defaultDirectory)
         _customShell = State(initialValue: !shells.contains { $0.path == model.defaultShell })
+        _scrollbackLines = State(initialValue: model.appearance.scrollbackLines)
+    }
+    /// GPU rendering (FR-TX05) and notifications (FR-T08, FR-SI08) are saved with the appearance settings
+    /// but apply at once, like the other toggles here.
+    private func appearanceSetting<Value>(_ keyPath: WritableKeyPath<AppearanceSettings, Value>) -> Binding<Value> {
+        Binding(
+            get: { model.appearance[keyPath: keyPath] },
+            set: { value in
+                var settings = model.appearance
+                settings[keyPath: keyPath] = value
+                _ = model.applyAppearance(settings)
+            })
     }
     private var shellSelection: Binding<String> {
         Binding(
@@ -727,6 +866,10 @@ public struct LaunchSettingsView: View {
         }
         return model.shellIntegrationEnabled ? "\(name) supports shell integration." : "\(name) supports shell integration; it's turned off below."
     }
+    /// A wrapping caption: the form never grows wider than the pane.
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
+    }
     public var body: some View {
         Form {
             Picker("Shell", selection: shellSelection) {
@@ -740,28 +883,55 @@ public struct LaunchSettingsView: View {
             if customShell {
                 TextField("Shell executable", text: $shell).accessibilityIdentifier("settings.shellPath")
             }
-            Text(integrationNote).font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
-                .accessibilityIdentifier("settings.shellIntegrationNote")
+            caption(integrationNote).accessibilityIdentifier("settings.shellIntegrationNote")
             TextField("Working directory", text: $directory)
-            Text("Applies to new local sessions. Use absolute paths.").font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
-            if !message.isEmpty { Text(message).font(.caption).accessibilityIdentifier("settings.result") }
+            caption("For new local sessions. Use an absolute path.")
+            TextField("Scrollback lines (0–50,000)", value: $scrollbackLines, format: .number.grouping(.never))
+                .accessibilityIdentifier("settings.scrollbackLines")
+            caption("For every pane, up to 16 MiB of text. Lowering it drops older output.")
+            if !message.isEmpty { Text(message).font(.caption).wrappingSettingsCaption().accessibilityIdentifier("settings.result") }
             Toggle(
                 "Shell integration (zsh, bash, fish)",
                 isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
             ).accessibilityIdentifier("settings.shellIntegration")
-            Text("Tracks the current directory, command status and prompts without editing your dotfiles. Applies to new sessions.")
-                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions.")
+            Toggle(
+                "Keep sessions running after quit",
+                isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) })
+            ).accessibilityIdentifier("settings.keepSessionsRunning")
+            caption("New sessions can keep running when you quit and reconnect next time. Closing the window or logging out ends them.")
+            Toggle(
+                "Restore scrollback after quit",
+                isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
+            ).accessibilityIdentifier("settings.restoreScrollback")
+            caption("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis.")
+            Toggle("Desktop notifications", isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
+            caption("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane.")
+            Picker("Notify when a command finishes", selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {
+                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? "Off" : "After \($0) s").tag($0) }
+            }.disabled(!model.appearance.desktopNotifications).accessibilityIdentifier("settings.commandFinishedNotification")
+            caption("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line.")
+            Toggle("GPU rendering (Metal)", isOn: appearanceSetting(\.gpuRendering)).accessibilityIdentifier("settings.gpuRendering")
+            caption("Draws terminals with Metal, or with the CPU if Metal fails.")
             HStack {
                 Spacer()
                 Button("Save") {
+                    guard (0...50_000).contains(scrollbackLines) else { message = "Use 0–50,000 scrollback lines."; return }
                     saving = true
                     Task {
-                        let saved = await model.saveLaunchSettings(shell: shell, directory: directory)
-                        message = saved ? "Saved for new sessions." : "Check that the shell is executable and the directory is accessible."
+                        // Nothing is saved unless the shell and directory are valid.
+                        var saved = await model.saveLaunchSettings(shell: shell, directory: directory)
+                        if saved {
+                            var settings = model.appearance
+                            settings.scrollbackLines = scrollbackLines
+                            saved = model.applyAppearance(settings)
+                        }
+                        message = saved ? "Saved." : "Check that the shell is executable and the directory is accessible."
                         saving = false
                     }
                 }.disabled(saving)
             }
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
     }
 }

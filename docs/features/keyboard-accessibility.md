@@ -24,6 +24,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Next / previous window | ⌃⌘] / ⌃⌘[ |
 | Find in pane / next / previous | ⌘F / ⌘G / ⇧⌘G |
 | Previous / next prompt (shell integration) | ⌘↑ / ⌘↓ |
+| Clear the focused pane (FR-C07) | ⌘K |
 | Zoom in / out / actual size | ⌘+ (⌘= also works) / ⌘- / ⌘0 |
 | Save workspace | ⌘S |
 | Hide / show sidebar | ⌃⌘S |
@@ -34,7 +35,7 @@ These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q)
 Rules for shortcuts:
 
 - Every configurable shortcut must include ⌘, so terminal key combinations (Ctrl-C, Option sequences) always reach the shell.
-- Conflicts are rejected before they're saved. Previous/Next Prompt (added with shell integration) yield to a shortcut you had already assigned to ⌘↑ or ⌘↓: that prompt action starts unbound instead of discarding your saved shortcuts.
+- Conflicts are rejected before they're saved. Previous/Next Prompt (added with shell integration) yield to a shortcut you had already assigned to ⌘↑ or ⌘↓, and Clear yields to one you had assigned to ⌘K: that action starts unbound instead of discarding your saved shortcuts.
 - Settings are stored under the `keyboard.settings` user default.
 - **Option as Meta** is a terminal setting and is off by default.
 - Cmd-C and Cmd-V are always native copy and paste, and Ctrl-C always sends the terminal interrupt. Clipboard actions and terminal input must not fight over the responder chain.
@@ -51,10 +52,11 @@ Rules for shortcuts:
 | Bold as bright colors | On | On, Off (FR-TX03) |
 | Use bold fonts / Use italic fonts | On / On | On, Off (FR-TX03) |
 | Allow blinking text | On | On, Off (FR-TX03); always steady under Reduce Motion |
+| GPU rendering (Metal) | Off | On, Off (FR-TX05); CoreGraphics is used when Metal isn't available |
 | Light / dark theme | `trellis-light` / `trellis-dark` | Any installed theme for that appearance |
 | Remote Control: MCP server | Off, `127.0.0.1`, port 7777 | Interface IP literal, port 1024–65535 ([MCP server](../api/mcp.md#settings), FR-RC01–FR-RC03) |
 
-Changes apply live, without restarting sessions. Settings saved by an earlier version, which have no text-rendering values, load with these defaults.
+Scrollback, desktop notifications, command-finished notifications and GPU rendering are in **Settings → Sessions** (the toggles and the notification picker apply at once; scrollback is saved with **Save**); the font, cursor, theme and text-rendering settings are in **Settings → Appearance**. Changes apply live, without restarting sessions. Settings saved by an earlier version, which have no text-rendering or GPU rendering values, load with these defaults.
 
 ## Accessibility
 

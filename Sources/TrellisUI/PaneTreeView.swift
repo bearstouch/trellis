@@ -58,7 +58,8 @@ struct PaneTreeView: View {
                     if let directory = context.directory {
                         Image(systemName: "folder").accessibilityHidden(true)
                         Text(directory).lineLimit(1).truncationMode(.middle)
-                            .help(directory)
+                            .help(context.kind == "SSH" ? "\(directory) — reported by the remote shell, unverified" : directory)
+                            .accessibilityHint(context.kind == "SSH" ? "Reported by the remote shell, unverified" : "")
                     }
                     Spacer(minLength: 0)
                     if let code = model.failedCommandExit(paneID: id) {
@@ -70,6 +71,11 @@ struct PaneTreeView: View {
                     if let wait = model.inputWaits[id] {
                         Label(wait == .password ? "Password" : "Needs input", systemImage: "keyboard").lineLimit(1)
                             .help(wait.text).accessibilityLabel(wait.text)
+                    }
+                    if let progress = model.progress[id] {
+                        // Text with the symbol, never the tab bar's color alone (FR-T09).
+                        Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
+                            .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
                     }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
@@ -139,6 +145,8 @@ struct PaneTreeView: View {
     private func sessionContext(_ id: UUID) -> (directory: String?, kind: String) {
         let launch = model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
         let directory: String
+        // A remote shell's own report, unverified and display-only (FR-SI09).
+        if let launch, AppWorkspaceModel.isRemote(launch) { return (model.remoteDirectory(paneID: id), "SSH") }
         switch launch {
         case .host: return (nil, "SSH")
         // Shell integration reports the live directory; otherwise show where the session started (INT-01).

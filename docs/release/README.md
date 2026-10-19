@@ -23,12 +23,14 @@ TRELLIS_NOTARY_PROFILE=trellis-notary scripts/package-release.sh
 The script produces `dist/Trellis.app`, `dist/Trellis-<version>.dmg`, and `dist/release-evidence.json`. It covers:
 
 - **Signing:** the CLI and the app are signed with the hardened runtime and no entitlements, so there is no root helper and no blanket Accessibility, Screen Recording, or Full Disk Access request.
-- **Notarization:** with a Developer ID and a notary profile, the DMG is submitted with `notarytool` and the DMG is stapled; its ticket covers the app it contains. The `dist/Trellis.app` copy outside the DMG is stapled separately.
+- **Notarization:** with a Developer ID and a notary profile, the DMG is submitted with `notarytool` and the DMG is stapled; its ticket covers the app it contains. The `dist/Trellis.app` copy outside the DMG is stapled separately. If notarization or stapling fails, the script exits non-zero and `release-evidence.json` lists the failure, so a failed submission can't pass as a finished release.
+- **DMG layout:** `scripts/make-dmg.sh` puts the app beside an `Applications` shortcut over `Design/DMG/background.png` (regenerate with `swift Design/DMG/make-background.swift Design/DMG`) and sets the app icon as the volume icon. The window layout is applied through Finder AppleScript; where Finder automation is unavailable it prints a warning and the DMG keeps the shortcut without the arranged layout.
+- **Release workflow:** `.github/workflows/release.yml` pins every action to a commit SHA, because the job holds the signing certificate and notary credentials; Dependabot (`.github/dependabot.yml`) keeps the pins current. A build that is signed but not notarized is published as a pre-release with a note.
 - **Checks recorded:** the strict signature check, the hardened-runtime flag, the architectures of both binaries, the minimum OS, the artifacts listed in the manifest, and the local `spctl` result.
 
 ## Installing
 
-1. Open the DMG and drag **Trellis** to Applications.
+1. Open the DMG and drag the **Trellis** icon onto the **Applications** shortcut beside it.
 2. Launch it. A notarized build opens normally. An ad-hoc development build is rejected by Gatekeeper and is not for distribution.
 3. Optional, to use the CLI as `trellis`:
 
@@ -90,7 +92,6 @@ Only these combinations have been run. Nothing else is claimed.
 ## Known limits
 
 - **Signing:** no Developer ID signing, notarization, or clean-machine Gatekeeper verification has been performed. The current builds are ad-hoc.
-- **Flood throughput:** a 10 MiB/s output flood is consumed at about 5–7.6 MiB/s.
 - **Latency:** typing and switching latency are measured through API proxies, not UI frame timing.
 - **Accessibility and input:** VoiceOver, real IME, and keyboard-layout checks are pending.
 - **SSH:** checks against a real server are pending.

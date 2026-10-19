@@ -43,6 +43,8 @@ public enum WorkspaceCommand: Sendable {
     case replaceTabLayout(id: UUID, root: PaneLayout)
     case startSession(paneID: UUID, resolvedLaunch: SessionLaunch? = nil)
     case completeLaunch(sessionID: UUID, attemptID: UUID, outcome: LaunchOutcome)
+    /// A restored stopped session whose process the broker kept running (FR-R03). No attempt, nothing is spawned.
+    case adoptRunningSession(sessionID: UUID, processID: Int32)
     /// Declarative layout target computed by `LayoutPlanner` from this store's
     /// state. The store re-checks that nothing is deleted and live sessions are untouched.
     case applyLayout(target: WorkspaceSnapshot)
@@ -373,6 +375,15 @@ public actor WorkspaceStore {
             }
             for (id, tab) in applied.tabs where next.tabs[id].map({ $0 != tab }) ?? true { applied.tabs[id]?.revision = next.revision }
             next = applied
+        case .adoptRunningSession(let id, let pid):
+            guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
+            guard session.state == .stopped, session.launchAttemptID == nil else { throw WorkspaceError.invalidTransition }
+            guard pid > 0 else { throw WorkspaceError.invalidState("Invalid process ID") }
+            session.state = .running
+            session.processID = pid
+            session.exitCode = nil
+            session.startedAt = now()
+            next.sessions[id] = session
         case .completeLaunch(let id, let attempt, let outcome):
             guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
             guard session.state == .starting, session.launchAttemptID == attempt else { throw WorkspaceError.staleLaunch }

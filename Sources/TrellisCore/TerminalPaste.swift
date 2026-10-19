@@ -23,7 +23,7 @@ public struct TerminalPastePlan: Equatable, Sendable {
             text = paths.map { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }.joined(separator: " ")
         }
         self.text = text
-        var lines = 1, previousCR = false, controls = false
+        var lines = 1, previousCR = false, controls = false, hiddenEscape = false
         var visible = "", shown = 0
         for scalar in text.unicodeScalars {
             let value = scalar.value
@@ -36,6 +36,7 @@ public struct TerminalPastePlan: Equatable, Sendable {
                 || (scalar.properties.generalCategory == .format && value != 0x200C && value != 0x200D)
                 || value == 0x2028 || value == 0x2029
             controls = controls || control
+            if shown >= 8192 && value == 27 { hiddenEscape = true }
             if shown < 8192 {
                 switch value {
                 case 9: visible += "⟨TAB⟩"
@@ -47,15 +48,35 @@ public struct TerminalPastePlan: Equatable, Sendable {
             }
             shown += 1
         }
-        if shown > 8192 { visible += "\n… Preview truncated; \(text.utf8.count) bytes total." }
+        if shown > 8192 {
+            visible += "\n… Preview truncated; \(text.utf8.count) bytes total."
+            if hiddenEscape { visible += " The rest includes escape (ESC) characters not shown here." }
+        }
         lineCount = lines
         preview = visible
         requiresReview = controls || unsupportedShell
     }
 
+    /// An embedded end marker would end a bracketed paste early and run the rest as typed input, so both markers
+    /// are removed from the payload, as xterm, iTerm2 and kitty do. Bytes, not characters, are matched, so a
+    /// combining mark after `~` can't hide a marker. A marker is removed as soon as it completes at the tail, so
+    /// nested markers can't reassemble one; neither marker overlaps itself or the other, so this equals repeated
+    /// removal, in linear time even for a clipboard full of markers.
     public func data(bracketed: Bool) -> Data {
-        Data((bracketed ? "\u{1b}[200~" + text + "\u{1b}[201~" : text).utf8)
+        guard bracketed else { return Data(text.utf8) }
+        var body = Self.pasteStart
+        body.reserveCapacity(text.utf8.count + 12)
+        let floor = Self.pasteStart.count, width = Self.pasteStart.count
+        for byte in text.utf8 {
+            body.append(byte)
+            guard byte == 0x7E, body.count - floor >= width else { continue }
+            let tail = body[(body.count - width)...]
+            if tail.elementsEqual(Self.pasteStart) || tail.elementsEqual(Self.pasteEnd) { body.removeLast(width) }
+        }
+        return Data(body + Self.pasteEnd)
     }
+
+    private static let pasteStart = Array("\u{1b}[200~".utf8), pasteEnd = Array("\u{1b}[201~".utf8)
 }
 
 public struct TerminalPasteTarget: Equatable, Sendable {

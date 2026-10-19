@@ -12,13 +12,29 @@ final class AppearanceSettingsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
         XCTAssertEqual(decoded.bellStyle, .sound)
         XCTAssertEqual(decoded.chromeMode, .light)
+        XCTAssertTrue(decoded.desktopNotifications, "Settings saved before FR-T08 keep notifications on")
+        XCTAssertEqual(decoded.commandFinishedNotificationSeconds, 10, "Settings saved before FR-SI08 notify after 10 s")
+        legacy["commandFinishedNotificationSeconds"] = 7
+        let unknown = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(unknown.commandFinishedNotificationSeconds, 10, "An unoffered threshold falls back to the default")
+        XCTAssertEqual(unknown.chromeMode, .light)
+        legacy["commandFinishedNotificationSeconds"] = nil
         legacy["bellStyle"] = "chime"
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy)).bellStyle, .sound)
+    }
+    func testSettingsSavedBeforeGPURenderingLoadWithMetalOff() throws {
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
+        legacy["gpuRendering"] = nil; legacy["fontLigatures"] = false
+        let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertFalse(decoded.gpuRendering)
+        XCTAssertFalse(decoded.fontLigatures, "other settings are kept")
     }
     func testFirstLaunchPalette() {
         let settings = AppearanceSettings()
         XCTAssertEqual(settings.chromeMode, .dark)
         XCTAssertEqual(settings.bellStyle, .sound)
+        XCTAssertTrue(settings.desktopNotifications)
+        XCTAssertEqual(settings.commandFinishedNotificationSeconds, 10)
         XCTAssertEqual(settings.fontName, "RobotoMono-Regular")
         XCTAssertEqual(settings.fontSize, 13)
         XCTAssertEqual(TerminalPalette.builtIn.background, 0x151719)
@@ -64,6 +80,7 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertTrue(settings.allowBoldFont)
         XCTAssertTrue(settings.allowItalicFont)
         XCTAssertTrue(settings.blinkingText)
+        XCTAssertFalse(settings.gpuRendering, "FR-TX05: Metal is opt-in")
     }
     func testAppearanceWithoutTextRenderingKeysDecodesWithDefaults() throws {
         // The appearance object as saved before FR-TX01/FR-TX03.
@@ -80,6 +97,8 @@ final class AppearanceSettingsTests: XCTestCase {
         var settings = AppearanceSettings()
         settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
         settings.allowItalicFont = false; settings.blinkingText = false; settings.bellStyle = .visual
+        settings.desktopNotifications = false; settings.commandFinishedNotificationSeconds = 0
+        settings.gpuRendering = true
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)), settings)
     }
     func testTerminalRenderingDiffersCoversTextStyleFields() {
@@ -87,10 +106,17 @@ final class AppearanceSettingsTests: XCTestCase {
         var themeOnly = base
         themeOnly.chromeMode = .dark; themeOnly.darkThemeID = "custom-dark"; themeOnly.lightThemeID = "custom-light"
         XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly))
+        themeOnly.desktopNotifications = false
+        XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly), "The notification toggle never touches terminals")
+        themeOnly.commandFinishedNotificationSeconds = 60
+        XCTAssertFalse(base.terminalRenderingDiffers(from: themeOnly), "Nor does the command-finished threshold")
+        var invalid = base
+        invalid.commandFinishedNotificationSeconds = 7
+        XCTAssertFalse(invalid.isValid)
         let changes: [(inout AppearanceSettings) -> Void] = [
             { $0.fontName = "Menlo" }, { $0.fontSize = 14 }, { $0.cursorShape = .bar }, { $0.cursorBlinks = true },
             { $0.scrollbackLines = 1 }, { $0.fontLigatures = false }, { $0.boldAsBright = false },
-            { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false },
+            { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false }, { $0.gpuRendering = true },
             { $0.bellStyle = .off }
         ]
         for (index, change) in changes.enumerated() {

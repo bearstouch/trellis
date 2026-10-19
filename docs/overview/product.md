@@ -39,8 +39,8 @@ Structural rules:
 | Priority | Features |
 | --- | --- |
 | P0 (MVP) | Sidebar windows; tabs; nested left/right and top/bottom splits; local shells; SSH hosts; native selection and clipboard; built-in dark and light themes plus custom JSON themes; terminal search; keyboard navigation; saved layouts; local CLI and API; explicit automation grants; bounded output reading; import and export of layouts and hosts |
-| P1 | Multiple native windows; dragging tabs between windows; multiple profiles; shell integration (zsh, bash, fish; command-completion events for automation still to come); richer host import; a signed update mechanism; an optional MCP adapter |
-| P2 | A session broker so sessions survive application exit; tmux awareness; richer terminal protocols; plugins |
+| P1 | Multiple native windows; dragging tabs between windows; multiple profiles; shell integration (zsh, bash, fish; command-completion events for automation still to come); richer host import; a signed update mechanism; an optional MCP adapter; an opt-in session broker so sessions survive quitting, with an opt-in redacted scrollback file (FR-R03–FR-R05, implemented) |
+| P2 | tmux awareness; richer terminal protocols; plugins |
 
 Out of scope for the MVP: Windows, Linux or iOS support; cloud sync; a web UI; a remote API server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import; and replaying arbitrary commands on restore.
 
@@ -70,7 +70,7 @@ A script can build the same workspace, discover its IDs, observe the output it's
 4. In Operations, connect to a saved SSH alias and inspect a failed connection.
 5. Use the CLI to list the same object IDs and apply a layout twice.
 6. Confirm a restricted agent can't read output.
-7. Quit (accepting the running-session confirmation) and reopen. The layout returns stopped until it's explicitly started.
+7. Quit (accepting the running-session confirmation) and reopen. The layout returns stopped until it's explicitly started. With **Keep sessions running after quit** on (FR-R03), choosing Keep Running instead brings the kept sessions back running in their panes.
 
 ## Milestones
 

@@ -25,7 +25,9 @@ These requirements are P1. They refine FR-S02 for text. The settings are describ
 | FR-TX03 | Let users choose how text styles are drawn. | **Bold as bright colors** draws bold text in ANSI colours 0–7 with the bright colours 8–15; explicit bright colours (SGR 90–97) stay bright with it off. **Use bold fonts** and **Use italic fonts** off draw that text with the regular face. **Allow blinking text** off draws blinking text steadily; blinking also stops while Reduce Motion is on or the app is inactive. All four are on by default and apply live. |
 | FR-TX04 | Give emoji and other Unicode text stable cell widths. | Each of these takes a fixed number of cells and moves the cursor by the same amount: ZWJ sequences (`👨‍👩‍👧`, 2), emoji presentation with VS16 (`❤️`, 2) and text presentation with VS15 (`☺︎`, 1), flags (`🇵🇹`, 2), skin tones (`👍🏽`, 2), combining marks (`é` written as `e` + U+0301, 1) and CJK and Hangul (`漢`, `한`, 2 each). Each is one cluster for selection, copy and search. Colour emoji fit within their two cells. |
 
-Known limits: ligatures whose font merges several characters into one glyph take the colour of their first cell. In bidirectional rows the cursor cell isn't drawn on its own, so the cursor can cover part of a joined glyph there. The automation API doesn't expose the text-rendering settings (see [Methods](../api/methods.md)).
+| FR-TX05 | Draw terminals on the GPU, controlled by a **GPU rendering (Metal)** setting in Settings → Sessions that is off by default. | With the setting on, every pane that is in a window draws with SwiftTerm's Metal renderer (`appearance.get` → `rendering.metalPanes`); turning it off switches open panes to CoreGraphics live, without resetting sessions. FR-TX01–FR-TX04 and inline images (FR-IM01–FR-IM05) look the same under both renderers: ligatures follow the setting and survive colour changes, underline, strikethrough and overline cover wide characters and ligatures, and the cursor hides concealed text, sits in the visual column of BiDi rows and draws whole graphemes. If Metal can't start, or fails again within 30 s after a recovery, the pane draws with CoreGraphics without losing content and isn't switched back until the setting is turned off and on. `--renderer metal` or `--renderer coregraphics` overrides the setting for one launch, without saving it. |
+
+Known limits: ligatures whose font merges several characters into one glyph take the colour of their first cell. In bidirectional rows the cursor cell isn't drawn on its own, so the cursor can cover part of a joined glyph there. The automation API doesn't expose the text-rendering settings (see [Methods](../api/methods.md)); it reports which renderer each pane uses. Each Metal pane keeps its own glyph atlas, so it uses about 5 MiB more memory than a CoreGraphics pane.
 
 ## Copy
 
@@ -35,12 +37,18 @@ Known limits: ligatures whose font merges several characters into one glyph take
 | FR-C02 | Support plain-text copy, Select All, and word and line selection. | Unicode and multiline text copy without terminal escape sequences, and Copy All covers the whole retained buffer. |
 | FR-C06 | Double-click selects the whole recognized token under the pointer (smart selection): a URL, an email address, a file path with an optional `:line[:column]` suffix, a UUID, an IPv4 address with optional port, an IPv6 address, a git hash, or a quoted string when the click lands on one of its quotes. Elsewhere it selects a word as before. | Double-clicking any part of `https://en.wikipedia.org/wiki/A_(b)).` selects the URL without the trailing `).`, `src/main.swift:12:5` and `~/notes/todo.md` are selected whole, a path that soft-wraps across rows is selected across them, and wide characters keep their columns. A clock time such as `12:34:56` is not an IPv6 address. Dragging after the double-click extends from the whole token. While a program captures the mouse (mouse reporting), the double-click goes to the program. Triple-click still selects the line. |
 
+## Clear
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-C07 | **Edit → Clear** (⌘K, also in the pane's context menu) clears the focused pane, like Terminal's ⌘K: it drops the scrollback and every row above the cursor's line, and moves that line to the top so the prompt and anything typed stay. Nothing is sent to the program. | After `seq 1 500` and typing `echo hi` without Return, ⌘K leaves only the prompt and `echo hi` at the top, Copy All copies only that line, and Return still runs `echo hi`. A command line that soft-wraps is kept whole. In `vim` or `less` (alternate screen) the program's screen stays; the shell's scrollback is still dropped. Other panes in the tab are unchanged. |
+
 ## Paste
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| FR-C03 | Paste only into the focused pane, using bracketed paste when the shell has negotiated it. | With two panes, only the focused pane receives the pasted bytes. |
-| FR-C04 | Review multiline pastes and text with control characters before sending them. | The review shows the line count, invisible control characters and the target pane. Cancelling sends zero bytes. Paste never adds a newline that wasn't in the clipboard. |
+| FR-C03 | Paste only into the focused pane, using bracketed paste when the shell has negotiated it. | With two panes, only the focused pane receives the pasted bytes. Bracketed-paste start and end markers (`ESC[200~`, `ESC[201~`) inside the pasted text are removed, so the paste can't end early and run the rest as typed commands. |
+| FR-C04 | Review multiline pastes and text with control characters before sending them. | The review shows the line count, invisible control characters and the target pane. A preview cut off after 8,192 characters says when the hidden rest contains escape characters. Cancelling sends zero bytes. Paste never adds a newline that wasn't in the clipboard. |
 | FR-C05 | Paste file paths through an explicit action. | **Paste Escaped Path** escapes paths for the configured shell; shells it doesn't support get a quoted-path preview. Ordinary paste stays plain text. |
 
 The UI paste review is mandatory. API input (`session.sendInput`) doesn't show it, because the grant itself authorizes input. See [Methods](../api/methods.md#session-launch-and-input).

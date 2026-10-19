@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-19
+
+This release adds sessions that keep running after quit, restored scrollback, desktop and long-command notifications, progress on tabs, shell marks over SSH, ⌘K Clear and opt-in Metal rendering, plus several security fixes.
+
+### Added
+
+- **Edit → Clear** (⌘K, also in the pane's context menu) clears scrollback and the screen above the prompt, like Terminal. Alternate-screen programs keep their screen; an existing ⌘K binding wins (FR-C07).
+- Desktop notifications from OSC 9, OSC 777 and kitty's OSC 99, shown when you aren't looking at the pane; clicking one jumps to it. Text is sanitized, length-capped and rate-limited (FR-T08).
+- OSC 9;4 progress on tabs and panes: a filled top edge plus a "50%", "Paused", "Error" or "Working" label, also read by VoiceOver and reported by `session.get` (FR-T09).
+- Long-command notifications: with shell integration, a command that ran past a threshold (default 10 s, set in Settings → Sessions) notifies when it finishes out of view. The command line is never shown (FR-SI08).
+- Shell marks over SSH: a remote shell's OSC 133/7/1337 marks show "SSH · host:/path", titles, exit badges and notifications. They're display-only and never used for local paths (FR-SI09).
+- **Keep sessions running after quit** (opt-in): sessions run in a bundled `trellis-broker` helper and reconnect at next launch with up to 4 MiB of recent output. ⌘Q offers Keep Running, Stop Sessions or Cancel (FR-R03).
+- **Restore scrollback after quit** (opt-in): each pane's text, with secrets redacted best-effort, is shown in the stopped pane next launch; 1 MiB per pane, stored unencrypted (FR-R04, FR-R05).
+- The empty workspace shows the Trellis prompt mark with a blinking cursor (solid with Reduce Motion).
+
+### Changed
+
+- Opt-in GPU rendering with Metal (**Settings → Sessions → GPU rendering**), matching CoreGraphics output and falling back to it automatically. Roughly 50–90% faster output on an M1 Pro; `appearance.get` reports each pane's renderer (FR-TX05).
+- Scrollback and notification settings moved from Appearance to Settings → Sessions.
+- Large output is faster: up to 43% for `cat` of big files.
+- The DMG opens as a drag-to-Applications window.
+- The status bar shows **Trellis** and the app version on the left and the window name on the right.
+
+### Fixed
+
+- A busy tab's context menu (including the Color submenu) no longer closes on its own.
+
+### Security
+
+- Compressed (`o=z`) and chunked kitty graphics images can no longer hang Trellis or exhaust memory.
+- Oversized sixel images and numbers are refused instead of crashing or allocating.
+- Pasted text can't end a bracketed paste early; `ESC[200~`/`ESC[201~` markers are stripped (FR-C03, FR-C04).
+- Creating a saved host, or clearing its user, port or identity file, through the API now also needs `session.execute`.
+- DCS sequences are capped at 8 MiB like OSC and APC.
+- Release workflow actions are pinned to commit SHAs, and packaging fails when requested notarization fails.
+
 ## [0.10.0] - 2026-10-17
 
 This release adds an optional MCP server, saved SSH passwords in the Keychain, richer text rendering, inline images, smart selection and file links, attention and activity cues on tabs, and a terminal bell setting. Trellis now opens in dark mode on first launch.
@@ -214,7 +250,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/layerx-labs/trellis/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/layerx-labs/trellis/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/layerx-labs/trellis/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/layerx-labs/trellis/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/layerx-labs/trellis/compare/v0.9.0...v0.9.1

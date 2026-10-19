@@ -41,6 +41,31 @@ final class AccessibleTerminalView: TerminalView {
     private var scrollbarHideTask: Task<Void, Never>?
     var scrollbarIdleDelay: Duration = .seconds(1)
     private var terminalScroller: NSScroller? { subviews.compactMap { $0 as? NSScroller }.first }
+    /// Draws with the Metal renderer (FR-TX05). Metal needs a window, so it's applied
+    /// when the view gets one; until then, and whenever Metal fails, CoreGraphics draws.
+    var prefersMetal = false {
+        didSet {
+            guard prefersMetal != oldValue else { return }
+            // Turning the setting back on retries a renderer that failed.
+            metalUnavailable = false
+            applyRendererPreference()
+        }
+    }
+    /// Set when Metal couldn't start or the engine fell back to CoreGraphics; not retried
+    /// on every window move, so a failing GPU doesn't flap between renderers.
+    private(set) var metalUnavailable = false
+
+    func applyRendererPreference() {
+        if metalRendererStatus.state == .fellBackToCoreGraphics {
+            // Acknowledge the fallback (the state becomes disabled), or turning the setting back on would
+            // read it again and never retry.
+            metalUnavailable = true
+            try? setUseMetal(false)
+        }
+        let wanted = prefersMetal && !metalUnavailable
+        guard wanted != isUsingMetalRenderer, !wanted || window != nil else { return }
+        do { try setUseMetal(wanted) } catch { metalUnavailable = true }
+    }
 
     /// Every BEL counts as an attention request, whatever the bell style.
     override func bell(source: Terminal) {
@@ -53,6 +78,7 @@ final class AccessibleTerminalView: TerminalView {
         scrollbarHideTask?.cancel()
         scrollbarHovered = false
         terminalScroller?.alphaValue = 0
+        applyRendererPreference()
     }
 
     override func updateTrackingAreas() {
@@ -140,6 +166,35 @@ final class AccessibleTerminalView: TerminalView {
 
     @objc func copyAllRetainedText(_ sender: Any?) { writePlainText(retainedText) }
 
+    /// Like Terminal's ⌘K (FR-C07): drops the scrollback and the screen above the cursor's logical
+    /// line, which moves to the top so the prompt and typed text stay. Nothing is sent to the PTY,
+    /// so a running program is unaffected; an alternate-screen program keeps its screen.
+    @objc func clearTerminal(_ sender: Any?) {
+        let terminal = getTerminal(), buffer = terminal.buffer
+        if !terminal.isCurrentBufferAlternate {
+            var count = 0
+            while terminal.bufferLine(atRow: count) != nil { count += 1 }
+            let top = max(0, count - terminal.rows)
+            var start = buffer.y
+            while start > 0, terminal.bufferLine(atRow: top + start)?.isWrapped == true { start -= 1 }
+            // Scroll the whole screen, not the program's scroll region or left/right margins
+            // (which scroll in place), so those rows reach history.
+            let region = (buffer.scrollTop, buffer.scrollBottom, buffer.marginLeft, buffer.marginRight)
+            buffer.scrollTop = 0; buffer.scrollBottom = terminal.rows - 1; buffer.marginLeft = 0; buffer.marginRight = terminal.cols - 1
+            for _ in 0..<start { terminal.scroll() }
+            (buffer.scrollTop, buffer.scrollBottom, buffer.marginLeft, buffer.marginRight) = region
+            buffer.y -= start; buffer.savedY = max(0, buffer.savedY - start)
+        }
+        selection.selectNone()
+        clearScrollback()
+        // A viewport scrolled up into the dropped history must follow output again.
+        scrollTo(row: 0)
+        terminal.updateFullScreen()
+        scrollback.enforce(on: self)
+        onContentsChanged?()
+        NSAccessibility.post(element: self, notification: .valueChanged)
+    }
+
     @objc func selectAllTerminalText(_ sender: Any?) {
         // SwiftTerm's Select All ends at cols-1 even though text ranges are
         // half-open. Use its public selection operations to include that cell.
@@ -211,7 +266,7 @@ final class AccessibleTerminalView: TerminalView {
         }
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
         if item.action == #selector(pasteEscapedPath(_:)) { return true }
-        if item.action == #selector(showPaneSearch(_:)) { return true }
+        if item.action == #selector(showPaneSearch(_:)) || item.action == #selector(clearTerminal(_:)) { return true }
         if item.action == #selector(openContextLink(_:)) || item.action == #selector(copyContextLink(_:)) { return contextLink != nil }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
@@ -241,7 +296,8 @@ final class AccessibleTerminalView: TerminalView {
             ("Select All", #selector(selectAllTerminalText(_:))),
             ("Paste", #selector(paste(_:))),
             ("Paste Escaped Path", #selector(pasteEscapedPath(_:))),
-            ("Find…", #selector(showPaneSearch(_:)))
+            ("Find…", #selector(showPaneSearch(_:))),
+            ("Clear", #selector(clearTerminal(_:)))
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self

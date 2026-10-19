@@ -330,8 +330,8 @@ public class EscapeSequenceParser {
     /// ```
     public var oscHandlers: [Int:OscHandler] = [:]
 
-    /// OSC and APC payloads longer than this are dropped whole instead of
-    /// growing parser state without bound.
+    /// OSC, APC and DCS payloads longer than this are dropped whole instead of
+    /// growing parser or handler state without bound.
     public var maxStringPayloadBytes = 8 * 1024 * 1024
 
     var activeDcsHandler: DcsHandler? = nil
@@ -351,6 +351,7 @@ public class EscapeSequenceParser {
     var _collect: cstring
     var _parameterLimitExceeded: Bool
     var _stringPayloadOverflow: Bool
+    var _dcsPayloadBytes = 0
     var printHandler: PrintHandler = { (slice : ArraySlice<UInt8>) -> () in }
     var printStateReset: () -> () = {  }
     
@@ -653,6 +654,7 @@ public class EscapeSequenceParser {
         _collect = []
         _parameterLimitExceeded = false
         _stringPayloadOverflow = false
+        _dcsPayloadBytes = 0
         activeDcsHandler = nil
         printStateReset()
     }
@@ -701,6 +703,19 @@ public class EscapeSequenceParser {
         let maxStringPayloadBytes = self.maxStringPayloadBytes
         let tableData = table.table
         var dcsHandler = activeDcsHandler
+        var dcsPayloadBytes = self._dcsPayloadBytes
+
+        // A DCS handler buffers what it is given, so an oversized sequence drops the handler:
+        // the rest of the sequence is ignored and it is never unhooked (dispatched).
+        func putDcs(_ slice: ArraySlice<UInt8>) {
+            guard let handler = dcsHandler else { return }
+            dcsPayloadBytes += slice.count
+            if dcsPayloadBytes > maxStringPayloadBytes {
+                dcsHandler = nil
+            } else {
+                handler.put(data: slice)
+            }
+        }
         
         //dump (data)
             
@@ -754,7 +769,7 @@ public class EscapeSequenceParser {
                     printHandler (data [print..<i])
                     print = -1
                 } else if ~dcs != 0 {
-                    dcsHandler?.put (data: data [dcs..<i])
+                    putDcs(data [dcs..<i])
                     dcs = -1
                 }
             case .error:
@@ -836,15 +851,16 @@ public class EscapeSequenceParser {
                 if !parameterLimitExceeded,
                    let handler = dispatchDcs(collect: collect, code: code, pars: pars) {
                     dcsHandler = handler
+                    dcsPayloadBytes = 0
                     handler.hook(collect: collect, parameters: pars, flag: code)
                 }
             case .dcsPut:
                 dcs = (~dcs != 0) ? dcs : i
             case .dcsUnhook:
-                if let d = dcsHandler {
+                if dcsHandler != nil {
                     if ~dcs != 0 {
-                        d.put (data: data[dcs..<i])
-                        d.unhook ()
+                        putDcs(data[dcs..<i])
+                        dcsHandler?.unhook ()
                         dcsHandler = nil
                     }
                 }
@@ -935,7 +951,7 @@ public class EscapeSequenceParser {
         if currentState == .ground && (~print != 0) {
             printHandler (data [print..<end])
         } else if currentState == .dcsPassthrough && (~dcs != 0) && dcsHandler != nil {
-            dcsHandler!.put (data: data [dcs..<end])
+            putDcs(data [dcs..<end])
         }
         // save non pushable buffers
         _osc = osc
@@ -945,6 +961,7 @@ public class EscapeSequenceParser {
         _parsTxt = parsTxt
         _parameterLimitExceeded = parameterLimitExceeded
         _stringPayloadOverflow = stringPayloadOverflow
+        _dcsPayloadBytes = dcsPayloadBytes
         
         // save active dcs handler reference
         activeDcsHandler = dcsHandler

@@ -40,7 +40,7 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `pane.resize` | `branchId`, `ratio`, `expectedRevision?` | Updated branch, with geometry constraints enforced |
 | `pane.focus`, `pane.close` | `id`, plus close flags | Selection / close result |
 | `pane.maximize` | `id`, `maximized` | Temporary presentation state |
-| `session.get` | `id` | State and exit status. Launch details only with execute permission. With [shell integration](../features/shell-integration.md), `shellIntegration: {commandRunning, lastExitStatus?, currentDirectory?}`; the directory needs execute permission, and command text is never included. `waitingForInput: "password"|"attention"` while the program waits for the user ([FR-T06](../features/workspace.md#tabs)). |
+| `session.get` | `id` | State and exit status. Launch details only with execute permission. With [shell integration](../features/shell-integration.md), `shellIntegration: {commandRunning, lastExitStatus?, currentDirectory?, remote?}`; the directory needs execute permission, and command text is never included. In an SSH pane the state comes from the remote shell's unverified marks ([FR-SI09](../features/shell-integration.md)): `remote: true` is set and `currentDirectory` is never reported. `waitingForInput: "password"|"attention"` while the program waits for the user ([FR-T06](../features/workspace.md#tabs)). `progress: {state: "normal"|"error"|"paused"|"indeterminate", percent?}` while the program reports OSC 9;4 progress ([FR-T09](../features/workspace.md#tabs)); `percent` is 0-100 and absent while indeterminate or for an error with no known value. |
 | `session.start` | `paneId`, `launch?` | New or stopped session ID and the launch status |
 | `session.restart` | `paneId`, `allowRunning?`, `launch?` | Replaces the session after any required termination. The new session gets a new UUID. |
 | `session.sendInput` | `id`, `text` or `base64`, `mode: literal\|paste` | Accepted byte count. Acceptance doesn't mean the input has been processed. |
@@ -58,8 +58,8 @@ Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
 | `theme.import` | `document`, `replace?` | The theme, installed atomically |
 | `theme.export` | `id`, `resolved?` | `{id, resolved, document}`. Built-in themes are always exported complete. |
 | `theme.delete` | `id` | Deletes a custom theme. Any slot that had it selected falls back to the built-in theme. |
-| `appearance.get` | — | Mode, selected theme IDs and the effective theme |
-| `appearance.set` | `mode: system\|dark\|light`, `darkThemeId?`, `lightThemeId?`, `expectedRevision?` | Atomic settings update. A theme in the wrong appearance slot is rejected. Font, cursor, scrollback, text-rendering (FR-TX01, FR-TX03) and bell (FR-T07) settings aren't exposed and are kept unchanged. |
+| `appearance.get` | — | Mode, selected theme IDs and the effective theme; `rendering` gives the effective GPU setting (`gpuRendering`, including a `--renderer` launch override), how many panes draw with each renderer (`metalPanes`, `coreGraphicsPanes`) and the frames they have drawn (`metalFrames`, `coreGraphicsFrames`) (FR-TX05) |
+| `appearance.set` | `mode: system\|dark\|light`, `darkThemeId?`, `lightThemeId?`, `expectedRevision?` | Atomic settings update. A theme in the wrong appearance slot is rejected. Font, cursor, scrollback, text-rendering (FR-TX01, FR-TX03, FR-TX05), bell (FR-T07) and desktop-notification (FR-T08) settings aren't exposed and are kept unchanged. |
 | `events.subscribe` | `topics`, `resourceIds?`, `afterSequence?`, `instanceId?` | `{subscriptionId, sequence, instanceId}` |
 | `events.unsubscribe` | `subscriptionId` | The subscription stops |
 

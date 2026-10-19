@@ -42,7 +42,8 @@ swift test --filter TrellisUITests.TabManagementTests
 | --- | --- | --- |
 | Launcher regression | `python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"` | After changing launching, bundling or resources |
 | App bundle | `scripts/run-feasibility.sh --build-only` | Same |
-| Qualification | `python3 scripts/qualify.py [--quick]` | After changes that could affect performance or lifecycle. It writes a Markdown report to `.build/qualification-results.md` (override with `--report`). |
+| Qualification | `python3 scripts/qualify.py [--quick] [--renderer metal\|coregraphics]` | After changes that could affect performance or lifecycle. It writes a Markdown report to `.build/qualification-results.md` (override with `--report`). |
+| Renderer benchmark | `python3 scripts/bench-renderer.py [--quick] [--only NAMES]` | After changes to rendering or the engine's draw paths (FR-TX05). It runs each workload under both renderers, alternating them, and writes `.build/bench-renderer.md` and `.json`. Its windows must stay visible and unobstructed. |
 | Release gate | `scripts/package-release.sh` | Before a release |
 
 Manual checks that can't run here, such as VoiceOver, real IME, keyboard layouts, older macOS, Intel hardware and notarization, are recorded as **pending**. List them in the pull request.

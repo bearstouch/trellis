@@ -153,7 +153,7 @@ public enum MCPTools {
         tool("host.list", "List saved SSH hosts visible to this grant.", [string("query", "Filter by name or destination.")]),
         tool("host.get", "Get one saved SSH host.", [uuid("id", "Host ID.")]),
         tool(
-            "host.create", "Save an SSH host.",
+            "host.create", "Save an SSH host. Needs host.write and session.execute.",
             [
                 string("name", "Display name.", required: true), string("destination", "Hostname or ssh_config alias.", required: true), string("user", "User name."),
                 number("port", "Port, 1–65535.", integer: true), string("identityFile", "Absolute identity-file path."), strings("tags", "Tags.")

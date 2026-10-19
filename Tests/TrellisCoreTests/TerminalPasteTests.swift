@@ -56,6 +56,43 @@ final class TerminalPasteTests: XCTestCase {
         XCTAssertEqual(plan.data(bracketed: true), Data("\u{1b}[200~".utf8) + Data(text.utf8) + Data("\u{1b}[201~".utf8))
     }
 
+    func testBracketedPasteCannotEndEarly() {
+        let start = "\u{1b}[200~", end = "\u{1b}[201~"
+        for (text, body) in [
+            ("echo safe\(end)rm -rf ~\n", "echo saferm -rf ~\n"), ("a\(start)b\(end)c", "abc"), ("x\u{1b}[20\(end)1~y", "xy"),
+            ("a\(end)\u{301}b", "a\u{301}b")
+        ] {
+            let plan = TerminalPastePlan(input: .text(text), shell: nil)
+            XCTAssertTrue(plan.requiresReview)
+            XCTAssertEqual(plan.data(bracketed: true), Data((start + body + end).utf8), text.debugDescription)
+            XCTAssertEqual(plan.data(bracketed: false), Data(text.utf8), "Without bracketed paste nothing is removed")
+        }
+        let long = TerminalPastePlan(input: .text(String(repeating: "a", count: 9_000) + end + "id\n"), shell: nil)
+        XCTAssertTrue(long.preview.contains("escape (ESC) characters not shown"), "An escape past the preview is called out")
+        XCTAssertFalse(TerminalPastePlan(input: .text(String(repeating: "a\n", count: 9_000)), shell: nil).preview.contains("ESC"))
+    }
+
+    func testBracketedPasteMarkerRemovalMatchesRepeatedRemovalInLinearTime() {
+        let start = Array("\u{1b}[200~".utf8), end = Array("\u{1b}[201~".utf8)
+        func reference(_ text: String) -> Data {
+            var body = Array(text.utf8)
+            while let marker = body.firstRange(of: start) ?? body.firstRange(of: end) { body.removeSubrange(marker) }
+            return Data(start + body + end)
+        }
+        // Fragments that nest and interleave markers in every order.
+        let pieces = ["\u{1b}", "[", "2", "0", "1", "~", "\u{1b}[20", "\u{1b}[201~", "\u{1b}[200~", "0~", "1~", "a"]
+        var generator = SystemRandomNumberGenerator()
+        for _ in 0..<2_000 {
+            let text = (0..<Int.random(in: 0...24, using: &generator)).map { _ in pieces.randomElement(using: &generator)! }.joined()
+            XCTAssertEqual(TerminalPastePlan(input: .text(text), shell: nil).data(bracketed: true), reference(text), text.debugDescription)
+        }
+        // A clipboard full of markers must not stall the main thread on paste.
+        let flood = TerminalPastePlan(input: .text(String(repeating: "\u{1b}[201~", count: 100_000) + "x"), shell: nil)
+        let began = Date()
+        XCTAssertEqual(flood.data(bracketed: true), Data(start + Array("x".utf8) + end))
+        XCTAssertLessThan(Date().timeIntervalSince(began), 5)
+    }
+
     func testEscapePathByShell() {
         let path = "/tmp/a b's $HOME\nfile"
         for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {

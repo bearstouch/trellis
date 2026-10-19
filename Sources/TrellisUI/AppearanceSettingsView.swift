@@ -12,6 +12,14 @@ extension ChromeMode {
     }
 }
 
+extension View {
+    /// Settings forms size their columns from each row's one-line width, so a caption gets
+    /// a capped width to wrap within the pane instead of widening it.
+    func wrappingSettingsCaption() -> some View {
+        fixedSize(horizontal: false, vertical: true).frame(maxWidth: 360, alignment: .leading)
+    }
+}
+
 public struct AppSettingsView: View {
     @ObservedObject var model: AppWorkspaceModel
     @State private var selection: SettingsSection = .appearance
@@ -77,10 +85,11 @@ public struct AppSettingsView: View {
                         }
                     }
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.vertical, 12).padding(.leading, 12).padding(.trailing, 28)
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // minWidth 0: a pane's long captions wrap instead of widening the window past the sidebar.
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .foregroundStyle(model.themeColor(.foreground))
             .background(model.themeColor(.background))
         }
@@ -106,7 +115,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .appearance: "Customize the window, terminal text, and cursor."
-        case .sessions: "Choose how new local sessions start."
+        case .sessions: "Choose how sessions start, draw, and keep their output."
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
         case .automation: "Manage access for scripts and agents."
@@ -125,7 +134,7 @@ struct AppearanceSettingsView: View {
             Picker("Application appearance", selection: $draft.chromeMode) {
                 ForEach(ChromeMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }.pickerStyle(.segmented)
-            Text("Choose matching light and dark palettes for the app and terminal.").font(.caption).foregroundStyle(.secondary)
+            Text("Choose matching light and dark palettes for the app and terminal.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker("Light theme", selection: $draft.lightThemeID) {
                 ForEach(model.availableThemes(for: .light), id: \.id) { Text($0.name).tag($0.id) }
             }
@@ -140,13 +149,13 @@ struct AppearanceSettingsView: View {
                     Text(NativeTerminalFont.typefaceName(for: name)).tag(name)
                 }
             }
-            Text("Installed monospace typefaces on this Mac.").font(.caption).foregroundStyle(.secondary)
+            Text("Installed monospace typefaces on this Mac.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Text("The quick brown fox jumps over 0123456789")
                 .font(.custom(draft.fontName, size: draft.fontSize))
                 .lineLimit(1)
             Stepper("Font size: \(draft.fontSize, specifier: "%.0f") pt", value: $draft.fontSize, in: 8...48)
             Text("Use View → Zoom In / Zoom Out, or ⌘+ / ⌘−. Actual Size restores 13 pt.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker("Cursor", selection: $draft.cursorShape) {
                 ForEach(TerminalCursorShape.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }
@@ -156,21 +165,18 @@ struct AppearanceSettingsView: View {
             }
             Toggle("Ligatures", isOn: $draft.fontLigatures)
             Text("Joins sequences such as -> and != in fonts that include ligatures, such as JetBrains Mono.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Toggle("Bold as bright colors", isOn: $draft.boldAsBright)
             Toggle("Use bold fonts", isOn: $draft.allowBoldFont)
             Toggle("Use italic fonts", isOn: $draft.allowItalicFont)
             Toggle("Allow blinking text", isOn: $draft.blinkingText)
-            Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary)
-            TextField("Scrollback lines (0–50,000)", value: $draft.scrollbackLines, format: .number.grouping(.never))
-            Text("History also has a 16 MiB text limit. Reducing history discards older output.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let notice = model.appearanceNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-            if let message { Text(message).font(.caption) }
+            Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
+            if let notice = model.appearanceNotice { Text(notice).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption() }
+            if let message { Text(message).font(.caption).wrappingSettingsCaption() }
             HStack {
                 Spacer()
                 Button("Apply Appearance") {
-                    message = model.applyAppearance(draft) ? "Appearance saved." : "Use a font name, 8–48 pt, and 0–50,000 scrollback lines."
+                    message = model.applyAppearance(draft) ? "Appearance saved." : "Use a font name and 8–48 pt."
                 }.disabled(!draft.isValid)
             }
         }

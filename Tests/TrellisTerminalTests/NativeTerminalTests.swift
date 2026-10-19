@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 import SwiftTerm
+import TrellisCore
 @testable import TrellisTerminal
 
 final class NativeTerminalTests: XCTestCase {
@@ -105,8 +106,9 @@ final class NativeTerminalTests: XCTestCase {
         _ = NSApplication.shared
         let native = NativeTerminal()
         defer { native.adapter.detach() }
-        var count = 0
+        var count = 0, reports: [TerminalProgressReport] = []
         native.onAttentionRequested = { count += 1 }
+        native.onProgress = { reports.append($0) }
         for (bytes, expected) in [
             ("\u{07}", 1), ("\u{1b}]9;Build done\u{07}", 1), ("\u{1b}]777;notify;Title;Body\u{07}", 1), ("\u{1b}]9;3 tests failed\u{07}", 1),
             ("\u{1b}]9;4;1;50\u{07}", 0), ("\u{1b}]9;1\u{07}", 0), ("\u{1b}]777;other;x\u{07}", 0), ("plain text", 0)
@@ -116,9 +118,68 @@ final class NativeTerminalTests: XCTestCase {
             XCTAssertEqual(count, expected, bytes.debugDescription)
         }
         XCTAssertFalse(try native.adapter.read(.retainedText).contains("Build done"), "Notification text is not printed")
-        // The OSC 9 handler must still hand 9;4 progress to the engine's progress bar.
+        XCTAssertEqual(reports, [TerminalProgressReport(kind: .set, value: 50)], "9;4 progress reaches only onProgress")
+        native.adapter.receive(Data("\u{1b}]9;4;2\u{07}\u{1b}]9;4;3;\u{07}\u{1b}]9;4;4;250\u{07}\u{1b}]9;4;0\u{07}\u{1b}]9;4;9\u{07}".utf8))
+        XCTAssertEqual(
+            reports.dropFirst(), [.init(kind: .error), .init(kind: .indeterminate), .init(kind: .pause, value: 100), .init(kind: .remove)],
+            "Unknown states are dropped, values clamped")
+        XCTAssertEqual(count, 0)
+        // Trellis draws progress on the tab and pane (FR-T09); the engine's own bar never shows.
+        native.adapter.receive(Data("\u{1b}]9;4;1;50\u{07}".utf8))
         let bar = native.view.subviews.first { String(describing: type(of: $0)).contains("ProgressBar") }
-        XCTAssertEqual(bar?.isHidden, false, "OSC 9;4 still drives the progress bar")
+        XCTAssertNotEqual(bar?.isHidden, false, "The engine's progress bar stays hidden")
+    }
+
+    @MainActor
+    func testRemoteShellMarksAreObservedOnlyWhenChosen() throws {
+        _ = NSApplication.shared
+        let marks =
+            "\u{1b}]133;A\u{07}\u{1b}]7;file://web/srv/app\u{07}\u{1b}]1337;CurrentDir=/srv\u{07}\u{1b}]1337;RemoteHost=u@web\u{07}"
+            + "\u{1b}]133;C\u{07}\u{1b}]133;D;2\u{07}"
+        let local = NativeTerminal()
+        defer { local.adapter.detach() }
+        var localEvents: [ShellIntegrationEvent] = []
+        local.onShellIntegrationEvent = { localEvents.append($0) }
+        local.adapter.receive(Data(marks.utf8))
+        XCTAssertEqual(localEvents, [], "Without a choice, nonce-less marks change nothing")
+        XCTAssertNil(local.shellMarkOrigin)
+
+        let remote = NativeTerminal()
+        defer { remote.adapter.detach() }
+        var events: [ShellIntegrationEvent] = []
+        remote.onShellIntegrationEvent = { events.append($0) }
+        remote.observeRemoteShellMarks()
+        XCTAssertEqual(remote.shellMarkOrigin, .remote)
+        remote.adapter.receive(Data(marks.utf8))
+        XCTAssertEqual(
+            events,
+            [
+                .promptStart(directory: nil), .reportedDirectory("/srv/app", host: "web"), .reportedDirectory("/srv", host: nil), .reportedHost("web"),
+                .commandStart(commandLine: nil), .commandFinished(exitCode: 2)
+            ])
+        XCTAssertFalse(try remote.adapter.read(.retainedText).contains("srv"), "Marks are never printed")
+    }
+
+    @MainActor
+    func testNotificationTextReachesOnlyTheNotificationCallback() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        var posted: [TerminalNotification] = [], attention = 0, replies = 0
+        native.onNotification = { posted.append($0) }
+        native.onAttentionRequested = { attention += 1 }
+        native.onInput = { replies += 1 }
+        native.adapter.receive(Data("\u{1b}]9;Build done\u{07}\u{1b}]777;notify;Claude;Needs approval\u{07}".utf8))
+        native.adapter.receive(Data("\u{1b}]99;i=1:d=0;Tests\u{1b}\\\u{1b}]99;i=1:p=body;All passed\u{1b}\\\u{1b}]9;4;1;50\u{07}".utf8))
+        XCTAssertEqual(posted.map(\.title), ["", "Claude", "Tests"])
+        XCTAssertEqual(posted.map(\.body), ["Build done", "Needs approval", "All passed"])
+        XCTAssertEqual(attention, 3, "A finished OSC 99 notification labels the tab like OSC 9 and 777; its first chunk doesn't")
+        XCTAssertEqual(replies, 0)
+        native.adapter.receive(Data("\u{1b}]99;i=q:p=?;\u{1b}\\".utf8))
+        XCTAssertEqual(replies, 1, "A p=? query is answered through the PTY")
+        XCTAssertEqual(posted.count, 3)
+        let text = try native.adapter.read(.retainedText)
+        for part in ["Build done", "Needs approval", "All passed", "Tests"] { XCTAssertFalse(text.contains(part), part) }
     }
 
     @MainActor

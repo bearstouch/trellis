@@ -968,7 +968,8 @@ public final class Buffer {
         lines.trimStart (count: amountToTrim)
         yBase = 0
         yDisp = 0
-        savedY = max (savedY - amountToTrim, 0)
+        // savedY is viewport-relative and the viewport is unchanged; adjusting it
+        // moved a DECSC/1049-saved cursor to row 0.
     }
 
     public func changeHistorySize (_ newScrollback: Int?)

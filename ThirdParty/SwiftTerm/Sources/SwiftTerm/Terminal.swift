@@ -1105,11 +1105,14 @@ open class Terminal {
             data = []
         }
         
+        // Valid requests are at most two bytes; anything longer is answered as invalid
+        // without being kept.
+        static let maxRequestBytes = 16
+
         func put (data : ArraySlice<UInt8>)
         {
-            for x in data {
-                self.data.append(x)
-            }
+            guard self.data.count <= DECRQSS.maxRequestBytes else { return }
+            self.data.append(contentsOf: data.prefix(DECRQSS.maxRequestBytes + 1 - self.data.count))
         }
         
         func unhook ()
@@ -1192,14 +1195,6 @@ open class Terminal {
     public func handleSemanticPrompt (_ data: ArraySlice<UInt8>)
     {
         oscSemanticPrompt(data)
-    }
-
-    /// Runs the built-in OSC 9;4 progress-report handling, so an embedder that
-    /// registers its own OSC 9 handler keeps the progress bar. Returns false for other OSC 9 forms.
-    @discardableResult
-    public func handleProgressReport (_ data: ArraySlice<UInt8>) -> Bool
-    {
-        oscProgressReport(data)
     }
     
     func cmdSet8BitControls ()
@@ -1620,6 +1615,15 @@ open class Terminal {
     public func getCharacter (for charData: CharData) -> Character
     {
         return character (for: charData.code)
+    }
+
+    /// UTF-8 length of the cell's text without building a `Character`; 0 for an empty cell.
+    public func utf8Count (for charData: CharData) -> Int
+    {
+        let code = charData.code
+        if code == 0 { return 0 }
+        if code > Int32(CharData.maxRune) { return indexToCharMap [code]?.utf8.count ?? 1 }
+        return Unicode.Scalar (UInt32 (code))?.utf8.count ?? 1
     }
 
     public func makeCharData (attribute: Attribute, code: Int32, size: Int8 = 1) -> CharData
@@ -2758,7 +2762,9 @@ open class Terminal {
         return true
     }
 
-    private func parseProgressReport(_ data: ArraySlice<UInt8>) -> ProgressReport? {
+    /// Parses an OSC 9;4 progress report without acting on it, so an embedder that
+    /// registers its own OSC 9 handler can show progress itself. Returns nil for other OSC 9 forms.
+    public func parseProgressReport(_ data: ArraySlice<UInt8>) -> ProgressReport? {
         guard let text = String(bytes: data, encoding: .ascii) else {
             return nil
         }

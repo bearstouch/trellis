@@ -4,8 +4,7 @@
 
 Everything in [Status](../overview/status.md) under *Release blockers* and *Pending verification*:
 
-- raise flood throughput to the 10 MiB/s target
-- measure UI frame latency
+- measure UI frame latency (typing and tab switching currently meet their targets through API proxies)
 - Developer ID signing and notarization
 - the macOS 14 and 15, native Intel and clean-machine matrix
 - VoiceOver, IME and keyboard layouts
@@ -26,7 +25,6 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Signed automatic updates | `MAC-11` |
 | P1 | Clipboard API (`clipboard.read`/`clipboard.write` are reserved) | [Authorization](../api/authorization.md#capabilities) |
 | P1 | Per-window, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
-| P2 | A session broker so sessions survive application exit | |
 | P2 | tmux awareness, richer terminal protocols, plugins | |
 | P2 | Links: open `file:line:column` in a configured editor, a pointing-hand cursor over links, detecting `ssh` typed inside a local shell | `FR-L02`, `FR-L04`, [Links](../features/terminal.md#links) |
 
@@ -46,6 +44,6 @@ These were decided during the MVP. Reopening one needs a docs change and a revie
 | Agent authorization | User-created grants with capabilities, window and host scope, expiry and revocation | [Authorization](../api/authorization.md) |
 | Application identity | Trellis, bundle ID `dev.trellis` (renamed from uTerm). Provisional until a Developer ID team is chosen. | [Release guide](../release/README.md) |
 | Distribution | A direct-download DMG, without App Sandbox or the Mac App Store | `MAC-09` |
-| Sessions on quit | Closing the app ends local processes. Relaunch restores layouts as stopped sessions. | [Persistence](../architecture/persistence.md#restoring-stopped-sessions) |
+| Sessions on quit | By default, closing the app ends local processes and relaunch restores layouts as stopped sessions. Revised for FR-R03–FR-R05: an opt-in `trellis-broker` helper (per state directory, owner-only socket with peer checks both ways) can keep sessions running across quit and reattach them by session UUID with a bounded replay; an opt-in, redacted plain-text scrollback file is the only persisted output. Closing the window still ends sessions; nothing survives logout. | [Sessions](../architecture/sessions.md#session-broker), [Persistence](../architecture/persistence.md#opt-in-scrollback-file) |
 | Automation transport | A local Unix socket plus the `trellis` CLI. Revised for INT-07: an optional MCP server over HTTP, off by default, loopback unless the user confirms a network address, using the same grants and authorizer. There's no other TCP API. | [Automation API](../api/index.md), [MCP server](../api/mcp.md) |
 | Visual direction | "Native calm": light chrome, dark terminals, bundled Roboto Mono | [Product overview](../overview/product.md#primary-interaction) |

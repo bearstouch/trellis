@@ -80,7 +80,8 @@ See [CLI](../api/cli.md) for every command.
 
 ```sh
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"  # launcher regression, no windows
-python3 scripts/qualify.py [--quick]          # release qualification, about 5 min; opens isolated app windows
+python3 scripts/qualify.py [--quick] [--renderer metal|coregraphics]  # release qualification, about 5 min; opens isolated app windows
+python3 scripts/bench-renderer.py [--quick] [--only NAMES]  # Metal vs CoreGraphics benchmarks, about 25 min; keep its windows visible
 scripts/package-release.sh                    # Universal 2 app + DMG (ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE)
 scripts/generate-app-icon.sh                  # regenerate icons from Design/AppIcon/*.svg (needs rsvg-convert)
 ```

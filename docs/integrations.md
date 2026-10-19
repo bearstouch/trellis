@@ -10,14 +10,14 @@ Trellis relies on the system and on existing tools rather than reimplementing th
 - Children get `TERM=xterm-256color`. Only claim a terminal type that the engine and the installed terminfo really support.
 - Support terminal dimensions, normal input, job control, signals, colors, the alternate screen, mouse modes and bracketed paste. vim, less, top, git and long-running dev servers are the reference workloads.
 - Basic use must never depend on shell integration.
-- Without shell integration, Trellis knows only the *initial* working directory. It must not claim to know the shell's current directory, the active command, or whether a command completed.
+- Without shell integration, Trellis knows only the *initial* working directory. It must not claim to know the shell's current directory, the active command, or whether a command completed. The one exception is an SSH pane showing what its remote shell reported, labelled unverified ([FR-SI09](features/shell-integration.md)).
 
 **INT-02 (P1).** zsh, bash and fish integration reports prompt readiness, the local current directory, command start and end, and exit status. See [Shell integration](features/shell-integration.md).
 
 - It's on by default, can be turned off in Settings, and never requires editing dotfiles.
 - The protocol is versioned (`TRELLIS_SHELL_INTEGRATION=1`). Every mark that changes Trellis state carries a per-session nonce, so integration messages are distinguishable from ordinary output.
 - Unsupported shells, SSH sessions and custom processes keep the INT-01 rule: no claims about their directory or commands.
-- Remote shells aren't covered in v1.
+- Exception for SSH panes ([FR-SI09](features/shell-integration.md)): a remote shell's own nonce-less marks are shown as the remote directory, titles, exit status and command notifications. They are labelled unverified, and never become a local directory claim: no file links, new-pane directories, saved launch directories or automation `currentDirectory`.
 
 ## SSH and saved hosts
 

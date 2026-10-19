@@ -4,6 +4,12 @@ import XCTest
 import TrellisTerminal
 @testable import TrellisUI
 
+@MainActor
+private final class Notifications: DesktopNotifier {
+    var posted: [DesktopNotification] = []
+    func post(_ notification: DesktopNotification) { posted.append(notification) }
+}
+
 final class HostConnectionTests: XCTestCase {
     private var directory: URL!
 
@@ -28,7 +34,8 @@ final class HostConnectionTests: XCTestCase {
     @MainActor
     private func makeModel(host: SavedHost, ssh: String) async throws -> AppWorkspaceModel {
         _ = NSApplication.shared
-        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        // Isolated preferences: some tests change the shell-integration setting.
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: try XCTUnwrap(UserDefaults(suiteName: "trellis-host-\(UUID().uuidString)")))
         model.confirmCloseSessions = { _ in true }
         model.confirmForceSessions = { _ in true }
         model.sshExecutable = ssh
@@ -284,6 +291,172 @@ final class HostConnectionTests: XCTestCase {
         try await waitUntil { try terminal.adapter.read(.retainedText).contains("FAKE-SSH-READY") }
         XCTAssertEqual(try String(contentsOf: fake.log, encoding: .utf8), "NO-ASKPASS\n")
         XCTAssertEqual(broker.registeredCount, 0)
+    }
+
+    /// A stand-in remote shell named `ssh` that prints passive, nonce-less marks the way a remote shell's own integration
+    /// does (FR-SI09). It reports this fixture's directory, which exists on this Mac too, so any leak would be visible.
+    private func markingSSH() throws -> String {
+        let bin = directory.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let script = bin.appendingPathComponent("ssh")
+        let body = """
+            #!/bin/sh
+            printf '\\033]133;A\\007\\033]7;file://web-1\(directory.path)\\007\\033]1337;RemoteHost=deploy@web-1\\007'
+            printf '\\033]133;C;cmdline_url=make%%20all\\007building\\n\\033]133;D;3\\007\\033]133;A\\007MARKS-DONE\\n'
+            exec /bin/sleep 30
+
+            """
+        try Data(body.utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        return script.path
+    }
+
+    @MainActor
+    func testRemoteMarksDriveDisplayStateButNeverLocalPaths() async throws {
+        let ssh = try markingSSH()
+        let h = try Harness()
+        try await h.grant("full")
+        let model = h.model
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
+        model.sshExecutable = ssh
+        model.resolveHost = { $0 == host.id ? host : nil }
+        await model.createWindow(name: "Ops", startSession: false)
+        let paneResult = await model.connect(host: host)
+        let pane = try XCTUnwrap(paneResult)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("MARKS-DONE") }
+        await model.waitForUpdates()
+
+        XCTAssertEqual(terminal.shellMarkOrigin, .remote)
+        XCTAssertEqual(model.shellStates[pane]?.origin, .remote)
+        XCTAssertEqual(model.remoteDirectory(paneID: pane), "web-1:\(directory.path)", "The header shows SSH · host:/path")
+        XCTAssertEqual(model.paneTitle(pane), directory.lastPathComponent)
+        XCTAssertEqual(model.failedCommandExit(paneID: pane), 3)
+        XCTAssertNil(model.currentDirectory(paneID: pane), "A remote path is never this Mac's directory")
+        XCTAssertNil(model.fileLinkContext(paneID: pane))
+        XCTAssertNil(terminal.fileLinkContext())
+        let tab = try XCTUnwrap(model.snapshot.panes[pane]?.tabID)
+        XCTAssertEqual(model.snapshot.tabs[tab]?.title, "Prod", "The host-named tab keeps its title")
+
+        let session = try XCTUnwrap(model.snapshot.panes[pane]?.sessionID)
+        let reported = try result(try await h.call("session.get", ["id": session.uuidString]))
+        let shell = try XCTUnwrap(reported["shellIntegration"] as? [String: Any])
+        XCTAssertEqual(shell["remote"] as? Bool, true)
+        XCTAssertEqual(shell["lastExitStatus"] as? Double, 3)
+        XCTAssertEqual(shell["commandRunning"] as? Bool, false)
+        XCTAssertNil(shell["currentDirectory"], "Never a remote path, even with execute permission")
+
+        // A split from the SSH pane starts a local shell in the default directory, not the remote path.
+        let splitResult = await model.splitPane(pane, axis: .x, startSession: false)
+        let split = try XCTUnwrap(splitResult)
+        XCTAssertEqual(model.snapshot.panes[split].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }, .shell(directory: nil))
+
+        // FR-SI08 and FR-T09 follow remote marks too.
+        let notifier = Notifications()
+        model.desktopNotifier = notifier
+        model.workspaceIsFrontmost = { false }
+        var now = Date(timeIntervalSince1970: 1000)
+        model.activityNow = { now }
+        terminal.onProgress?(TerminalProgressReport(kind: .set, value: 40))
+        XCTAssertNotNil(model.progress[pane])
+        terminal.onShellIntegrationEvent?(.commandStart(commandLine: "make deploy"))
+        now.addTimeInterval(20)
+        terminal.onShellIntegrationEvent?(.commandFinished(exitCode: 0))
+        XCTAssertEqual(notifier.posted.map(\.title), ["Command finished"])
+        XCTAssertEqual(notifier.posted.map(\.body), ["make ran for 20 s"])
+        terminal.onShellIntegrationEvent?(.promptStart(directory: nil))
+        XCTAssertNil(model.progress[pane], "Progress clears at the next remote prompt")
+    }
+
+    @MainActor
+    func testSSHProcessPaneTakesRemoteMarksAndNeverSavesTheirDirectory() async throws {
+        let ssh = try markingSSH()
+        _ = NSApplication.shared
+        let state = directory.appendingPathComponent("state")
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis-remote-\(UUID().uuidString)"))
+        func makeModel() async throws -> AppWorkspaceModel {
+            let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: state))
+            _ = await model.loadWorkspace()
+            model.confirmCloseSessions = { _ in true }
+            return model
+        }
+        let model = try await makeModel()
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        await model.createWindow(name: "Direct", startSession: false)
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        // `ssh -l` matches the login-shell argument list that FR-SI07 would otherwise resume in a reported directory.
+        let launch = SessionLaunch.process(executable: ssh, arguments: ["-l"], directory: "/tmp")
+        _ = try await model.service.execute(.configureStoppedSession(paneID: pane, launch: launch))
+        await model.refresh()
+        await model.start(paneID: pane)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("MARKS-DONE") }
+        XCTAssertEqual(model.remoteDirectory(paneID: pane), "web-1:\(directory.path)")
+        XCTAssertEqual(model.failedCommandExit(paneID: pane), 3)
+        XCTAssertNil(model.currentDirectory(paneID: pane))
+        XCTAssertNil(model.fileLinkContext(paneID: pane))
+
+        model.stopAll()
+        let closed = await model.shutdown()
+        XCTAssertTrue(closed)
+        let saved = await model.flushWorkspaceSave()
+        XCTAssertTrue(saved)
+        let restored = try await makeModel()
+        defer { restored.terminals.values.forEach { $0.adapter.detach() } }
+        XCTAssertEqual(restored.snapshot.panes[pane].flatMap { restored.snapshot.sessions[$0.sessionID]?.launch }, launch, "The remote path is never saved")
+    }
+
+    @MainActor
+    func testLocalPaneIgnoresTheSameNonceLessMarks() async throws {
+        let ssh = try markingSSH()
+        let model = try await makeModel(host: SavedHost(id: UUID(), draft: try HostDraft(name: "X", destination: "x").validated { _ in false }, revision: 1), ssh: ssh)
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        _ = try await model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/sh", arguments: [ssh], directory: "/tmp")))
+        await model.refresh()
+        await model.start(paneID: pane)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("MARKS-DONE") }
+        await model.waitForUpdates()
+        XCTAssertNil(terminal.shellMarkOrigin)
+        XCTAssertNil(model.shellStates[pane], "Forged marks in a local pane change nothing")
+        XCTAssertNil(model.failedCommandExit(paneID: pane))
+        XCTAssertNil(model.remoteDirectory(paneID: pane))
+        XCTAssertEqual(model.paneTitle(pane), WorkspaceTab.defaultTitle)
+        XCTAssertNotNil(model.fileLinkContext(paneID: pane))
+    }
+
+    @MainActor
+    func testDisabledShellIntegrationIgnoresRemoteMarks() async throws {
+        let ssh = try markingSSH()
+        let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
+        let model = try await makeModel(host: host, ssh: ssh)
+        model.setShellIntegrationEnabled(false)
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        let paneResult = await model.connect(host: host)
+        let pane = try XCTUnwrap(paneResult)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("MARKS-DONE") }
+        XCTAssertNil(terminal.shellMarkOrigin)
+        XCTAssertNil(model.shellStates[pane])
+        XCTAssertNil(model.remoteDirectory(paneID: pane))
     }
 
     private final class Secrets: HostSecretStore, @unchecked Sendable {

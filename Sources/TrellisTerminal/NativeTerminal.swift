@@ -17,11 +17,16 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     private let paneSearch = PaneTextSearch()
     public let view: NSView
     private let terminalView: AccessibleTerminalView
-    private let process: PTYProcess
+    private var transport: any TerminalProcessTransport
     public private(set) var adapter: TerminalAdapter!
     private let session: LocalSessionController
     public var isRunning: Bool { [.starting, .running, .closing].contains(session.state) }
-    public var requiresTermination: Bool { process.isRunning || (isRunning && processID == nil) }
+    public var requiresTermination: Bool { transport.isRunning || (isRunning && processID == nil) }
+    /// The session is held by the broker and survives quitting with Keep Running (FR-R03).
+    public var survivesQuit: Bool { transport.survivesQuit }
+    /// True while replayed or restored output is parsed: replies to the program, attention,
+    /// notifications, progress and the bell are all suppressed (FR-R03, FR-R04).
+    public private(set) var isReplaying = false
     public var sessionID: UUID { session.id }
     public var exitCode: Int32? { session.exitCode }
     public var processID: Int32? { session.processID }
@@ -37,12 +42,20 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var onExit: ((Int32?) -> Void)?
     public var onInputError: ((Error) -> Void)?
     public var onPasteRequested: ((TerminalPasteInput) -> Void)?
-    /// Authenticated shell-integration marks only (FR-SI02); forged output never reaches this.
+    /// Authenticated shell-integration marks (FR-SI02), or an SSH pane's unverified marks (FR-SI09) once
+    /// `observeRemoteShellMarks()` chose that; forged output in a local pane never reaches this.
     public var onShellIntegrationEvent: ((ShellIntegrationEvent) -> Void)?
+    /// Which marks this session accepts, fixed before launch; nil accepts none.
+    public private(set) var shellMarkOrigin: ShellMarkOrigin?
     /// A password-style prompt: the PTY has echo off with line editing on (FR-T06). Fires on change only.
     public var onPasswordPromptChanged: ((Bool) -> Void)?
-    /// The program rang the bell or posted an OSC 9/777 notification (FR-T06). Carries no text.
+    /// The program rang the bell or posted an OSC 9/777/99 notification (FR-T06). Carries no text.
     public var onAttentionRequested: (() -> Void)?
+    /// The program posted a desktop notification (FR-T08); its text is untrusted and shown only in the notification.
+    public var onNotification: ((TerminalNotification) -> Void)?
+    /// OSC 9;4 progress reports (FR-T09); never an attention request.
+    public var onProgress: ((TerminalProgressReport) -> Void)?
+    private var kittyNotifications = KittyNotificationAssembler()
     /// The audible half of the bell (FR-T07); injected so tests stay silent.
     var playBell: () -> Void = { NSSound.beep() }
     public private(set) var passwordPromptActive = false
@@ -63,7 +76,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         set { terminalView.searchChord = newValue }
     }
 
-    public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard) {
+    public init(sessionID: UUID = UUID(), scrollbackBudget: ScrollbackBudget = .standard, transport: (any TerminalProcessTransport)? = nil) {
         let surface = AccessibleTerminalView(
             frame: NSRect(x: 0, y: 0, width: 900, height: 520),
             font: NativeTerminalFont.font(NativeTerminalFont.choice(for: AppearanceSettings.defaultFontName), size: 13))
@@ -71,10 +84,11 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.scrollback = TerminalScrollback(budget: scrollbackBudget)
         surface.changeScrollback(scrollbackBudget.lineLimit)
         view = surface
-        let process = PTYProcess()
-        self.process = process
-        session = LocalSessionController(id: sessionID, transport: process)
+        let transport = transport ?? PTYProcess()
+        self.transport = transport
+        session = LocalSessionController(id: sessionID, transport: transport)
         super.init()
+        observePrompt(transport)
         TerminalPalette.builtIn.apply(to: surface)
         surface.optionAsMetaKey = false
         // Engine diagnostics can echo sequence contents; never print them, in any build.
@@ -85,7 +99,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
         surface.onSearchRequested = { [weak self] in self?.showSearch() }
         surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
-        surface.onBell = { [weak self] in self?.onAttentionRequested?() }
+        surface.onBell = { [weak self] in if self?.isReplaying == false { self?.onAttentionRequested?() } }
         surface.doubleClickSelection = { [weak surface] position in
             guard let surface else { return nil }
             return TerminalLogicalLine.smartSelection(in: surface.getTerminal(), at: position)
@@ -125,7 +139,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard !adapter.isDetached else { return }
         let size = getWindowSize()
         guard let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) else { return }
-        if session.state == .stopped, let nonce = configuration.shellIntegration?.nonce { observeShellIntegration(nonce: nonce) }
+        if session.state == .stopped, shellMarkOrigin == nil, let nonce = configuration.shellIntegration?.nonce { observeShellIntegration(nonce: nonce) }
         await session.start(configuration, size: dimensions)
         if session.state == .failed {
             adapter.receive(Data("Unable to start the terminal session. Check its executable, directory, and environment.\r\n".utf8))
@@ -163,6 +177,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// Graceful close never silently escalates. Force is a separate user/API action.
     public func stop() { requestTermination(force: false) }
     public func requestTermination(force: Bool) {
+        // A session kept for the next launch is never signalled, including by the adapter's detach cleanup.
+        guard !keptAlive else { return }
         // Interactive shells ignore SIGTERM. A terminal close is a hangup;
         // SIGHUP lets the shell exit and notify its jobs normally.
         session.stop(signal: force ? SIGKILL : SIGHUP)
@@ -175,7 +191,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         try? adapter.resize(size)
     }
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
-        guard !inputSuspended else { return }
+        // Replayed queries (DA, DSR, cursor reports, kitty `p=?`) were answered when first printed; never again.
+        guard !inputSuspended, !isReplaying else { return }
         onInput?()
         do { try adapter.send(Data(data)) } catch { onInputError?(error) }
         schedulePasswordCheck()
@@ -201,6 +218,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.allowItalicFont = settings.allowItalicFont
         terminalView.textBlinkEnabled = settings.blinkingText
         terminalView.bellStyle = Self.bellStyle(settings.bellStyle)
+        if settings.gpuRendering { Self.prepareGPURendering() }
+        terminalView.prefersMetal = settings.gpuRendering
         if terminalView.scrollback.budget.lineLimit != settings.scrollbackLines {
             let old = terminalView.scrollback
             let evicted = old.historyEvicted || old.retainedHistoryRows > settings.scrollbackLines
@@ -223,6 +242,14 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.cursorStyleChanged(source: terminalView.getTerminal(), newStyle: style)
         terminalView.needsDisplay = true
     }
+    /// Compiles the GPU renderer's shaders off the main thread at launch, so the first pane doesn't wait for them.
+    public static func prepareGPURendering() { TerminalView.prewarmMetal() }
+    /// True while the Metal renderer draws this pane; false on CoreGraphics (FR-TX05).
+    public var isUsingMetalRenderer: Bool { terminalView.isUsingMetalRenderer }
+    /// Frames presented by Metal (since it was last turned on) and passes drawn by CoreGraphics.
+    public var renderedFrames: (metal: Int, coreGraphics: Int) {
+        (Int(clamping: terminalView.metalRendererStatus.presentedFrameCount), terminalView.coreGraphicsDrawCount)
+    }
     /// Color-only application for preview/library integration. No parsing,
     /// input, font, selection, or process lifecycle operation is performed.
     public func applyPalette(_ palette: TerminalPalette) {
@@ -242,6 +269,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if terminalView.getTerminal().isCurrentBufferAlternate { return "Current screen only · No scrollback" }
         return terminalView.scrollback.historyEvicted ? "Earlier output was evicted" : "Retained output only"
     }
+    /// Clears the pane's scrollback and the screen above the prompt (FR-C07); the session is untouched.
+    public func clear() { terminalView.clearTerminal(nil) }
     public func showSearch() {
         searchVisible = true
         searchFocusRequest = UUID()
@@ -291,7 +320,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             try? await Task.sleep(for: .seconds(Self.passwordCheckDelay))
             guard let self, !Task.isCancelled else { return }
             self.passwordCheck = nil
-            self.updatePasswordPrompt(self.process.passwordPromptActive)
+            self.updatePasswordPrompt(self.transport.passwordPromptActive)
         }
     }
 
@@ -301,28 +330,33 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         onPasswordPromptChanged?(active)
     }
 
-    /// OSC 9 text and OSC 777 `notify` are attention requests; their text is never kept. Numbered OSC 9 forms
-    /// (`9;4;…` progress and other ConEmu commands) are not notifications.
+    /// OSC 9 text, OSC 777 `notify` and OSC 99 are attention requests (FR-T06) and desktop notifications (FR-T08).
+    /// Their text goes only to `onNotification`; it is never printed, kept or logged.
     private func observeNotifications() {
         let terminal = terminalView.getTerminal()
-        // The OSC 9 handler replaces upstream's, so 9;4 progress is forwarded to keep the progress bar.
+        // The OSC 9 handler replaces upstream's, so 9;4 progress reaches only `onProgress` and the engine's bar stays hidden.
         terminal.registerOscHandler(code: 9) { [weak self, weak terminal] data in
-            if terminal?.handleProgressReport(data) == true { return }
-            guard let self, Self.isNotification(osc9: data) else { return }
+            if let report = terminal?.parseProgressReport(data) {
+                if self?.isReplaying == false { self?.onProgress?(TerminalProgressReport(report)) }
+                return
+            }
+            guard let self, !self.isReplaying, TerminalNotification.isNotification(osc9: data) else { return }
             self.onAttentionRequested?()
+            if let notification = TerminalNotification.parse(osc9: data) { self.onNotification?(notification) }
         }
         terminal.registerOscHandler(code: 777) { [weak self] data in
-            guard let self, data.starts(with: Array("notify;".utf8)) else { return }
+            guard let self, !self.isReplaying, data.starts(with: Array("notify;".utf8)) else { return }
             self.onAttentionRequested?()
+            if let notification = TerminalNotification.parse(osc777: data) { self.onNotification?(notification) }
         }
-    }
-
-    nonisolated static func isNotification(osc9 data: ArraySlice<UInt8>) -> Bool {
-        guard !data.isEmpty else { return false }
-        let digits = data.prefix { (0x30...0x39).contains($0) }
-        guard !digits.isEmpty else { return true }
-        let rest = data.dropFirst(digits.count)
-        return !(rest.isEmpty || rest.first == UInt8(ascii: ";"))
+        terminal.registerOscHandler(code: 99) { [weak self, weak terminal] data in
+            guard let self, !self.isReplaying else { return }
+            switch self.kittyNotifications.receive(data) {
+            case .notification(let notification): self.onAttentionRequested?(); self.onNotification?(notification)
+            case .reply(let text): terminal?.sendResponse(text: text)
+            case nil: break
+            }
+        }
     }
 
     /// iTerm2's inline image protocol (FR-IM01–FR-IM04) replaces upstream's OSC 1337 handling, which would decode
@@ -345,7 +379,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             imageTransfer.reset()
             let metrics = terminalView.cellMetrics
             terminalView.getTerminal().sendResponse(text: InlineImageCommand.cellSizeReport(size: metrics.size, scale: metrics.scale))
-        case .other: imageTransfer.reset()
+        case .other:
+            imageTransfer.reset()
+            if shellMarkOrigin == .remote, let event = ShellIntegrationEvent.parseRemote(osc1337: data) { onShellIntegrationEvent?(event) }
         }
     }
 
@@ -359,6 +395,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// Every 133 mark keeps upstream prompt handling; only marks with this session's
     /// nonce become events. The nonce lives only in memory for this session.
     private func observeShellIntegration(nonce: String) {
+        shellMarkOrigin = .authenticated
         let terminal = terminalView.getTerminal()
         terminal.registerOscHandler(code: 133) { [weak self, weak terminal] data in
             terminal?.handleSemanticPrompt(data)
@@ -366,6 +403,97 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             self.onShellIntegrationEvent?(event)
         }
     }
+
+    /// FR-SI09: an SSH pane's nonce-less OSC 133 marks, OSC 7 and OSC 1337 `CurrentDir=` become display-only events.
+    /// Call before starting; a session observes either these or its nonce, never both.
+    public func observeRemoteShellMarks() {
+        guard shellMarkOrigin == nil, session.state == .stopped else { return }
+        shellMarkOrigin = .remote
+        let terminal = terminalView.getTerminal()
+        terminal.registerOscHandler(code: 133) { [weak self, weak terminal] data in
+            terminal?.handleSemanticPrompt(data)
+            guard let self, let event = ShellIntegrationEvent.parseRemote(data) else { return }
+            self.onShellIntegrationEvent?(event)
+        }
+        terminal.registerOscHandler(code: 7) { [weak self] data in
+            guard let self, let event = ShellIntegrationEvent.parseRemote(osc7: data) else { return }
+            self.onShellIntegrationEvent?(event)
+        }
+    }
+
+    private func observePrompt(_ transport: any TerminalProcessTransport) {
+        transport.onPasswordPromptChanged = { [weak self] active in self?.updatePasswordPrompt(active) }
+    }
+
+    /// Uses another process owner for a session that never started (a broker-held one, FR-R03).
+    @discardableResult
+    public func useTransport(_ next: any TerminalProcessTransport) -> Bool {
+        guard !adapter.isDetached, session.replaceTransport(next) else { return false }
+        transport.onPasswordPromptChanged = nil
+        transport = next
+        observePrompt(next)
+        return true
+    }
+
+    /// Takes over a session the broker kept while the app was closed: its marks, then its replay with
+    /// every reply suppressed, then live I/O at this view's size. Never starts a process.
+    @discardableResult
+    public func adopt(_ adoption: BrokerAdoption) -> Bool {
+        guard session.state == .stopped, let transport = adoption.transport, let pid = adoption.processID, useTransport(transport) else { return false }
+        if let nonce = adoption.nonce, shellMarkOrigin == nil { observeShellIntegration(nonce: nonce) }
+        replay(adoption.replay)
+        guard session.adopt(processID: pid) else { return false }
+        updatePasswordPrompt(transport.passwordPromptActive)
+        transport.beginDelivery()
+        let size = getWindowSize()
+        if let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) { session.resize(dimensions) }
+        return true
+    }
+
+    /// A kept session that ended while the app was closed: its replay, then a notice; the pane stays stopped.
+    public func showEndedSession(replay data: Data, exitCode: Int32?) {
+        guard session.state == .stopped else { return }
+        replay(data)
+        replay(Data("\r\n\u{1b}[0m\u{1b}[2m— Session ended while Trellis was closed\(exitCode.map { " (exit \($0))" } ?? "") —\u{1b}[0m\r\n".utf8))
+    }
+
+    /// Restored plain text from the scrollback file (FR-R04), cleaned to printable text first.
+    public func showRestoredOutput(_ text: String, savedAt: Date) {
+        guard session.state == .stopped, !text.isEmpty else { return }
+        let date = savedAt.formatted(date: .abbreviated, time: .shortened)
+        replay(Data((Self.printable(text) + "\r\n\u{1b}[2m— Restored output from \(date) —\u{1b}[0m\r\n").utf8))
+    }
+
+    /// Only printable characters, tabs and line breaks survive: no escape sequence can reach the parser.
+    static func printable(_ text: String) -> String {
+        var result = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            switch scalar.value {
+            case 0x0a: result.append("\r"); result.append(scalar)
+            case 0x09: result.append(scalar)
+            case 0x00..<0x20, 0x7f..<0xa0: continue
+            default: result.append(scalar)
+            }
+        }
+        return String(result)
+    }
+
+    private func replay(_ data: Data) {
+        guard !data.isEmpty else { return }
+        isReplaying = true
+        defer { isReplaying = false }
+        adapter.receive(data)
+    }
+
+    /// The pane's retained plain text, for the scrollback file (FR-R04).
+    public var retainedText: String { terminalView.retainedText }
+
+    /// Quitting with Keep Running: the broker keeps the process, so nothing here may signal it. A cancelled quit turns it back off.
+    public func prepareForKeepRunning(_ on: Bool = true) {
+        keptAlive = on && survivesQuit
+        transport.setKeepAlive(keptAlive)
+    }
+    private var keptAlive = false
 
     /// Scrolls to the previous or next shell prompt marked through OSC 133 (FR-SI06).
     @discardableResult
@@ -448,7 +576,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Reveal in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
         }
     }
-    public func bell(source: TerminalView) { playBell() }
+    public func bell(source: TerminalView) { if !isReplaying { playBell() } }
     static func bellStyle(_ style: TerminalBellStyle) -> BellStyle {
         switch style {
         case .sound: .sound;
@@ -461,4 +589,18 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
     public func scrolled(source: TerminalView, position: Double) {}
     public func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+}
+
+extension TerminalProgressReport {
+    init(_ report: Terminal.ProgressReport) {
+        let kind: Kind =
+            switch report.state {
+            case .remove: .remove
+            case .set: .set
+            case .error: .error
+            case .indeterminate: .indeterminate
+            case .pause: .pause
+            }
+        self.init(kind: kind, value: report.progress.map(Int.init))
+    }
 }
