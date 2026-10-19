@@ -21,9 +21,13 @@ function seo(siteURL) {
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), "");
     const siteURL = (process.env.SITE_URL || env.SITE_URL || "https://trellis.bearstouch.com").replace(/\/+$/, "");
+    // Plausible stays off unless PLAUSIBLE_HOST names the instance; the site ID defaults to the SITE_URL host.
+    const plausibleHost = (process.env.PLAUSIBLE_HOST || env.PLAUSIBLE_HOST || "").replace(/\/+$/, "");
+    const plausibleDomain = process.env.PLAUSIBLE_DOMAIN || env.PLAUSIBLE_DOMAIN || new URL(siteURL).hostname;
     return {
         base: "/",
         plugins: [seo(siteURL)],
+        define: { __PLAUSIBLE__: JSON.stringify({ host: plausibleHost, domain: plausibleDomain }) },
         build: { outDir: "dist", assetsInlineLimit: 0 },
     };
 });

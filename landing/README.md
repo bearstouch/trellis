@@ -33,6 +33,38 @@ swift run Trellis --state-directory "$PWD/.build/demo-state"
 
 On load the page asks the GitHub API for the star count and the latest release tag. If that fails (offline, rate-limited), the static labels stay: "GitHub" and "Download for macOS".
 
+## Analytics
+
+The page reports to a self-hosted [Plausible](https://plausible.io) instance through the bundled `@plausible-analytics/tracker` module (`src/analytics.js`), so no third-party script is loaded. It's off unless `PLAUSIBLE_HOST` is set at build time:
+
+```sh
+PLAUSIBLE_HOST=https://plausible.your.domain npm run build   # site ID defaults to the SITE_URL host
+PLAUSIBLE_DOMAIN=other.site.id                                # optional override
+```
+
+On Railway, add `PLAUSIBLE_HOST` (and optionally `PLAUSIBLE_DOMAIN`) as service variables. The Dockerfile passes `PLAUSIBLE_HOST` to the build and to nginx, which adds it to the CSP `connect-src`. Use the origin only, with no path. Events are never sent from `localhost`. To keep your own visits out, set `localStorage.plausible_ignore = "true"` in the browser console on the live site.
+
+The tracker records pageviews, referrers and UTM tags, scroll depth and time on page by itself, along with these events:
+
+| Event | Props | When |
+| --- | --- | --- |
+| `Section View` | `section`: hero, features, terminal, automation, hosts, themes, privacy, install, faq, cta | A section reaches mid-screen, once per visit. Doesn't count as interaction for bounce rate |
+| `Nav Click` | `section` | A link in the top nav |
+| `Download` | `location` (hero, cta), `version` | A download button |
+| `GitHub` | `location` (nav, hero, cta, faq, footer) | A link to the repo |
+| `Footer Link` | `link` (releases, changelog, docs, license, bearstouch) | A footer link |
+| `Contribute Click` | | The CONTRIBUTING.md link in the FAQ |
+| `Screenshot Open` | `shot` | A screenshot opened in the lightbox |
+| `FAQ Open` | `question` | An FAQ answer expanded |
+| `Copy` | `snippet` (cli-install, automation) | Text copied from a code block |
+| `Outbound Link: Click` | `url` | Any link off the site (sent by the tracker) |
+
+With analytics built in, the footer shows a line saying the site uses Plausible and the app has none. Without `PLAUSIBLE_HOST` the line stays hidden.
+
+To tag another element, add `data-track="Event Name"`; each `data-track-<key>="value"` attribute becomes a prop.
+
+In Plausible, add each event as a **custom event goal** under **Site settings → Goals**. Then add the props (`section`, `location`, `version`, `link`, `shot`, `question`, `snippet`, `url`) under **Custom properties**, so you can break goals down by them. One useful funnel is Visit / → `Section View` (section = install) → `Download`.
+
 ## SEO and sharing
 
 `index.html` carries the canonical URL, Open Graph and Twitter tags, and `SoftwareApplication` JSON-LD. The build also writes `robots.txt` and `sitemap.xml`. Absolute URLs come from `SITE_URL`, which defaults to `https://trellis.bearstouch.com`:
@@ -57,7 +89,7 @@ The site icons in `public/` come from the app icon artwork in `Design/AppIcon`; 
 
 ## Deploying on Railway
 
-The `Dockerfile` builds the site with Node 22 and serves `dist/` with nginx. nginx listens on `$PORT`, which Railway injects; it defaults to 8080. The config (`nginx/default.conf.template`) sets gzip, immutable caching for hashed `/assets/`, `no-cache` for HTML, and security headers including a CSP that only allows `api.github.com` for fetches.
+The `Dockerfile` builds the site with Node 22 and serves `dist/` with nginx. nginx listens on `$PORT`, which Railway injects; it defaults to 8080. The config (`nginx/default.conf.template`) sets gzip, immutable caching for hashed `/assets/`, `no-cache` for HTML, and security headers including a CSP that only allows `api.github.com` (and `PLAUSIBLE_HOST`, when set) for fetches.
 
 1. In Railway, create a service from the `bearstouch/trellis` GitHub repo.
 2. Set **Settings → Root Directory** to `landing`. `railway.json` selects the Dockerfile builder.

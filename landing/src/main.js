@@ -1,6 +1,7 @@
 import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
 import "./style.css";
+import { enabled as analyticsEnabled, track, trackCopies, trackFAQ, trackSectionViews, trackTaggedClicks } from "./analytics.js";
 
 const REPO = "bearstouch/trellis";
 document.documentElement.classList.add("js");
@@ -28,6 +29,7 @@ for (const slot of document.querySelectorAll("[data-shot]")) {
     button.append(img);
     button.addEventListener("click", () => {
         opener = button;
+        track("Screenshot Open", { shot: slot.dataset.shot });
         lightboxImg.src = url; lightboxImg.alt = alt;
         lightbox.showModal();
     });
@@ -50,6 +52,14 @@ const observer = new IntersectionObserver((entries) => {
 }, { rootMargin: "0px 0px -8% 0px" });
 document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
 
+// Journey events (see analytics.js). Download clicks carry the release shown on the button, once known.
+let releaseTag = null;
+trackTaggedClicks((el) => (el.dataset.track === "Download" ? { version: releaseTag ?? "unknown" } : {}));
+trackSectionViews(document.querySelectorAll("main section[id], main section[data-section]"));
+trackFAQ(document.querySelectorAll(".faq details"));
+trackCopies();
+document.querySelectorAll("[data-analytics-note]").forEach((el) => { el.hidden = !analyticsEnabled; });
+
 // GitHub stars and latest release. Failures leave the static labels in place.
 const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
 async function github(path) {
@@ -66,5 +76,6 @@ github("").then((repo) => {
 }).catch(() => {});
 github("/releases/latest").then((release) => {
     const tag = /^v?\d+\.\d+\.\d+$/.test(release.tag_name ?? "") ? release.tag_name.replace(/^v/, "") : null;
+    releaseTag = tag;
     if (tag) document.querySelectorAll("[data-download-label]").forEach((el) => { el.textContent = `Download ${tag} for macOS`; });
 }).catch(() => {});
