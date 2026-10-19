@@ -865,6 +865,10 @@ public struct LaunchSettingsView: View {
         }
         return model.shellIntegrationEnabled ? "\(name) supports shell integration." : "\(name) supports shell integration; it's turned off below."
     }
+    /// A wrapping caption: the form never grows wider than the pane.
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
+    }
     public var body: some View {
         Form {
             Picker("Shell", selection: shellSelection) {
@@ -878,40 +882,30 @@ public struct LaunchSettingsView: View {
             if customShell {
                 TextField("Shell executable", text: $shell).accessibilityIdentifier("settings.shellPath")
             }
-            Text(integrationNote).font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
-                .accessibilityIdentifier("settings.shellIntegrationNote")
+            caption(integrationNote).accessibilityIdentifier("settings.shellIntegrationNote")
             TextField("Working directory", text: $directory)
-            Text("Applies to new local sessions. Use absolute paths.").font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("For new local sessions. Use an absolute path.")
             TextField("Scrollback lines (0–50,000)", value: $scrollbackLines, format: .number.grouping(.never))
                 .accessibilityIdentifier("settings.scrollbackLines")
-            Text("Applies to every pane. History also has a 16 MiB text limit. Reducing history discards older output.")
-                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("For every pane, up to 16 MiB of text. Lowering it drops older output.")
             if !message.isEmpty { Text(message).font(.caption).accessibilityIdentifier("settings.result") }
             Toggle(
                 "Shell integration (zsh, bash, fish)",
                 isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
             ).accessibilityIdentifier("settings.shellIntegration")
-            Text("Tracks the current directory, command status and prompts without editing your dotfiles. Applies to new sessions.")
-                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions.")
             Toggle(
                 "Keep sessions running after quit",
                 isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) })
             ).accessibilityIdentifier("settings.keepSessionsRunning")
-            Text(
-                "Sessions started from now on run in a background helper. Quitting offers Keep Running, and they reconnect with their recent output when Trellis opens again. Closing the window still ends them; logging out or restarting ends them too."
-            )
-            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("New sessions can keep running when you quit and reconnect next time. Closing the window or logging out ends them.")
             Toggle(
                 "Restore scrollback after quit",
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
             ).accessibilityIdentifier("settings.restoreScrollback")
-            Text(
-                "Saves each pane's text when Trellis quits and shows it in the stopped pane next time. The file is stored unencrypted in the workspace folder; passwords, tokens and keys are removed on a best-effort basis, so don't rely on it for secrets. Turning this off deletes the saved text."
-            )
-            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis.")
             Toggle("GPU rendering (Metal)", isOn: gpuRendering).accessibilityIdentifier("settings.gpuRendering")
-            Text("Draws terminals on the GPU. If Metal isn’t available or stops working, Trellis draws with the CPU instead. Applies to every pane.")
-                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("Draws terminals with Metal, or with the CPU if Metal fails.")
             HStack {
                 Spacer()
                 Button("Save") {
