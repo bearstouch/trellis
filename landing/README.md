@@ -1,6 +1,6 @@
 # Trellis landing page
 
-The static product page for Trellis, built with [Vite](https://vite.dev). It's plain HTML, CSS and a small script, with no framework. The design follows the LayerX look: Inter with `cv05`, LayerX greys and blue/purple accents, and Trellis's phosphor green for small touches.
+The static product page for Trellis, built with [Vite](https://vite.dev). It's plain HTML, CSS and a small script, with no framework. The design uses Inter with `cv05`, neutral greys and blue/purple accents, and Trellis's phosphor green for small touches.
 
 ```sh
 cd landing

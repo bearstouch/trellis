@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The About panel and `LICENSE` credit "bearstouch" instead of LayerX Labs; the panel links to https://github.com/bearstouch.
+
 ## [0.11.0] - 2026-10-19
 
 This release adds sessions that keep running after quit, restored scrollback, desktop and long-command notifications, progress on tabs, shell marks over SSH, ⌘K Clear and opt-in Metal rendering, plus several security fixes.

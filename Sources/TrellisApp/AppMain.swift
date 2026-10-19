@@ -366,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 ]))
         credits.append(NSAttributedString(string: ".\n\n© 2026 ", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
         // The standard Copyright option is plain text, so the linked copyright line lives in the credits.
-        credits.append(NSAttributedString(string: "LayerX Labs", attributes: [.font: NSFont.systemFont(ofSize: 12), .link: URL(string: "https://layerx.xyz")!]))
+        credits.append(NSAttributedString(string: "bearstouch", attributes: [.font: NSFont.systemFont(ofSize: 12), .link: URL(string: "https://github.com/bearstouch")!]))
         credits.append(NSAttributedString(string: " and Trellis contributors. All rights reserved.", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
         let centered = NSMutableParagraphStyle(); centered.alignment = .center
         credits.addAttribute(.paragraphStyle, value: centered, range: NSRange(location: 0, length: credits.length))
