@@ -46,6 +46,7 @@ def main():
         shader = resources / "Shaders.metal"
         shader.chmod(0o444)
         source_hash = digest(built / "Trellis")
+        helper_hashes = {helper: digest(built / helper) for helper in helpers}
         tools = root / "tools"
         tools.mkdir()
         (tools / "swift").write_text(
@@ -88,6 +89,7 @@ def main():
                 installed = destination / "Contents/Helpers" / helper
                 assert installed.is_file() and os.access(installed, os.X_OK), f"assembled app has no executable {helper}"
                 subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(installed)], check=True)
+                assert digest(built / helper) == helper_hashes[helper], f"signing changed the {helper} build product"
 
         run("--build-only")
         verify()
@@ -112,13 +114,14 @@ def main():
         missing_themes.rename(theme_resources)
         verify()
         assert before == (digest(executable), digest(seal), log.read_bytes())
-        missing_broker = built / "missing-broker"
-        (built / "trellis-broker").rename(missing_broker)
-        run("--build-only", success=False)
-        missing_broker.rename(built / "trellis-broker")
-        verify()
-        assert before == (digest(executable), digest(seal), log.read_bytes())
-    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, unchanged source, bundled helpers, argument forwarding, build-only, and failed-build preservation")
+        for helper in helpers:
+            missing_helper = built / f"missing-{helper}"
+            (built / helper).rename(missing_helper)
+            run("--build-only", success=False)
+            missing_helper.rename(built / helper)
+            verify()
+            assert before == (digest(executable), digest(seal), log.read_bytes())
+    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, signed bundled helpers, unchanged source, argument forwarding, build-only, and failed-build preservation")
 
 
 if __name__ == "__main__":
