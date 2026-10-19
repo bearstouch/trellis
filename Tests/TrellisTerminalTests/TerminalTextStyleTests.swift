@@ -90,18 +90,18 @@ final class TerminalTextStyleTests: XCTestCase {
         let output = "\u{1b}[1mB\u{1b}[0m\u{1b}[3mI\u{1b}[0m\u{1b}[1;3mX\u{1b}[0m"
         let (native, view) = try terminal(output)
         defer { native.adapter.detach() }
-        XCTAssertEqual(try run(at: 0, in: view).fontName, "RobotoMono-Bold")
-        XCTAssertEqual(try run(at: 1, in: view).fontName, "RobotoMono-Italic")
-        XCTAssertEqual(try run(at: 2, in: view).fontName, "RobotoMono-BoldItalic")
+        XCTAssertEqual(try run(at: 0, in: view).fontName, "JetBrainsMono-Bold")
+        XCTAssertEqual(try run(at: 1, in: view).fontName, "JetBrainsMono-Italic")
+        XCTAssertEqual(try run(at: 2, in: view).fontName, "JetBrainsMono-BoldItalic")
         var settings = AppearanceSettings()
         settings.allowBoldFont = false
         native.applyAppearance(settings)
-        XCTAssertEqual(try run(at: 0, in: view).fontName, "RobotoMono-Regular")
-        XCTAssertEqual(try run(at: 2, in: view).fontName, "RobotoMono-Italic")
+        XCTAssertEqual(try run(at: 0, in: view).fontName, "JetBrainsMono-Regular")
+        XCTAssertEqual(try run(at: 2, in: view).fontName, "JetBrainsMono-Italic")
         settings.allowItalicFont = false
         native.applyAppearance(settings)
-        XCTAssertEqual(try run(at: 1, in: view).fontName, "RobotoMono-Regular")
-        XCTAssertEqual(try run(at: 2, in: view).fontName, "RobotoMono-Regular")
+        XCTAssertEqual(try run(at: 1, in: view).fontName, "JetBrainsMono-Regular")
+        XCTAssertEqual(try run(at: 2, in: view).fontName, "JetBrainsMono-Regular")
     }
 
     @MainActor
@@ -121,7 +121,7 @@ final class TerminalTextStyleTests: XCTestCase {
         XCTAssertEqual(try fg(0), try fg(2), "bold red keeps its base color")
         XCTAssertNotEqual(try fg(1), try fg(2), "explicit bright red stays bright")
         XCTAssertEqual(try fg(5), try fg(1))
-        XCTAssertEqual(try run(at: 0, in: view).fontName, "RobotoMono-Bold", "bold text still uses the bold face")
+        XCTAssertEqual(try run(at: 0, in: view).fontName, "JetBrainsMono-Bold", "bold text still uses the bold face")
     }
 
     @MainActor

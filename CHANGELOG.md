@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- JetBrains Mono is now the default terminal font for new installs, with its programming ligatures on (turn them off in Settings → Appearance). Existing settings keep the font they saved; choose JetBrains Mono in Settings → Appearance to switch.
+
 ## [0.11.0] - 2026-10-19
 
 This release adds sessions that keep running after quit, restored scrollback, desktop and long-command notifications, progress on tabs, shell marks over SSH, ⌘K Clear and opt-in Metal rendering, plus several security fixes.
