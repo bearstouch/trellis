@@ -827,6 +827,7 @@ public struct LaunchSettingsView: View {
     @State private var message = ""
     @State private var saving = false
     @State private var customShell: Bool
+    @State private var scrollbackLines: Int
     private let shells: [ShellOption]
     private static let customTag = ""
     public init(model: AppWorkspaceModel) {
@@ -836,6 +837,18 @@ public struct LaunchSettingsView: View {
         _shell = State(initialValue: model.defaultShell)
         _directory = State(initialValue: model.defaultDirectory)
         _customShell = State(initialValue: !shells.contains { $0.path == model.defaultShell })
+        _scrollbackLines = State(initialValue: model.appearance.scrollbackLines)
+    }
+    /// GPU rendering (FR-TX05) and notifications (FR-T08, FR-SI08) are saved with the appearance settings
+    /// but apply at once, like the other toggles here.
+    private func appearanceSetting<Value>(_ keyPath: WritableKeyPath<AppearanceSettings, Value>) -> Binding<Value> {
+        Binding(
+            get: { model.appearance[keyPath: keyPath] },
+            set: { value in
+                var settings = model.appearance
+                settings[keyPath: keyPath] = value
+                _ = model.applyAppearance(settings)
+            })
     }
     private var shellSelection: Binding<String> {
         Binding(
@@ -853,6 +866,10 @@ public struct LaunchSettingsView: View {
         }
         return model.shellIntegrationEnabled ? "\(name) supports shell integration." : "\(name) supports shell integration; it's turned off below."
     }
+    /// A wrapping caption: the form never grows wider than the pane.
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
+    }
     public var body: some View {
         Form {
             Picker("Shell", selection: shellSelection) {
@@ -866,44 +883,55 @@ public struct LaunchSettingsView: View {
             if customShell {
                 TextField("Shell executable", text: $shell).accessibilityIdentifier("settings.shellPath")
             }
-            Text(integrationNote).font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
-                .accessibilityIdentifier("settings.shellIntegrationNote")
+            caption(integrationNote).accessibilityIdentifier("settings.shellIntegrationNote")
             TextField("Working directory", text: $directory)
-            Text("Applies to new local sessions. Use absolute paths.").font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
-            if !message.isEmpty { Text(message).font(.caption).accessibilityIdentifier("settings.result") }
+            caption("For new local sessions. Use an absolute path.")
+            TextField("Scrollback lines (0–50,000)", value: $scrollbackLines, format: .number.grouping(.never))
+                .accessibilityIdentifier("settings.scrollbackLines")
+            caption("For every pane, up to 16 MiB of text. Lowering it drops older output.")
+            if !message.isEmpty { Text(message).font(.caption).wrappingSettingsCaption().accessibilityIdentifier("settings.result") }
             Toggle(
                 "Shell integration (zsh, bash, fish)",
                 isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
             ).accessibilityIdentifier("settings.shellIntegration")
-            Text("Tracks the current directory, command status and prompts without editing your dotfiles. Applies to new sessions.")
-                .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions.")
             Toggle(
                 "Keep sessions running after quit",
                 isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) })
             ).accessibilityIdentifier("settings.keepSessionsRunning")
-            Text(
-                "Sessions started from now on run in a background helper. Quitting offers Keep Running, and they reconnect with their recent output when Trellis opens again. Closing the window still ends them; logging out or restarting ends them too."
-            )
-            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("New sessions can keep running when you quit and reconnect next time. Closing the window or logging out ends them.")
             Toggle(
                 "Restore scrollback after quit",
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
             ).accessibilityIdentifier("settings.restoreScrollback")
-            Text(
-                "Saves each pane's text when Trellis quits and shows it in the stopped pane next time. The file is stored unencrypted in the workspace folder; passwords, tokens and keys are removed on a best-effort basis, so don't rely on it for secrets. Turning this off deletes the saved text."
-            )
-            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+            caption("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis.")
+            Toggle("Desktop notifications", isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
+            caption("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane.")
+            Picker("Notify when a command finishes", selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {
+                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? "Off" : "After \($0) s").tag($0) }
+            }.disabled(!model.appearance.desktopNotifications).accessibilityIdentifier("settings.commandFinishedNotification")
+            caption("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line.")
+            Toggle("GPU rendering (Metal)", isOn: appearanceSetting(\.gpuRendering)).accessibilityIdentifier("settings.gpuRendering")
+            caption("Draws terminals with Metal, or with the CPU if Metal fails.")
             HStack {
                 Spacer()
                 Button("Save") {
+                    guard (0...50_000).contains(scrollbackLines) else { message = "Use 0–50,000 scrollback lines."; return }
                     saving = true
                     Task {
-                        let saved = await model.saveLaunchSettings(shell: shell, directory: directory)
-                        message = saved ? "Saved for new sessions." : "Check that the shell is executable and the directory is accessible."
+                        // Nothing is saved unless the shell and directory are valid.
+                        var saved = await model.saveLaunchSettings(shell: shell, directory: directory)
+                        if saved {
+                            var settings = model.appearance
+                            settings.scrollbackLines = scrollbackLines
+                            saved = model.applyAppearance(settings)
+                        }
+                        message = saved ? "Saved." : "Check that the shell is executable and the directory is accessible."
                         saving = false
                     }
                 }.disabled(saving)
             }
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
     }
 }

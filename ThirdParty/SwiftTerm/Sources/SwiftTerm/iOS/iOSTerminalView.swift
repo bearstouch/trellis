@@ -233,7 +233,22 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         presentedFrameCount: 0,
         lastFramePresentedAt: nil
     )
-    var metalDirtyRange: ClosedRange<Int>?
+    /// Rows the next Metal frame rebuilds. Assigning a range widens the
+    /// pending one rather than replacing it, so an invalidation that lands
+    /// before the frame draws is never lost; assigning nil leaves it as is.
+    /// The renderer takes it with `takeMetalDirtyRange()`.
+    var metalDirtyRange: ClosedRange<Int>? {
+        get { pendingMetalDirtyRange }
+        set {
+            guard let newValue else { return }
+            if let pending = pendingMetalDirtyRange {
+                pendingMetalDirtyRange = min(pending.lowerBound, newValue.lowerBound)...max(pending.upperBound, newValue.upperBound)
+            } else {
+                pendingMetalDirtyRange = newValue
+            }
+        }
+    }
+    var pendingMetalDirtyRange: ClosedRange<Int>?
     /// The cursor position last submitted to the Metal renderer. Used to
     /// detect pure cursor-only moves (no rows dirty) such as the
     /// CSI Ps C / CSI Ps D sequences shells emit in response to Option+Arrow

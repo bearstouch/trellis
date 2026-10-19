@@ -203,11 +203,24 @@ public final class AppWorkspaceModel: ObservableObject {
         scheduleWorkspaceSave()
         return true
     }
+    /// The `--renderer` launch choice (true is Metal); overrides the GPU rendering setting without saving it.
+    public var rendererOverride: Bool?
     /// Reduce Motion keeps the cursor steady without changing the saved preference.
     var terminalAppearance: AppearanceSettings {
         var settings = appearance
         if reduceMotion { settings.cursorBlinks = false }
+        if let rendererOverride { settings.gpuRendering = rendererOverride }
         return settings
+    }
+    /// How many panes each renderer draws, and the frames they have drawn (FR-TX05).
+    public var renderingStats: (metalPanes: Int, coreGraphicsPanes: Int, metalFrames: Int, coreGraphicsFrames: Int) {
+        var stats = (metalPanes: 0, coreGraphicsPanes: 0, metalFrames: 0, coreGraphicsFrames: 0)
+        for terminal in terminals.values {
+            if terminal.isUsingMetalRenderer { stats.metalPanes += 1 } else { stats.coreGraphicsPanes += 1 }
+            stats.metalFrames += terminal.renderedFrames.metal
+            stats.coreGraphicsFrames += terminal.renderedFrames.coreGraphics
+        }
+        return stats
     }
 
     public func accessibilityDisplayOptionsDidChange(increaseContrast: Bool, reduceMotion: Bool) {

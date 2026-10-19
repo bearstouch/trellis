@@ -218,6 +218,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.allowItalicFont = settings.allowItalicFont
         terminalView.textBlinkEnabled = settings.blinkingText
         terminalView.bellStyle = Self.bellStyle(settings.bellStyle)
+        if settings.gpuRendering { Self.prepareGPURendering() }
+        terminalView.prefersMetal = settings.gpuRendering
         if terminalView.scrollback.budget.lineLimit != settings.scrollbackLines {
             let old = terminalView.scrollback
             let evicted = old.historyEvicted || old.retainedHistoryRows > settings.scrollbackLines
@@ -239,6 +241,14 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.getTerminal().options.cursorStyle = style
         terminalView.cursorStyleChanged(source: terminalView.getTerminal(), newStyle: style)
         terminalView.needsDisplay = true
+    }
+    /// Compiles the GPU renderer's shaders off the main thread at launch, so the first pane doesn't wait for them.
+    public static func prepareGPURendering() { TerminalView.prewarmMetal() }
+    /// True while the Metal renderer draws this pane; false on CoreGraphics (FR-TX05).
+    public var isUsingMetalRenderer: Bool { terminalView.isUsingMetalRenderer }
+    /// Frames presented by Metal (since it was last turned on) and passes drawn by CoreGraphics.
+    public var renderedFrames: (metal: Int, coreGraphics: Int) {
+        (Int(clamping: terminalView.metalRendererStatus.presentedFrameCount), terminalView.coreGraphicsDrawCount)
     }
     /// Color-only application for preview/library integration. No parsing,
     /// input, font, selection, or process lifecycle operation is performed.

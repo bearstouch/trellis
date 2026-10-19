@@ -103,7 +103,8 @@ The packaged app ships this binary as `trellis` (see the [release guide](docs/re
 
 ```sh
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"  # launcher regression, no windows
-python3 scripts/qualify.py [--quick]          # release qualification, about 5 min; opens isolated app windows
+python3 scripts/qualify.py [--quick] [--renderer metal|coregraphics]  # release qualification, about 5 min; opens isolated app windows
+python3 scripts/bench-renderer.py [--quick] [--only NAMES]  # Metal vs CoreGraphics benchmarks, about 25 min; keep its windows visible
 scripts/package-release.sh                    # Universal 2 app + DMG (ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE)
 scripts/generate-app-icon.sh                  # regenerate icons from Design/AppIcon/*.svg (needs rsvg-convert)
 ```
@@ -176,6 +177,8 @@ Settings → Appearance includes 10 editor-inspired theme families, each with da
 The Terminal font picker lists the monospace typefaces installed on your Mac and previews the selected font. Apply Appearance to save your choice.
 
 Terminals draw font ligatures (with fonts that have them, such as the bundled JetBrains Mono), colour emoji, wide CJK characters and combining marks on the cell grid, along with the usual text styles: bold, dim, italic, underline in single, double, curly, dotted and dashed styles with its own colour, strikethrough, overline, blink, inverse and concealed text. Settings → Appearance turns ligatures, bold-as-bright colours, bold and italic faces, and blinking text on or off.
+
+Terminals can draw on the GPU with Metal, with the same text rendering as the default CPU (CoreGraphics) renderer: turn on **Settings → Sessions → GPU rendering (Metal)**. Trellis falls back to CoreGraphics on its own if Metal isn't available. `swift run Trellis --renderer coregraphics` (or `metal`) picks a renderer for one launch, and `scripts/bench-renderer.py` compares the two.
 
 Programs can show images inline with iTerm2's image protocol, so `imgcat`, `yazi`, `timg` and `chafa -f iterm` work as they do in iTerm2.
 
