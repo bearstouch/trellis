@@ -361,6 +361,18 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Declarative layout key bindings per namespace; loaded on first use.
     var layoutNamespaces: [String: [String: LayoutBinding]]?
     var layoutApplyInFlight = false
+    /// Project workspace files found above each pane's directory (FR-WF02); runtime only.
+    @Published public internal(set) var workspaceFileOffers: [UUID: WorkspaceFileOffer] = [:]
+    @Published public internal(set) var pendingWorkspaceReview: WorkspaceFileReview?
+    @Published public internal(set) var pendingWorkspaceSave: WorkspaceFileDraft?
+    /// Trusted commands waiting for their new shell's first prompt, by session (FR-WF05); never persisted or logged.
+    var pendingWorkspaceCommands: [UUID: String] = [:]
+    /// The command each pane was opened with, so saving its window keeps it (FR-WF06); runtime only.
+    var workspaceFileCommands: [UUID: String] = [:]
+    var workspaceFileLookups: [UUID: String] = [:]
+    var workspaceTrust: WorkspaceTrustList?
+    /// Returns the chosen project folder; injected by tests.
+    public var chooseWorkspaceFolder: (_ message: String, _ directory: String?) -> String? = { WorkspaceFilePanels.chooseFolder(message: $0, directory: $1) }
     private var recoveryBackup: RestoredWorkspace?
     private var recoveryReason: WorkspacePersistenceError?
     private var pendingSaveTask: Task<Void, Never>?
@@ -762,6 +774,7 @@ public final class AppWorkspaceModel: ObservableObject {
                             ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                 : .recordSessionExit(sessionID: sessionID, code: code)
             self.closureCoordinator.forget(sessionID: sessionID)
+            self.pendingWorkspaceCommands.removeValue(forKey: sessionID)
             if let registration = self.askpassRegistrations.removeValue(forKey: sessionID) { self.askpass?.unregister(registration) }
             if self.terminals[paneID] === terminal {
                 self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
@@ -992,6 +1005,8 @@ public final class AppWorkspaceModel: ObservableObject {
         if case .promptStart = event {
             if inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
             clearProgress(paneID: paneID)
+            // The shell is reading input now, so a workspace file's command can be typed (FR-WF05).
+            submitWorkspaceCommand(paneID: paneID)
         }
         var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
         let wasRunning = state.commandRunning
@@ -1003,6 +1018,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
+        if let directory = currentDirectory(paneID: paneID) { detectWorkspaceFile(paneID: paneID, directory: directory) }
         refreshTerminalAccessibility()
     }
 

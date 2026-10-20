@@ -2,6 +2,8 @@
 
 A layout document describes windows, tabs and split trees, plus safe launch references. It is **data, not shell code**. A layout can't embed commands, and validating or applying one never runs anything; starting work is always a separate, explicit API call.
 
+A project's [workspace file](../features/workspace-files.md) (`.trellis/workspace.json`) is a separate format for people rather than agents. It can carry commands, which run only after the user trusts that exact file. Automation can't open workspace files.
+
 - Schema: [`layout.schema.json`](layout.schema.json) (JSON Schema 2020-12)
 - Example: [`example-layout.json`](example-layout.json). The tests apply it twice and check that the result is stable.
 

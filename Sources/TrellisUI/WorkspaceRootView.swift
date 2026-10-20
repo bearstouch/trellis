@@ -8,6 +8,7 @@ public struct WorkspaceRootView: View {
     @State private var windowToRename: ManagedWindow?
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
+    @State private var hoveredTabID: UUID?
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
@@ -86,6 +87,12 @@ public struct WorkspaceRootView: View {
                     Button(paste.plan.unsupportedShell ? "Paste Quoted Text" : "Paste") { model.confirmPaste(paste.id) }
                 }
             }.padding(24).frame(width: 540)
+        }
+        .sheet(item: Binding(get: { model.pendingWorkspaceReview }, set: { if $0 == nil, let id = model.pendingWorkspaceReview?.id { Task { await model.resolveWorkspaceReview(id, .cancel) } } })) {
+            WorkspaceFileReviewView(model: model, review: $0)
+        }
+        .sheet(item: Binding(get: { model.pendingWorkspaceSave }, set: { if $0 == nil { model.cancelWorkspaceSave() } })) {
+            WorkspaceFileSaveView(model: model, draft: $0)
         }
         .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
@@ -313,9 +320,14 @@ public struct WorkspaceRootView: View {
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }
-            .joined(separator: ", ")
-        return HStack(spacing: 8) {
+        let offer = model.workspaceFileOffer(tabID: tab.id)
+        let shownOffer = hoveredTabID == tab.id || selected ? offer : nil
+        let parts: [String] = [
+            descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : "",
+            offer.map { "workspace \($0.name) available" } ?? ""
+        ]
+        let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
+        let label = HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
             if model.editingTabID == tab.id {
@@ -354,6 +366,7 @@ public struct WorkspaceRootView: View {
                     .foregroundStyle(progress.state == .error ? Color.red : progress.state == .paused ? Color.orange : model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
             }
+            if let shownOffer { WorkspaceOfferButton(model: model, offer: shownOffer, expanded: hoveredTabID == tab.id) }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
@@ -370,6 +383,9 @@ public struct WorkspaceRootView: View {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
             .contentShape(Rectangle())
+        return
+            label
+            .modifier(TabWorkspaceOffer(model: model, offer: offer, tabID: tab.id, hoveredTabID: $hoveredTabID))
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(descriptor?.label ?? "Tab \(model.displayTitle(tab))")
@@ -380,7 +396,7 @@ public struct WorkspaceRootView: View {
             .contextMenu {
                 TabContextMenu(
                     model: model, tab: tab, canMoveLeft: model.presentation.visibleTabs.first?.id != tab.id,
-                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay,
+                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay, offer: offer,
                     rename: { beginTabRename(tab) }
                 ).equatable()
             }
@@ -473,11 +489,12 @@ private struct TabContextMenu: View, Equatable {
     let canMoveLeft: Bool
     let canMoveRight: Bool
     let separator: Color
+    let offer: WorkspaceFileOffer?
     let rename: () -> Void
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.tab.id == rhs.tab.id && lhs.tab.color == rhs.tab.color && lhs.canMoveLeft == rhs.canMoveLeft && lhs.canMoveRight == rhs.canMoveRight
-            && lhs.separator == rhs.separator
+            && lhs.separator == rhs.separator && lhs.offer == rhs.offer
     }
 
     var body: some View {
@@ -495,6 +512,11 @@ private struct TabContextMenu: View, Equatable {
         Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
         Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
         Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
+        if let offer {
+            Divider().overlay(separator)
+            Button("Load Workspace “\(offer.name)”") { Task { await model.loadWorkspaceFile(root: offer.root) } }
+            Button("Don’t Offer for This Folder") { model.stopOfferingWorkspaceFile(root: offer.root) }
+        }
         Divider().overlay(separator)
         Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
     }
@@ -616,6 +638,7 @@ private struct WindowItemActions: ViewModifier {
                     .disabled(model.snapshot.windows.first?.id == window.id)
                 Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
                     .disabled(model.snapshot.windows.last?.id == window.id)
+                Button("Save as Workspace File…") { model.beginSaveWorkspaceFile(windowID: window.id) }
                 Divider().overlay(model.separatorOverlay)
                 Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
             }
@@ -933,5 +956,44 @@ public struct LaunchSettingsView: View {
             }
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
             .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
+    }
+}
+
+/// A tab's workspace-file offer (FR-WF02): words while hovered, a glyph on a selected tab so it can be found.
+private struct WorkspaceOfferButton: View {
+    @ObservedObject var model: AppWorkspaceModel
+    let offer: WorkspaceFileOffer
+    let expanded: Bool
+
+    var body: some View {
+        Button {
+            Task { await model.loadWorkspaceFile(root: offer.root) }
+        } label: {
+            Group {
+                if expanded { Label("Load Workspace", systemImage: "square.grid.2x2").labelStyle(.titleAndIcon) } else { Image(systemName: "square.grid.2x2") }
+            }
+            .font(.system(size: 10, weight: .medium)).lineLimit(1).padding(.horizontal, expanded ? 5 : 0).padding(.vertical, 1)
+            .background(Capsule().fill(model.themeColor(.accent).opacity(expanded ? 0.18 : 0)))
+        }
+        .buttonStyle(.plain).fixedSize().help("Load workspace “\(offer.name)” from \(offer.path)")
+        .accessibilityLabel("Load Workspace \(offer.name)")
+    }
+}
+
+/// Tracks the hovered tab and offers Load Workspace to VoiceOver, so the offer never needs a pointer.
+private struct TabWorkspaceOffer: ViewModifier {
+    let model: AppWorkspaceModel
+    let offer: WorkspaceFileOffer?
+    let tabID: UUID
+    @Binding var hoveredTabID: UUID?
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                if inside { hoveredTabID = tabID } else if hoveredTabID == tabID { hoveredTabID = nil }
+            }
+            .accessibilityActions {
+                if let offer { Button("Load Workspace") { Task { await model.loadWorkspaceFile(root: offer.root) } } }
+            }
     }
 }

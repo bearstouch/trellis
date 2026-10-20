@@ -48,6 +48,7 @@ nav:
       - Terminal engine: architecture/terminal-engine.md
   - Features:
       - Windows, tabs and panes: features/workspace.md
+      - Workspace files: features/workspace-files.md
       - Terminal: features/terminal.md
       - Shell integration: features/shell-integration.md
       - SSH hosts: features/ssh-hosts.md
