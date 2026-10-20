@@ -18,7 +18,7 @@ trellis <noun> <verb> [options]
     - `--token-stdin`: read the token from standard input.
     - `--keychain-grant GRANT_UUID`: read the token from the Keychain.
 - The CLI always rejects `--token`, `--password` and `--secret`, because command lines leak into process lists and shell history.
-- `--launch` starts the app (`open -b dev.trellis`) if it isn't already running. Without it, a missing app gives `APP_NOT_RUNNING`.
+- `--launch` starts the app (`open -b com.bearstouch.trellis`) if it isn't already running. Without it, a missing app gives `APP_NOT_RUNNING`.
 - `--state-directory DIR` points the CLI at a development instance started with the same flag.
 - Mutating commands accept `--idempotency-key KEY`.
 - The CLI never retries anything on its own.

@@ -22,6 +22,13 @@ final class AppearanceSettingsTests: XCTestCase {
         legacy["bellStyle"] = "chime"
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy)).bellStyle, .sound)
     }
+    func testSettingsSavedWithRobotoMonoKeepItAfterTheDefaultChange() throws {
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
+        legacy["fontName"] = "RobotoMono-Regular"
+        let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(decoded.fontName, "RobotoMono-Regular")
+        XCTAssertEqual(AppearanceSettings().fontName, "JetBrainsMono-Regular")
+    }
     func testSettingsSavedBeforeGPURenderingLoadWithMetalOff() throws {
         var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
         legacy["gpuRendering"] = nil; legacy["fontLigatures"] = false
@@ -35,7 +42,7 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(settings.bellStyle, .sound)
         XCTAssertTrue(settings.desktopNotifications)
         XCTAssertEqual(settings.commandFinishedNotificationSeconds, 10)
-        XCTAssertEqual(settings.fontName, "RobotoMono-Regular")
+        XCTAssertEqual(settings.fontName, "JetBrainsMono-Regular")
         XCTAssertEqual(settings.fontSize, 13)
         XCTAssertEqual(TerminalPalette.builtIn.background, 0x151719)
         XCTAssertEqual(TerminalPalette.builtIn.ansi.count, 16)

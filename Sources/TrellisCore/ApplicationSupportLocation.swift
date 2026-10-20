@@ -4,14 +4,14 @@ import Foundation
 /// appear only here and in saved-settings/environment compatibility handling.
 public enum ApplicationSupportLocation {
     public static func prepare(root: URL, bundleIdentifier: String?) throws -> URL {
-        let identifier = bundleIdentifier ?? "dev.trellis"
+        let identifier = bundleIdentifier ?? AppInstanceIdentity.production
         let destination = root.appendingPathComponent(identifier, isDirectory: true)
         let files = FileManager.default
-        guard identifier == "dev.trellis", !files.fileExists(atPath: destination.path) else { return destination }
+        guard identifier == AppInstanceIdentity.production, !files.fileExists(atPath: destination.path) else { return destination }
+        // Newest identity first: `dev.trellis` data already went through the uTerm theme migration.
         let legacyIdentifiers =
-            bundleIdentifier == nil
-            ? ["dev.uterm", "dev.uterm.feasibility"]
-            : ["dev.uterm.feasibility", "dev.uterm"]
+            [AppInstanceIdentity.legacyProduction]
+            + (bundleIdentifier == nil ? ["dev.uterm", "dev.uterm.feasibility"] : ["dev.uterm.feasibility", "dev.uterm"])
         for legacy in legacyIdentifiers {
             let source = root.appendingPathComponent(legacy, isDirectory: true)
             var isDirectory: ObjCBool = false
@@ -19,12 +19,24 @@ public enum ApplicationSupportLocation {
             let staging = root.appendingPathComponent(".trellis-migration-\(UUID().uuidString)", isDirectory: true)
             defer { try? files.removeItem(at: staging) }
             try files.copyItem(at: source, to: staging)
-            try migrateConflictingThemes(in: staging)
+            // `control.json` names the copied-from instance's socket; if that app still runs, keeping it would
+            // make this one refuse to serve automation (`anotherInstanceRunning`). Each instance publishes its own.
+            try? files.removeItem(at: staging.appendingPathComponent("control.json"))
+            if legacy != AppInstanceIdentity.legacyProduction { try migrateConflictingThemes(in: staging) }
             try files.moveItem(at: staging, to: destination)
             break
         }
         return destination
     }
+
+    /// Copies the previous identity's preferences (keyboard, shell, window frame…) once, when the
+    /// current domain has none. The legacy domain is left untouched.
+    public static func migratePreferences(into defaults: UserDefaults, legacy: [String: Any]?) {
+        guard let legacy, !legacy.isEmpty, defaults.object(forKey: preferencesMigratedKey) == nil else { return }
+        defaults.set(true, forKey: preferencesMigratedKey)
+        for (key, value) in legacy where defaults.object(forKey: key) == nil { defaults.set(value, forKey: key) }
+    }
+    static let preferencesMigratedKey = "migration.legacyPreferencesImported"
 
     private static func migrateConflictingThemes(in directory: URL) throws {
         let files = FileManager.default

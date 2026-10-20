@@ -10,7 +10,7 @@ final class ReleaseTests: XCTestCase {
 
     func testManifestMatchesSupportPolicy() throws {
         let manifest = try manifest()
-        XCTAssertEqual(manifest.bundleIdentifier, "dev.trellis")
+        XCTAssertEqual(manifest.bundleIdentifier, "com.bearstouch.trellis")
         XCTAssertEqual(Set(manifest.architectures), ["arm64", "x86_64"], "Universal 2")
         XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis"), "The CLI is bundled")
         XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis-askpass"), "The saved-password askpass helper is bundled")
@@ -25,7 +25,7 @@ final class ReleaseTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(dependency.licenseFile).path), dependency.licenseFile)
         }
 
-        let good = ReleaseManifest.BuiltProduct(bundleIdentifier: "dev.trellis", minimumMacOS: "14.0", architectures: ["arm64", "x86_64"], files: Set(manifest.artifacts))
+        let good = ReleaseManifest.BuiltProduct(bundleIdentifier: "com.bearstouch.trellis", minimumMacOS: "14.0", architectures: ["arm64", "x86_64"], files: Set(manifest.artifacts))
         XCTAssertEqual(manifest.problems(packageMinimumMacOS: packageMinimum, product: good), [])
         var bad = good
         bad.architectures = ["arm64"]
@@ -64,7 +64,9 @@ final class ReleaseTests: XCTestCase {
     func testCleanupAllowlistProtectsUserFiles() {
         let home = "/Users/fixture"
         let items = UninstallPlanner.items(home: home, cliLink: "/Users/fixture/.local/bin/trellis")
-        XCTAssertEqual(items.count, 5)
+        XCTAssertEqual(items.count, 9)
+        XCTAssertTrue(items.contains { $0.path == "/Users/fixture/Library/Application Support/dev.trellis" }, "Data left by the identifier migration is listed")
+        XCTAssertEqual(UninstallPlanner.items(home: home, bundleIdentifier: "com.bearstouch.trellis.dev").count, 4)
         for item in items {
             XCTAssertTrue(item.path.hasPrefix(home + "/"))
             for protected in [".ssh", "id_rsa", "id_ed25519", "known_hosts", "_history", ".zshrc", ".bashrc", ".profile", "Keychains"] {
@@ -74,13 +76,13 @@ final class ReleaseTests: XCTestCase {
         for path in [
             "/Users/fixture/.ssh/config", "/Users/fixture/.ssh/id_ed25519", "/Users/fixture/.ssh/known_hosts", "/Users/fixture/.zsh_history",
             "/Users/fixture/.bash_history", "/Users/fixture/.zshrc", "/Users/fixture/Library/Keychains/login.keychain-db",
-            "/Users/fixture/.ssh/dev.trellis", "/Users/other/Library/Application Support/dev.trellis", "/Users/fixture/Documents",
-            "/Users/fixture/Projects/dev.trellis", "/Users/fixture/.SSH/trellis", "/Users/fixture/library/keychains/trellis", "/Users/fixture/Library/Caches/dev.trellis.other",
-            "/Users/fixture/Library/Application Support/dev.trellis/../../../.zshrc"
+            "/Users/fixture/.ssh/dev.trellis", "/Users/other/Library/Application Support/com.bearstouch.trellis", "/Users/fixture/Documents",
+            "/Users/fixture/Projects/dev.trellis", "/Users/fixture/.SSH/trellis", "/Users/fixture/library/keychains/trellis", "/Users/fixture/Library/Caches/com.bearstouch.trellis.other",
+            "/Users/fixture/Library/Application Support/com.bearstouch.trellis/../../../.zshrc"
         ] {
             XCTAssertFalse(UninstallPlanner.isAllowed(path, home: home), path)
         }
-        XCTAssertTrue(UninstallPlanner.isAllowed("/Users/fixture/Library/Application Support/dev.trellis", home: home))
+        XCTAssertTrue(UninstallPlanner.isAllowed("/Users/fixture/Library/Application Support/com.bearstouch.trellis", home: home))
     }
 
     func testReleaseChecklistRejectsMissingEvidence() {

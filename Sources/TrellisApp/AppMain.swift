@@ -578,6 +578,10 @@ struct TrellisMain {
                 return
             }
             defer { withExtendedLifetime(instanceLock) {} }
+            if !identity.isDevelopment {
+                ApplicationSupportLocation.migratePreferences(
+                    into: .standard, legacy: UserDefaults.standard.persistentDomain(forName: AppInstanceIdentity.legacyProduction))
+            }
             let directory: URL
             if let index = CommandLine.arguments.firstIndex(of: "--state-directory"), CommandLine.arguments.indices.contains(index + 1) {
                 directory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)

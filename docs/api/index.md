@@ -36,7 +36,7 @@ On startup the app publishes a discovery file and a socket:
 | Runtime directory | `$TMPDIR/trellis-<12 hex>` | Per-user temporary directory, mode `0700`, random name |
 | Socket | `<runtime-dir>/s` | Mode `0600`, path ≤ 103 bytes to respect the `sun_path` limit |
 
-`<state-dir>` defaults to `~/Library/Application Support/dev.trellis` (`dev.trellis.dev` for development builds of the app). You can override it with `--state-directory` on both the app and the CLI.
+`<state-dir>` defaults to `~/Library/Application Support/com.bearstouch.trellis` (`com.bearstouch.trellis.dev` for development builds of the app). You can override it with `--state-directory` on both the app and the CLI.
 
 Endpoint safety rules:
 

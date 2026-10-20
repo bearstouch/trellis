@@ -51,7 +51,7 @@ The visual direction is **Native calm**.
 - The left sidebar lists managed windows. Selecting one shows that window's own tab bar above its terminal area.
 - Selecting a tab restores its split layout and its last focused pane.
 - The tab bar has visible separators, a new-tab button and a rename action. Double-clicking a tab label edits it inline: Enter commits, Escape cancels, and an empty name keeps the previous title. Renaming never restarts a session or changes an ID.
-- Dark application chrome is the first-launch default; Light and System are available, and settings saved by an earlier version keep their mode. Terminal panes stay dark with the default themes and use bundled Roboto Mono by default in every appearance.
+- Dark application chrome is the first-launch default; Light and System are available, and settings saved by an earlier version keep their mode. Terminal panes stay dark with the default themes and use bundled JetBrains Mono by default in every appearance.
 - **Hosts** opens a searchable list with connect and edit actions. Connecting opens a new tab by default, with explicit options to open a new window or a split instead.
 
 Menus say **Split Left/Right** and **Split Top/Bottom**. In the API, `axis: x` means left/right and `axis: y` means top/bottom. This avoids the ambiguous term "vertical split".

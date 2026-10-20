@@ -5,17 +5,17 @@ import TrellisCore
 
 final class BundledFontTests: XCTestCase {
     @MainActor
-    func testDefaultTerminalFontIsBundledRobotoMono() throws {
+    func testDefaultTerminalFontIsBundledJetBrainsMono() throws {
         NativeTerminalFont.registerBundledFonts(); NativeTerminalFont.registerBundledFonts()
         let choice = NativeTerminalFont.choice(for: AppearanceSettings().fontName)
-        XCTAssertEqual(choice.name, "RobotoMono-Regular")
+        XCTAssertEqual(choice.name, "JetBrainsMono-Regular")
         XCTAssertNil(choice.notice)
         let font = NativeTerminalFont.font(choice, size: 13)
-        XCTAssertEqual(font.fontName, "RobotoMono-Regular")
+        XCTAssertEqual(font.fontName, "JetBrainsMono-Regular")
         XCTAssertTrue(NativeTerminalFont.isMonospaced(font))
         XCTAssertFalse(NativeTerminalFont.isMonospaced(NSFont.systemFont(ofSize: 13)), "Proportional faces stay excluded")
-        XCTAssertEqual(NativeTerminalFont.typefaceName(for: font.fontName), "Roboto Mono")
-        XCTAssertTrue(NativeTerminalFont.installedNames.contains("RobotoMono-Regular"))
+        XCTAssertEqual(NativeTerminalFont.typefaceName(for: font.fontName), "JetBrains Mono")
+        XCTAssertTrue(NativeTerminalFont.installedNames.contains("JetBrainsMono-Regular"))
     }
 
     @MainActor
@@ -64,6 +64,6 @@ final class BundledFontTests: XCTestCase {
     func testNewTerminalStartsWithBundledFont() {
         _ = NSApplication.shared
         let native = NativeTerminal()
-        XCTAssertEqual((native.view as? AccessibleTerminalView)?.font.fontName, "RobotoMono-Regular")
+        XCTAssertEqual((native.view as? AccessibleTerminalView)?.font.fontName, "JetBrainsMono-Regular")
     }
 }

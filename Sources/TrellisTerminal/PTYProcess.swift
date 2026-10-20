@@ -44,7 +44,7 @@ final class PTYProcess: TerminalProcessTransport {
     private var preparing = false
     private var finalDrainTimer: Timer?
     private var generation = UUID()
-    private let queue = DispatchQueue(label: "dev.trellis.pty", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.bearstouch.trellis.pty", qos: .userInitiated)
     private let processExitNotifications: Bool
     private var launchIdentity: OwnedProcessIdentity?
     private let readIdentity: (Int32) -> OwnedProcessIdentity?

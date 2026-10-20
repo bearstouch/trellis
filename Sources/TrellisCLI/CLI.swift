@@ -90,7 +90,7 @@ public struct CLIEnvironment {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
                 // A normal native launch; an explicit state directory is forwarded unchanged.
-                process.arguments = ["-b", "dev.trellis"] + (stateDirectory.map { ["--args", "--state-directory", $0.path] } ?? [])
+                process.arguments = ["-b", "com.bearstouch.trellis"] + (stateDirectory.map { ["--args", "--state-directory", $0.path] } ?? [])
                 guard (try? process.run()) != nil else { return false }
                 process.waitUntilExit()
                 return process.terminationStatus == 0
@@ -109,7 +109,7 @@ public struct CLIEnvironment {
             stdout: { FileHandle.standardOutput.write(Data(($0 + "\n").utf8)) },
             stderr: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) },
             sleep: { Thread.sleep(forTimeInterval: $0) },
-            defaultStateDirectory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("dev.trellis", isDirectory: true))
+            defaultStateDirectory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("com.bearstouch.trellis", isDirectory: true))
     }
 }
 

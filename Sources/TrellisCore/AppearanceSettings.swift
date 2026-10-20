@@ -28,7 +28,7 @@ public enum TerminalBellStyle: String, Codable, CaseIterable, Sendable {
 
 public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var chromeMode: ChromeMode = .dark
-    public static let defaultFontName = "RobotoMono-Regular"
+    public static let defaultFontName = "JetBrainsMono-Regular"
     public var fontName = Self.defaultFontName
     public var fontSize: Double = 13
     public var cursorShape: TerminalCursorShape = .block

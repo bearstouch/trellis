@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-20
+
+The first Developer ID signed and notarized release, under the new `com.bearstouch.trellis` bundle identifier.
+
+### Changed
+
+- The bundle identifier is now `com.bearstouch.trellis` (development builds: `com.bearstouch.trellis.dev`), ready for Developer ID signing. On first launch Trellis copies your workspace, themes and saved hosts from `~/Library/Application Support/dev.trellis/` and imports your preferences; the old folder is left untouched (and is listed by `uninstall-plan`). Because the app is now signed differently, macOS may ask once to allow access to saved host passwords and automation grants in the Keychain.
+- JetBrains Mono is now the default terminal font for new installs, with its programming ligatures on (turn them off in Settings → Appearance). Existing settings keep the font they saved; choose JetBrains Mono in Settings → Appearance to switch.
+
 ## [0.11.0] - 2026-10-19
 
 This release adds sessions that keep running after quit, restored scrollback, desktop and long-command notifications, progress on tabs, shell marks over SSH, ⌘K Clear and opt-in Metal rendering, plus several security fixes.
@@ -251,7 +260,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/bearstouch/trellis/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/bearstouch/trellis/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/bearstouch/trellis/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/bearstouch/trellis/compare/v0.9.1...v0.9.2

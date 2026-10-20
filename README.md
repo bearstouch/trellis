@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/bearstouch/trellis/actions/workflows/ci.yml/badge.svg)](https://github.com/bearstouch/trellis/actions/workflows/ci.yml)
 
-A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), dark terminal panes in bundled Roboto Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
+A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), dark terminal panes in bundled JetBrains Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
 ![Trellis with managed windows in the sidebar, color-labeled tabs and a terminal session](docs/images/trellis-workspace.png)
 
@@ -28,7 +28,7 @@ swift build
 swift run Trellis --state-directory "$PWD/.build/dev-state"
 ```
 
-`--state-directory` keeps your development workspace and themes separate from your real `~/Library/Application Support/dev.trellis/` data. Use it whenever you hack on Trellis.
+`--state-directory` keeps your development workspace and themes separate from your real `~/Library/Application Support/com.bearstouch.trellis/` data. Use it whenever you hack on Trellis.
 
 ## Development setup
 
@@ -160,7 +160,7 @@ The landing page lives in [`landing/`](landing/README.md). It's a static Vite si
 
 ## Data and migration
 
-User data lives in `~/Library/Application Support/dev.trellis/`. Files there are owner-only and written atomically, with last-known-good backups. Newer or corrupt state opens in recovery mode and is never overwritten.
+User data lives in `~/Library/Application Support/com.bearstouch.trellis/`. Files there are owner-only and written atomically, with last-known-good backups. Newer or corrupt state opens in recovery mode and is never overwritten.
 
 Trellis was previously named **uTerm**. On first launch it copies an existing uTerm workspace and theme library into the new directory and leaves the originals untouched. Existing Trellis data takes priority. Theme IDs that begin with `trellis-` are reserved for built-in themes. During the default-directory migration, any custom theme that uses this prefix gets a new ID, and its saved selections are updated to match. Paths passed with `--state-directory` are used as-is. If an older custom library at such a path has theme IDs that begin with `trellis-`, rename those IDs yourself, along with their filenames and saved selections.
 
@@ -168,7 +168,7 @@ Trellis was previously named **uTerm**. On first launch it copies an existing uT
 
 Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
 
-The installed app (`dev.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `dev.trellis.dev`. Each identity has its own instance lock, activation notification, state directory (`~/Library/Application Support/dev.trellis.dev/` for development) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
+The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, state directory (`~/Library/Application Support/com.bearstouch.trellis.dev/` for development) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
 
 ## Themes and terminal fonts
 

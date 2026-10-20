@@ -38,7 +38,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>dev.trellis.dev</string>
+<key>CFBundleIdentifier</key><string>com.bearstouch.trellis.dev</string>
 <key>CFBundleName</key><string>Trellis Dev</string>
 <key>CFBundleExecutable</key><string>Trellis</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -53,10 +53,10 @@ cp -R "$bin_path/Trellis_TrellisCore.bundle" "$bundle/Contents/Resources/"
 cp Design/AppIcon/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 # The SwiftPM command-line signature does not seal an app's Info.plist/resources.
 # Sign the completed development bundle; no certificate or account is required.
-# dev.trellis.dev keeps its own instance lock and state, apart from an installed Trellis.
-/usr/bin/codesign --force --sign - --identifier dev.trellis.dev.askpass "$bundle/Contents/Helpers/trellis-askpass"
-/usr/bin/codesign --force --sign - --identifier dev.trellis.dev.broker "$bundle/Contents/Helpers/trellis-broker"
-/usr/bin/codesign --force --sign - --identifier dev.trellis.dev "$bundle"
+# com.bearstouch.trellis.dev keeps its own instance lock and state, apart from an installed Trellis.
+/usr/bin/codesign --force --sign - --identifier com.bearstouch.trellis.dev.askpass "$bundle/Contents/Helpers/trellis-askpass"
+/usr/bin/codesign --force --sign - --identifier com.bearstouch.trellis.dev.broker "$bundle/Contents/Helpers/trellis-broker"
+/usr/bin/codesign --force --sign - --identifier com.bearstouch.trellis.dev "$bundle"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$bundle"
 if [ -e "$destination" ]; then
     mv "$destination" "$previous"

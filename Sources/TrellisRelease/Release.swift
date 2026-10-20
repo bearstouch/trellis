@@ -120,23 +120,30 @@ public enum UninstallPlanner {
     public static let firstStep =
         "Open Trellis, quit it and choose Stop Sessions, so no kept session or trellis-broker helper keeps running (or end them with: pkill -HUP -x trellis-broker)."
 
-    public static func items(home: String, bundleIdentifier: String = "dev.trellis", cliLink: String? = nil) -> [Item] {
-        var items = [
-            Item(
-                path: "\(home)/Library/Application Support/\(bundleIdentifier)",
-                description: "Workspace, themes, saved hosts, grants, layout bindings, saved scrollback, and the session broker record"),
-            Item(path: "\(home)/Library/Preferences/\(bundleIdentifier).plist", description: "Preferences"),
-            Item(path: "\(home)/Library/Caches/\(bundleIdentifier)", description: "Caches"),
-            Item(path: "\(home)/Library/Saved Application State/\(bundleIdentifier).savedState", description: "Window restoration state")
-        ]
-        if let cliLink { items.append(Item(path: cliLink, description: "CLI link (removed only if it points to Trellis)")) }
-        return items.filter { isAllowed($0.path, home: home, bundleIdentifier: bundleIdentifier) }
+    public static func items(home: String, bundleIdentifier: String = "com.bearstouch.trellis", cliLink: String? = nil) -> [Item] {
+        // Migration copies, never moves, the previous identity's data, so its folders are listed too.
+        let identifiers = [bundleIdentifier] + (bundleIdentifier == "com.bearstouch.trellis" ? [legacyBundleIdentifier] : [])
+        var items = identifiers.flatMap { id -> [Item] in
+            let previous = id == bundleIdentifier ? "" : " (from \(id), before the identifier change)"
+            return [
+                Item(
+                    path: "\(home)/Library/Application Support/\(id)",
+                    description: "Workspace, themes, saved hosts, grants, layout bindings, saved scrollback, and the session broker record" + previous),
+                Item(path: "\(home)/Library/Preferences/\(id).plist", description: "Preferences" + previous),
+                Item(path: "\(home)/Library/Caches/\(id)", description: "Caches" + previous),
+                Item(path: "\(home)/Library/Saved Application State/\(id).savedState", description: "Window restoration state" + previous)
+            ].filter { isAllowed($0.path, home: home, bundleIdentifier: id) }
+        }
+        if let cliLink, isAllowed(cliLink, home: home) { items.append(Item(path: cliLink, description: "CLI link (removed only if it points to Trellis)")) }
+        return items
     }
+    /// The bundle identifier before `com.bearstouch.trellis`.
+    public static let legacyBundleIdentifier = "dev.trellis"
 
     /// Defense in depth: only the exact app-owned locations, or a `trellis`
     /// link in a directory the link planner accepts, are allowed. Protected
     /// names are matched case-insensitively.
-    public static func isAllowed(_ path: String, home: String, bundleIdentifier: String = "dev.trellis") -> Bool {
+    public static func isAllowed(_ path: String, home: String, bundleIdentifier: String = "com.bearstouch.trellis") -> Bool {
         let path = CLILinkPlanner.standardized(path), home = CLILinkPlanner.standardized(home)
         let protected = ["/.ssh", "/.zsh_history", "/.bash_history", "/.zshrc", "/.bashrc", "/.profile", "/.config/fish", "/.gnupg", "/library/keychains"]
         guard path.hasPrefix(home + "/"), !protected.contains(where: { path.lowercased().contains($0) }) else { return false }

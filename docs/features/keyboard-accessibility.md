@@ -5,7 +5,7 @@
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-U01 | Discoverable, configurable keyboard shortcuts with conflict warnings. | Menus show the shortcuts. A conflict can't silently disable a critical command. |
-| FR-U02 | Readable terminal settings. | Roboto Mono, bundled with the app, is the default terminal font; JetBrains Mono, Cascadia Mono NF (with Nerd Font prompt glyphs), IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled alternatives. A missing or non-monospaced saved font falls back to Menlo or the system monospace font with a visible notice. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
+| FR-U02 | Readable terminal settings. | JetBrains Mono, bundled with the app, is the default terminal font; Roboto Mono, Cascadia Mono NF (with Nerd Font prompt glyphs), IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled alternatives. A missing or non-monospaced saved font falls back to Menlo or the system monospace font with a visible notice. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
 
 ## Default shortcuts
 
@@ -45,7 +45,7 @@ Rules for shortcuts:
 | Setting | Default | Range |
 | --- | --- | --- |
 | Chrome mode | Light | System, Dark, Light |
-| Terminal font | Roboto Mono 13 (bundled) | Sizes 8–48, with zoom |
+| Terminal font | JetBrains Mono 13 (bundled) | Sizes 8–48, with zoom |
 | Cursor | Block, not blinking | |
 | Scrollback | 10,000 lines | 0–50,000, plus a 16 MiB cap |
 | Ligatures | On | On, Off (FR-TX01); visible only with fonts that have them, such as JetBrains Mono |
