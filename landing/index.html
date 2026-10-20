@@ -84,7 +84,7 @@
             <div class="container">
                 <p class="eyebrow rise"><span class="dot" aria-hidden="true"></span>Open source · Native macOS · MIT</p>
                 <h1 class="hero-title gradient-text rise">Your terminal,<br />fully organized <span class="emoji" role="img" aria-label="OK hand">👌</span></h1>
-                <p class="hero-lead rise">Give every project its own window, every window its own tabs, and every tab as many splits as it needs. Trellis is a native Swift terminal for macOS that keeps it all in a sidebar and brings it back after a restart, with saved SSH hosts and a local API for scripts and AI agents.</p>
+                <p class="hero-lead rise">Give every project its own window, every window its own tabs, and every tab as many splits as it needs. Trellis is a native Swift terminal for macOS that keeps it all in a sidebar and brings it back after a restart, can keep your sessions running through a quit, and comes with saved SSH hosts and a local API for scripts and AI agents.</p>
                 <div class="hero-ctas rise">
                     <a class="btn btn-primary" href="https://github.com/bearstouch/trellis/releases/latest" data-track="Download" data-track-location="hero">
                         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.15-1.11 2.28-.67.98-1.36 1.95-2.45 1.97-1.07.02-1.42-.63-2.64-.63-1.23 0-1.61.61-2.62.65-1.05.04-1.85-1.06-2.52-2.04-1.38-1.99-2.43-5.63-1.02-8.08.7-1.22 1.96-1.99 3.32-2.01 1.03-.02 2.01.7 2.64.7.63 0 1.82-.86 3.07-.73.52.02 1.99.21 2.93 1.59-.08.05-1.75 1.02-1.73 3.04M14.35 4.84c.56-.68.94-1.62.83-2.56-.81.03-1.79.54-2.37 1.21-.52.6-.97 1.56-.85 2.48.9.07 1.82-.46 2.39-1.13"/></svg>
@@ -122,6 +122,7 @@
                         <ul class="points">
                             <li>Managed windows live in a left sidebar. Rename and color-label tabs per window.</li>
                             <li>A busy bar shows while a tab is printing, and an <strong>Input</strong> label appears when a program waits for a password or rings for you.</li>
+                            <li>Programs that report progress (OSC 9;4) fill the tab's top edge and label it "50%", "Paused" or "Error".</li>
                             <li>Programs can post desktop notifications (OSC 9, 777 and 99). Click one to jump straight to the pane.</li>
                         </ul>
                     </div>
@@ -134,7 +135,8 @@
                         <ul class="points">
                             <li>Split any pane along either axis and keep going. Ratios are yours to drag.</li>
                             <li>New splits and tabs open in the directory you are already in.</li>
-                            <li>Restored workspaces start with every session <strong>stopped</strong>. Typed input is never replayed.</li>
+                            <li>Restored workspaces start with every session <strong>stopped</strong> by default. Typed input is never replayed.</li>
+                            <li>Or opt in to <strong>Keep Running</strong>: sessions live on in a small helper after ⌘Q and reconnect next launch with their recent output. You can also restore each pane's scrollback, with secrets redacted.</li>
                         </ul>
                     </div>
                     <figure class="shot" data-shot="splits" data-alt="A Trellis tab split into two panes, git log on the left and htop on the right"></figure>
@@ -146,6 +148,7 @@
                         <ul class="points">
                             <li>zsh, bash and fish report their working directory and each command's exit status.</li>
                             <li>Failed commands are flagged, and <kbd>⌘↑</kbd> <kbd>⌘↓</kbd> jump between prompts.</li>
+                            <li>A command that runs longer than 10 seconds (you choose) notifies you when it finishes out of view.</li>
                             <li>On by default. Turn it off in Settings → Sessions.</li>
                         </ul>
                     </div>
@@ -160,7 +163,7 @@
             <div class="container">
                 <p class="eyebrow">Terminal</p>
                 <h2 class="section-title gradient-text">The details you notice at 2am</h2>
-                <p class="section-lead">Built on a vendored SwiftTerm engine with small, recorded patches. PTY I/O runs off the main thread, so the window stays smooth under heavy output.</p>
+                <p class="section-lead">Built on a vendored SwiftTerm engine with small, recorded patches. PTY I/O runs off the main thread, so the window stays smooth under heavy output, and Metal rendering is there when you want more.</p>
                 <div class="card-grid">
                     <article class="card reveal">
                         <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></span>
@@ -190,7 +193,22 @@
                     <article class="card reveal">
                         <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
                         <h3>Desktop notifications</h3>
-                        <p>OSC 9, 777 and kitty's OSC 99, cleaned of control characters and rate-limited per pane.</p>
+                        <p>OSC 9, 777 and kitty's OSC 99, cleaned of control characters and rate-limited per pane, plus a nudge when a long command finishes.</p>
+                    </article>
+                    <article class="card reveal">
+                        <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>
+                        <h3>GPU rendering</h3>
+                        <p>Opt-in Metal renderer that matches the CoreGraphics output, falls back automatically, and draws heavy output far faster.</p>
+                    </article>
+                    <article class="card reveal">
+                        <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+                        <h3>⌘K to clear</h3>
+                        <p>Clears the scrollback and everything above the prompt, just like Terminal. Full-screen programs keep their screen.</p>
+                    </article>
+                    <article class="card reveal">
+                        <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+                        <h3>Hostile output, contained</h3>
+                        <p>Oversized images and escape sequences are capped or refused, and a paste can't break out of bracketed paste.</p>
                     </article>
                 </div>
             </div>
@@ -237,6 +255,7 @@
                     <ul class="points">
                         <li>A saved host library in File → Hosts…, plus read-only discovery of your <code>~/.ssh/config</code> aliases.</li>
                         <li>Connections run through <code>/usr/bin/ssh</code> and never bypass host-key trust.</li>
+                        <li>A remote shell's marks show up too: "SSH · host:/path", titles, exit badges and notifications. They're display-only.</li>
                         <li>An optional per-host password lives in the macOS Keychain, optionally behind Touch ID, and is given to ssh only at its password prompt.</li>
                     </ul>
                 </div>
@@ -269,7 +288,7 @@
                 <h2 class="section-title gradient-text">Nothing leaves your Mac</h2>
                 <div class="card-grid card-grid-3">
                     <article class="card reveal"><h3>No telemetry</h3><p>No analytics, no phoning home, no account.</p></article>
-                    <article class="card reveal"><h3>Output stays private</h3><p>Terminal output and typed input are never logged or saved to disk.</p></article>
+                    <article class="card reveal"><h3>Output stays private</h3><p>Terminal output and typed input are never logged. Output is only saved if you turn on scrollback restore, redacted and kept on your Mac.</p></article>
                     <article class="card reveal"><h3>Diagnostics you can read</h3><p>Help → Export Diagnostics previews an allow-listed report before saving.</p></article>
                 </div>
             </div>
@@ -325,7 +344,11 @@
                     </details>
                     <details>
                         <summary>Does it collect any data?</summary>
-                        <p>No. There is no telemetry. Terminal output and typed input are never logged or persisted, and secrets stay in the macOS Keychain.</p>
+                        <p>No. There is no telemetry. Terminal output and typed input are never logged, and secrets stay in the macOS Keychain. Output is written to disk only if you opt in to scrollback restore; it's redacted best-effort and never leaves your Mac.</p>
+                    </details>
+                    <details>
+                        <summary>Do my sessions survive quitting?</summary>
+                        <p>If you want them to. Turn on Settings → Sessions → Keep sessions running after quit, and ⌘Q asks whether to keep sessions running, stop them, or cancel. Kept sessions reconnect next launch with up to 4 MiB of recent output. Otherwise your layout comes back with every session stopped.</p>
                     </details>
                     <details>
                         <summary>Does it run on Intel Macs?</summary>
