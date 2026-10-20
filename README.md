@@ -156,7 +156,7 @@ python3 -m venv .venv-docs && .venv-docs/bin/pip install mkdocs-material
 
 ## Website
 
-The landing page lives in [`landing/`](landing/README.md). It's a static Vite site served by nginx in a Docker image for Railway: `cd landing && npm install && npm run dev`.
+The landing page lives on the bearstouch site at [bearstouch.com/trellis](https://bearstouch.com/trellis/), built from the separate bearstouch landing project.
 
 ## Data and migration
 
