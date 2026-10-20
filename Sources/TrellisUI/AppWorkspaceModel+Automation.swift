@@ -288,7 +288,7 @@ extension AppWorkspaceModel {
         }
     }
 
-    private func saveLayoutBindings(_ namespace: String, _ bindings: [String: LayoutBinding]) throws(AutomationModelError) {
+    func saveLayoutBindings(_ namespace: String, _ bindings: [String: LayoutBinding]) throws(AutomationModelError) {
         var namespaces = (layoutNamespaces ?? [:]).mapValues { LayoutPlanner.live($0, in: snapshot) }
         namespaces[namespace] = bindings.isEmpty ? nil : bindings
         namespaces = namespaces.filter { !$0.value.isEmpty }

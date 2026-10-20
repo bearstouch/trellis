@@ -44,6 +44,31 @@ final class BoundaryFuzzTests: XCTestCase {
         return Data(bytes)
     }
 
+    /// Workspace files may carry commands, so every accepted mutation must stay inside its project (FR-WF01).
+    func testMutatedWorkspaceFilesStayInsideTheirProject() {
+        var random = Generator(state: 0x5746)
+        var accepted = 0
+        let seed = Data(
+            #"{"version":1,"name":"P","tabs":[{"title":"T","color":"red","root":{"type":"split","axis":"y","ratio":0.4,"children":[{"type":"pane","directory":"src/app","command":"make test"},{"type":"pane","key":"k","title":"x"}]}}]}"#
+                .utf8)
+        for iteration in 0..<2_000 {
+            guard case .success(let file) = WorkspaceFileJSON.parse(mutate(seed, &random)) else { continue }
+            accepted += 1
+            let resolved = file.resolve(projectRoot: "/work/p")
+            XCTAssertTrue(resolved.commands.values.allSatisfy { !$0.contains("\n") && !$0.contains("\r") && !$0.contains("\0") }, "iteration \(iteration)")
+            let plan = LayoutPlanner.plan(
+                resolved.layout, bindings: [:], snapshot: WorkspaceSnapshot(), home: "/Users/test", hostExists: { _ in false }, directoryExists: { _ in true })
+            guard let target = plan.target else { continue }
+            XCTAssertNoThrow(try target.validate(), "iteration \(iteration)")
+            for session in target.sessions.values {
+                guard case .shell(let directory?) = session.launch else { XCTFail("iteration \(iteration)"); continue }
+                XCTAssertTrue(directory == "/work/p" || directory.hasPrefix("/work/p/"), "iteration \(iteration)")
+                XCTAssertFalse(directory.split(separator: "/").contains(".."), "iteration \(iteration)")
+            }
+        }
+        XCTAssertGreaterThan(accepted, 0, "Some mutations stay valid, so the accept path is exercised too")
+    }
+
     func testMutatedInputsAreRejectedSafelyAtEveryBoundary() async throws {
         var random = Generator(state: 0x5031)
         var accepted = 0, restored = 0

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Workspace files:** a project's `.trellis/workspace.json`, reviewable in its repository, describes one window: tabs with color labels, splits, pane titles, folders relative to the project, and a command per pane (FR-WF01).
+  - When a shell `cd`s into the project, hovering its tab shows **Load Workspace**. It's also in the tab's context menu and available to VoiceOver (FR-WF02).
+  - Commands run only after you review every command and choose **Trust and Open**. Trust is kept per folder and SHA-256 digest, so any change to the file asks again. **Open Without Commands** opens plain shells (FR-WF03).
+  - Opening creates the project's window; opening it again reconciles that window without restarting panes or rerunning commands (FR-WF04).
+  - Each command is typed at its new shell's first prompt, and the shell stays when the command ends (FR-WF05).
+  - **Save as Workspace File…** (window sidebar menu, File menu) writes the window with editable commands, in a stable, diff-friendly format (FR-WF06).
+  - API layouts can now carry tab colors internally, but the automation layout format is unchanged and still never carries commands.
+
 ## [0.11.1] - 2026-10-20
 
 The first Developer ID signed and notarized release, under the new `com.bearstouch.trellis` bundle identifier.

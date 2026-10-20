@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "name": "Trellis",
+  "tabs": [
+    {
+      "title": "Develop",
+      "color": "green",
+      "root": {
+        "type": "split",
+        "axis": "x",
+        "ratio": 0.6,
+        "children": [
+          {
+            "type": "pane",
+            "title": "Shell"
+          },
+          {
+            "type": "pane",
+            "title": "Status",
+            "command": "git status --short"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Build",
+      "color": "blue",
+      "root": {
+        "type": "split",
+        "axis": "y",
+        "ratio": 0.5,
+        "children": [
+          {
+            "type": "pane",
+            "title": "Build",
+            "command": "swift build"
+          },
+          {
+            "type": "pane",
+            "title": "Lint",
+            "command": "swift format lint --strict -r Sources Tests"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Docs",
+      "color": "purple",
+      "root": {
+        "type": "pane",
+        "title": "Docs",
+        "directory": "docs"
+      }
+    }
+  ]
+}

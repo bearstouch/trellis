@@ -185,6 +185,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             file.addItem(.separator())
             file.addItem(withTitle: "Export Workspace…", action: #selector(exportWorkspace), keyEquivalent: "")
             file.addItem(withTitle: "Import Workspace…", action: #selector(importWorkspace), keyEquivalent: "")
+            file.addItem(.separator())
+            file.addItem(withTitle: "Open Workspace File…", action: #selector(openWorkspaceFile), keyEquivalent: "")
+            file.addItem(withTitle: "Save Window as Workspace File…", action: #selector(saveWorkspaceFile), keyEquivalent: "")
         }
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
@@ -333,6 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
             return validateShortcut(action)
         }
+        if menuItem.action == #selector(saveWorkspaceFile) { return model.snapshot.activeWindowID != nil }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
@@ -436,6 +440,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 if converted > 0 { model.errorMessage = "\(converted) custom command pane(s) were exported as plain shells; their commands are never exported." }
             } catch { model.errorMessage = "The export could not be written. Check the location and try again." }
         }
+    }
+
+    /// A project's `.trellis/workspace.json` (FR-WF04); commands wait for review unless that exact file is trusted.
+    @objc private func openWorkspaceFile() {
+        Task { await model.beginOpenWorkspaceFile() }
+    }
+
+    @objc private func saveWorkspaceFile() {
+        guard let id = model.snapshot.activeWindowID else { return }
+        model.beginSaveWorkspaceFile(windowID: id)
     }
 
     @objc private func importWorkspace() {

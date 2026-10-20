@@ -14,7 +14,9 @@ public struct LayoutWindow: Equatable, Sendable {
 
 public struct LayoutTab: Equatable, Sendable {
     public var key: String, title: String, root: LayoutNode
-    public init(key: String, title: String, root: LayoutNode) { self.key = key; self.title = title; self.root = root }
+    /// Nil leaves an existing tab's label alone, so API layouts never wipe one (FR-T04).
+    public var color: TabColor?
+    public init(key: String, title: String, color: TabColor? = nil, root: LayoutNode) { self.key = key; self.title = title; self.color = color; self.root = root }
 }
 
 public enum LayoutLaunch: Equatable, Sendable {
@@ -99,7 +101,7 @@ public enum LayoutPlanner {
     /// namespace `bindings`. Never mutates; the target is applied atomically.
     public static func plan(
         _ document: LayoutDocument, bindings existing: [String: LayoutBinding], snapshot: WorkspaceSnapshot, home: String,
-        hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, makeID: () -> UUID = { UUID() }
+        hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, keepLiveLaunches: Bool = false, makeID: () -> UUID = { UUID() }
     ) -> LayoutPlan {
         var plan = LayoutPlan(baseRevision: snapshot.revision)
         // Structural validation first; nothing is reconciled on errors.
@@ -198,15 +200,17 @@ public enum LayoutPlanner {
                             updated.title = title
                             var changed = pane.title != title
                             if var session = next.sessions[pane.sessionID], !sameLaunch(session.launch, desiredLaunch) {
-                                // Live sessions keep their launch; inactive ones may be reconfigured.
-                                guard [.stopped, .exited, .failed].contains(session.state) else {
+                                // Live sessions keep their launch; inactive ones may be reconfigured. Workspace files
+                                // (FR-WF04) leave live panes running where they are instead of conflicting.
+                                if [.stopped, .exited, .failed].contains(session.state) {
+                                    session.launch = desiredLaunch
+                                    next.sessions[session.id] = session
+                                    changed = true
+                                } else if !keepLiveLaunches {
                                     plan.conflicts.append(
                                         LayoutIssue(key: key, "This pane's session is \(session.state.rawValue); its launch cannot change. Close and recreate it instead."))
                                     return .pane(id)
                                 }
-                                session.launch = desiredLaunch
-                                next.sessions[session.id] = session
-                                changed = true
                             }
                             next.panes[id] = updated
                             if changed { plan.updates.append((.pane, key)) }
@@ -239,14 +243,15 @@ public enum LayoutPlanner {
                         continue
                     }
                     var updated = existingTab
-                    let changed = updated.title != tab.title || updated.root != root
+                    let changed = updated.title != tab.title || updated.root != root || (tab.color != nil && updated.color != tab.color)
                     updated.title = tab.title
+                    updated.color = tab.color ?? updated.color
                     updated.root = root
                     if !root.paneIDs.contains(updated.activePaneID) { updated.activePaneID = root.paneIDs[0] }
                     next.tabs[tabID] = updated
                     if changed { plan.updates.append((.tab, tab.key)) }
                 } else {
-                    next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: tab.title, root: root, activePaneID: root.paneIDs[0])
+                    next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: tab.title, color: tab.color, root: root, activePaneID: root.paneIDs[0])
                     plan.creates.append((.tab, tab.key))
                 }
                 managedTabs.append(tabID)
