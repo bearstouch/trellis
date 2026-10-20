@@ -53,7 +53,7 @@ public final class BrokerServer: @unchecked Sendable {
     }
 
     private let configuration: Configuration
-    private let queue = DispatchQueue(label: "dev.trellis.broker", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.bearstouch.trellis.broker", qos: .userInitiated)
     private let now: @Sendable () -> Date
     private let ownPID = getpid()
     private var core: BrokerCore

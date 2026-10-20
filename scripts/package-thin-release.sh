@@ -27,10 +27,10 @@ for pair in arm64:apple-silicon x86_64:intel; do
         /usr/bin/lipo -thin "$arch" "$app/$binary" -output "$app/$binary.thin"
         mv "$app/$binary.thin" "$app/$binary"
     done
-    sign "$app/Contents/Helpers/trellis" dev.trellis.cli
-    sign "$app/Contents/Helpers/trellis-askpass" dev.trellis.askpass
-    sign "$app/Contents/Helpers/trellis-broker" dev.trellis.broker
-    sign "$app" dev.trellis
+    sign "$app/Contents/Helpers/trellis" com.bearstouch.trellis.cli
+    sign "$app/Contents/Helpers/trellis-askpass" com.bearstouch.trellis.askpass
+    sign "$app/Contents/Helpers/trellis-broker" com.bearstouch.trellis.broker
+    sign "$app" com.bearstouch.trellis
     /usr/bin/codesign --verify --deep --strict "$app"
     [ "$(/usr/bin/lipo -archs "$app/Contents/MacOS/Trellis")" = "$arch" ] || { echo "$label app is not $arch" >&2; exit 1; }
     [ "$(/usr/bin/lipo -archs "$app/Contents/Helpers/trellis")" = "$arch" ] || { echo "$label CLI is not $arch" >&2; exit 1; }

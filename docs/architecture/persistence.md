@@ -2,7 +2,7 @@
 
 ## What is saved and where
 
-All state lives in `~/Library/Application Support/<identity>/`: `dev.trellis` for the installed app, and `dev.trellis.dev` for development builds (unbundled executables and the `Trellis Dev` feasibility bundle). The two identities also hold separate instance locks, so both can run at once. The `--state-directory /abs/path` launch argument replaces that location.
+All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.trellis` for the installed app, and `com.bearstouch.trellis.dev` for development builds (unbundled executables and the `Trellis Dev` feasibility bundle). The two identities also hold separate instance locks, so both can run at once. The `--state-directory /abs/path` launch argument replaces that location.
 
 | File | Contents | Protection |
 | --- | --- | --- |
@@ -74,4 +74,4 @@ With **Restore scrollback after quit** on (FR-R04), quitting writes each pane's 
 
 ## Migrating from uTerm
 
-On first launch, if `dev.trellis` doesn't exist, Trellis copies `dev.uterm` (or `dev.uterm.feasibility`) through a staging directory and then moves it into place. The originals are left alone. Custom themes whose IDs use the reserved `trellis-` prefix get the new ID `imported-<uuid>`, and their saved selections in `workspace.json` and its backup are updated to match. Only the installed app identity migrates. Development builds (`dev.trellis.dev`) and paths passed with `--state-directory` are used as-is, with no migration.
+On first launch, if `com.bearstouch.trellis` doesn't exist, Trellis copies the first existing legacy folder: `dev.trellis` (the previous bundle identifier, copied as-is except its per-instance `control.json`), then `dev.uterm` (or `dev.uterm.feasibility`) through a staging directory and then moves it into place. The originals are left alone. Custom themes whose IDs use the reserved `trellis-` prefix get the new ID `imported-<uuid>`, and their saved selections in `workspace.json` and its backup are updated to match (uTerm sources only). Preferences from the `dev.trellis` defaults domain are imported once, never overwriting a value already set. Only the installed app identity migrates. Development builds (`com.bearstouch.trellis.dev`) and paths passed with `--state-directory` are used as-is, with no migration.

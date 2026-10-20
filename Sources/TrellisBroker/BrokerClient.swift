@@ -24,7 +24,7 @@ public enum BrokerClientError: Error, Equatable, Sendable {
 public final class BrokerConnection {
     public static let outboxLimit = 4 * 1_048_576
     private let io: DispatchIO
-    private let readQueue = DispatchQueue(label: "dev.trellis.broker.client", qos: .userInitiated)
+    private let readQueue = DispatchQueue(label: "com.bearstouch.trellis.broker.client", qos: .userInitiated)
     private var nextRequest: UInt64 = 1
     private var pending: [UInt64: CheckedContinuation<BrokerMessage, any Error>] = [:]
     private var sinks: [UUID: WeakSink] = [:]

@@ -46,7 +46,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>dev.trellis</string>
+<key>CFBundleIdentifier</key><string>com.bearstouch.trellis</string>
 <key>CFBundleName</key><string>Trellis</string>
 <key>CFBundleExecutable</key><string>Trellis</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -66,10 +66,10 @@ sign() {
         /usr/bin/codesign --force --options runtime --timestamp --sign "$identity" --identifier "$2" "$1"
     fi
 }
-sign "$app/Contents/Helpers/trellis" dev.trellis.cli
-sign "$app/Contents/Helpers/trellis-askpass" dev.trellis.askpass
-sign "$app/Contents/Helpers/trellis-broker" dev.trellis.broker
-sign "$app" dev.trellis
+sign "$app/Contents/Helpers/trellis" com.bearstouch.trellis.cli
+sign "$app/Contents/Helpers/trellis-askpass" com.bearstouch.trellis.askpass
+sign "$app/Contents/Helpers/trellis-broker" com.bearstouch.trellis.broker
+sign "$app" com.bearstouch.trellis
 
 dmg="$dist/Trellis-$version.dmg"
 scripts/make-dmg.sh "$app" "$dmg" "Trellis $version"

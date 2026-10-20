@@ -50,13 +50,13 @@ final class ApplicationInstanceLockTests: XCTestCase {
 
 final class AppInstanceIdentityTests: XCTestCase {
     func testInstalledAndDevelopmentBuildsDoNotShareInstanceResources() throws {
-        let installed = AppInstanceIdentity(bundleIdentifier: "dev.trellis")
+        let installed = AppInstanceIdentity(bundleIdentifier: "com.bearstouch.trellis")
         let unbundled = AppInstanceIdentity(bundleIdentifier: nil)
-        let devBundle = AppInstanceIdentity(bundleIdentifier: "dev.trellis.dev")
+        let devBundle = AppInstanceIdentity(bundleIdentifier: "com.bearstouch.trellis.dev")
         XCTAssertFalse(installed.isDevelopment)
         XCTAssertTrue(unbundled.isDevelopment); XCTAssertEqual(unbundled, devBundle)
         let tmp = URL(fileURLWithPath: "/tmp", isDirectory: true)
-        XCTAssertEqual(installed.lockURL(in: tmp, uid: 501).lastPathComponent, "dev.trellis-501.instance.lock")
+        XCTAssertEqual(installed.lockURL(in: tmp, uid: 501).lastPathComponent, "com.bearstouch.trellis-501.instance.lock")
         XCTAssertNotEqual(installed.lockURL(in: tmp, uid: 501), unbundled.lockURL(in: tmp, uid: 501))
         XCTAssertNotEqual(installed.activationNotification, unbundled.activationNotification)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -70,7 +70,7 @@ final class AppInstanceIdentityTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        guard case .acquired(let installed) = try ApplicationInstanceLock.acquire(at: AppInstanceIdentity(bundleIdentifier: "dev.trellis").lockURL(in: directory)) else {
+        guard case .acquired(let installed) = try ApplicationInstanceLock.acquire(at: AppInstanceIdentity(bundleIdentifier: "com.bearstouch.trellis").lockURL(in: directory)) else {
             return XCTFail("Installed app must acquire its lock")
         }
         withExtendedLifetime(installed) {

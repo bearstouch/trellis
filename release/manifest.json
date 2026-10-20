@@ -1,5 +1,5 @@
 {
-  "bundleIdentifier": "dev.trellis",
+  "bundleIdentifier": "com.bearstouch.trellis",
   "name": "Trellis",
   "version": "0.11.0",
   "minimumMacOS": "14.0",

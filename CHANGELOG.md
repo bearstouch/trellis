@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The bundle identifier is now `com.bearstouch.trellis` (development builds: `com.bearstouch.trellis.dev`), ready for Developer ID signing. On first launch Trellis copies your workspace, themes and saved hosts from `~/Library/Application Support/dev.trellis/` and imports your preferences; the old folder is left untouched (and is listed by `uninstall-plan`). Because the app is now signed differently, macOS may ask once to allow access to saved host passwords and automation grants in the Keychain.
 - JetBrains Mono is now the default terminal font for new installs, with its programming ligatures on (turn them off in Settings → Appearance). Existing settings keep the font they saved; choose JetBrains Mono in Settings → Appearance to switch.
 
 ## [0.11.0] - 2026-10-19
