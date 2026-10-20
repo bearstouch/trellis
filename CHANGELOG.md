@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Commands run only after you review every command and choose **Trust and Open**. Trust is kept per folder and SHA-256 digest, so any change to the file asks again. **Open Without Commands** opens plain shells (FR-WF03).
   - Opening creates the project's window; opening it again reconciles that window without restarting panes or rerunning commands (FR-WF04).
   - Each command is typed at its new shell's first prompt, and the shell stays when the command ends (FR-WF05).
+  - **File → Open Workspace File…** (⌘O, rebindable) opens a project folder or its file directly.
   - **Save as Workspace File…** (window sidebar menu, File menu) writes the window with editable commands, in a stable, diff-friendly format (FR-WF06).
   - API layouts can now carry tab colors internally, but the automation layout format is unchanged and still never carries commands.
 

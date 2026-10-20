@@ -186,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             file.addItem(withTitle: "Export Workspace…", action: #selector(exportWorkspace), keyEquivalent: "")
             file.addItem(withTitle: "Import Workspace…", action: #selector(importWorkspace), keyEquivalent: "")
             file.addItem(.separator())
-            file.addItem(withTitle: "Open Workspace File…", action: #selector(openWorkspaceFile), keyEquivalent: "")
+            file.addItem(item(.openWorkspaceFile))
             file.addItem(withTitle: "Save Window as Workspace File…", action: #selector(saveWorkspaceFile), keyEquivalent: "")
         }
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
@@ -267,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
+        case .openWorkspaceFile: openWorkspaceFile()
         case .findInPane: model.activeTerminal?.showSearch()
         case .findNext: model.activeTerminal?.findInPane()
         case .findPrevious: model.activeTerminal?.findInPane(forward: false)
@@ -299,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if [.newWindow, .saveWorkspace, .showHosts, .openWorkspaceFile, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
