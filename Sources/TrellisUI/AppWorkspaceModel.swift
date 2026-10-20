@@ -745,8 +745,6 @@ public final class AppWorkspaceModel: ObservableObject {
                 }
                 if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
-                // Without integration there is no prompt mark to wait for; the PTY holds the command until the shell reads it.
-                if configuration.shellIntegration == nil { submitWorkspaceCommand(paneID: paneID) }
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }

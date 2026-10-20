@@ -247,11 +247,18 @@ extension AppWorkspaceModel {
             // A start that was refused or skipped (restoring, closing, shutting down) drops the command, so a later
             // manual start never types it (FR-WF05).
             if let sessionID, ![.starting, .running].contains(snapshot.sessions[sessionID]?.state) { pendingWorkspaceCommands.removeValue(forKey: sessionID) }
+            // Without integration there is no prompt mark to wait for; the PTY holds the command until the shell reads it.
+            if !shellGetsIntegration { submitWorkspaceCommand(paneID: paneID) }
         }
         return windowID
     }
 
     // MARK: Commands (FR-WF05)
+
+    /// Whether a new local shell pane gets integration, and so reports its first prompt (FR-SI01).
+    var shellGetsIntegration: Bool {
+        shellIntegrationEnabled && shellIntegrationDirectory != nil && ShellIntegrationKind(executable: defaultShell) != nil
+    }
 
     /// Types a queued command into its shell, once; it is dropped if the shell is no longer running.
     func submitWorkspaceCommand(paneID: UUID) {
