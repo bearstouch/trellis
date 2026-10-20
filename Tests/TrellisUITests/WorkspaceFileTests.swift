@@ -218,6 +218,14 @@ final class WorkspaceFileTests: XCTestCase {
 
         model.stopOfferingWorkspaceFile(root: project)
         XCTAssertNil(model.workspaceFileOffer(tabID: tab.id), "Don't Offer for This Folder hides it")
+
+        // Closed panes leave no offer, lookup or queued state behind.
+        let closed = tab.activePaneID
+        await model.closeTab(tab.id)
+        XCTAssertNil(model.snapshot.panes[closed])
+        try prompt(model, projectTab.activePaneID, project)
+        XCTAssertNil(model.workspaceFileOffers[closed])
+        XCTAssertNil(model.workspaceFileLookups[closed])
     }
 
     @MainActor

@@ -76,6 +76,7 @@ extension AppWorkspaceModel {
     /// Looks for a workspace file above a local shell's new directory, off the main actor; a newer directory wins.
     func detectWorkspaceFile(paneID: UUID, directory: String) {
         guard workspaceFileLookups[paneID] != directory else { return }
+        pruneWorkspaceFileState()
         workspaceFileLookups[paneID] = directory
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         Task { [weak self] in
@@ -234,6 +235,7 @@ extension AppWorkspaceModel {
             return nil
         }
         guard let windowID = plan.bindings[WorkspaceFile.windowKey]?.id else { return nil }
+        pruneWorkspaceFileState()
         for (key, paneID) in plan.createdPanes {
             if let command = resolved.commands[key] {
                 workspaceFileCommands[paneID] = command
@@ -251,6 +253,16 @@ extension AppWorkspaceModel {
             if !shellGetsIntegration { submitWorkspaceCommand(paneID: paneID) }
         }
         return windowID
+    }
+
+    /// Drops state for closed panes and sessions. Kept out of `publish`: pruning there makes Swift 6.3.3 (Xcode 26.6)
+    /// emit code that corrupts the task allocator in later async calls ("freed pointer was not the last allocation").
+    func pruneWorkspaceFileState() {
+        let panes = snapshot.panes, sessions = snapshot.sessions
+        pendingWorkspaceCommands = pendingWorkspaceCommands.filter { sessions[$0.key] != nil }
+        workspaceFileCommands = workspaceFileCommands.filter { panes[$0.key] != nil }
+        workspaceFileLookups = workspaceFileLookups.filter { panes[$0.key] != nil }
+        if workspaceFileOffers.keys.contains(where: { panes[$0] == nil }) { workspaceFileOffers = workspaceFileOffers.filter { panes[$0.key] != nil } }
     }
 
     // MARK: Commands (FR-WF05)
@@ -374,6 +386,7 @@ extension AppWorkspaceModel {
         }
         if (try? layoutBindings(Self.workspaceNamespace(draft.root))) != nil { try? saveLayoutBindings(Self.workspaceNamespace(draft.root), bindings) }
         for (entry, paneID) in zip(file.entries, draft.paneIDs) { workspaceFileCommands[paneID] = entry.pane.command }
+        pruneWorkspaceFileState()
         pendingWorkspaceSave = nil
         return true
     }

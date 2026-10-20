@@ -607,10 +607,6 @@ public final class AppWorkspaceModel: ObservableObject {
         if let viewed = presentation.activePane?.id, inputWaits[viewed] == .attention { inputWaits.removeValue(forKey: viewed) }
         for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
-        pendingWorkspaceCommands = pendingWorkspaceCommands.filter { next.sessions[$0.key] != nil }
-        workspaceFileCommands = workspaceFileCommands.filter { next.panes[$0.key] != nil }
-        workspaceFileLookups = workspaceFileLookups.filter { next.panes[$0.key] != nil }
-        if workspaceFileOffers.keys.contains(where: { next.panes[$0] == nil }) { workspaceFileOffers = workspaceFileOffers.filter { next.panes[$0.key] != nil } }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
