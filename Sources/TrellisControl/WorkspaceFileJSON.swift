@@ -93,48 +93,30 @@ public enum WorkspaceFileJSON {
     /// Fields in a fixed, readable order with two-space indentation and a final newline, so saving the same
     /// window twice produces identical bytes and reviews show only real changes.
     public static func encode(_ file: WorkspaceFile) -> Data {
-        indirect enum Value {
-            case string(String), number(Double), array([Value]), object([(String, Value)])
-        }
-        func encoded(_ node: WorkspaceFile.Node) -> Value {
+        func encoded(_ node: WorkspaceFile.Node) -> StableJSON.Value {
             switch node {
             case .pane(let pane):
-                var fields: [(String, Value)] = [("type", .string("pane"))]
+                var fields: [(String, StableJSON.Value)] = [("type", .string("pane"))]
                 if let key = pane.key { fields.append(("key", .string(key))) }
                 if let title = pane.title { fields.append(("title", .string(title))) }
                 if let directory = pane.directory { fields.append(("directory", .string(directory))) }
                 if let command = pane.command { fields.append(("command", .string(command))) }
                 return .object(fields)
             case .split(let key, let axis, let ratio, let children):
-                var fields: [(String, Value)] = [("type", .string("split"))]
+                var fields: [(String, StableJSON.Value)] = [("type", .string("split"))]
                 if let key { fields.append(("key", .string(key))) }
                 fields += [("axis", .string(axis.rawValue)), ("ratio", .number(ratio)), ("children", .array(children.map(encoded)))]
                 return .object(fields)
             }
         }
-        let tabs: [Value] = file.tabs.map { tab in
-            var fields: [(String, Value)] = []
+        let tabs: [StableJSON.Value] = file.tabs.map { tab in
+            var fields: [(String, StableJSON.Value)] = []
             if let key = tab.key { fields.append(("key", .string(key))) }
             fields.append(("title", .string(tab.title)))
             if let color = tab.color { fields.append(("color", .string(color.rawValue))) }
             fields.append(("root", encoded(tab.root)))
             return .object(fields)
         }
-        let document: Value = .object([("version", .number(1)), ("name", .string(file.name)), ("tabs", .array(tabs))])
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.withoutEscapingSlashes]
-        func scalar<T: Encodable>(_ value: T) -> String { (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? "null" }
-        func render(_ value: Value, indent: String) -> String {
-            let inner = indent + "  "
-            switch value {
-            case .string(let text): return scalar(text)
-            case .number(let number): return number == number.rounded() && abs(number) < 1e15 ? String(Int64(number)) : scalar(number)
-            case .array(let items):
-                return items.isEmpty ? "[]" : "[\n" + items.map { inner + render($0, indent: inner) }.joined(separator: ",\n") + "\n\(indent)]"
-            case .object(let fields):
-                return fields.isEmpty ? "{}" : "{\n" + fields.map { inner + scalar($0.0) + ": " + render($0.1, indent: inner) }.joined(separator: ",\n") + "\n\(indent)}"
-            }
-        }
-        return Data((render(document, indent: "") + "\n").utf8)
+        return StableJSON.render(.object([("version", .number(1)), ("name", .string(file.name)), ("tabs", .array(tabs))]))
     }
 }

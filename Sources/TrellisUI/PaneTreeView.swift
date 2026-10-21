@@ -77,6 +77,7 @@ struct PaneTreeView: View {
                         Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
                             .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
                     }
+                    if context.kind == "Local" { TaskDropdownButton(model: model, paneID: id) }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.

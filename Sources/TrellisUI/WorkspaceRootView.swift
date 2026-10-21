@@ -14,6 +14,7 @@ public struct WorkspaceRootView: View {
     @State private var tabDropTargetID: UUID?
     @State private var draggedWindowID: UUID?
     @State private var windowDropTargetID: UUID?
+    @State private var windowDragStarts = 0
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
@@ -54,6 +55,10 @@ public struct WorkspaceRootView: View {
         .onChange(of: model.windowRenameRequest) { _, _ in
             if let window = model.presentation.selectedWindow { beginWindowRename(window) }
         }
+        // A cancelled drag leaves its ID behind; starting one in the other list clears it, so a tab over a window row
+        // (or a window over the tab bar) never shows a landing bar.
+        .onChange(of: draggedTabID) { _, value in if value != nil { draggedWindowID = nil; windowDropTargetID = nil } }
+        .onChange(of: draggedWindowID) { _, value in if value != nil { draggedTabID = nil; tabDropTargetID = nil } }
         .onChange(of: model.editingTabID) { _, value in
             if value == nil, let terminal = model.activeTerminal {
                 DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
@@ -95,6 +100,9 @@ public struct WorkspaceRootView: View {
         }
         .sheet(item: Binding(get: { model.pendingWorkspaceReview }, set: { if $0 == nil, let id = model.pendingWorkspaceReview?.id { Task { await model.resolveWorkspaceReview(id, .cancel) } } })) {
             WorkspaceFileReviewView(model: model, review: $0)
+        }
+        .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
+            TaskReviewView(model: model, review: $0)
         }
         .sheet(item: Binding(get: { model.pendingWorkspaceSave }, set: { if $0 == nil { model.cancelWorkspaceSave() } })) {
             WorkspaceFileSaveView(model: model, draft: $0)
@@ -236,8 +244,8 @@ public struct WorkspaceRootView: View {
     private func windowDrag(_ window: ManagedWindow) -> DragReorder {
         DragReorder(
             id: window.id, order: model.snapshot.windows.map(\.id), axis: .vertical, enabled: true, marker: model.themeColor(.accent),
-            draggedID: $draggedWindowID, dropTargetID: $windowDropTargetID
-        ) { [model] in await model.moveWindow($0, to: $1) }
+            draggedID: $draggedWindowID, dropTargetID: $windowDropTargetID, onStart: { windowDragStarts += 1 },
+            move: { [model] in await model.moveWindow($0, to: $1) })
     }
 
     private func windowTile(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
@@ -273,7 +281,7 @@ public struct WorkspaceRootView: View {
         .buttonStyle(.plain)
         .modifier(windowDrag(window))
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
-        .modifier(WindowHoverPreview(window: window, model: model))
+        .modifier(WindowHoverPreview(window: window, model: model, dragStarts: windowDragStarts))
     }
 
     private func beginWindowRename(_ window: ManagedWindow) {
@@ -516,6 +524,7 @@ private struct DragReorder: ViewModifier {
     let marker: Color
     @Binding var draggedID: UUID?
     @Binding var dropTargetID: UUID?
+    var onStart: () -> Void = {}
     let move: @MainActor @Sendable (UUID, UUID) async -> Void
 
     private var edge: Alignment? {
@@ -532,7 +541,7 @@ private struct DragReorder: ViewModifier {
                     }
                 }
                 .onDrag {
-                    draggedID = id
+                    draggedID = id; onStart()
                     return NSItemProvider(object: id.uuidString as NSString)
                 }
                 .onDrop(of: [.text], delegate: ReorderDropDelegate(targetID: id, draggedID: $draggedID, dropTargetID: $dropTargetID, move: move))
@@ -738,6 +747,7 @@ private struct WindowItemActions: ViewModifier {
 private struct WindowHoverPreview: ViewModifier {
     let window: ManagedWindow
     @ObservedObject var model: AppWorkspaceModel
+    let dragStarts: Int
     @State private var presented = false
     @State private var overTile = false
     @State private var overCard = false
@@ -761,6 +771,8 @@ private struct WindowHoverPreview: ViewModifier {
             // A card dismissed by an outside click may never report the pointer leaving it.
             .onChange(of: presented) { _, shown in if !shown { overCard = false } }
             .onChange(of: model.sidebarCollapsed) { _, _ in close() }
+            // Dragging a window (FR-W07) closes the card and drops a pending open, so it never pops up mid-drag.
+            .onChange(of: dragStarts) { _, _ in close() }
             .onDisappear { close() }
     }
 

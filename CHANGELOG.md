@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Tasks:** a **Tasks** menu in each local pane's header lists the pane's project `.trellis/launch.json` tasks (name, command, optional `cwd`, `group` and `env`) and runs one in that pane's shell (FR-TK01, FR-TK02, FR-TK05).
+  - Detects npm/pnpm/yarn/bun scripts, Make targets, CMake, SwiftPM, Python and Cargo builds and tests; run one directly or add it to `launch.json` with **+** (FR-TK03, FR-TK04).
+  - The button shows **Running: name** with the elapsed time, then the result with its exit code; **Stop** sends Ctrl-C and becomes **Force Stop** (Ctrl-\) after 2 seconds (FR-TK07, FR-TK08).
+  - Environment variables per file and per task, applied to the whole command line (FR-TK09).
+  - A `launch.json` version's tasks run only after you review them and choose **Trust and Run**; any change asks again (FR-TK06).
 - **Window drag reordering:** drag a window in the sidebar, or a square in the collapsed rail, to move it; an accent bar shows where it lands. VoiceOver gets **Move Up**/**Move Down** actions (FR-W07).
 - **Tab drag reordering:** drag a tab along the tab bar to move it; an accent bar shows where it lands. VoiceOver gets **Move Left**/**Move Right** actions (FR-T10).
 - **Workspace files:** a project's `.trellis/workspace.json`, reviewable in its repository, describes one window: tabs with color labels, splits, pane titles, folders relative to the project, and a command per pane (FR-WF01).

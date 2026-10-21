@@ -69,7 +69,7 @@ public enum WorkspaceFilePanels {
 extension AppWorkspaceModel {
     /// API namespaces match the layout key pattern, which has no `:`, so these never collide with them.
     static func workspaceNamespace(_ root: String) -> String { "workspace-file:" + root }
-    nonisolated private static func canonical(_ path: String) -> String { URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path }
+    nonisolated static func canonical(_ path: String) -> String { URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path }
 
     // MARK: Detection (FR-WF02)
 
@@ -263,6 +263,7 @@ extension AppWorkspaceModel {
         workspaceFileCommands = workspaceFileCommands.filter { panes[$0.key] != nil }
         workspaceFileLookups = workspaceFileLookups.filter { panes[$0.key] != nil }
         if workspaceFileOffers.keys.contains(where: { panes[$0] == nil }) { workspaceFileOffers = workspaceFileOffers.filter { panes[$0.key] != nil } }
+        if taskRuns.keys.contains(where: { panes[$0] == nil }) { taskRuns = taskRuns.filter { panes[$0.key] != nil } }
     }
 
     // MARK: Commands (FR-WF05)
