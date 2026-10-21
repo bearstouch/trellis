@@ -18,6 +18,12 @@
     - When the window gets too small, the tree and its ratios are kept in a scrollable, minimum-sized canvas. Trellis never silently deletes panes or shrinks them below their minimum.
 - **MAC-07:** Six terminal typefaces (JetBrains Mono, Roboto Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed, Atkinson Hyperlegible Mono, each in Regular, Bold, Italic and Bold Italic) are bundled with the app and registered for the Trellis process only. JetBrains Mono is the default terminal font, with a monospace fallback and a notice, while the chrome uses system fonts. IME composition, dead keys, layout differences and the configurable Option-as-Meta setting are all respected. Cmd-C and Cmd-V stay native copy and paste, and Ctrl-C stays the terminal interrupt.
 
+## App instances
+
+Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when it's launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
+
+The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, [state directory](../architecture/persistence.md#what-is-saved-and-where) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
+
 ## Files, credentials and permissions
 
 - Durable configuration goes in Application Support, and disposable data in Caches or the runtime directory. The control socket, and the session broker's socket (FR-R03), live in owner-only directories in the per-user `$TMPDIR`.
