@@ -10,7 +10,7 @@
 
 - **MAC-04:**
     - Trellis integrates with the menu bar, Settings, the Dock, standard hide, minimize and full-screen, standard dialogs, the system appearance, the clipboard, font selection and the keyboard responder chain.
-    - Closing the native window while sessions are live asks once whether to end them. Accepting closes the workspaces and returns the app to its empty state, and reopening the main window shows the current state.
+    - Closing the native window while sessions are live asks once whether to end them. Accepting ends the sessions and hides the window but keeps windows, tabs and splits as stopped panes, so the saved workspace is never emptied by closing the window; reopening the main window shows the same layout.
     - Quitting has its own running-session confirmation. With **Keep sessions running after quit** on and broker sessions running (FR-R03), it offers **Keep Running** (the default button), **Stop Sessions** and **Cancel** instead; Keep Running sends no signal, and sessions outside the broker still close. At launch, kept sessions no restored pane claims get **Stop Them** / **Leave Running**.
 - **MAC-05:** Trellis's tabs aren't macOS automatic window tabbing, which is disabled. Every workspace tab belongs to Trellis's model and can be controlled through the API.
 - **MAC-06:**
