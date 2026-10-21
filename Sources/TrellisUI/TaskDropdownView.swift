@@ -26,7 +26,8 @@ struct TaskDropdownButton: View {
             }
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(Capsule().fill(model.themeColor(.accent).opacity(run?.isActive == true ? 0.18 : 0)))
-            .frame(maxWidth: 220)
+            // Hugs its label, up to 220 points, so it sits right before Local.
+            .frame(maxWidth: 220).fixedSize()
         }
         .help("Run a task in this pane")
         .popover(isPresented: $isPresented, arrowEdge: .bottom) { TaskPopover(model: model, paneID: paneID) }
