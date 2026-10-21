@@ -20,10 +20,10 @@ final class ProjectFileJSONTests: XCTestCase {
         let data = try Data(contentsOf: repository.appendingPathComponent(".trellis/project.json"))
         let file = try ProjectFileJSON.parse(data).get()
         XCTAssertEqual(file.name, "Trellis")
-        XCTAssertEqual(file.tabs.map(\.title), ["Develop", "Build", "Docs"])
-        XCTAssertEqual(file.tabs.map(\.color), [.green, .blue, .purple])
-        XCTAssertEqual(file.entries.map(\.key), ["t1-1", "t1-2", "t2-1", "t2-2", "t3-0"])
-        XCTAssertEqual(file.entries.compactMap(\.pane.command), ["git status --short", "swift build", "swift format lint --strict -r Sources Tests"])
+        XCTAssertEqual(file.tabs.map(\.title), ["cmd", "claude1", "claude2", "run", "landing", "claudel"])
+        XCTAssertEqual(file.tabs.map(\.color), [.green, .orange, .orange, .red, .gray, .orange])
+        XCTAssertEqual(file.entries.map(\.key), ["t1-0", "t2-0", "t3-0", "t4-0", "t5-0", "t6-0"])
+        XCTAssertEqual(file.entries.compactMap(\.pane.command), [])
         XCTAssertEqual(String(decoding: ProjectFileJSON.encode(file), as: UTF8.self), String(decoding: data, as: UTF8.self))
     }
 
