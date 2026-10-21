@@ -56,3 +56,52 @@ final class TabDragReorderTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 }
+
+/// FR-W07: dragging a window onto another takes the target's place.
+@MainActor
+final class WindowDragReorderTests: XCTestCase {
+    private func makeThreeWindows() async throws -> (AppWorkspaceModel, [UUID]) {
+        _ = NSApplication.shared
+        let model = AppWorkspaceModel(store: try WorkspaceStore())
+        var ids: [UUID] = []
+        for name in ["A", "B", "C"] {
+            let result = await model.createWindow(name: name, startSession: false)
+            ids.append(try XCTUnwrap(result))
+        }
+        return (model, ids)
+    }
+
+    func testDraggingDownLandsBelowTargetAndUpLandsAbove() async throws {
+        let (model, ids) = try await makeThreeWindows()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        await model.moveWindow(a, to: c)
+        XCTAssertEqual(model.snapshot.windows.map(\.id), [b, c, a])
+        await model.moveWindow(a, to: b)
+        XCTAssertEqual(model.snapshot.windows.map(\.id), [a, b, c])
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testDragKeepsSelectionTabsAndPanes() async throws {
+        let (model, ids) = try await makeThreeWindows()
+        let active = model.snapshot.activeWindowID
+        let (tabs, panes) = (model.snapshot.tabs, model.snapshot.panes)
+        await model.moveWindow(ids[2], to: ids[0])
+        XCTAssertEqual(model.snapshot.windows.map(\.id), [ids[2], ids[0], ids[1]])
+        XCTAssertEqual(model.snapshot.activeWindowID, active)
+        XCTAssertEqual(model.snapshot.tabs, tabs)
+        XCTAssertEqual(model.snapshot.panes, panes)
+    }
+
+    func testDropOnItselfOrUnknownOrATabChangesNothing() async throws {
+        let (model, ids) = try await makeThreeWindows()
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        let before = model.snapshot
+        await model.moveWindow(ids[1], to: ids[1])
+        await model.moveWindow(UUID(), to: ids[1])
+        await model.moveWindow(ids[1], to: UUID())
+        await model.moveWindow(tab, to: ids[0])
+        await model.moveWindow(ids[0], to: tab)
+        XCTAssertEqual(model.snapshot, before)
+        XCTAssertNil(model.errorMessage)
+    }
+}

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Window drag reordering:** drag a window in the sidebar, or a square in the collapsed rail, to move it; an accent bar shows where it lands. VoiceOver gets **Move Up**/**Move Down** actions (FR-W07).
 - **Tab drag reordering:** drag a tab along the tab bar to move it; an accent bar shows where it lands. VoiceOver gets **Move Left**/**Move Right** actions (FR-T10).
 - **Workspace files:** a project's `.trellis/workspace.json`, reviewable in its repository, describes one window: tabs with color labels, splits, pane titles, folders relative to the project, and a command per pane (FR-WF01).
   - When a shell `cd`s into the project, hovering its tab shows **Load Workspace**. It's also in the tab's context menu and available to VoiceOver (FR-WF02).

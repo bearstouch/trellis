@@ -1106,6 +1106,14 @@ public final class AppWorkspaceModel: ObservableObject {
         do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
     }
 
+    /// Drag reordering (FR-W07): the window takes the target's place, so dragging down lands below it and up above it.
+    public func moveWindow(_ id: UUID, to targetID: UUID) async {
+        var order = snapshot.windows.map(\.id)
+        guard id != targetID, order.contains(id), let destination = order.firstIndex(of: targetID) else { return }
+        order.removeAll { $0 == id }; order.insert(id, at: destination)
+        do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
+    }
+
     func attachTerminal(_ pane: WorkspacePane) {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
         terminal.applyAppearance(terminalAppearance)

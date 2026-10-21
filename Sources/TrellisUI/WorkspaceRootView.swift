@@ -12,6 +12,8 @@ public struct WorkspaceRootView: View {
     @State private var hoveredTabID: UUID?
     @State private var draggedTabID: UUID?
     @State private var tabDropTargetID: UUID?
+    @State private var draggedWindowID: UUID?
+    @State private var windowDropTargetID: UUID?
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
@@ -227,7 +229,15 @@ public struct WorkspaceRootView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(windowDrag(window))
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+    }
+
+    private func windowDrag(_ window: ManagedWindow) -> DragReorder {
+        DragReorder(
+            id: window.id, order: model.snapshot.windows.map(\.id), axis: .vertical, enabled: true, marker: model.themeColor(.accent),
+            draggedID: $draggedWindowID, dropTargetID: $windowDropTargetID
+        ) { [model] in await model.moveWindow($0, to: $1) }
     }
 
     private func windowTile(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
@@ -261,6 +271,7 @@ public struct WorkspaceRootView: View {
         }
         // The hover card carries the full name (FR-W06), so no tooltip competes with it.
         .buttonStyle(.plain)
+        .modifier(windowDrag(window))
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
         .modifier(WindowHoverPreview(window: window, model: model))
     }
@@ -331,13 +342,6 @@ public struct WorkspaceRootView: View {
             offer.map { "workspace \($0.name) available" } ?? ""
         ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
-        let tabs = model.presentation.visibleTabs
-        // The landing edge (FR-T10): the dragged tab takes this tab's place, so it lands on the side it comes from.
-        let dropEdge: Alignment? =
-            tabDropTargetID == tab.id && draggedTabID != tab.id
-            ? draggedTabID.flatMap { dragged in
-                tabs.firstIndex { $0.id == dragged }.flatMap { from in tabs.firstIndex { $0.id == tab.id }.map { from > $0 ? .leading : .trailing } }
-            } : nil
         let label = HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
@@ -397,12 +401,11 @@ public struct WorkspaceRootView: View {
         return
             label
             .modifier(TabWorkspaceOffer(model: model, offer: offer, tabID: tab.id, hoveredTabID: $hoveredTabID))
-            .overlay(alignment: dropEdge ?? .center) {
-                if dropEdge != nil { Rectangle().fill(model.themeColor(.accent)).frame(width: 3).accessibilityHidden(true) }
-            }
             .modifier(
-                TabDragReorder(
-                    model: model, tabID: tab.id, enabled: model.editingTabID != tab.id, draggedTabID: $draggedTabID, dropTargetID: $tabDropTargetID)
+                DragReorder(
+                    id: tab.id, order: model.presentation.visibleTabs.map(\.id), axis: .horizontal, enabled: model.editingTabID != tab.id,
+                    marker: model.themeColor(.accent), draggedID: $draggedTabID, dropTargetID: $tabDropTargetID
+                ) { await model.moveTab($0, to: $1) }
             )
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
@@ -501,50 +504,64 @@ extension TabColor {
         })
 }
 
-/// Drag reordering in the tab bar (FR-T10). The payload is the tab's UUID and the drop reads it back, so text dragged
-/// in from another app, or the state a cancelled drag leaves behind, never moves a tab. Off while renaming, so a drag
-/// in the name field selects text.
-private struct TabDragReorder: ViewModifier {
-    let model: AppWorkspaceModel
-    let tabID: UUID
+/// Drag reordering of tabs (FR-T10) and windows (FR-W07): the dragged item takes the target's place, so it lands on
+/// the side it comes from, where an accent bar marks it. The payload is the item's UUID and the drop reads it back, so
+/// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a window never moves
+/// anything. Off while renaming, so a drag in the name field selects text.
+private struct DragReorder: ViewModifier {
+    let id: UUID
+    let order: [UUID]
+    let axis: Axis
     let enabled: Bool
-    @Binding var draggedTabID: UUID?
+    let marker: Color
+    @Binding var draggedID: UUID?
     @Binding var dropTargetID: UUID?
+    let move: @MainActor @Sendable (UUID, UUID) async -> Void
+
+    private var edge: Alignment? {
+        guard dropTargetID == id, let draggedID, draggedID != id, let from = order.firstIndex(of: draggedID), let to = order.firstIndex(of: id) else { return nil }
+        return axis == .horizontal ? (from > to ? .leading : .trailing) : (from > to ? .top : .bottom)
+    }
 
     func body(content: Content) -> some View {
         if enabled {
             content
-                .onDrag {
-                    draggedTabID = tabID
-                    return NSItemProvider(object: tabID.uuidString as NSString)
+                .overlay(alignment: edge ?? .center) {
+                    if edge != nil {
+                        Rectangle().fill(marker).frame(width: axis == .horizontal ? 3 : nil, height: axis == .vertical ? 3 : nil).accessibilityHidden(true)
+                    }
                 }
-                .onDrop(of: [.text], delegate: TabDropDelegate(model: model, targetID: tabID, draggedTabID: $draggedTabID, dropTargetID: $dropTargetID))
+                .onDrag {
+                    draggedID = id
+                    return NSItemProvider(object: id.uuidString as NSString)
+                }
+                .onDrop(of: [.text], delegate: ReorderDropDelegate(targetID: id, draggedID: $draggedID, dropTargetID: $dropTargetID, move: move))
         } else {
             content
         }
     }
 }
 
-@MainActor private struct TabDropDelegate: DropDelegate {
-    let model: AppWorkspaceModel
+@MainActor private struct ReorderDropDelegate: DropDelegate {
     let targetID: UUID
-    @Binding var draggedTabID: UUID?
+    @Binding var draggedID: UUID?
     @Binding var dropTargetID: UUID?
+    let move: @MainActor @Sendable (UUID, UUID) async -> Void
 
-    func validateDrop(info: DropInfo) -> Bool { draggedTabID != nil && info.hasItemsConforming(to: [.text]) }
+    func validateDrop(info: DropInfo) -> Bool { draggedID != nil && info.hasItemsConforming(to: [.text]) }
     func dropEntered(info: DropInfo) { dropTargetID = targetID }
     func dropExited(info: DropInfo) { if dropTargetID == targetID { dropTargetID = nil } }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
 
     func performDrop(info: DropInfo) -> Bool {
-        let dragged = draggedTabID
-        dropTargetID = nil; draggedTabID = nil
+        let dragged = draggedID
+        dropTargetID = nil; draggedID = nil
         guard let dragged, let provider = info.itemProviders(for: [.text]).first else { return false }
-        let model = model, target = targetID
-        // Only the drag this tab bar started: a stale ID from a cancelled drag plus foreign UUID text never moves a tab.
+        let move = move, target = targetID
+        // Only the drag this list started: a stale ID from a cancelled drag plus foreign UUID text never moves anything.
         _ = provider.loadObject(ofClass: NSString.self) { object, _ in
             guard let id = (object as? NSString).flatMap({ UUID(uuidString: $0 as String) }), id == dragged else { return }
-            Task { @MainActor in await model.moveTab(id, to: target) }
+            Task { @MainActor in await move(id, target) }
         }
         return true
     }
@@ -701,6 +718,8 @@ private struct WindowItemActions: ViewModifier {
             .accessibilityValue(descriptor?.value ?? "")
             .accessibilityAddTraits(selected ? [.isSelected] : [])
             .accessibilityAction(named: "Rename") { rename(window) }
+            .accessibilityAction(named: "Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
+            .accessibilityAction(named: "Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
             .contextMenu {
                 Button("Rename…") { rename(window) }
                 Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
