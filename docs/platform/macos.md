@@ -10,13 +10,19 @@
 
 - **MAC-04:**
     - Trellis integrates with the menu bar, Settings, the Dock, standard hide, minimize and full-screen, standard dialogs, the system appearance, the clipboard, font selection and the keyboard responder chain.
-    - Closing the native window while sessions are live asks once whether to end them. Accepting closes the workspaces and returns the app to its empty state, and reopening the main window shows the current state.
+    - Closing the native window while sessions are live asks once whether to end them. Accepting ends the sessions and hides the window but keeps windows, tabs and splits as stopped panes, so the saved workspace is never emptied by closing the window; reopening the main window shows the same layout.
     - Quitting has its own running-session confirmation. With **Keep sessions running after quit** on and broker sessions running (FR-R03), it offers **Keep Running** (the default button), **Stop Sessions** and **Cancel** instead; Keep Running sends no signal, and sessions outside the broker still close. At launch, kept sessions no restored pane claims get **Stop Them** / **Leave Running**.
 - **MAC-05:** Trellis's tabs aren't macOS automatic window tabbing, which is disabled. Every workspace tab belongs to Trellis's model and can be controlled through the API.
 - **MAC-06:**
     - Trellis supports Retina scaling, monitor changes and full-screen layouts. Restored window geometry is constrained to the displays available, and terminal cell sizing is consistent.
     - When the window gets too small, the tree and its ratios are kept in a scrollable, minimum-sized canvas. Trellis never silently deletes panes or shrinks them below their minimum.
 - **MAC-07:** Six terminal typefaces (JetBrains Mono, Roboto Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed, Atkinson Hyperlegible Mono, each in Regular, Bold, Italic and Bold Italic) are bundled with the app and registered for the Trellis process only. JetBrains Mono is the default terminal font, with a monospace fallback and a notice, while the chrome uses system fonts. IME composition, dead keys, layout differences and the configurable Option-as-Meta setting are all respected. Cmd-C and Cmd-V stay native copy and paste, and Ctrl-C stays the terminal interrupt.
+
+## App instances
+
+Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when it's launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
+
+The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, [state directory](../architecture/persistence.md#what-is-saved-and-where) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
 
 ## Files, credentials and permissions
 

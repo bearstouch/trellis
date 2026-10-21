@@ -258,9 +258,10 @@ final class SessionKeepAliveTests: XCTestCase {
         let transport = try XCTUnwrap(broker.transports[pane.sessionID])
         XCTAssertTrue(model.confirmAllSessionClosure())
         model.stopAll()
-        let closed = await model.closeAllWorkspaces()
+        let closed = await model.endSessionsForWindowClose()
         XCTAssertTrue(closed)
         XCTAssertEqual(transport.signals.first, SIGHUP)
-        XCTAssertTrue(model.snapshot.windows.isEmpty)
+        XCTAssertEqual(model.snapshot.windows.count, 1, "Closing the window keeps the layout (MAC-04)")
+        XCTAssertTrue(model.runningTerminals.isEmpty)
     }
 }

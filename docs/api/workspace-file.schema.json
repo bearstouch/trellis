@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bearstouch/trellis/docs/api/workspace-file.schema.json",
+  "title": "Trellis workspace file v1 (.trellis/workspace.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "tabs"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": 1},
+    "name": {"$ref": "#/$defs/text"},
+    "tabs": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"$ref": "#/$defs/tab"}}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 200},
+    "key": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", "not": {"const": "trellis-window"}},
+    "tab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "root"],
+      "properties": {
+        "key": {"$ref": "#/$defs/key"},
+        "title": {"$ref": "#/$defs/text"},
+        "color": {"enum": ["red", "orange", "yellow", "green", "blue", "purple", "gray"]},
+        "root": {"$ref": "#/$defs/node"}
+      }
+    },
+    "node": {"oneOf": [{"$ref": "#/$defs/pane"}, {"$ref": "#/$defs/split"}]},
+    "pane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"const": "pane"},
+        "key": {"$ref": "#/$defs/key"},
+        "title": {"$ref": "#/$defs/text"},
+        "directory": {
+          "description": "Relative to the folder that holds .trellis; no absolute paths, ~, .., $ or backticks.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "not": {"pattern": "(^/|^~|(^|/)\\.\\.(/|$)|[$`])"}
+        },
+        "command": {
+          "description": "One shell line typed after the shell's first prompt, once the file is trusted.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "not": {"pattern": "[\\u0000-\\u001f\\u007f]"}
+        }
+      }
+    },
+    "split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "axis", "children"],
+      "properties": {
+        "type": {"const": "split"},
+        "key": {"$ref": "#/$defs/key"},
+        "axis": {"enum": ["x", "y"]},
+        "ratio": {"type": "number", "minimum": 0.1, "maximum": 0.9, "default": 0.5},
+        "children": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/node"}}
+      }
+    }
+  }
+}

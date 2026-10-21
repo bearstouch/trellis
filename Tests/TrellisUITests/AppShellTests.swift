@@ -182,6 +182,45 @@ final class AppShellTests: XCTestCase {
     }
 
     @MainActor
+    func testClosingTheWindowEndsSessionsButKeepsTheSavedLayout() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-window-close-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: directory))
+        model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
+        _ = await model.loadWorkspace()
+        await model.createWindow(name: "Kept")
+        await model.createWindow(name: "Also kept", startSession: false)
+        await model.waitForUpdates()
+        model.stopAll()
+        let closed = await model.endSessionsForWindowClose()
+        XCTAssertTrue(closed)
+        XCTAssertTrue(model.runningTerminals.isEmpty)
+        XCTAssertEqual(model.snapshot.windows.map(\.name), ["Kept", "Also kept"])
+        XCTAssertNil(model.errorMessage)
+        // Reopening the window (Dock) leaves the stopped panes restartable.
+        let kept = try XCTUnwrap(model.snapshot.windows.first)
+        let pane = try XCTUnwrap(model.snapshot.tabs[kept.activeTabID].flatMap { model.snapshot.panes[$0.activePaneID] })
+        let ended = try XCTUnwrap(model.terminals[pane.id])
+        XCTAssertTrue(ended.sessionState == .exited || ended.sessionState == .failed)
+        await model.restartPane(pane.id)
+        await model.waitForUpdates()
+        XCTAssertNotEqual(model.snapshot.panes[pane.id]?.sessionID, pane.sessionID)
+        XCTAssertEqual(model.runningTerminals.count, 1)
+        // Quit after the window was closed saves the layout, not an empty workspace.
+        model.stopAll()
+        let quit = await model.shutdown()
+        XCTAssertTrue(quit)
+        let saved = await model.flushWorkspaceSave()
+        XCTAssertTrue(saved)
+        let restored = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: directory))
+        _ = await restored.loadWorkspace()
+        XCTAssertEqual(restored.snapshot.windows.map(\.name), ["Kept", "Also kept"])
+        XCTAssertTrue(restored.runningTerminals.isEmpty)
+    }
+
+    @MainActor
     func testShutdownFreezesCreationAndLaunches() async throws {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))

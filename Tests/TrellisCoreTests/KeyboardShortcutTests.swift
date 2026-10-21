@@ -108,6 +108,18 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
     }
 
+    func testOpenWorkspaceFileDefaultsToCommandOAndYieldsToASavedChord() throws {
+        XCTAssertEqual(ShortcutMap.defaults[.openWorkspaceFile], KeyChord("o"))
+        XCTAssertEqual(ShortcutAction.openWorkspaceFile.menu, .file)
+        XCTAssertEqual(ShortcutAction.openWorkspaceFile.title, "Open Workspace File…")
+        // Saved before ⌘O opened workspace files (FR-WF04): the user's choice wins.
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"showHosts":{"chord":{"key":"o","modifiers":1}}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.showHosts], KeyChord("o"))
+        XCTAssertNil(loaded.shortcuts[.openWorkspaceFile])
+        XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
+    }
+
     func testAccessibilityStateReflectsSelection() throws {
         let windowA = UUID(), windowB = UUID(), tab1 = UUID(), tab2 = UUID(), tabB = UUID()
         let paneLeft = UUID(), paneRight = UUID(), paneOther = UUID(), paneB = UUID()

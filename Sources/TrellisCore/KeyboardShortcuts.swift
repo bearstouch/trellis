@@ -43,7 +43,7 @@ public struct KeyChord: Codable, Hashable, Sendable, CustomStringConvertible {
 public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view, pane, window }
 
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
-    case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts
+    case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts, openWorkspaceFile
     case findInPane, findNext, findPrevious, previousPrompt, nextPrompt, clearPane
     case zoomIn, zoomOut, actualSize, toggleSidebar
     case splitLeftRight, splitTopBottom, maximizePane
@@ -63,6 +63,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .deleteWindow: "Delete Window…"
         case .saveWorkspace: "Save Workspace"
         case .showHosts: "Hosts…"
+        case .openWorkspaceFile: "Open Workspace File…"
         case .findInPane: "Find in Pane…"
         case .findNext: "Find Next"
         case .findPrevious: "Find Previous"
@@ -100,7 +101,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
 
     public var menu: ShortcutMenu {
         switch self {
-        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts: .file
+        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .openWorkspaceFile: .file
         case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt, .clearPane: .edit
         case .zoomIn, .zoomOut, .actualSize, .toggleSidebar: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
@@ -117,6 +118,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .closePane: KeyChord("w")
         case .closeTab: KeyChord("w", [.command, .shift])
         case .saveWorkspace: KeyChord("s")
+        case .openWorkspaceFile: KeyChord("o")
         case .findInPane: KeyChord("f")
         case .findNext: KeyChord("g")
         case .findPrevious: KeyChord("g", [.command, .shift])
@@ -248,7 +250,7 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
     private struct Override: Codable { var chord: KeyChord? }
 
     /// Actions whose default chord shipped after saved maps already existed.
-    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane]
+    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .openWorkspaceFile]
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)

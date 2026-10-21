@@ -8,16 +8,17 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 
 ## Features
 
-- **Workspace:** managed windows in a left sidebar, renameable and color-labeled tabs, nested horizontal/vertical splits. Tabs show a busy bar while printing and an **Input** label when a program waits for a password or rings for your attention. Programs can post desktop notifications (OSC 9, OSC 777, OSC 99), and with shell integration a long command notifies when it finishes out of view; both can be turned off in Settings. Restored workspaces open with sessions **stopped**, and typed input is never replayed. Optionally, sessions keep running after you quit and reconnect at the next launch, and each pane's scrollback can be restored as redacted text (both off by default, in Settings → Sessions).
-- **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md). Includes scrollback search, safe paste review, copy, and Cmd-click links (http/https/mailto only).
-- **Shell integration:** zsh, bash and fish report their current directory and each command's exit status, with no dotfile edits. New splits and tabs open where you are, failed commands are flagged, and ⌘↑/⌘↓ jump between prompts. Over SSH, a remote shell's own integration marks show the remote directory, titles and exit status (display-only; nothing is installed remotely). On by default; turn it off in Settings → Sessions.
-- **Appearance:** separate Light/Dark theme slots and a JSON theme library with live preview (Settings → Themes).
-- **Keyboard and accessibility:** rebindable menu shortcuts (conflicts are rejected before saving), Option-as-Meta toggle, and accessibility labels throughout.
-- **SSH hosts:** a saved host library (File → Hosts…) and read-only discovery of `~/.ssh/config` aliases. Connections run through `/usr/bin/ssh` and never bypass host-key trust. An optional per-host password is kept in the macOS Keychain (optionally behind Touch ID) and given to ssh only for its password prompt.
-- **Automation:** an owner-only local JSON-RPC socket with scoped, expiring grants created in Settings → Automation. Covers windows, tabs, panes, sessions, input, output cursors, events, declarative layouts, themes and appearance.
-- **MCP server:** optional, off by default. It exposes the same API as MCP tools over HTTP for agents such as Claude Code, using the same grants. Interface and port are set in Settings → Remote Control. See [docs/api/mcp.md](docs/api/mcp.md).
-- **Portability:** export and import workspaces with a review step (File → Export/Import Workspace…).
-- **Privacy:** no telemetry. Terminal output and typed input are never logged or persisted. Help → Export Diagnostics… previews an allow-listed report before saving.
+- **Workspace:** managed windows in a sidebar, renameable color-labeled tabs and nested splits, with busy and input indicators and desktop notifications. Sessions can optionally keep running after quit.
+- **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md), with search, safe paste review, links, ligatures, inline images and an optional Metal renderer.
+- **Shell integration:** zsh, bash and fish report their directory and exit status with no dotfile edits; jump between prompts with ⌘↑/⌘↓.
+- **Themes:** 10 editor-inspired families plus a JSON theme library, with separate light and dark slots and live preview.
+- **SSH hosts:** a saved host library and `~/.ssh/config` discovery, using `/usr/bin/ssh` and optional Keychain-stored passwords.
+- **Tasks and workspace files:** run `.trellis/launch.json` tasks from a pane header and check a project's layout in as `.trellis/workspace.json`.
+- **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
+- **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.
+- **Privacy:** no telemetry; terminal output and typed input are never logged.
+
+See the [feature docs](docs/features/workspace.md) for the full behavior.
 
 ## Quick start
 
@@ -116,35 +117,6 @@ scripts/generate-app-icon.sh                  # regenerate icons from Design/App
 
 To cut a release, bump `release/manifest.json`, add the `CHANGELOG.md` section, commit, then run `git tag vX.Y.Z && git push --tags`.
 
-## Project layout
-
-```
-Sources/
-  TrellisCore/       engine-independent domain: WorkspaceStore, command service, persistence, themes
-  TrellisPOSIX/      small C target for PTY / process-group spawning
-  TrellisTerminal/   all SwiftTerm-specific code (the only place SwiftTerm is imported)
-  TrellisUI/         SwiftUI/AppKit views and AppWorkspaceModel
-  TrellisControl/    local JSON-RPC server, framing, auth-gated handler
-  TrellisMCP/        optional MCP server (HTTP) over the same authorizer
-  TrellisApp/        app entry point, menus, launch arguments
-  TrellisRelease/    release manifest checks, CLI link planner, uninstall allow-list
-  TrellisCLI/        `trellis` CLI logic (TrellisCLIMain is the executable)
-Tests/               one XCTest target per module
-ThirdParty/SwiftTerm vendored SwiftTerm 1.20.0 + recorded patches
-docs/                documentation site (behavior contract, architecture, API, contributor guide)
-docs/release/        packaging, install, upgrade and uninstall guide
-Design/AppIcon/      icon sources
-scripts/             launcher, qualification, packaging, icon tooling
-```
-
-Architecture in brief:
-
-- **Window → Tabs → `SplitNode` tree → Pane → Session.**
-- All mutations from the UI and the API go through a single `WorkspaceCommandService`.
-- PTY I/O runs off the main thread, and views update on `@MainActor`.
-
-The full design is in [the architecture docs](docs/architecture/index.md), and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules contributors must follow.
-
 ## Documentation
 
 The [`docs/`](docs/index.md) folder is the behavior contract and contributor guide: product overview, architecture, features, the automation API and CLI, integrations, macOS support, and development rules. It's plain Markdown, laid out for [MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
@@ -154,33 +126,13 @@ python3 -m venv .venv-docs && .venv-docs/bin/pip install mkdocs-material
 .venv-docs/bin/mkdocs serve    # http://127.0.0.1:8000
 ```
 
-## Website
+Good starting points:
 
-The landing page lives in [`landing/`](landing/README.md). It's a static Vite site served by nginx in a Docker image for Railway: `cd landing && npm install && npm run dev`.
-
-## Data and migration
-
-User data lives in `~/Library/Application Support/com.bearstouch.trellis/`. Files there are owner-only and written atomically, with last-known-good backups. Newer or corrupt state opens in recovery mode and is never overwritten.
-
-Trellis was previously named **uTerm**. On first launch it copies an existing uTerm workspace and theme library into the new directory and leaves the originals untouched. Existing Trellis data takes priority. Theme IDs that begin with `trellis-` are reserved for built-in themes. During the default-directory migration, any custom theme that uses this prefix gets a new ID, and its saved selections are updated to match. Paths passed with `--state-directory` are used as-is. If an older custom library at such a path has theme IDs that begin with `trellis-`, rename those IDs yourself, along with their filenames and saved selections.
-
-## App instances
-
-Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
-
-The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, state directory (`~/Library/Application Support/com.bearstouch.trellis.dev/` for development) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
-
-## Themes and terminal fonts
-
-Settings → Appearance includes 10 editor-inspired theme families, each with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations, with matching terminal and app colors. Choose separate light and dark palettes; System appearance switches between them automatically. The original Trellis defaults remain available.
-
-The Terminal font picker lists the monospace typefaces installed on your Mac and previews the selected font. Apply Appearance to save your choice.
-
-Terminals draw font ligatures (with fonts that have them, such as the bundled JetBrains Mono), colour emoji, wide CJK characters and combining marks on the cell grid, along with the usual text styles: bold, dim, italic, underline in single, double, curly, dotted and dashed styles with its own colour, strikethrough, overline, blink, inverse and concealed text. Settings → Appearance turns ligatures, bold-as-bright colours, bold and italic faces, and blinking text on or off.
-
-Terminals can draw on the GPU with Metal, with the same text rendering as the default CPU (CoreGraphics) renderer: turn on **Settings → Sessions → GPU rendering (Metal)**. Trellis falls back to CoreGraphics on its own if Metal isn't available. `swift run Trellis --renderer coregraphics` (or `metal`) picks a renderer for one launch, and `scripts/bench-renderer.py` compares the two.
-
-Programs can show images inline with iTerm2's image protocol, so `imgcat`, `yazi`, `timg` and `chafa -f iterm` work as they do in iTerm2.
+- [Architecture](docs/architecture/index.md) and the [repository layout](docs/development/getting-started.md#repository-layout)
+- [Persistence](docs/architecture/persistence.md): where data lives, recovery and migration from uTerm
+- [macOS support](docs/platform/macos.md), including app instances and development builds
+- [Themes](docs/features/themes.md) and [Terminal](docs/features/terminal.md): fonts, text rendering, GPU rendering and inline images
+- [CONTRIBUTING.md](CONTRIBUTING.md): the rules contributors must follow
 
 ## Troubleshooting
 

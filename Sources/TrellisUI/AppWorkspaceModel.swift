@@ -361,6 +361,29 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Declarative layout key bindings per namespace; loaded on first use.
     var layoutNamespaces: [String: [String: LayoutBinding]]?
     var layoutApplyInFlight = false
+    /// Project workspace files found above each pane's directory (FR-WF02); runtime only.
+    @Published public internal(set) var workspaceFileOffers: [UUID: WorkspaceFileOffer] = [:]
+    @Published public internal(set) var pendingWorkspaceReview: WorkspaceFileReview?
+    @Published public internal(set) var pendingWorkspaceSave: WorkspaceFileDraft?
+    /// Trusted commands waiting for their new shell's first prompt, by session (FR-WF05); never persisted or logged.
+    var pendingWorkspaceCommands: [UUID: String] = [:]
+    /// The command each pane was opened with, so saving its window keeps it (FR-WF06); runtime only.
+    var workspaceFileCommands: [UUID: String] = [:]
+    var workspaceFileLookups: [UUID: String] = [:]
+    var workspaceTrust: WorkspaceTrustList?
+    /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
+    @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
+    /// The Tasks menu's project, read when the menu opens (FR-TK02); nil when the active pane has none.
+    @Published public internal(set) var taskCatalog: TaskCatalog?
+    @Published public internal(set) var pendingTaskReview: TaskReview?
+    var taskCatalogGeneration: UInt64 = 0
+    var launchTrust: WorkspaceTrustList?
+    /// How long after Stop the button offers Force Stop (FR-TK08).
+    var taskStopEscalation: TimeInterval = 2
+    /// Opens launch.json in the user's editor; injected by tests.
+    public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Returns the chosen project folder; injected by tests.
+    public var chooseWorkspaceFolder: (_ message: String, _ directory: String?) -> String? = { WorkspaceFilePanels.chooseFolder(message: $0, directory: $1) }
     private var recoveryBackup: RestoredWorkspace?
     private var recoveryReason: WorkspacePersistenceError?
     private var pendingSaveTask: Task<Void, Never>?
@@ -762,9 +785,11 @@ public final class AppWorkspaceModel: ObservableObject {
                             ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                 : .recordSessionExit(sessionID: sessionID, code: code)
             self.closureCoordinator.forget(sessionID: sessionID)
+            self.pendingWorkspaceCommands.removeValue(forKey: sessionID)
             if let registration = self.askpassRegistrations.removeValue(forKey: sessionID) { self.askpass?.unregister(registration) }
             if self.terminals[paneID] === terminal {
                 self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
+                self.taskRuns.removeValue(forKey: paneID)
                 self.clearProgress(paneID: paneID)
             }
             self.recordActivity(paneID: paneID, exited: true)
@@ -992,7 +1017,10 @@ public final class AppWorkspaceModel: ObservableObject {
         if case .promptStart = event {
             if inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
             clearProgress(paneID: paneID)
+            // The shell is reading input now, so a workspace file's command can be typed (FR-WF05).
+            submitWorkspaceCommand(paneID: paneID)
         }
+        updateTaskRun(paneID: paneID, event: event)
         var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
         let wasRunning = state.commandRunning
         state.apply(event, at: activityNow())
@@ -1003,6 +1031,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
+        if let directory = currentDirectory(paneID: paneID) { detectWorkspaceFile(paneID: paneID, directory: directory) }
         refreshTerminalAccessibility()
     }
 
@@ -1090,6 +1119,14 @@ public final class AppWorkspaceModel: ObservableObject {
         do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
     }
 
+    /// Drag reordering (FR-W07): the window takes the target's place, so dragging down lands below it and up above it.
+    public func moveWindow(_ id: UUID, to targetID: UUID) async {
+        var order = snapshot.windows.map(\.id)
+        guard id != targetID, order.contains(id), let destination = order.firstIndex(of: targetID) else { return }
+        order.removeAll { $0 == id }; order.insert(id, at: destination)
+        do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
+    }
+
     func attachTerminal(_ pane: WorkspacePane) {
         let terminal = NativeTerminal(sessionID: pane.sessionID)
         terminal.applyAppearance(terminalAppearance)
@@ -1109,6 +1146,7 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         shellStates.removeValue(forKey: pane.id)
         inputWaits.removeValue(forKey: pane.id)
+        taskRuns.removeValue(forKey: pane.id)
         clearProgress(paneID: pane.id)
         terminal.onPasswordPromptChanged = { [weak self, weak terminal] active in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
@@ -1413,6 +1451,16 @@ public final class AppWorkspaceModel: ObservableObject {
         do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
     }
 
+    /// Drag reordering (FR-T10): the tab takes the target's place, so dragging right lands after it and left before it.
+    public func moveTab(_ id: UUID, to targetID: UUID) async {
+        guard id != targetID, let tab = snapshot.tabs[id], snapshot.tabs[targetID]?.windowID == tab.windowID,
+            let window = snapshot.windows.first(where: { $0.id == tab.windowID }), let destination = window.tabIDs.firstIndex(of: targetID)
+        else { return }
+        var order = window.tabIDs
+        order.removeAll { $0 == id }; order.insert(id, at: destination)
+        do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+    }
+
     public func deleteWindow(_ id: UUID) async {
         guard !shuttingDown, !closureInProgress, !closingWindowIDs.contains(id),
             let window = snapshot.windows.first(where: { $0.id == id })
@@ -1619,6 +1667,15 @@ public final class AppWorkspaceModel: ObservableObject {
         let closed = await finishClosure(Set(terminals.keys))
         if !closed { shuttingDown = false }
         return closed
+    }
+
+    /// Closing the native window (MAC-04) ends every session but keeps windows, tabs and splits as stopped panes,
+    /// so a later Quit saves the layout instead of an empty workspace.
+    @discardableResult
+    public func endSessionsForWindowClose() async -> Bool {
+        guard await shutdown() else { return false }
+        shuttingDown = false
+        return await flushWorkspaceSave()
     }
 
     @discardableResult

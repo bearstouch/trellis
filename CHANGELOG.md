@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-21
+
+This release adds project workspace files and tasks from `.trellis/`, and drag reordering for windows and tabs.
+
+### Added
+
+- **Tasks:** a **Tasks** menu in each local pane's header lists the pane's project `.trellis/launch.json` tasks (name, command, optional `cwd`, `group` and `env`) and runs one in that pane's shell (FR-TK01, FR-TK02, FR-TK05).
+  - Detects npm/pnpm/yarn/bun scripts, Make targets, CMake, SwiftPM, Python and Cargo builds and tests; run one directly or add it to `launch.json` with **+** (FR-TK03, FR-TK04).
+  - The button shows **Running: name** with the elapsed time, then the result with its exit code; **Stop** sends Ctrl-C and becomes **Force Stop** (Ctrl-\) after 2 seconds (FR-TK07, FR-TK08).
+  - Environment variables per file and per task, applied to the whole command line (FR-TK09).
+  - A `launch.json` version's tasks run only after you review them and choose **Trust and Run**; any change asks again (FR-TK06).
+- **Window drag reordering:** drag a window in the sidebar, or a square in the collapsed rail, to move it; an accent bar shows where it lands. VoiceOver gets **Move Up**/**Move Down** actions (FR-W07).
+- **Tab drag reordering:** drag a tab along the tab bar to move it; an accent bar shows where it lands. VoiceOver gets **Move Left**/**Move Right** actions (FR-T10).
+- **Workspace files:** a project's `.trellis/workspace.json`, reviewable in its repository, describes one window: tabs with color labels, splits, pane titles, folders relative to the project, and a command per pane (FR-WF01).
+  - When a shell `cd`s into the project, hovering its tab shows **Load Workspace**. It's also in the tab's context menu and available to VoiceOver (FR-WF02).
+  - Commands run only after you review every command and choose **Trust and Open**. Trust is kept per folder and SHA-256 digest, so any change to the file asks again. **Open Without Commands** opens plain shells (FR-WF03).
+  - Opening creates the project's window; opening it again reconciles that window without restarting panes or rerunning commands (FR-WF04).
+  - Each command is typed at its new shell's first prompt, and the shell stays when the command ends (FR-WF05).
+  - **File → Open Workspace File…** (⌘O, rebindable) opens a project folder or its file directly.
+  - **Save as Workspace File…** (window sidebar menu, File menu) writes the window with editable commands, in a stable, diff-friendly format (FR-WF06).
+  - API layouts can now carry tab colors internally, but the automation layout format is unchanged and still never carries commands.
+
+### Fixed
+
+- **Window close keeps the workspace:** closing the main window with the red button ends the sessions but keeps windows, tabs and splits as stopped panes, so a following Quit no longer saves an empty workspace (MAC-04, FR-R01).
+
 ## [0.11.1] - 2026-10-20
 
 The first Developer ID signed and notarized release, under the new `com.bearstouch.trellis` bundle identifier.
@@ -260,7 +286,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/bearstouch/trellis/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bearstouch/trellis/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/bearstouch/trellis/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/bearstouch/trellis/compare/v0.9.2...v0.10.0

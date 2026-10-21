@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import TrellisCore
 import TrellisTerminal
 import class SwiftTerm.TerminalView
@@ -8,6 +9,12 @@ public struct WorkspaceRootView: View {
     @State private var windowToRename: ManagedWindow?
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
+    @State private var hoveredTabID: UUID?
+    @State private var draggedTabID: UUID?
+    @State private var tabDropTargetID: UUID?
+    @State private var draggedWindowID: UUID?
+    @State private var windowDropTargetID: UUID?
+    @State private var windowDragStarts = 0
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
@@ -48,6 +55,10 @@ public struct WorkspaceRootView: View {
         .onChange(of: model.windowRenameRequest) { _, _ in
             if let window = model.presentation.selectedWindow { beginWindowRename(window) }
         }
+        // A cancelled drag leaves its ID behind; starting one in the other list clears it, so a tab over a window row
+        // (or a window over the tab bar) never shows a landing bar.
+        .onChange(of: draggedTabID) { _, value in if value != nil { draggedWindowID = nil; windowDropTargetID = nil } }
+        .onChange(of: draggedWindowID) { _, value in if value != nil { draggedTabID = nil; tabDropTargetID = nil } }
         .onChange(of: model.editingTabID) { _, value in
             if value == nil, let terminal = model.activeTerminal {
                 DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
@@ -86,6 +97,15 @@ public struct WorkspaceRootView: View {
                     Button(paste.plan.unsupportedShell ? "Paste Quoted Text" : "Paste") { model.confirmPaste(paste.id) }
                 }
             }.padding(24).frame(width: 540)
+        }
+        .sheet(item: Binding(get: { model.pendingWorkspaceReview }, set: { if $0 == nil, let id = model.pendingWorkspaceReview?.id { Task { await model.resolveWorkspaceReview(id, .cancel) } } })) {
+            WorkspaceFileReviewView(model: model, review: $0)
+        }
+        .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
+            TaskReviewView(model: model, review: $0)
+        }
+        .sheet(item: Binding(get: { model.pendingWorkspaceSave }, set: { if $0 == nil { model.cancelWorkspaceSave() } })) {
+            WorkspaceFileSaveView(model: model, draft: $0)
         }
         .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
@@ -217,7 +237,15 @@ public struct WorkspaceRootView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(windowDrag(window))
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+    }
+
+    private func windowDrag(_ window: ManagedWindow) -> DragReorder {
+        DragReorder(
+            id: window.id, order: model.snapshot.windows.map(\.id), axis: .vertical, enabled: true, marker: model.themeColor(.accent),
+            draggedID: $draggedWindowID, dropTargetID: $windowDropTargetID, onStart: { windowDragStarts += 1 },
+            move: { [model] in await model.moveWindow($0, to: $1) })
     }
 
     private func windowTile(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
@@ -228,9 +256,10 @@ public struct WorkspaceRootView: View {
         } label: {
             Text(WorkspaceAccessibility.initials(for: window.name))
                 .font(.system(size: 12, weight: selected ? .bold : .medium)).lineLimit(1).minimumScaleFactor(0.6)
+                .foregroundStyle(selected ? AnyShapeStyle(model.accentForeground) : AnyShapeStyle(.foreground))
                 .frame(width: 32, height: 32)
-                .background(selected ? model.sidebarSelectionBackground : model.themeColor(.surface), in: shape)
-                // Selection is a border too, never color alone.
+                .background(selected ? model.themeColor(.accent) : model.themeColor(.surface), in: shape)
+                // Selection is a filled square with bold initials and a border, never color alone.
                 .overlay(shape.strokeBorder(selected ? model.themeColor(.accent) : model.themeColor(.border).opacity(0.6), lineWidth: selected ? 2 : 1))
                 .overlay(alignment: .bottomTrailing) {
                     if model.windowsNeedingInput.contains(window.id) {
@@ -250,8 +279,9 @@ public struct WorkspaceRootView: View {
         }
         // The hover card carries the full name (FR-W06), so no tooltip competes with it.
         .buttonStyle(.plain)
+        .modifier(windowDrag(window))
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
-        .modifier(WindowHoverPreview(window: window, model: model))
+        .modifier(WindowHoverPreview(window: window, model: model, dragStarts: windowDragStarts))
     }
 
     private func beginWindowRename(_ window: ManagedWindow) {
@@ -313,9 +343,14 @@ public struct WorkspaceRootView: View {
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let value = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""].filter { !$0.isEmpty }
-            .joined(separator: ", ")
-        return HStack(spacing: 8) {
+        let offer = model.workspaceFileOffer(tabID: tab.id)
+        let shownOffer = hoveredTabID == tab.id || selected ? offer : nil
+        let parts: [String] = [
+            descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : "",
+            offer.map { "workspace \($0.name) available" } ?? ""
+        ]
+        let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
+        let label = HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
             if model.editingTabID == tab.id {
@@ -354,6 +389,7 @@ public struct WorkspaceRootView: View {
                     .foregroundStyle(progress.state == .error ? Color.red : progress.state == .paused ? Color.orange : model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
             }
+            if let shownOffer { WorkspaceOfferButton(model: model, offer: shownOffer, expanded: hoveredTabID == tab.id) }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
@@ -370,6 +406,15 @@ public struct WorkspaceRootView: View {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
             .contentShape(Rectangle())
+        return
+            label
+            .modifier(TabWorkspaceOffer(model: model, offer: offer, tabID: tab.id, hoveredTabID: $hoveredTabID))
+            .modifier(
+                DragReorder(
+                    id: tab.id, order: model.presentation.visibleTabs.map(\.id), axis: .horizontal, enabled: model.editingTabID != tab.id,
+                    marker: model.themeColor(.accent), draggedID: $draggedTabID, dropTargetID: $tabDropTargetID
+                ) { await model.moveTab($0, to: $1) }
+            )
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(descriptor?.label ?? "Tab \(model.displayTitle(tab))")
@@ -377,10 +422,12 @@ public struct WorkspaceRootView: View {
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
+            .accessibilityAction(named: "Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
+            .accessibilityAction(named: "Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }
             .contextMenu {
                 TabContextMenu(
                     model: model, tab: tab, canMoveLeft: model.presentation.visibleTabs.first?.id != tab.id,
-                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay,
+                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay, offer: offer,
                     rename: { beginTabRename(tab) }
                 ).equatable()
             }
@@ -465,6 +512,70 @@ extension TabColor {
         })
 }
 
+/// Drag reordering of tabs (FR-T10) and windows (FR-W07): the dragged item takes the target's place, so it lands on
+/// the side it comes from, where an accent bar marks it. The payload is the item's UUID and the drop reads it back, so
+/// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a window never moves
+/// anything. Off while renaming, so a drag in the name field selects text.
+private struct DragReorder: ViewModifier {
+    let id: UUID
+    let order: [UUID]
+    let axis: Axis
+    let enabled: Bool
+    let marker: Color
+    @Binding var draggedID: UUID?
+    @Binding var dropTargetID: UUID?
+    var onStart: () -> Void = {}
+    let move: @MainActor @Sendable (UUID, UUID) async -> Void
+
+    private var edge: Alignment? {
+        guard dropTargetID == id, let draggedID, draggedID != id, let from = order.firstIndex(of: draggedID), let to = order.firstIndex(of: id) else { return nil }
+        return axis == .horizontal ? (from > to ? .leading : .trailing) : (from > to ? .top : .bottom)
+    }
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .overlay(alignment: edge ?? .center) {
+                    if edge != nil {
+                        Rectangle().fill(marker).frame(width: axis == .horizontal ? 3 : nil, height: axis == .vertical ? 3 : nil).accessibilityHidden(true)
+                    }
+                }
+                .onDrag {
+                    draggedID = id; onStart()
+                    return NSItemProvider(object: id.uuidString as NSString)
+                }
+                .onDrop(of: [.text], delegate: ReorderDropDelegate(targetID: id, draggedID: $draggedID, dropTargetID: $dropTargetID, move: move))
+        } else {
+            content
+        }
+    }
+}
+
+@MainActor private struct ReorderDropDelegate: DropDelegate {
+    let targetID: UUID
+    @Binding var draggedID: UUID?
+    @Binding var dropTargetID: UUID?
+    let move: @MainActor @Sendable (UUID, UUID) async -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { draggedID != nil && info.hasItemsConforming(to: [.text]) }
+    func dropEntered(info: DropInfo) { dropTargetID = targetID }
+    func dropExited(info: DropInfo) { if dropTargetID == targetID { dropTargetID = nil } }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let dragged = draggedID
+        dropTargetID = nil; draggedID = nil
+        guard let dragged, let provider = info.itemProviders(for: [.text]).first else { return false }
+        let move = move, target = targetID
+        // Only the drag this list started: a stale ID from a cancelled drag plus foreign UUID text never moves anything.
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let id = (object as? NSString).flatMap({ UUID(uuidString: $0 as String) }), id == dragged else { return }
+            Task { @MainActor in await move(id, target) }
+        }
+        return true
+    }
+}
+
 /// The tab's context menu. Equatable on what it shows, so a busy tab redrawing every second (FR-T05) leaves an
 /// open menu alone instead of rebuilding and closing it.
 private struct TabContextMenu: View, Equatable {
@@ -473,11 +584,12 @@ private struct TabContextMenu: View, Equatable {
     let canMoveLeft: Bool
     let canMoveRight: Bool
     let separator: Color
+    let offer: WorkspaceFileOffer?
     let rename: () -> Void
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.tab.id == rhs.tab.id && lhs.tab.color == rhs.tab.color && lhs.canMoveLeft == rhs.canMoveLeft && lhs.canMoveRight == rhs.canMoveRight
-            && lhs.separator == rhs.separator
+            && lhs.separator == rhs.separator && lhs.offer == rhs.offer
     }
 
     var body: some View {
@@ -495,6 +607,11 @@ private struct TabContextMenu: View, Equatable {
         Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
         Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
         Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
+        if let offer {
+            Divider().overlay(separator)
+            Button("Load Workspace “\(offer.name)”") { Task { await model.loadWorkspaceFile(root: offer.root) } }
+            Button("Don’t Offer for This Folder") { model.stopOfferingWorkspaceFile(root: offer.root) }
+        }
         Divider().overlay(separator)
         Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
     }
@@ -610,12 +727,15 @@ private struct WindowItemActions: ViewModifier {
             .accessibilityValue(descriptor?.value ?? "")
             .accessibilityAddTraits(selected ? [.isSelected] : [])
             .accessibilityAction(named: "Rename") { rename(window) }
+            .accessibilityAction(named: "Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
+            .accessibilityAction(named: "Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
             .contextMenu {
                 Button("Rename…") { rename(window) }
                 Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
                     .disabled(model.snapshot.windows.first?.id == window.id)
                 Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
                     .disabled(model.snapshot.windows.last?.id == window.id)
+                Button("Save as Workspace File…") { model.beginSaveWorkspaceFile(windowID: window.id) }
                 Divider().overlay(model.separatorOverlay)
                 Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
             }
@@ -627,6 +747,7 @@ private struct WindowItemActions: ViewModifier {
 private struct WindowHoverPreview: ViewModifier {
     let window: ManagedWindow
     @ObservedObject var model: AppWorkspaceModel
+    let dragStarts: Int
     @State private var presented = false
     @State private var overTile = false
     @State private var overCard = false
@@ -650,6 +771,8 @@ private struct WindowHoverPreview: ViewModifier {
             // A card dismissed by an outside click may never report the pointer leaving it.
             .onChange(of: presented) { _, shown in if !shown { overCard = false } }
             .onChange(of: model.sidebarCollapsed) { _, _ in close() }
+            // Dragging a window (FR-W07) closes the card and drops a pending open, so it never pops up mid-drag.
+            .onChange(of: dragStarts) { _, _ in close() }
             .onDisappear { close() }
     }
 
@@ -933,5 +1056,44 @@ public struct LaunchSettingsView: View {
             }
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
             .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
+    }
+}
+
+/// A tab's workspace-file offer (FR-WF02): words while hovered, a glyph on a selected tab so it can be found.
+private struct WorkspaceOfferButton: View {
+    @ObservedObject var model: AppWorkspaceModel
+    let offer: WorkspaceFileOffer
+    let expanded: Bool
+
+    var body: some View {
+        Button {
+            Task { await model.loadWorkspaceFile(root: offer.root) }
+        } label: {
+            Group {
+                if expanded { Label("Load Workspace", systemImage: "square.grid.2x2").labelStyle(.titleAndIcon) } else { Image(systemName: "square.grid.2x2") }
+            }
+            .font(.system(size: 10, weight: .medium)).lineLimit(1).padding(.horizontal, expanded ? 5 : 0).padding(.vertical, 1)
+            .background(Capsule().fill(model.themeColor(.accent).opacity(expanded ? 0.18 : 0)))
+        }
+        .buttonStyle(.plain).fixedSize().help("Load workspace “\(offer.name)” from \(offer.path)")
+        .accessibilityLabel("Load Workspace \(offer.name)")
+    }
+}
+
+/// Tracks the hovered tab and offers Load Workspace to VoiceOver, so the offer never needs a pointer.
+private struct TabWorkspaceOffer: ViewModifier {
+    let model: AppWorkspaceModel
+    let offer: WorkspaceFileOffer?
+    let tabID: UUID
+    @Binding var hoveredTabID: UUID?
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                if inside { hoveredTabID = tabID } else if hoveredTabID == tabID { hoveredTabID = nil }
+            }
+            .accessibilityActions {
+                if let offer { Button("Load Workspace") { Task { await model.loadWorkspaceFile(root: offer.root) } } }
+            }
     }
 }
