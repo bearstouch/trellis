@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-21
+
+This release adds project workspace files and tasks from `.trellis/`, and drag reordering for windows and tabs.
+
 ### Added
 
 - **Tasks:** a **Tasks** menu in each local pane's header lists the pane's project `.trellis/launch.json` tasks (name, command, optional `cwd`, `group` and `env`) and runs one in that pane's shell (FR-TK01, FR-TK02, FR-TK05).
@@ -282,7 +286,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/bearstouch/trellis/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bearstouch/trellis/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/bearstouch/trellis/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/bearstouch/trellis/compare/v0.9.2...v0.10.0
