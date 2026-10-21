@@ -1,12 +1,14 @@
 import CryptoKit
 import Foundation
 
-/// A project's reviewable `.trellis/workspace.json` (FR-WF01): one window's tabs,
+/// A project's reviewable `.trellis/project.json` (FR-WF01): one window's tabs,
 /// splits, titles, labels, folders and commands. Unlike API layouts it may carry
 /// commands, which only run after the exact file bytes are trusted (FR-WF03).
-public struct WorkspaceFile: Equatable, Sendable {
+public struct ProjectFile: Equatable, Sendable {
     public static let directoryName = ".trellis"
-    public static let fileName = "workspace.json"
+    public static let fileName = "project.json"
+    /// The name before project files were renamed; still read when `project.json` is absent (FR-WF07).
+    public static let legacyFileName = "workspace.json"
     public static let maximumBytes = 262_144
     public static let maximumCommandLength = 4096
     /// The single window's layout key; documents may not use it.
@@ -41,7 +43,16 @@ public struct WorkspaceFile: Equatable, Sendable {
     public var tabs: [Tab]
     public init(name: String, tabs: [Tab]) { self.name = name; self.tabs = tabs }
 
-    public static func url(projectRoot: String) -> URL {
+    /// Where a project file is written: always `project.json`.
+    public static func url(projectRoot: String) -> URL { url(projectRoot: projectRoot, fileName: fileName) }
+    public static func legacyURL(projectRoot: String) -> URL { url(projectRoot: projectRoot, fileName: legacyFileName) }
+
+    /// The file a project is read from: `project.json`, or the legacy `workspace.json` when only that exists.
+    public static func existingURL(projectRoot: String, fileExists: (String) -> Bool) -> URL? {
+        [url(projectRoot: projectRoot), legacyURL(projectRoot: projectRoot)].first { fileExists($0.path) }
+    }
+
+    private static func url(projectRoot: String, fileName: String) -> URL {
         URL(fileURLWithPath: projectRoot, isDirectory: true).appendingPathComponent(directoryName, isDirectory: true).appendingPathComponent(fileName)
     }
 
@@ -64,7 +75,7 @@ public struct WorkspaceFile: Equatable, Sendable {
     public var hasCommands: Bool { entries.contains { $0.pane.command != nil } }
 
     /// The file with each pane's command replaced, in `entries` order; blank text removes a command.
-    public func settingCommands(_ commands: [String?]) -> WorkspaceFile {
+    public func settingCommands(_ commands: [String?]) -> ProjectFile {
         var remaining = commands[...]
         func visit(_ node: Node) -> Node {
             switch node {
@@ -106,7 +117,7 @@ public struct WorkspaceFile: Equatable, Sendable {
     /// Rules the JSON shape can't express; the layout planner adds keys, limits and ratios.
     public var issues: [LayoutIssue] {
         var issues: [LayoutIssue] = []
-        if let problem = Self.textProblem(name, limit: 200) { issues.append(LayoutIssue(key: nil, "The workspace name \(problem)")) }
+        if let problem = Self.textProblem(name, limit: 200) { issues.append(LayoutIssue(key: nil, "The project name \(problem)")) }
         for (index, tab) in tabs.enumerated() {
             let key = Self.tabKey(tab, index: index)
             if key == Self.windowKey { issues.append(LayoutIssue(key: key, "The key \(Self.windowKey) is reserved.")) }
@@ -179,13 +190,13 @@ public struct WorkspaceFile: Equatable, Sendable {
         return Resolved(layout: LayoutDocument(windows: [LayoutWindow(key: Self.windowKey, name: name, tabs: tabs)]), commands: commands)
     }
 
-    /// The window as a workspace file. `directory` gives a pane's absolute folder; folders outside the project
+    /// The window as a project file. `directory` gives a pane's absolute folder; folders outside the project
     /// are dropped with a warning, since a shared file can only name folders inside it. `key` keeps keys a
     /// previous file declared, so saving over it keeps matching the same panes.
     public static func export(
         window: ManagedWindow, snapshot: WorkspaceSnapshot, projectRoot: String, directory: (UUID) -> String?, command: (UUID) -> String?,
         key: (UUID) -> String? = { _ in nil }
-    ) -> (file: WorkspaceFile, paneIDs: [UUID], warnings: [String]) {
+    ) -> (file: ProjectFile, paneIDs: [UUID], warnings: [String]) {
         var warnings: [String] = [], paneIDs: [UUID] = []
         func build(_ layout: PaneLayout) -> Node {
             switch layout {
@@ -210,21 +221,22 @@ public struct WorkspaceFile: Equatable, Sendable {
         let tabs = window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in
             Tab(key: key(tab.id), title: tab.title, color: tab.color, root: build(tab.root))
         }
-        return (WorkspaceFile(name: window.name, tabs: tabs), paneIDs, warnings)
+        return (ProjectFile(name: window.name, tabs: tabs), paneIDs, warnings)
     }
 }
 
-public enum WorkspaceFileLocator {
-    /// The nearest project folder at or above `directory` holding `.trellis/workspace.json`. Neither the home
-    /// folder nor `/` counts as a project, and the search never leaves the home folder it started in.
+public enum ProjectFileLocator {
+    /// The nearest project folder at or above `directory` holding `.trellis/project.json` (or the legacy
+    /// `workspace.json`). Neither the home folder nor `/` counts as a project, and the search never leaves the
+    /// home folder it started in.
     public static func projectRoot(containing directory: String, home: String, fileExists: (String) -> Bool) -> String? {
-        nearestRoot(containing: directory, home: home) { fileExists(WorkspaceFile.url(projectRoot: $0).path) }
+        nearestRoot(containing: directory, home: home) { ProjectFile.existingURL(projectRoot: $0, fileExists: fileExists) != nil }
     }
 
     /// A task project (FR-TK02): the nearest folder with a `.trellis` folder, or a `.git` folder or file (worktrees
     /// and submodules use a file), within the same bounds.
     public static func taskRoot(containing directory: String, home: String, exists: (String) -> Bool) -> String? {
-        nearestRoot(containing: directory, home: home) { exists($0 + "/" + WorkspaceFile.directoryName) || exists($0 + "/.git") }
+        nearestRoot(containing: directory, home: home) { exists($0 + "/" + ProjectFile.directoryName) || exists($0 + "/.git") }
     }
 
     /// The nearest folder at or above `directory` that `matches`, excluding home and `/`, never leaving home.
@@ -245,7 +257,7 @@ public enum WorkspaceFileLocator {
 
 /// Trusted (project folder, file digest) pairs and folders the user never wants offered (FR-WF03).
 /// A folder holds one trusted digest: trusting a new version replaces the old one.
-public struct WorkspaceTrustList: Codable, Equatable, Sendable {
+public struct ProjectTrustList: Codable, Equatable, Sendable {
     public struct Entry: Codable, Equatable, Sendable {
         public let root: String, sha256: String
         public init(root: String, sha256: String) { self.root = root; self.sha256 = sha256 }

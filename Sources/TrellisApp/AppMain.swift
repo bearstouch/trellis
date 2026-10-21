@@ -183,11 +183,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showHosts, .saveWorkspace]))
         if let file = menu.items.last?.submenu {
             file.addItem(.separator())
-            file.addItem(withTitle: "Export Workspace…", action: #selector(exportWorkspace), keyEquivalent: "")
-            file.addItem(withTitle: "Import Workspace…", action: #selector(importWorkspace), keyEquivalent: "")
+            file.addItem(withTitle: "Export Windows & Hosts…", action: #selector(exportWindowsAndHosts), keyEquivalent: "")
+            file.addItem(withTitle: "Import Windows & Hosts…", action: #selector(importWindowsAndHosts), keyEquivalent: "")
             file.addItem(.separator())
-            file.addItem(item(.openWorkspaceFile))
-            file.addItem(withTitle: "Save Window as Workspace File…", action: #selector(saveWorkspaceFile), keyEquivalent: "")
+            file.addItem(item(.openProjectFile))
+            file.addItem(withTitle: "Save Window as Project…", action: #selector(saveProjectFile), keyEquivalent: "")
         }
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
@@ -267,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
-        case .openWorkspaceFile: openWorkspaceFile()
+        case .openProjectFile: openProjectFile()
         case .findInPane: model.activeTerminal?.showSearch()
         case .findNext: model.activeTerminal?.findInPane()
         case .findPrevious: model.activeTerminal?.findInPane(forward: false)
@@ -300,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if [.newWindow, .saveWorkspace, .showHosts, .openWorkspaceFile, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if [.newWindow, .saveWorkspace, .showHosts, .openProjectFile, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
@@ -337,7 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
             return validateShortcut(action)
         }
-        if menuItem.action == #selector(saveWorkspaceFile) { return model.snapshot.activeWindowID != nil }
+        if menuItem.action == #selector(saveProjectFile) { return model.snapshot.activeWindowID != nil }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
@@ -426,9 +426,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     /// Writes a portable export; credentials and runtime state are never included.
-    @objc private func exportWorkspace() {
+    @objc private func exportWindowsAndHosts() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Trellis Workspace.trellis.json"
+        panel.nameFieldStringValue = "Trellis Windows & Hosts.trellis.json"
         panel.message = "Exports windows, tabs, splits, and saved hosts. No output, passwords, keys, or tokens are included."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let transfer = PortableTransfer(model: model, hosts: hosts)
@@ -443,17 +443,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    /// A project's `.trellis/workspace.json` (FR-WF04); commands wait for review unless that exact file is trusted.
-    @objc private func openWorkspaceFile() {
-        Task { await model.beginOpenWorkspaceFile() }
+    /// A project's `.trellis/project.json` (FR-WF04); commands wait for review unless that exact file is trusted.
+    @objc private func openProjectFile() {
+        Task { await model.beginOpenProjectFile() }
     }
 
-    @objc private func saveWorkspaceFile() {
+    @objc private func saveProjectFile() {
         guard let id = model.snapshot.activeWindowID else { return }
-        model.beginSaveWorkspaceFile(windowID: id)
+        model.beginSaveProjectFile(windowID: id)
     }
 
-    @objc private func importWorkspace() {
+    @objc private func importWindowsAndHosts() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.message = "Choose a Trellis export to review before importing."

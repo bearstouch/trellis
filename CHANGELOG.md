@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.12.0] - 2026-10-21
 
-This release adds project workspace files and tasks from `.trellis/`, and drag reordering for windows and tabs.
+This release adds project files and tasks from `.trellis/`, and drag reordering for windows and tabs.
 
 ### Added
 
@@ -19,14 +19,18 @@ This release adds project workspace files and tasks from `.trellis/`, and drag r
   - A `launch.json` version's tasks run only after you review them and choose **Trust and Run**; any change asks again (FR-TK06).
 - **Window drag reordering:** drag a window in the sidebar, or a square in the collapsed rail, to move it; an accent bar shows where it lands. VoiceOver gets **Move Up**/**Move Down** actions (FR-W07).
 - **Tab drag reordering:** drag a tab along the tab bar to move it; an accent bar shows where it lands. VoiceOver gets **Move Left**/**Move Right** actions (FR-T10).
-- **Workspace files:** a project's `.trellis/workspace.json`, reviewable in its repository, describes one window: tabs with color labels, splits, pane titles, folders relative to the project, and a command per pane (FR-WF01).
-  - When a shell `cd`s into the project, hovering its tab shows **Load Workspace**. It's also in the tab's context menu and available to VoiceOver (FR-WF02).
+- **Project files:** a project's `.trellis/project.json`, reviewable in its repository, describes one window: tabs with color labels, splits, pane titles, folders relative to the project, and a command per pane (FR-WF01).
+  - When a shell `cd`s into the project, hovering its tab shows **Load Project**. It's also in the tab's context menu and available to VoiceOver (FR-WF02).
   - Commands run only after you review every command and choose **Trust and Open**. Trust is kept per folder and SHA-256 digest, so any change to the file asks again. **Open Without Commands** opens plain shells (FR-WF03).
   - Opening creates the project's window; opening it again reconciles that window without restarting panes or rerunning commands (FR-WF04).
   - Each command is typed at its new shell's first prompt, and the shell stays when the command ends (FR-WF05).
-  - **File → Open Workspace File…** (⌘O, rebindable) opens a project folder or its file directly.
-  - **Save as Workspace File…** (window sidebar menu, File menu) writes the window with editable commands, in a stable, diff-friendly format (FR-WF06).
+  - **File → Open Project…** (⌘O, rebindable) opens a project folder or its file directly.
+  - **Save as Project…** (window sidebar menu) and **File → Save Window as Project…** write the window with editable commands, in a stable, diff-friendly format (FR-WF06).
   - API layouts can now carry tab colors internally, but the automation layout format is unchanged and still never carries commands.
+
+### Changed
+
+- **Clearer names:** "workspace" now means only Trellis's own saved windows (**File → Save Workspace**). **File → Export/Import Workspace…** is now **Export/Import Windows & Hosts…**, and files from the 0.12.0 pre-release named `.trellis/workspace.json` are still opened when a project has no `project.json`; saving writes `project.json` and leaves the old file for you to remove (FR-WF07). Saved keyboard shortcuts and trust carry over.
 
 ### Fixed
 

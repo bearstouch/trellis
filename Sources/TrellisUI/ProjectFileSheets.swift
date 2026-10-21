@@ -1,21 +1,21 @@
 import SwiftUI
 import TrellisCore
 
-/// Shows every command a workspace file would type, verbatim, before any of them can run (FR-WF03).
-struct WorkspaceFileReviewView: View {
+/// Shows every command a project file would type, verbatim, before any of them can run (FR-WF03).
+struct ProjectFileReviewView: View {
     @ObservedObject var model: AppWorkspaceModel
-    let review: WorkspaceFileReview
+    let review: ProjectFileReview
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Review Workspace File").font(.headline)
+            Text("Review Project File").font(.headline)
             Text("“\(review.file.name)” opens \(review.file.tabs.count) tab(s) and types the commands below into new shells.")
             Text(review.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).foregroundStyle(model.themeColor(.mutedForeground))
             if review.changedSinceTrusted {
                 Label("This file changed since you last trusted it.", systemImage: "exclamationmark.triangle").font(.callout)
             }
             ScrollView {
-                WorkspaceFileOutline(file: review.file, muted: model.themeColor(.mutedForeground)) { entry, _ in
+                ProjectFileOutline(file: review.file, muted: model.themeColor(.mutedForeground)) { entry, _ in
                     Text(entry.pane.command ?? "No command").font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
                         .foregroundStyle(entry.pane.command == nil ? model.themeColor(.mutedForeground) : model.themeColor(.foreground))
                         .fixedSize(horizontal: false, vertical: true)
@@ -34,25 +34,25 @@ struct WorkspaceFileReviewView: View {
         }.padding(24).frame(width: 600)
     }
 
-    private func decide(_ decision: AppWorkspaceModel.WorkspaceReviewDecision) {
+    private func decide(_ decision: AppWorkspaceModel.ProjectReviewDecision) {
         let id = review.id
-        Task { await model.resolveWorkspaceReview(id, decision) }
+        Task { await model.resolveProjectReview(id, decision) }
     }
 }
 
-/// The window as a workspace file, with an editable command per pane (FR-WF06).
-struct WorkspaceFileSaveView: View {
+/// The window as a project file, with an editable command per pane (FR-WF06).
+struct ProjectFileSaveView: View {
     @ObservedObject var model: AppWorkspaceModel
-    @State var draft: WorkspaceFileDraft
+    @State var draft: ProjectFileDraft
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Save Workspace File").font(.headline)
+            Text("Save Project").font(.headline)
             Text("Saves this window's tabs, splits, titles, labels and folders. Commands are typed into each new shell when the file is opened.")
                 .fixedSize(horizontal: false, vertical: true)
             Text(draft.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).foregroundStyle(model.themeColor(.mutedForeground))
             ScrollView {
-                WorkspaceFileOutline(file: draft.file, muted: model.themeColor(.mutedForeground)) { entry, index in
+                ProjectFileOutline(file: draft.file, muted: model.themeColor(.mutedForeground)) { entry, index in
                     TextField("Command (optional)", text: $draft.commands[index]).font(.system(size: 12, design: .monospaced))
                         .accessibilityLabel("Command for \(entry.pane.title ?? "pane \(index + 1)")")
                 }.padding(10)
@@ -61,18 +61,18 @@ struct WorkspaceFileSaveView: View {
             if draft.replacesExisting { Text("This replaces the existing file.").font(.caption) }
             HStack {
                 Spacer()
-                Button("Cancel") { model.cancelWorkspaceSave() }.keyboardShortcut(.cancelAction)
-                Button(draft.replacesExisting ? "Replace" : "Save") { _ = model.writeWorkspaceFile(draft) }.keyboardShortcut(.defaultAction)
+                Button("Cancel") { model.cancelProjectSave() }.keyboardShortcut(.cancelAction)
+                Button(draft.replacesExisting ? "Replace" : "Save") { _ = model.writeProjectFile(draft) }.keyboardShortcut(.defaultAction)
             }
         }.padding(24).frame(width: 600)
     }
 }
 
 /// Tabs, then each pane's title and folder, with a caller-supplied row for its command.
-private struct WorkspaceFileOutline<Detail: View>: View {
-    let file: WorkspaceFile
+private struct ProjectFileOutline<Detail: View>: View {
+    let file: ProjectFile
     let muted: Color
-    @ViewBuilder let detail: (WorkspaceFile.Entry, Int) -> Detail
+    @ViewBuilder let detail: (ProjectFile.Entry, Int) -> Detail
 
     var body: some View {
         let entries = Array(file.entries.enumerated())

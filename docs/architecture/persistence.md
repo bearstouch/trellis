@@ -9,8 +9,8 @@ All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.
 | `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `keepSessionsRunning`, `restoreScrollback`) | Last-known-good copy in `workspace.backup.json` |
 | `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
-| `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each project's [workspace file](../features/workspace-files.md) window (namespace `workspace-file:<folder>`) | An unreadable file is preserved |
-| `workspace-trust.json` | Trusted workspace files as (canonical project folder, SHA-256 digest) pairs, and folders never to offer (FR-WF03); never the commands | `0600`. An unreadable file trusts nothing and is never overwritten. |
+| `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each project's [project file](../features/project-files.md) window (namespace `workspace-file:<folder>`) | An unreadable file is preserved |
+| `workspace-trust.json` | Trusted project files as (canonical project folder, SHA-256 digest) pairs, and folders never to offer (FR-WF03); never the commands | `0600`. An unreadable file trusts nothing and is never overwritten. |
 | `control.json` | Discovery for the running control socket | Rewritten on every launch |
 | `Themes/<id>.theme.json` | Custom themes | File names come only from validated IDs |
 | `Scrollback/<session-uuid>.txt` | Only with **Restore scrollback after quit** (FR-R04): a pane's redacted plain text | `0600` in a `0700` folder; see [below](#opt-in-scrollback-file) |

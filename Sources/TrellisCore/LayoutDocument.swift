@@ -200,7 +200,7 @@ public enum LayoutPlanner {
                             updated.title = title
                             var changed = pane.title != title
                             if var session = next.sessions[pane.sessionID], !sameLaunch(session.launch, desiredLaunch) {
-                                // Live sessions keep their launch; inactive ones may be reconfigured. Workspace files
+                                // Live sessions keep their launch; inactive ones may be reconfigured. Project files
                                 // (FR-WF04) leave live panes running where they are instead of conflicting.
                                 if [.stopped, .exited, .failed].contains(session.state) {
                                     session.launch = desiredLaunch

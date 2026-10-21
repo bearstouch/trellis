@@ -23,7 +23,7 @@ public struct TaskCatalog: Equatable, Sendable {
 
     public var name: String { URL(fileURLWithPath: root).lastPathComponent }
     public var path: String { LaunchFile.url(projectRoot: root).path }
-    var digest: String? { data.map(WorkspaceTrustList.digest) }
+    var digest: String? { data.map(ProjectTrustList.digest) }
 
     public var tasks: [LaunchTask] {
         guard case .loaded(let launch) = file else { return [] }
@@ -90,12 +90,12 @@ extension AppWorkspaceModel {
 
     nonisolated static func loadTaskCatalog(directory: String, home: String, paneID: UUID) -> TaskCatalog? {
         let manager = FileManager.default
-        guard let found = WorkspaceFileLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
+        guard let found = ProjectFileLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
         let root = canonical(found)
         let state: TaskCatalog.FileState
         var data: Data?
         do {
-            // Only a regular file the user owns, like a workspace file: a shared folder could hold anyone's.
+            // Only a regular file the user owns, like a project file: a shared folder could hold anyone's.
             data = try OwnerOnlyFile.read(LaunchFile.url(projectRoot: root), limit: LaunchFile.maximumBytes)
             switch data.map(LaunchFileJSON.parse) {
             case nil: state = .missing
@@ -156,7 +156,7 @@ extension AppWorkspaceModel {
             return
         }
         guard case .loaded(let file) = catalog.file, let digest = catalog.digest, let task = file.task(named: task.name) else { return }
-        let trust: WorkspaceTrustList
+        let trust: ProjectTrustList
         do { trust = try launchTrustList() } catch {
             errorMessage = error.localizedDescription
             return
@@ -287,7 +287,7 @@ extension AppWorkspaceModel {
         }
         guard writeLaunchFile(data, to: url) else { return false }
         if var list = try? launchTrustList(), catalog.data == nil || catalog.digest.map({ list.isTrusted(root: catalog.root, digest: $0) }) == true {
-            list.trust(root: catalog.root, digest: WorkspaceTrustList.digest(data))
+            list.trust(root: catalog.root, digest: ProjectTrustList.digest(data))
             try? saveLaunchTrust(list)
         }
         await refreshTaskCatalog()
@@ -303,7 +303,7 @@ extension AppWorkspaceModel {
             guard writeLaunchFile(data, to: url) else { return }
             // No tasks, nothing to review.
             if var list = try? launchTrustList() {
-                list.trust(root: catalog.root, digest: WorkspaceTrustList.digest(data))
+                list.trust(root: catalog.root, digest: ProjectTrustList.digest(data))
                 try? saveLaunchTrust(list)
             }
             await refreshTaskCatalog()
@@ -313,7 +313,7 @@ extension AppWorkspaceModel {
 
     private func isSymbolicLink(_ url: URL) -> Bool { (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil }
 
-    /// A repository file, not Trellis state: readable by the project's tools like a workspace file.
+    /// A repository file, not Trellis state: readable by the project's tools like a project file.
     private func writeLaunchFile(_ data: Data, to url: URL) -> Bool {
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -330,22 +330,22 @@ extension AppWorkspaceModel {
 
     private var launchTrustURL: URL? { persistence?.directory.appendingPathComponent("launch-trust.json") }
 
-    /// Separate from workspace file trust, which holds one digest per folder. An unreadable list fails closed:
+    /// Separate from project file trust, which holds one digest per folder. An unreadable list fails closed:
     /// nothing is trusted and it is never overwritten.
-    func launchTrustList() throws -> WorkspaceTrustList {
+    func launchTrustList() throws -> ProjectTrustList {
         if let launchTrust { return launchTrust }
         do {
             let stored = try launchTrustURL.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
-            let list = try stored.map { try JSONDecoder().decode(WorkspaceTrustList.self, from: $0) } ?? WorkspaceTrustList()
-            guard list.version == WorkspaceTrustList().version else { throw WorkspaceFileFailure("") }
+            let list = try stored.map { try JSONDecoder().decode(ProjectTrustList.self, from: $0) } ?? ProjectTrustList()
+            guard list.version == ProjectTrustList().version else { throw ProjectFileFailure("") }
             launchTrust = list
             return list
-        } catch { throw WorkspaceFileFailure("Trusted launch.json files could not be read, so launch.json tasks can't run.") }
+        } catch { throw ProjectFileFailure("Trusted launch.json files could not be read, so launch.json tasks can't run.") }
     }
 
-    private func saveLaunchTrust(_ list: WorkspaceTrustList) throws {
+    private func saveLaunchTrust(_ list: ProjectTrustList) throws {
         if let url = launchTrustURL {
-            do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw WorkspaceFileFailure("Trusted launch.json files could not be saved.") }
+            do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw ProjectFileFailure("Trusted launch.json files could not be saved.") }
         }
         launchTrust = list
     }

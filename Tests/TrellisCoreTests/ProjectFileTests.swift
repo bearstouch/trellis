@@ -1,66 +1,66 @@
 import XCTest
 @testable import TrellisCore
 
-final class WorkspaceFileTests: XCTestCase {
+final class ProjectFileTests: XCTestCase {
     private func files(_ roots: String...) -> (String) -> Bool {
-        let paths = Set(roots.map { WorkspaceFile.url(projectRoot: $0).path })
+        let paths = Set(roots.map { ProjectFile.url(projectRoot: $0).path })
         return { paths.contains($0) }
     }
 
     func testLocatorFindsNearestProjectWithinHome() {
         let exists = files("/Users/me/code/app", "/Users/me/code/app/packages/web", "/Users/me", "/Volumes/Disk/repo")
-        XCTAssertEqual(WorkspaceFileLocator.projectRoot(containing: "/Users/me/code/app/Sources/x", home: "/Users/me", fileExists: exists), "/Users/me/code/app")
-        XCTAssertEqual(WorkspaceFileLocator.projectRoot(containing: "/Users/me/code/app/packages/web/src", home: "/Users/me", fileExists: exists), "/Users/me/code/app/packages/web")
-        XCTAssertEqual(WorkspaceFileLocator.projectRoot(containing: "/Users/me/code/app/", home: "/Users/me/", fileExists: exists), "/Users/me/code/app")
-        XCTAssertNil(WorkspaceFileLocator.projectRoot(containing: "/Users/me/other", home: "/Users/me", fileExists: exists), "Home itself is never a project")
-        XCTAssertNil(WorkspaceFileLocator.projectRoot(containing: "/Users/me", home: "/Users/me", fileExists: exists))
-        XCTAssertEqual(WorkspaceFileLocator.projectRoot(containing: "/Volumes/Disk/repo/a/b", home: "/Users/me", fileExists: exists), "/Volumes/Disk/repo")
-        XCTAssertNil(WorkspaceFileLocator.projectRoot(containing: "/", home: "/Users/me", fileExists: { _ in true }), "/ is never a project")
-        XCTAssertNil(WorkspaceFileLocator.projectRoot(containing: "relative/path", home: "/Users/me", fileExists: { _ in true }))
+        XCTAssertEqual(ProjectFileLocator.projectRoot(containing: "/Users/me/code/app/Sources/x", home: "/Users/me", fileExists: exists), "/Users/me/code/app")
+        XCTAssertEqual(ProjectFileLocator.projectRoot(containing: "/Users/me/code/app/packages/web/src", home: "/Users/me", fileExists: exists), "/Users/me/code/app/packages/web")
+        XCTAssertEqual(ProjectFileLocator.projectRoot(containing: "/Users/me/code/app/", home: "/Users/me/", fileExists: exists), "/Users/me/code/app")
+        XCTAssertNil(ProjectFileLocator.projectRoot(containing: "/Users/me/other", home: "/Users/me", fileExists: exists), "Home itself is never a project")
+        XCTAssertNil(ProjectFileLocator.projectRoot(containing: "/Users/me", home: "/Users/me", fileExists: exists))
+        XCTAssertEqual(ProjectFileLocator.projectRoot(containing: "/Volumes/Disk/repo/a/b", home: "/Users/me", fileExists: exists), "/Volumes/Disk/repo")
+        XCTAssertNil(ProjectFileLocator.projectRoot(containing: "/", home: "/Users/me", fileExists: { _ in true }), "/ is never a project")
+        XCTAssertNil(ProjectFileLocator.projectRoot(containing: "relative/path", home: "/Users/me", fileExists: { _ in true }))
     }
 
     func testTrustMatchesOnlyTheSameFolderAndBytes() {
         let data = Data("{\"version\":1}".utf8)
         var changed = data
         changed[changed.startIndex] = UInt8(ascii: "[")
-        var list = WorkspaceTrustList()
-        let digest = WorkspaceTrustList.digest(data)
+        var list = ProjectTrustList()
+        let digest = ProjectTrustList.digest(data)
         XCTAssertEqual(digest.count, 64)
         XCTAssertFalse(list.isTrusted(root: "/p", digest: digest))
         list.trust(root: "/p", digest: digest)
         XCTAssertTrue(list.isTrusted(root: "/p", digest: digest))
-        XCTAssertFalse(list.isTrusted(root: "/p", digest: WorkspaceTrustList.digest(changed)), "One changed byte needs a new review")
-        XCTAssertTrue(list.trustedOtherVersion(root: "/p", digest: WorkspaceTrustList.digest(changed)))
+        XCTAssertFalse(list.isTrusted(root: "/p", digest: ProjectTrustList.digest(changed)), "One changed byte needs a new review")
+        XCTAssertTrue(list.trustedOtherVersion(root: "/p", digest: ProjectTrustList.digest(changed)))
         XCTAssertFalse(list.isTrusted(root: "/q", digest: digest), "A moved or copied project needs a new review")
-        list.trust(root: "/p", digest: WorkspaceTrustList.digest(changed))
+        list.trust(root: "/p", digest: ProjectTrustList.digest(changed))
         XCTAssertFalse(list.isTrusted(root: "/p", digest: digest), "One trusted version per folder")
         XCTAssertEqual(list.trusted.count, 1)
         list.setIgnored("/p", true)
         XCTAssertTrue(list.isIgnored("/p"))
         list.setIgnored("/p", false)
         XCTAssertFalse(list.isIgnored("/p"))
-        for index in 0...WorkspaceTrustList.maximumEntries { list.trust(root: "/r\(index)", digest: digest) }
-        XCTAssertEqual(list.trusted.count, WorkspaceTrustList.maximumEntries)
+        for index in 0...ProjectTrustList.maximumEntries { list.trust(root: "/r\(index)", digest: digest) }
+        XCTAssertEqual(list.trusted.count, ProjectTrustList.maximumEntries)
     }
 
     func testResolveConfinesDirectoriesToTheProject() {
-        let file = WorkspaceFile(
+        let file = ProjectFile(
             name: "P",
             tabs: [.init(title: "T", color: .blue, root: .split(key: nil, axis: .x, ratio: 0.3, children: [.pane(.init(directory: "./src//app/", command: "make")), .pane(.init(directory: "."))]))])
         let resolved = file.resolve(projectRoot: "/work/p")
         XCTAssertEqual(resolved.commands, ["t1-1": "make"])
         let tab = resolved.layout.windows[0].tabs[0]
-        XCTAssertEqual(resolved.layout.windows[0].key, WorkspaceFile.windowKey)
+        XCTAssertEqual(resolved.layout.windows[0].key, ProjectFile.windowKey)
         XCTAssertEqual(tab.color, .blue)
         guard case .split(_, _, _, let children) = tab.root, case .pane(_, _, let first) = children[0], case .pane(_, _, let second) = children[1] else {
             return XCTFail("shape")
         }
         XCTAssertEqual(first, .shell(directory: "/work/p/src/app"))
         XCTAssertEqual(second, .shell(directory: "/work/p"))
-        XCTAssertNil(WorkspaceFile.relativeDirectory("a/../b"))
-        XCTAssertNil(WorkspaceFile.relativeDirectory("~"))
-        XCTAssertNil(WorkspaceFile.relativeDirectory("a`b`"))
-        XCTAssertEqual(WorkspaceFile.relativeDirectory("a/b..c"), "a/b..c")
+        XCTAssertNil(ProjectFile.relativeDirectory("a/../b"))
+        XCTAssertNil(ProjectFile.relativeDirectory("~"))
+        XCTAssertNil(ProjectFile.relativeDirectory("a`b`"))
+        XCTAssertEqual(ProjectFile.relativeDirectory("a/b..c"), "a/b..c")
     }
 
     private func snapshot() -> (WorkspaceSnapshot, ManagedWindow, [UUID]) {
@@ -85,7 +85,7 @@ final class WorkspaceFileTests: XCTestCase {
     func testExportMakesFoldersRelativeAndWarnsOutsideTheProject() throws {
         let (snapshot, window, panes) = snapshot()
         let directories = [panes[0]: "/work/p", panes[1]: "/work/p/src/", panes[2]: "/elsewhere"]
-        let exported = WorkspaceFile.export(
+        let exported = ProjectFile.export(
             window: window, snapshot: snapshot, projectRoot: "/work/p", directory: { directories[$0] }, command: { $0 == panes[1] ? "npm test" : nil })
         XCTAssertEqual(exported.paneIDs, panes)
         XCTAssertEqual(exported.warnings.count, 1)
@@ -100,15 +100,15 @@ final class WorkspaceFileTests: XCTestCase {
         XCTAssertEqual(ratio, 0.612)
         XCTAssertTrue(file.issues.isEmpty)
         // A sibling folder sharing the prefix is outside the project.
-        let sibling = WorkspaceFile.export(window: window, snapshot: snapshot, projectRoot: "/work/p", directory: { _ in "/work/p2" }, command: { _ in nil })
+        let sibling = ProjectFile.export(window: window, snapshot: snapshot, projectRoot: "/work/p", directory: { _ in "/work/p2" }, command: { _ in nil })
         XCTAssertEqual(sibling.warnings.count, 3)
     }
 
     func testBindingsMatchTheWindowShapeOnly() throws {
         let (snapshot, window, panes) = snapshot()
-        let file = WorkspaceFile.export(window: window, snapshot: snapshot, projectRoot: "/p", directory: { _ in nil }, command: { _ in nil }).file
+        let file = ProjectFile.export(window: window, snapshot: snapshot, projectRoot: "/p", directory: { _ in nil }, command: { _ in nil }).file
         let bindings = try XCTUnwrap(file.bindings(window: window, snapshot: snapshot))
-        XCTAssertEqual(bindings[WorkspaceFile.windowKey], LayoutBinding(kind: .window, id: window.id))
+        XCTAssertEqual(bindings[ProjectFile.windowKey], LayoutBinding(kind: .window, id: window.id))
         XCTAssertEqual(bindings["t1"], LayoutBinding(kind: .tab, id: window.tabIDs[0]))
         XCTAssertEqual(bindings["t1-1"], LayoutBinding(kind: .pane, id: panes[0]))
         XCTAssertEqual(bindings["t2-0"], LayoutBinding(kind: .pane, id: panes[2]))
@@ -124,7 +124,7 @@ final class WorkspaceFileTests: XCTestCase {
     }
 
     func testSettingCommandsFollowsEntryOrder() {
-        let file = WorkspaceFile(name: "P", tabs: [.init(title: "A", root: .split(key: nil, axis: .x, ratio: 0.5, children: [.pane(.init(command: "old")), .pane(.init())]))])
+        let file = ProjectFile(name: "P", tabs: [.init(title: "A", root: .split(key: nil, axis: .x, ratio: 0.5, children: [.pane(.init(command: "old")), .pane(.init())]))])
         XCTAssertEqual(file.settingCommands(["  ", " make "]).entries.map(\.pane.command), [nil, "make"])
         XCTAssertFalse(file.settingCommands(["", ""]).hasCommands)
     }

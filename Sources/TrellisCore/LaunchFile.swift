@@ -1,7 +1,7 @@
 import Foundation
 
 /// A project's `.trellis/launch.json` (FR-TK01): named one-line tasks the Tasks menu types into the active
-/// pane's shell. Like a workspace file it is shared through the repository, so its tasks only run once the
+/// pane's shell. Like a project file it is shared through the repository, so its tasks only run once the
 /// exact bytes are trusted (FR-TK06).
 public struct LaunchFile: Equatable, Sendable {
     public static let fileName = "launch.json"
@@ -17,7 +17,7 @@ public struct LaunchFile: Equatable, Sendable {
     public init(schema: String? = nil, env: [String: String] = [:], tasks: [LaunchTask] = []) { self.schema = schema; self.env = env; self.tasks = tasks }
 
     public static func url(projectRoot: String) -> URL {
-        URL(fileURLWithPath: projectRoot, isDirectory: true).appendingPathComponent(WorkspaceFile.directoryName, isDirectory: true)
+        URL(fileURLWithPath: projectRoot, isDirectory: true).appendingPathComponent(ProjectFile.directoryName, isDirectory: true)
             .appendingPathComponent(fileName)
     }
 
@@ -47,10 +47,10 @@ public struct LaunchFile: Equatable, Sendable {
         var seen = Set<String>()
         for task in tasks {
             let key = task.name
-            if let problem = WorkspaceFile.textProblem(task.name, limit: 100) { issues.append(LayoutIssue(key: key, "The task name \(problem)")) }
+            if let problem = ProjectFile.textProblem(task.name, limit: 100) { issues.append(LayoutIssue(key: key, "The task name \(problem)")) }
             if !seen.insert(task.name).inserted { issues.append(LayoutIssue(key: key, "Task names must be unique.")) }
-            if let problem = WorkspaceFile.commandProblem(task.command) { issues.append(LayoutIssue(key: key, "The command \(problem)")) }
-            if let cwd = task.cwd, cwd != ".", WorkspaceFile.relativeDirectory(cwd) == nil {
+            if let problem = ProjectFile.commandProblem(task.command) { issues.append(LayoutIssue(key: key, "The command \(problem)")) }
+            if let cwd = task.cwd, cwd != ".", ProjectFile.relativeDirectory(cwd) == nil {
                 issues.append(LayoutIssue(key: key, "cwd must be relative to the project folder, without .., ~, $ or backticks."))
             }
             issues += Self.variableIssues(task.env, key: key)
@@ -64,10 +64,10 @@ public struct LaunchFile: Equatable, Sendable {
     static func variableIssues(_ env: [String: String], key: String?) -> [LayoutIssue] {
         env.sorted { $0.key < $1.key }.compactMap { name, value in
             if !isVariableName(name) { return LayoutIssue(key: key, "The variable name “\(name)” must match [A-Za-z_][A-Za-z0-9_]*.") }
-            if value.count > WorkspaceFile.maximumCommandLength || WorkspaceFile.hasHiddenCharacters(value)
+            if value.count > ProjectFile.maximumCommandLength || ProjectFile.hasHiddenCharacters(value)
                 || value.unicodeScalars.contains(where: \.properties.isDefaultIgnorableCodePoint)
             {
-                return LayoutIssue(key: key, "The value of \(name) must be one line of at most \(WorkspaceFile.maximumCommandLength) characters without control characters.")
+                return LayoutIssue(key: key, "The value of \(name) must be one line of at most \(ProjectFile.maximumCommandLength) characters without control characters.")
             }
             return nil
         }
@@ -94,7 +94,7 @@ public struct LaunchTask: Equatable, Sendable {
 
     /// The absolute folder the task runs in. Call only on a file without issues.
     public func directory(projectRoot: String) -> String {
-        let relative = cwd.flatMap(WorkspaceFile.relativeDirectory) ?? ""
+        let relative = cwd.flatMap(ProjectFile.relativeDirectory) ?? ""
         return relative.isEmpty ? projectRoot : projectRoot + "/" + relative
     }
 }
@@ -115,18 +115,18 @@ public enum TaskCommand {
     public static func compose(
         command: String, directory: String, currentDirectory: String?, environment: [(name: String, value: String)], shell: String?, kind: ShellIntegrationKind
     ) -> String? {
-        guard directory.hasPrefix("/"), !WorkspaceFile.hasHiddenCharacters(directory) else { return nil }
+        guard directory.hasPrefix("/"), !ProjectFile.hasHiddenCharacters(directory) else { return nil }
         var line = command
         if !environment.isEmpty {
             // `env` reads every leading `NAME=value` word as a variable, so the shell path must not look like one.
-            guard let shell, shell.hasPrefix("/"), !shell.contains("="), !WorkspaceFile.hasHiddenCharacters(shell),
+            guard let shell, shell.hasPrefix("/"), !shell.contains("="), !ProjectFile.hasHiddenCharacters(shell),
                 environment.allSatisfy({ LaunchFile.isVariableName($0.name) })
             else { return nil }
             let assignments = environment.map { $0.name + "=" + shellQuote($0.value, kind: kind) }
             line = (["/usr/bin/env"] + assignments + [shellQuote(shell, kind: kind), "-c", shellQuote(command, kind: kind)]).joined(separator: " ")
         }
         if currentDirectory.map(standardized) != standardized(directory) { line = "cd " + shellQuote(directory, kind: kind) + " && " + line }
-        return WorkspaceFile.commandProblem(line) == nil ? line : nil
+        return ProjectFile.commandProblem(line) == nil ? line : nil
     }
 
     private static func standardized(_ path: String) -> String { URL(fileURLWithPath: path).standardizedFileURL.path }

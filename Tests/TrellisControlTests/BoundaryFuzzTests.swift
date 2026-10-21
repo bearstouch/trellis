@@ -52,7 +52,7 @@ final class BoundaryFuzzTests: XCTestCase {
             #"{"version":1,"name":"P","tabs":[{"title":"T","color":"red","root":{"type":"split","axis":"y","ratio":0.4,"children":[{"type":"pane","directory":"src/app","command":"make test"},{"type":"pane","key":"k","title":"x"}]}}]}"#
                 .utf8)
         for iteration in 0..<2_000 {
-            guard case .success(let file) = WorkspaceFileJSON.parse(mutate(seed, &random)) else { continue }
+            guard case .success(let file) = ProjectFileJSON.parse(mutate(seed, &random)) else { continue }
             accepted += 1
             let resolved = file.resolve(projectRoot: "/work/p")
             XCTAssertTrue(resolved.commands.values.allSatisfy { !$0.contains("\n") && !$0.contains("\r") && !$0.contains("\0") }, "iteration \(iteration)")
