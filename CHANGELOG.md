@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.12.0] - 2026-10-21
+## [0.12.0] - 2026-10-22
 
 This release adds project files and tasks from `.trellis/`, and drag reordering for windows and tabs.
 
