@@ -218,12 +218,23 @@ public enum WorkspaceFileLocator {
     /// The nearest project folder at or above `directory` holding `.trellis/workspace.json`. Neither the home
     /// folder nor `/` counts as a project, and the search never leaves the home folder it started in.
     public static func projectRoot(containing directory: String, home: String, fileExists: (String) -> Bool) -> String? {
+        nearestRoot(containing: directory, home: home) { fileExists(WorkspaceFile.url(projectRoot: $0).path) }
+    }
+
+    /// A task project (FR-TK02): the nearest folder with a `.trellis` folder, or a `.git` folder or file (worktrees
+    /// and submodules use a file), within the same bounds.
+    public static func taskRoot(containing directory: String, home: String, exists: (String) -> Bool) -> String? {
+        nearestRoot(containing: directory, home: home) { exists($0 + "/" + WorkspaceFile.directoryName) || exists($0 + "/.git") }
+    }
+
+    /// The nearest folder at or above `directory` that `matches`, excluding home and `/`, never leaving home.
+    public static func nearestRoot(containing directory: String, home: String, matches: (String) -> Bool) -> String? {
         guard directory.hasPrefix("/") else { return nil }
         let home = URL(fileURLWithPath: home).standardizedFileURL.path
         var current = URL(fileURLWithPath: directory).standardizedFileURL.path
         let underHome = current.hasPrefix(home + "/")
         while current != "/", current != home {
-            if fileExists(WorkspaceFile.url(projectRoot: current).path) { return current }
+            if matches(current) { return current }
             let parent = (current as NSString).deletingLastPathComponent
             if parent == current || (underHome && !parent.hasPrefix(home)) { return nil }
             current = parent

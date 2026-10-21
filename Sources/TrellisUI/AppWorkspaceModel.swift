@@ -371,6 +371,17 @@ public final class AppWorkspaceModel: ObservableObject {
     var workspaceFileCommands: [UUID: String] = [:]
     var workspaceFileLookups: [UUID: String] = [:]
     var workspaceTrust: WorkspaceTrustList?
+    /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
+    @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
+    /// The Tasks menu's project, read when the menu opens (FR-TK02); nil when the active pane has none.
+    @Published public internal(set) var taskCatalog: TaskCatalog?
+    @Published public internal(set) var pendingTaskReview: TaskReview?
+    var taskCatalogGeneration: UInt64 = 0
+    var launchTrust: WorkspaceTrustList?
+    /// How long after Stop the button offers Force Stop (FR-TK08).
+    var taskStopEscalation: TimeInterval = 2
+    /// Opens launch.json in the user's editor; injected by tests.
+    public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Returns the chosen project folder; injected by tests.
     public var chooseWorkspaceFolder: (_ message: String, _ directory: String?) -> String? = { WorkspaceFilePanels.chooseFolder(message: $0, directory: $1) }
     private var recoveryBackup: RestoredWorkspace?
@@ -778,6 +789,7 @@ public final class AppWorkspaceModel: ObservableObject {
             if let registration = self.askpassRegistrations.removeValue(forKey: sessionID) { self.askpass?.unregister(registration) }
             if self.terminals[paneID] === terminal {
                 self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
+                self.taskRuns.removeValue(forKey: paneID)
                 self.clearProgress(paneID: paneID)
             }
             self.recordActivity(paneID: paneID, exited: true)
@@ -1008,6 +1020,7 @@ public final class AppWorkspaceModel: ObservableObject {
             // The shell is reading input now, so a workspace file's command can be typed (FR-WF05).
             submitWorkspaceCommand(paneID: paneID)
         }
+        updateTaskRun(paneID: paneID, event: event)
         var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
         let wasRunning = state.commandRunning
         state.apply(event, at: activityNow())
@@ -1133,6 +1146,7 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         shellStates.removeValue(forKey: pane.id)
         inputWaits.removeValue(forKey: pane.id)
+        taskRuns.removeValue(forKey: pane.id)
         clearProgress(paneID: pane.id)
         terminal.onPasswordPromptChanged = { [weak self, weak terminal] active in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }

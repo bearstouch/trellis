@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bearstouch/trellis/docs/api/launch-file.schema.json",
+  "title": "Trellis tasks file v1 (.trellis/launch.json)",
+  "description": "Rules the schema can't express (unique names, no control or invisible characters, at most 50 variables per task, 64 KB) are in docs/features/tasks.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "tasks"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": 1},
+    "env": {"$ref": "#/$defs/env"},
+    "tasks": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/task"}}
+  },
+  "$defs": {
+    "env": {
+      "description": "Literal values; nothing is expanded. A task's own env wins over the top-level env.",
+      "type": "object",
+      "propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]{0,254}$"},
+      "additionalProperties": {"type": "string", "maxLength": 4096}
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "command"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 100},
+        "command": {"description": "One shell line, typed into the active pane's shell.", "type": "string", "minLength": 1, "maxLength": 4096},
+        "cwd": {
+          "description": "Relative to the folder that holds .trellis; no absolute paths, ~, .., $ or backticks.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "not": {"pattern": "^[/~]|(^|/)\\.\\.(/|$)|[$`]"}
+        },
+        "group": {"enum": ["build", "test", "run"]},
+        "env": {"$ref": "#/$defs/env"}
+      }
+    }
+  }
+}

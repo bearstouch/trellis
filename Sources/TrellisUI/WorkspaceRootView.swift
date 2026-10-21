@@ -101,6 +101,9 @@ public struct WorkspaceRootView: View {
         .sheet(item: Binding(get: { model.pendingWorkspaceReview }, set: { if $0 == nil, let id = model.pendingWorkspaceReview?.id { Task { await model.resolveWorkspaceReview(id, .cancel) } } })) {
             WorkspaceFileReviewView(model: model, review: $0)
         }
+        .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
+            TaskReviewView(model: model, review: $0)
+        }
         .sheet(item: Binding(get: { model.pendingWorkspaceSave }, set: { if $0 == nil { model.cancelWorkspaceSave() } })) {
             WorkspaceFileSaveView(model: model, draft: $0)
         }
@@ -321,6 +324,8 @@ public struct WorkspaceRootView: View {
                             }
                         }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
                     }.scrollIndicators(.hidden)
+                    TaskDropdownButton(model: model)
+                    Divider().overlay(model.separatorOverlay).frame(height: 20)
                     Button {
                         Task { await model.createTab() }
                     } label: {
