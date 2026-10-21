@@ -24,8 +24,8 @@ final class LaunchFileJSONTests: XCTestCase {
     }
 
     func testWorkspaceFileBytesAreUnchangedBySharedEncoder() throws {
-        let data = try Data(contentsOf: repository.appendingPathComponent(".trellis/workspace.json"))
-        XCTAssertEqual(WorkspaceFileJSON.encode(try WorkspaceFileJSON.parse(data).get()), data)
+        let data = try Data(contentsOf: repository.appendingPathComponent(".trellis/project.json"))
+        XCTAssertEqual(ProjectFileJSON.encode(try ProjectFileJSON.parse(data).get()), data)
     }
 
     func testDocumentedExampleParses() throws {

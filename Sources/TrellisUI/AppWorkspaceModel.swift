@@ -361,29 +361,29 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Declarative layout key bindings per namespace; loaded on first use.
     var layoutNamespaces: [String: [String: LayoutBinding]]?
     var layoutApplyInFlight = false
-    /// Project workspace files found above each pane's directory (FR-WF02); runtime only.
-    @Published public internal(set) var workspaceFileOffers: [UUID: WorkspaceFileOffer] = [:]
-    @Published public internal(set) var pendingWorkspaceReview: WorkspaceFileReview?
-    @Published public internal(set) var pendingWorkspaceSave: WorkspaceFileDraft?
+    /// Project files found above each pane's directory (FR-WF02); runtime only.
+    @Published public internal(set) var projectFileOffers: [UUID: ProjectFileOffer] = [:]
+    @Published public internal(set) var pendingProjectReview: ProjectFileReview?
+    @Published public internal(set) var pendingProjectSave: ProjectFileDraft?
     /// Trusted commands waiting for their new shell's first prompt, by session (FR-WF05); never persisted or logged.
-    var pendingWorkspaceCommands: [UUID: String] = [:]
+    var pendingProjectCommands: [UUID: String] = [:]
     /// The command each pane was opened with, so saving its window keeps it (FR-WF06); runtime only.
-    var workspaceFileCommands: [UUID: String] = [:]
-    var workspaceFileLookups: [UUID: String] = [:]
-    var workspaceTrust: WorkspaceTrustList?
+    var projectFileCommands: [UUID: String] = [:]
+    var projectFileLookups: [UUID: String] = [:]
+    var projectTrust: ProjectTrustList?
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
     @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
     /// The Tasks menu's project, read when the menu opens (FR-TK02); nil when the active pane has none.
     @Published public internal(set) var taskCatalog: TaskCatalog?
     @Published public internal(set) var pendingTaskReview: TaskReview?
     var taskCatalogGeneration: UInt64 = 0
-    var launchTrust: WorkspaceTrustList?
+    var launchTrust: ProjectTrustList?
     /// How long after Stop the button offers Force Stop (FR-TK08).
     var taskStopEscalation: TimeInterval = 2
     /// Opens launch.json in the user's editor; injected by tests.
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Returns the chosen project folder; injected by tests.
-    public var chooseWorkspaceFolder: (_ message: String, _ directory: String?) -> String? = { WorkspaceFilePanels.chooseFolder(message: $0, directory: $1) }
+    public var chooseProjectFolder: (_ message: String, _ directory: String?) -> String? = { ProjectFilePanels.chooseFolder(message: $0, directory: $1) }
     private var recoveryBackup: RestoredWorkspace?
     private var recoveryReason: WorkspacePersistenceError?
     private var pendingSaveTask: Task<Void, Never>?
@@ -785,7 +785,7 @@ public final class AppWorkspaceModel: ObservableObject {
                             ? "The executable, directory, or environment could not be used." : "Session launch was cancelled."))
                 : .recordSessionExit(sessionID: sessionID, code: code)
             self.closureCoordinator.forget(sessionID: sessionID)
-            self.pendingWorkspaceCommands.removeValue(forKey: sessionID)
+            self.pendingProjectCommands.removeValue(forKey: sessionID)
             if let registration = self.askpassRegistrations.removeValue(forKey: sessionID) { self.askpass?.unregister(registration) }
             if self.terminals[paneID] === terminal {
                 self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
@@ -1017,8 +1017,8 @@ public final class AppWorkspaceModel: ObservableObject {
         if case .promptStart = event {
             if inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
             clearProgress(paneID: paneID)
-            // The shell is reading input now, so a workspace file's command can be typed (FR-WF05).
-            submitWorkspaceCommand(paneID: paneID)
+            // The shell is reading input now, so a project file’s command can be typed (FR-WF05).
+            submitProjectCommand(paneID: paneID)
         }
         updateTaskRun(paneID: paneID, event: event)
         var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
@@ -1031,7 +1031,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
-        if let directory = currentDirectory(paneID: paneID) { detectWorkspaceFile(paneID: paneID, directory: directory) }
+        if let directory = currentDirectory(paneID: paneID) { detectProjectFile(paneID: paneID, directory: directory) }
         refreshTerminalAccessibility()
     }
 

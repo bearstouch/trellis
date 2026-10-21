@@ -98,14 +98,14 @@ public struct WorkspaceRootView: View {
                 }
             }.padding(24).frame(width: 540)
         }
-        .sheet(item: Binding(get: { model.pendingWorkspaceReview }, set: { if $0 == nil, let id = model.pendingWorkspaceReview?.id { Task { await model.resolveWorkspaceReview(id, .cancel) } } })) {
-            WorkspaceFileReviewView(model: model, review: $0)
+        .sheet(item: Binding(get: { model.pendingProjectReview }, set: { if $0 == nil, let id = model.pendingProjectReview?.id { Task { await model.resolveProjectReview(id, .cancel) } } })) {
+            ProjectFileReviewView(model: model, review: $0)
         }
         .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
             TaskReviewView(model: model, review: $0)
         }
-        .sheet(item: Binding(get: { model.pendingWorkspaceSave }, set: { if $0 == nil { model.cancelWorkspaceSave() } })) {
-            WorkspaceFileSaveView(model: model, draft: $0)
+        .sheet(item: Binding(get: { model.pendingProjectSave }, set: { if $0 == nil { model.cancelProjectSave() } })) {
+            ProjectFileSaveView(model: model, draft: $0)
         }
         .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
@@ -343,7 +343,7 @@ public struct WorkspaceRootView: View {
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let offer = model.workspaceFileOffer(tabID: tab.id)
+        let offer = model.projectFileOffer(tabID: tab.id)
         let shownOffer = hoveredTabID == tab.id || selected ? offer : nil
         let parts: [String] = [
             descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : "",
@@ -389,7 +389,7 @@ public struct WorkspaceRootView: View {
                     .foregroundStyle(progress.state == .error ? Color.red : progress.state == .paused ? Color.orange : model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
             }
-            if let shownOffer { WorkspaceOfferButton(model: model, offer: shownOffer, expanded: hoveredTabID == tab.id) }
+            if let shownOffer { ProjectOfferButton(model: model, offer: shownOffer, expanded: hoveredTabID == tab.id) }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
@@ -408,7 +408,7 @@ public struct WorkspaceRootView: View {
             .contentShape(Rectangle())
         return
             label
-            .modifier(TabWorkspaceOffer(model: model, offer: offer, tabID: tab.id, hoveredTabID: $hoveredTabID))
+            .modifier(TabProjectOffer(model: model, offer: offer, tabID: tab.id, hoveredTabID: $hoveredTabID))
             .modifier(
                 DragReorder(
                     id: tab.id, order: model.presentation.visibleTabs.map(\.id), axis: .horizontal, enabled: model.editingTabID != tab.id,
@@ -584,7 +584,7 @@ private struct TabContextMenu: View, Equatable {
     let canMoveLeft: Bool
     let canMoveRight: Bool
     let separator: Color
-    let offer: WorkspaceFileOffer?
+    let offer: ProjectFileOffer?
     let rename: () -> Void
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
@@ -609,8 +609,8 @@ private struct TabContextMenu: View, Equatable {
         Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
         if let offer {
             Divider().overlay(separator)
-            Button("Load Workspace “\(offer.name)”") { Task { await model.loadWorkspaceFile(root: offer.root) } }
-            Button("Don’t Offer for This Folder") { model.stopOfferingWorkspaceFile(root: offer.root) }
+            Button("Load Project “\(offer.name)”") { Task { await model.loadProjectFile(root: offer.root) } }
+            Button("Don’t Offer for This Folder") { model.stopOfferingProjectFile(root: offer.root) }
         }
         Divider().overlay(separator)
         Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
@@ -735,7 +735,7 @@ private struct WindowItemActions: ViewModifier {
                     .disabled(model.snapshot.windows.first?.id == window.id)
                 Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
                     .disabled(model.snapshot.windows.last?.id == window.id)
-                Button("Save as Workspace File…") { model.beginSaveWorkspaceFile(windowID: window.id) }
+                Button("Save as Project…") { model.beginSaveProjectFile(windowID: window.id) }
                 Divider().overlay(model.separatorOverlay)
                 Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
             }
@@ -1059,31 +1059,31 @@ public struct LaunchSettingsView: View {
     }
 }
 
-/// A tab's workspace-file offer (FR-WF02): words while hovered, a glyph on a selected tab so it can be found.
-private struct WorkspaceOfferButton: View {
+/// A tab’s project offer (FR-WF02): words while hovered, a glyph on a selected tab so it can be found.
+private struct ProjectOfferButton: View {
     @ObservedObject var model: AppWorkspaceModel
-    let offer: WorkspaceFileOffer
+    let offer: ProjectFileOffer
     let expanded: Bool
 
     var body: some View {
         Button {
-            Task { await model.loadWorkspaceFile(root: offer.root) }
+            Task { await model.loadProjectFile(root: offer.root) }
         } label: {
             Group {
-                if expanded { Label("Load Workspace", systemImage: "square.grid.2x2").labelStyle(.titleAndIcon) } else { Image(systemName: "square.grid.2x2") }
+                if expanded { Label("Load Project", systemImage: "square.grid.2x2").labelStyle(.titleAndIcon) } else { Image(systemName: "square.grid.2x2") }
             }
             .font(.system(size: 10, weight: .medium)).lineLimit(1).padding(.horizontal, expanded ? 5 : 0).padding(.vertical, 1)
             .background(Capsule().fill(model.themeColor(.accent).opacity(expanded ? 0.18 : 0)))
         }
-        .buttonStyle(.plain).fixedSize().help("Load workspace “\(offer.name)” from \(offer.path)")
-        .accessibilityLabel("Load Workspace \(offer.name)")
+        .buttonStyle(.plain).fixedSize().help("Load project “\(offer.name)” from \(offer.path)")
+        .accessibilityLabel("Load Project \(offer.name)")
     }
 }
 
-/// Tracks the hovered tab and offers Load Workspace to VoiceOver, so the offer never needs a pointer.
-private struct TabWorkspaceOffer: ViewModifier {
+/// Tracks the hovered tab and offers Load Project to VoiceOver, so the offer never needs a pointer.
+private struct TabProjectOffer: ViewModifier {
     let model: AppWorkspaceModel
-    let offer: WorkspaceFileOffer?
+    let offer: ProjectFileOffer?
     let tabID: UUID
     @Binding var hoveredTabID: UUID?
 
@@ -1093,7 +1093,7 @@ private struct TabWorkspaceOffer: ViewModifier {
                 if inside { hoveredTabID = tabID } else if hoveredTabID == tabID { hoveredTabID = nil }
             }
             .accessibilityActions {
-                if let offer { Button("Load Workspace") { Task { await model.loadWorkspaceFile(root: offer.root) } } }
+                if let offer { Button("Load Project") { Task { await model.loadProjectFile(root: offer.root) } } }
             }
     }
 }

@@ -5,9 +5,9 @@ import TrellisCore
 import TrellisTerminal
 @testable import TrellisUI
 
-/// `.trellis/workspace.json` end to end (FR-WF01–FR-WF06), with a fake `zsh` that gets shell integration
+/// `.trellis/project.json` end to end (FR-WF01–FR-WF06), with a fake `zsh` that gets shell integration
 /// injected but never prints marks itself, so each test decides when the "first prompt" arrives.
-final class WorkspaceFileTests: XCTestCase {
+final class ProjectFileTests: XCTestCase {
     private var scratch: URL!
     private var project: String!
 
@@ -32,7 +32,7 @@ final class WorkspaceFileTests: XCTestCase {
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: scratch.appendingPathComponent("state")))
         _ = await model.loadWorkspace()
         model.confirmCloseSessions = { _ in true }
-        model.chooseWorkspaceFolder = { _, _ in
+        model.chooseProjectFolder = { _, _ in
             XCTFail("Unexpected folder panel"); return nil
         }
         let saved = await model.saveLaunchSettings(shell: scratch.appendingPathComponent("bin/zsh").path, directory: scratch.path)
@@ -47,9 +47,9 @@ final class WorkspaceFileTests: XCTestCase {
         }
     }
 
-    private func writeFile(_ text: String) throws {
+    private func writeFile(_ text: String, name: String = ProjectFile.fileName) throws {
         try FileManager.default.createDirectory(atPath: project + "/.trellis", withIntermediateDirectories: true)
-        try text.write(toFile: project + "/.trellis/workspace.json", atomically: true, encoding: .utf8)
+        try text.write(toFile: project + "/.trellis/" + name, atomically: true, encoding: .utf8)
     }
 
     private func layout(command: String? = nil, title: String = "Dev") -> String {
@@ -88,8 +88,8 @@ final class WorkspaceFileTests: XCTestCase {
         let model = try await makeModel()
         defer { cleanUp(model) }
         try writeFile(layout())
-        await model.loadWorkspaceFile(root: project + "/.")
-        XCTAssertNil(model.pendingWorkspaceReview, "A file without commands needs no review")
+        await model.loadProjectFile(root: project + "/.")
+        XCTAssertNil(model.pendingProjectReview, "A file without commands needs no review")
         XCTAssertNil(model.errorMessage)
         let opened = try window(model, named: "Demo")
         XCTAssertEqual(model.snapshot.activeWindowID, opened.id)
@@ -105,7 +105,7 @@ final class WorkspaceFileTests: XCTestCase {
         let sessions = ids.compactMap { model.snapshot.panes[$0]?.sessionID }
 
         try writeFile(layout(title: "Develop"))
-        await model.loadWorkspaceFile(root: project)
+        await model.loadProjectFile(root: project)
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(model.snapshot.windows.filter { $0.name == "Demo" }.count, 1, "Reopening reuses the project's window")
         let reopened = try window(model, named: "Demo")
@@ -122,20 +122,20 @@ final class WorkspaceFileTests: XCTestCase {
         defer { cleanUp(model) }
         try writeFile(layout(command: "echo WF-MARKER"))
         let windows = model.snapshot.windows.count
-        await model.loadWorkspaceFile(root: project)
-        let review = try XCTUnwrap(model.pendingWorkspaceReview)
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview)
         XCTAssertEqual(review.file.entries.compactMap(\.pane.command), ["echo WF-MARKER"])
         XCTAssertFalse(review.changedSinceTrusted)
         XCTAssertEqual(model.snapshot.windows.count, windows, "Nothing opens before review")
-        await model.resolveWorkspaceReview(review.id, .openWithoutCommands)
+        await model.resolveProjectReview(review.id, .openWithoutCommands)
         let pane = try XCTUnwrap(panes(model, try window(model, named: "Demo")).first)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         try prompt(model, pane, project + "/src")
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertFalse(text(model, pane).contains("WF-MARKER"))
-        XCTAssertNil(model.pendingWorkspaceCommands[try XCTUnwrap(model.snapshot.panes[pane]).sessionID])
-        await model.loadWorkspaceFile(root: project)
-        XCTAssertNotNil(model.pendingWorkspaceReview, "Opening without commands trusts nothing")
+        XCTAssertNil(model.pendingProjectCommands[try XCTUnwrap(model.snapshot.panes[pane]).sessionID])
+        await model.loadProjectFile(root: project)
+        XCTAssertNotNil(model.pendingProjectReview, "Opening without commands trusts nothing")
     }
 
     @MainActor
@@ -143,8 +143,8 @@ final class WorkspaceFileTests: XCTestCase {
         let model = try await makeModel()
         defer { cleanUp(model) }
         try writeFile(layout(command: "echo WF-MARKER"))
-        await model.loadWorkspaceFile(root: project)
-        await model.resolveWorkspaceReview(try XCTUnwrap(model.pendingWorkspaceReview).id, .trustAndOpen)
+        await model.loadProjectFile(root: project)
+        await model.resolveProjectReview(try XCTUnwrap(model.pendingProjectReview).id, .trustAndOpen)
         let opened = try window(model, named: "Demo")
         let pane = try XCTUnwrap(panes(model, opened).first)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
@@ -160,17 +160,17 @@ final class WorkspaceFileTests: XCTestCase {
         let attributes = try FileManager.default.attributesOfItem(atPath: scratch.appendingPathComponent("state/workspace-trust.json").path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
 
-        await model.loadWorkspaceFile(root: project)
-        XCTAssertNil(model.pendingWorkspaceReview, "The same bytes stay trusted")
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview, "The same bytes stay trusted")
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(text(model, pane).components(separatedBy: "WF-MARKER").count - 1, 1, "Reopening never runs a command again")
 
         try writeFile(layout(command: "echo WF-MARKER "))
-        await model.loadWorkspaceFile(root: project)
-        let review = try XCTUnwrap(model.pendingWorkspaceReview, "A changed file needs a new review")
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview, "A changed file needs a new review")
         XCTAssertTrue(review.changedSinceTrusted)
-        await model.resolveWorkspaceReview(review.id, .cancel)
-        XCTAssertNil(model.pendingWorkspaceReview)
+        await model.resolveProjectReview(review.id, .cancel)
+        XCTAssertNil(model.pendingProjectReview)
     }
 
     @MainActor
@@ -179,12 +179,12 @@ final class WorkspaceFileTests: XCTestCase {
         defer { cleanUp(model) }
         model.setShellIntegrationEnabled(false)
         try writeFile(layout(command: "echo WF-PLAIN"))
-        await model.loadWorkspaceFile(root: project)
-        await model.resolveWorkspaceReview(try XCTUnwrap(model.pendingWorkspaceReview).id, .trustAndOpen)
+        await model.loadProjectFile(root: project)
+        await model.resolveProjectReview(try XCTUnwrap(model.pendingProjectReview).id, .trustAndOpen)
         let pane = try XCTUnwrap(panes(model, try window(model, named: "Demo")).first)
         try await waitFor { self.text(model, pane).contains("WF-PLAIN") }
         XCTAssertTrue(text(model, pane).contains("WF-PLAIN"))
-        XCTAssertTrue(model.pendingWorkspaceCommands.isEmpty)
+        XCTAssertTrue(model.pendingProjectCommands.isEmpty)
     }
 
     @MainActor
@@ -195,37 +195,37 @@ final class WorkspaceFileTests: XCTestCase {
         await model.createWindow(name: "Scratch")
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         try prompt(model, tab.activePaneID, project + "/src")
-        try await waitFor { model.workspaceFileOffer(tabID: tab.id) != nil }
-        let offer = try XCTUnwrap(model.workspaceFileOffer(tabID: tab.id))
+        try await waitFor { model.projectFileOffer(tabID: tab.id) != nil }
+        let offer = try XCTUnwrap(model.projectFileOffer(tabID: tab.id))
         XCTAssertEqual(offer.root, project)
         XCTAssertEqual(offer.name, "Demo")
         try prompt(model, tab.activePaneID, scratch.path)
-        try await waitFor { model.workspaceFileOffer(tabID: tab.id) == nil }
-        XCTAssertNil(model.workspaceFileOffer(tabID: tab.id), "Leaving the project clears the offer")
+        try await waitFor { model.projectFileOffer(tabID: tab.id) == nil }
+        XCTAssertNil(model.projectFileOffer(tabID: tab.id), "Leaving the project clears the offer")
 
         // The offer's action opens the project's window; its own tabs never offer it again.
         try prompt(model, tab.activePaneID, project)
-        try await waitFor { model.workspaceFileOffer(tabID: tab.id) != nil }
-        await model.loadWorkspaceFile(root: try XCTUnwrap(model.workspaceFileOffer(tabID: tab.id)).root)
+        try await waitFor { model.projectFileOffer(tabID: tab.id) != nil }
+        await model.loadProjectFile(root: try XCTUnwrap(model.projectFileOffer(tabID: tab.id)).root)
         let projectWindow = try window(model, named: "Demo")
         let projectTab = try XCTUnwrap(model.snapshot.tabs[projectWindow.tabIDs[0]])
         try await waitFor { model.terminals[projectTab.activePaneID]?.sessionState == .running }
         try prompt(model, projectTab.activePaneID, project + "/src")
-        try await waitFor { model.workspaceFileOffers[projectTab.activePaneID] != nil }
-        XCTAssertNotNil(model.workspaceFileOffers[projectTab.activePaneID])
-        XCTAssertNil(model.workspaceFileOffer(tabID: projectTab.id))
-        XCTAssertNotNil(model.workspaceFileOffer(tabID: tab.id))
+        try await waitFor { model.projectFileOffers[projectTab.activePaneID] != nil }
+        XCTAssertNotNil(model.projectFileOffers[projectTab.activePaneID])
+        XCTAssertNil(model.projectFileOffer(tabID: projectTab.id))
+        XCTAssertNotNil(model.projectFileOffer(tabID: tab.id))
 
-        model.stopOfferingWorkspaceFile(root: project)
-        XCTAssertNil(model.workspaceFileOffer(tabID: tab.id), "Don't Offer for This Folder hides it")
+        model.stopOfferingProjectFile(root: project)
+        XCTAssertNil(model.projectFileOffer(tabID: tab.id), "Don't Offer for This Folder hides it")
 
         // Closed panes leave no offer, lookup or queued state behind.
         let closed = tab.activePaneID
         await model.closeTab(tab.id)
         XCTAssertNil(model.snapshot.panes[closed])
         try prompt(model, projectTab.activePaneID, project)
-        XCTAssertNil(model.workspaceFileOffers[closed])
-        XCTAssertNil(model.workspaceFileLookups[closed])
+        XCTAssertNil(model.projectFileOffers[closed])
+        XCTAssertNil(model.projectFileLookups[closed])
     }
 
     @MainActor
@@ -234,22 +234,25 @@ final class WorkspaceFileTests: XCTestCase {
         defer { cleanUp(model) }
         try FileManager.default.createDirectory(atPath: project + "/.trellis", withIntermediateDirectories: true)
         try layout().write(toFile: scratch.appendingPathComponent("elsewhere.json").path, atomically: true, encoding: .utf8)
-        try FileManager.default.createSymbolicLink(atPath: project + "/.trellis/workspace.json", withDestinationPath: scratch.appendingPathComponent("elsewhere.json").path)
+        try FileManager.default.createSymbolicLink(atPath: project + "/.trellis/project.json", withDestinationPath: scratch.appendingPathComponent("elsewhere.json").path)
+        // Nor does a linked project.json fall back to a regular legacy file beside it (FR-WF07).
+        try writeFile(layout(), name: ProjectFile.legacyFileName)
         await model.createWindow(name: "Scratch")
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         try prompt(model, tab.activePaneID, project + "/src")
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertNil(model.workspaceFileOffer(tabID: tab.id), "A symbolic link is never offered")
+        XCTAssertNil(model.projectFileOffer(tabID: tab.id), "A symbolic link is never offered")
+        try FileManager.default.removeItem(atPath: project + "/.trellis/" + ProjectFile.legacyFileName)
 
         // A trust list from a newer Trellis is never rewritten, and trusts nothing.
-        try FileManager.default.removeItem(atPath: project + "/.trellis/workspace.json")
+        try FileManager.default.removeItem(atPath: project + "/.trellis/project.json")
         try writeFile(layout(command: "echo WF-MARKER"))
         let trustURL = scratch.appendingPathComponent("state/workspace-trust.json")
         let newer = Data(#"{"version":2,"trusted":[],"ignored":[]}"#.utf8)
         try newer.write(to: trustURL)
-        await model.loadWorkspaceFile(root: project)
-        let review = try XCTUnwrap(model.pendingWorkspaceReview)
-        await model.resolveWorkspaceReview(review.id, .trustAndOpen)
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview)
+        await model.resolveProjectReview(review.id, .trustAndOpen)
         XCTAssertNotNil(model.errorMessage)
         XCTAssertNil(model.snapshot.windows.first { $0.name == "Demo" })
         XCTAssertEqual(try Data(contentsOf: trustURL), newer)
@@ -271,20 +274,20 @@ final class WorkspaceFileTests: XCTestCase {
         try prompt(model, first, project + "/src")
         try prompt(model, second, project)
         var chosen: String?
-        model.chooseWorkspaceFolder = { _, directory in
+        model.chooseProjectFolder = { _, directory in
             chosen = directory; return self.project
         }
-        model.beginSaveWorkspaceFile(windowID: windowID)
+        model.beginSaveProjectFile(windowID: windowID)
         XCTAssertEqual(chosen, project, "Without a file yet, the picker starts at the active pane's directory")
-        var draft = try XCTUnwrap(model.pendingWorkspaceSave)
+        var draft = try XCTUnwrap(model.pendingProjectSave)
         XCTAssertFalse(draft.replacesExisting)
         XCTAssertEqual(draft.warnings, [])
         XCTAssertEqual(draft.commands.count, 2)
         draft.commands[0] = "make watch"
-        XCTAssertTrue(model.writeWorkspaceFile(draft))
-        XCTAssertNil(model.pendingWorkspaceSave)
-        let data = try Data(contentsOf: URL(fileURLWithPath: project + "/.trellis/workspace.json"))
-        let file = try WorkspaceFileJSON.parse(data).get()
+        XCTAssertTrue(model.writeProjectFile(draft))
+        XCTAssertNil(model.pendingProjectSave)
+        let data = try Data(contentsOf: URL(fileURLWithPath: project + "/.trellis/project.json"))
+        let file = try ProjectFileJSON.parse(data).get()
         XCTAssertEqual(file.name, "Mine")
         XCTAssertEqual(file.tabs.map(\.title), ["Work"])
         XCTAssertEqual(file.tabs.map(\.color), [.orange])
@@ -292,26 +295,26 @@ final class WorkspaceFileTests: XCTestCase {
         XCTAssertEqual(file.entries.map(\.pane.command), ["make watch", nil])
 
         // Saving again keeps the command and writes the same bytes.
-        model.beginSaveWorkspaceFile(windowID: windowID)
-        let again = try XCTUnwrap(model.pendingWorkspaceSave)
+        model.beginSaveProjectFile(windowID: windowID)
+        let again = try XCTUnwrap(model.pendingProjectSave)
         XCTAssertTrue(again.replacesExisting)
         XCTAssertEqual(again.commands, ["make watch", ""])
-        XCTAssertTrue(model.writeWorkspaceFile(again))
-        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: project + "/.trellis/workspace.json")), data)
+        XCTAssertTrue(model.writeProjectFile(again))
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: project + "/.trellis/project.json")), data)
         // After a relaunch (no runtime commands), the existing file's commands carry over through the bindings.
-        model.workspaceFileCommands = [:]
-        XCTAssertEqual(try model.workspaceFileDraft(windowID: windowID, root: project).commands, ["make watch", ""])
+        model.projectFileCommands = [:]
+        XCTAssertEqual(try model.projectFileDraft(windowID: windowID, root: project).commands, ["make watch", ""])
 
         // The saved window is the project's window: opening the file selects it, with no review and nothing new.
         let windows = model.snapshot.windows.count, paneCount = model.snapshot.panes.count
         await model.createWindow(name: "Elsewhere")
-        await model.loadWorkspaceFile(root: project)
-        XCTAssertNil(model.pendingWorkspaceReview)
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview)
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(model.snapshot.activeWindowID, windowID)
         XCTAssertEqual(model.snapshot.windows.count, windows + 1)
         XCTAssertEqual(model.snapshot.panes.count, paneCount + 1)
-        XCTAssertNil(model.workspaceFileOffer(tabID: tab.id))
+        XCTAssertNil(model.projectFileOffer(tabID: tab.id))
     }
 
     @MainActor
@@ -320,11 +323,11 @@ final class WorkspaceFileTests: XCTestCase {
         defer { cleanUp(model) }
         let created = await model.createWindow(name: "Mine")
         let windowID = try XCTUnwrap(created)
-        // `.trellis` is a file, so the workspace file can't be written.
+        // `.trellis` is a file, so the project file can't be written.
         try Data("x".utf8).write(to: URL(fileURLWithPath: project + "/.trellis"))
-        var draft = try model.workspaceFileDraft(windowID: windowID, root: project)
+        var draft = try model.projectFileDraft(windowID: windowID, root: project)
         draft.commands[0] = "make"
-        XCTAssertFalse(model.writeWorkspaceFile(draft))
+        XCTAssertFalse(model.writeProjectFile(draft))
         XCTAssertNotNil(model.errorMessage)
         XCTAssertEqual(try String(contentsOfFile: project + "/.trellis", encoding: .utf8), "x")
         XCTAssertFalse(FileManager.default.fileExists(atPath: scratch.appendingPathComponent("state/workspace-trust.json").path))
@@ -333,8 +336,8 @@ final class WorkspaceFileTests: XCTestCase {
         // A command that isn't one line is refused before anything is written.
         try FileManager.default.removeItem(atPath: project + "/.trellis")
         draft.commands[0] = "a\u{202E}b"
-        XCTAssertFalse(model.writeWorkspaceFile(draft))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/.trellis/workspace.json"))
+        XCTAssertFalse(model.writeProjectFile(draft))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/.trellis/project.json"))
         model.errorMessage = nil
 
         // An unreadable trust list trusts nothing and is never overwritten.
@@ -342,12 +345,58 @@ final class WorkspaceFileTests: XCTestCase {
         try Data("not json".utf8).write(to: trustURL)
         try writeFile(layout(command: "echo WF-MARKER"))
         let windows = model.snapshot.windows.count
-        await model.loadWorkspaceFile(root: project)
-        let review = try XCTUnwrap(model.pendingWorkspaceReview)
-        await model.resolveWorkspaceReview(review.id, .trustAndOpen)
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview)
+        await model.resolveProjectReview(review.id, .trustAndOpen)
         XCTAssertNotNil(model.errorMessage)
         XCTAssertEqual(model.snapshot.windows.count, windows)
         XCTAssertEqual(try Data(contentsOf: trustURL), Data("not json".utf8))
+    }
+
+    @MainActor
+    func testLegacyWorkspaceJSONIsStillReadAndSavingWritesProjectJSON() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let legacy = project + "/.trellis/workspace.json", current = project + "/.trellis/project.json"
+        try writeFile(layout(command: "echo WF-MARKER"), name: ProjectFile.legacyFileName)
+        await model.createWindow(name: "Scratch")
+        let tab = try XCTUnwrap(model.presentation.selectedTab)
+        try prompt(model, tab.activePaneID, project + "/src")
+        try await waitFor { model.projectFileOffer(tabID: tab.id) != nil }
+        XCTAssertEqual(model.projectFileOffer(tabID: tab.id)?.path, legacy, "A project with only the old file is still offered")
+
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview)
+        XCTAssertEqual(review.path, legacy, "The review names the file that was read")
+        await model.resolveProjectReview(review.id, .trustAndOpen)
+        let opened = try window(model, named: "Demo")
+
+        // Renaming the file keeps its bytes, so it stays trusted and reopens the same window.
+        try FileManager.default.moveItem(atPath: legacy, toPath: current)
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview, "The same bytes under the new name stay trusted")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.snapshot.windows.filter { $0.name == "Demo" }.map(\.id), [opened.id])
+
+        // With both files, project.json wins: a broken legacy file is never read.
+        try writeFile("not json", name: ProjectFile.legacyFileName)
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.errorMessage)
+
+        // Saving writes project.json, warns about the old file and never touches it.
+        try FileManager.default.removeItem(atPath: current)
+        model.chooseProjectFolder = { _, _ in self.project }
+        try writeFile(layout(command: "echo WF-MARKER"), name: ProjectFile.legacyFileName)
+        model.beginSaveProjectFile(windowID: opened.id)
+        let draft = try XCTUnwrap(model.pendingProjectSave)
+        XCTAssertEqual(draft.path, current)
+        XCTAssertFalse(draft.replacesExisting)
+        XCTAssertEqual(draft.commands.first, "echo WF-MARKER", "Commands carry over from the old file")
+        XCTAssertTrue(draft.warnings.contains { $0.contains("workspace.json is no longer used") }, "\(draft.warnings)")
+        let before = try Data(contentsOf: URL(fileURLWithPath: legacy))
+        XCTAssertTrue(model.writeProjectFile(draft))
+        XCTAssertNoThrow(try ProjectFileJSON.parse(Data(contentsOf: URL(fileURLWithPath: current))).get())
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: legacy)), before)
     }
 
     @MainActor
@@ -355,22 +404,34 @@ final class WorkspaceFileTests: XCTestCase {
         let model = try await makeModel()
         defer { cleanUp(model) }
         let before = model.snapshot
-        await model.loadWorkspaceFile(root: project)
+        await model.loadProjectFile(root: project)
         XCTAssertNotNil(model.errorMessage, "No file")
         model.errorMessage = nil
         try writeFile(#"{"version": 1, "name": "Bad", "tabs": [{"title": "T", "root": {"type": "pane", "directory": "../outside"}}]}"#)
-        await model.loadWorkspaceFile(root: project)
+        await model.loadProjectFile(root: project)
         XCTAssertTrue(model.errorMessage?.contains("relative to the project folder") == true, model.errorMessage ?? "")
         model.errorMessage = nil
         // A symbolic link could point anywhere; only a regular file in the project is read.
-        try FileManager.default.removeItem(atPath: project + "/.trellis/workspace.json")
+        try FileManager.default.removeItem(atPath: project + "/.trellis/project.json")
         try layout().write(toFile: scratch.appendingPathComponent("elsewhere.json").path, atomically: true, encoding: .utf8)
-        try FileManager.default.createSymbolicLink(atPath: project + "/.trellis/workspace.json", withDestinationPath: scratch.appendingPathComponent("elsewhere.json").path)
-        await model.loadWorkspaceFile(root: project)
+        try FileManager.default.createSymbolicLink(atPath: project + "/.trellis/project.json", withDestinationPath: scratch.appendingPathComponent("elsewhere.json").path)
+        await model.loadProjectFile(root: project)
         XCTAssertNotNil(model.errorMessage)
         XCTAssertEqual(model.snapshot, before)
-        XCTAssertEqual(WorkspaceFilePanels.projectRoot(forSelection: project + "/.trellis/workspace.json"), project)
-        XCTAssertEqual(WorkspaceFilePanels.projectRoot(forSelection: project + "/.trellis"), project)
-        XCTAssertEqual(WorkspaceFilePanels.projectRoot(forSelection: project), project)
+        // A linked (or dangling) project.json is refused, never skipped in favour of a valid legacy file (FR-WF07).
+        model.errorMessage = nil
+        try writeFile(layout(), name: ProjectFile.legacyFileName)
+        await model.loadProjectFile(root: project)
+        XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true, model.errorMessage ?? "")
+        XCTAssertEqual(model.snapshot, before)
+        model.errorMessage = nil
+        try FileManager.default.removeItem(atPath: scratch.appendingPathComponent("elsewhere.json").path)
+        await model.loadProjectFile(root: project)
+        XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true, model.errorMessage ?? "")
+        XCTAssertEqual(model.snapshot, before)
+        XCTAssertEqual(ProjectFilePanels.projectRoot(forSelection: project + "/.trellis/project.json"), project)
+        XCTAssertEqual(ProjectFilePanels.projectRoot(forSelection: project + "/.trellis/workspace.json"), project)
+        XCTAssertEqual(ProjectFilePanels.projectRoot(forSelection: project + "/.trellis"), project)
+        XCTAssertEqual(ProjectFilePanels.projectRoot(forSelection: project), project)
     }
 }

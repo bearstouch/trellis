@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/bearstouch/trellis/docs/api/workspace-file.schema.json",
-  "title": "Trellis workspace file v1 (.trellis/workspace.json)",
+  "$id": "https://github.com/bearstouch/trellis/docs/api/project-file.schema.json",
+  "title": "Trellis project file v1 (.trellis/project.json)",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "name", "tabs"],

@@ -118,7 +118,7 @@ final class LaunchFileTests: XCTestCase {
 
     func testTaskRootFindsTrellisOrGitWithinHome() {
         let entries: Set = ["/Users/me/code/app/.git", "/Users/me/code/lib/.trellis", "/Users/me/.git", "/srv/.git"]
-        func root(_ directory: String) -> String? { WorkspaceFileLocator.taskRoot(containing: directory, home: "/Users/me", exists: entries.contains) }
+        func root(_ directory: String) -> String? { ProjectFileLocator.taskRoot(containing: directory, home: "/Users/me", exists: entries.contains) }
         XCTAssertEqual(root("/Users/me/code/app/Sources/x"), "/Users/me/code/app")
         XCTAssertEqual(root("/Users/me/code/lib"), "/Users/me/code/lib")
         XCTAssertNil(root("/Users/me/code"), "Home's own .git never makes home a project")

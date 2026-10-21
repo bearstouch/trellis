@@ -109,15 +109,18 @@ final class KeyboardShortcutTests: XCTestCase {
     }
 
     func testOpenWorkspaceFileDefaultsToCommandOAndYieldsToASavedChord() throws {
-        XCTAssertEqual(ShortcutMap.defaults[.openWorkspaceFile], KeyChord("o"))
-        XCTAssertEqual(ShortcutAction.openWorkspaceFile.menu, .file)
-        XCTAssertEqual(ShortcutAction.openWorkspaceFile.title, "Open Workspace File…")
+        XCTAssertEqual(ShortcutMap.defaults[.openProjectFile], KeyChord("o"))
+        XCTAssertEqual(ShortcutAction.openProjectFile.menu, .file)
+        XCTAssertEqual(ShortcutAction.openProjectFile.title, "Open Project…")
         // Saved before ⌘O opened workspace files (FR-WF04): the user's choice wins.
         let data = Data(#"{"optionAsMeta":false,"overrides":{"showHosts":{"chord":{"key":"o","modifiers":1}}}}"#.utf8)
         let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
         XCTAssertEqual(loaded.shortcuts[.showHosts], KeyChord("o"))
-        XCTAssertNil(loaded.shortcuts[.openWorkspaceFile])
+        XCTAssertNil(loaded.shortcuts[.openProjectFile])
         XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
+        // Rebound before the rename to projects: the old raw value still decodes.
+        let renamed = Data(#"{"optionAsMeta":false,"overrides":{"openWorkspaceFile":{"chord":{"key":"p","modifiers":1}}}}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(KeyboardSettings.self, from: renamed).shortcuts[.openProjectFile], KeyChord("p"))
     }
 
     func testAccessibilityStateReflectsSelection() throws {
