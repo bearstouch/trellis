@@ -238,9 +238,10 @@ public struct WorkspaceRootView: View {
         } label: {
             Text(WorkspaceAccessibility.initials(for: window.name))
                 .font(.system(size: 12, weight: selected ? .bold : .medium)).lineLimit(1).minimumScaleFactor(0.6)
+                .foregroundStyle(selected ? AnyShapeStyle(model.accentForeground) : AnyShapeStyle(.foreground))
                 .frame(width: 32, height: 32)
-                .background(selected ? model.sidebarSelectionBackground : model.themeColor(.surface), in: shape)
-                // Selection is a border too, never color alone.
+                .background(selected ? model.themeColor(.accent) : model.themeColor(.surface), in: shape)
+                // Selection is a filled square with bold initials and a border, never color alone.
                 .overlay(shape.strokeBorder(selected ? model.themeColor(.accent) : model.themeColor(.border).opacity(0.6), lineWidth: selected ? 2 : 1))
                 .overlay(alignment: .bottomTrailing) {
                     if model.windowsNeedingInput.contains(window.id) {

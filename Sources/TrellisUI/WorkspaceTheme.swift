@@ -33,5 +33,9 @@ extension AppWorkspaceModel {
     var sidebarSelectionBackground: Color {
         usesNativeChrome ? Color.accentColor.opacity(0.11) : themeColor(.activeTabBackground)
     }
+    /// Readable text on an accent fill: the system accent is made for white; a theme accent picks by luminance.
+    var accentForeground: Color {
+        usesNativeChrome ? .white : effectiveTheme[.accent].relativeLuminance > 0.179 ? .black : .white
+    }
     var terminalBackground: Color { Color(themeRGB: effectiveTheme.terminal.background) }
 }
