@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import TrellisCore
 import TrellisTerminal
 import class SwiftTerm.TerminalView
@@ -9,6 +10,8 @@ public struct WorkspaceRootView: View {
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var hoveredTabID: UUID?
+    @State private var draggedTabID: UUID?
+    @State private var tabDropTargetID: UUID?
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
@@ -327,6 +330,13 @@ public struct WorkspaceRootView: View {
             offer.map { "workspace \($0.name) available" } ?? ""
         ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
+        let tabs = model.presentation.visibleTabs
+        // The landing edge (FR-T10): the dragged tab takes this tab's place, so it lands on the side it comes from.
+        let dropEdge: Alignment? =
+            tabDropTargetID == tab.id && draggedTabID != tab.id
+            ? draggedTabID.flatMap { dragged in
+                tabs.firstIndex { $0.id == dragged }.flatMap { from in tabs.firstIndex { $0.id == tab.id }.map { from > $0 ? .leading : .trailing } }
+            } : nil
         let label = HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
                 .accessibilityHidden(true)
@@ -386,6 +396,13 @@ public struct WorkspaceRootView: View {
         return
             label
             .modifier(TabWorkspaceOffer(model: model, offer: offer, tabID: tab.id, hoveredTabID: $hoveredTabID))
+            .overlay(alignment: dropEdge ?? .center) {
+                if dropEdge != nil { Rectangle().fill(model.themeColor(.accent)).frame(width: 3).accessibilityHidden(true) }
+            }
+            .modifier(
+                TabDragReorder(
+                    model: model, tabID: tab.id, enabled: model.editingTabID != tab.id, draggedTabID: $draggedTabID, dropTargetID: $tabDropTargetID)
+            )
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(descriptor?.label ?? "Tab \(model.displayTitle(tab))")
@@ -393,6 +410,8 @@ public struct WorkspaceRootView: View {
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
             .accessibilityAction(named: "Rename") { beginTabRename(tab) }
+            .accessibilityAction(named: "Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
+            .accessibilityAction(named: "Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }
             .contextMenu {
                 TabContextMenu(
                     model: model, tab: tab, canMoveLeft: model.presentation.visibleTabs.first?.id != tab.id,
@@ -479,6 +498,55 @@ extension TabColor {
             image.isTemplate = false
             return (label, Image(nsImage: image))
         })
+}
+
+/// Drag reordering in the tab bar (FR-T10). The payload is the tab's UUID and the drop reads it back, so text dragged
+/// in from another app, or the state a cancelled drag leaves behind, never moves a tab. Off while renaming, so a drag
+/// in the name field selects text.
+private struct TabDragReorder: ViewModifier {
+    let model: AppWorkspaceModel
+    let tabID: UUID
+    let enabled: Bool
+    @Binding var draggedTabID: UUID?
+    @Binding var dropTargetID: UUID?
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .onDrag {
+                    draggedTabID = tabID
+                    return NSItemProvider(object: tabID.uuidString as NSString)
+                }
+                .onDrop(of: [.text], delegate: TabDropDelegate(model: model, targetID: tabID, draggedTabID: $draggedTabID, dropTargetID: $dropTargetID))
+        } else {
+            content
+        }
+    }
+}
+
+@MainActor private struct TabDropDelegate: DropDelegate {
+    let model: AppWorkspaceModel
+    let targetID: UUID
+    @Binding var draggedTabID: UUID?
+    @Binding var dropTargetID: UUID?
+
+    func validateDrop(info: DropInfo) -> Bool { draggedTabID != nil && info.hasItemsConforming(to: [.text]) }
+    func dropEntered(info: DropInfo) { dropTargetID = targetID }
+    func dropExited(info: DropInfo) { if dropTargetID == targetID { dropTargetID = nil } }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let dragged = draggedTabID
+        dropTargetID = nil; draggedTabID = nil
+        guard let dragged, let provider = info.itemProviders(for: [.text]).first else { return false }
+        let model = model, target = targetID
+        // Only the drag this tab bar started: a stale ID from a cancelled drag plus foreign UUID text never moves a tab.
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let id = (object as? NSString).flatMap({ UUID(uuidString: $0 as String) }), id == dragged else { return }
+            Task { @MainActor in await model.moveTab(id, to: target) }
+        }
+        return true
+    }
 }
 
 /// The tab's context menu. Equatable on what it shows, so a busy tab redrawing every second (FR-T05) leaves an

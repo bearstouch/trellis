@@ -1429,6 +1429,16 @@ public final class AppWorkspaceModel: ObservableObject {
         do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
     }
 
+    /// Drag reordering (FR-T10): the tab takes the target's place, so dragging right lands after it and left before it.
+    public func moveTab(_ id: UUID, to targetID: UUID) async {
+        guard id != targetID, let tab = snapshot.tabs[id], snapshot.tabs[targetID]?.windowID == tab.windowID,
+            let window = snapshot.windows.first(where: { $0.id == tab.windowID }), let destination = window.tabIDs.firstIndex(of: targetID)
+        else { return }
+        var order = window.tabIDs
+        order.removeAll { $0 == id }; order.insert(id, at: destination)
+        do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+    }
+
     public func deleteWindow(_ id: UUID) async {
         guard !shuttingDown, !closureInProgress, !closingWindowIDs.contains(id),
             let window = snapshot.windows.first(where: { $0.id == id })
