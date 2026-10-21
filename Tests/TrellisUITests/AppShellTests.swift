@@ -199,6 +199,15 @@ final class AppShellTests: XCTestCase {
         XCTAssertTrue(model.runningTerminals.isEmpty)
         XCTAssertEqual(model.snapshot.windows.map(\.name), ["Kept", "Also kept"])
         XCTAssertNil(model.errorMessage)
+        // Reopening the window (Dock) leaves the stopped panes restartable.
+        let kept = try XCTUnwrap(model.snapshot.windows.first)
+        let pane = try XCTUnwrap(model.snapshot.tabs[kept.activeTabID].flatMap { model.snapshot.panes[$0.activePaneID] })
+        let ended = try XCTUnwrap(model.terminals[pane.id])
+        XCTAssertTrue(ended.sessionState == .exited || ended.sessionState == .failed)
+        await model.restartPane(pane.id)
+        await model.waitForUpdates()
+        XCTAssertNotEqual(model.snapshot.panes[pane.id]?.sessionID, pane.sessionID)
+        XCTAssertEqual(model.runningTerminals.count, 1)
         // Quit after the window was closed saves the layout, not an empty workspace.
         model.stopAll()
         let quit = await model.shutdown()
