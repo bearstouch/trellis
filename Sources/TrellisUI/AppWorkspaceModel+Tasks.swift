@@ -14,7 +14,7 @@ public struct TaskCatalog: Equatable, Sendable {
 
     /// The canonical project folder.
     public let root: String
-    /// The pane Run types into: the active pane when the menu opened.
+    /// The pane Run types into: the one whose menu was opened.
     public let paneID: UUID
     public let file: FileState
     /// The bytes listed, so Add never overwrites a newer file and trust covers exactly what was shown.
@@ -69,11 +69,13 @@ extension AppWorkspaceModel {
 
     // MARK: Catalog (FR-TK02, FR-TK03)
 
-    /// Finds the active pane's project and reads its tasks off the main actor; a newer refresh wins.
-    public func refreshTaskCatalog() async {
+    /// Finds a pane's project and reads its tasks off the main actor; a newer refresh wins. Without `paneID` it
+    /// rereads the menu's current pane, else the active one.
+    public func refreshTaskCatalog(paneID: UUID? = nil) async {
         taskCatalogGeneration &+= 1
         let generation = taskCatalogGeneration
-        guard let pane = presentation.activePane, let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch),
+        let target = [paneID, taskCatalog?.paneID, presentation.activePane?.id].lazy.compactMap { $0 }.first { self.snapshot.panes[$0] != nil }
+        guard let pane = target.flatMap({ snapshot.panes[$0] }), let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch),
             let directory = paneDirectory(pane.id)
         else {
             taskCatalog = nil

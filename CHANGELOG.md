@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **Tasks:** a **Tasks** menu at the right of the tab bar lists the current project's `.trellis/launch.json` tasks (name, command, optional `cwd`, `group` and `env`) and runs one in the active pane's shell (FR-TK01, FR-TK02, FR-TK05).
+- **Tasks:** a **Tasks** menu in each local pane's header lists the pane's project `.trellis/launch.json` tasks (name, command, optional `cwd`, `group` and `env`) and runs one in that pane's shell (FR-TK01, FR-TK02, FR-TK05).
   - Detects npm/pnpm/yarn/bun scripts, Make targets, CMake, SwiftPM, Python and Cargo builds and tests; run one directly or add it to `launch.json` with **+** (FR-TK03, FR-TK04).
   - The button shows **Running: name** with the elapsed time, then the result with its exit code; **Stop** sends Ctrl-C and becomes **Force Stop** (Ctrl-\) after 2 seconds (FR-TK07, FR-TK08).
   - Environment variables per file and per task, applied to the whole command line (FR-TK09).

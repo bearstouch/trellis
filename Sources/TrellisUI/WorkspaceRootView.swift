@@ -324,8 +324,6 @@ public struct WorkspaceRootView: View {
                             }
                         }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
                     }.scrollIndicators(.hidden)
-                    TaskDropdownButton(model: model)
-                    Divider().overlay(model.separatorOverlay).frame(height: 20)
                     Button {
                         Task { await model.createTab() }
                     } label: {

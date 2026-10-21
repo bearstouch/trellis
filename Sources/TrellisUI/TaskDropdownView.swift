@@ -1,35 +1,35 @@
 import SwiftUI
 import TrellisCore
 
-/// The tab bar's Tasks button (FR-TK02, FR-TK07): the selected tab's task state in words and a symbol, never color
-/// alone, opening the Tasks menu.
+/// A pane header's Tasks button (FR-TK02, FR-TK07): the pane's task state in words and a symbol, never color alone,
+/// opening the Tasks menu for that pane.
 struct TaskDropdownButton: View {
     @ObservedObject var model: AppWorkspaceModel
+    let paneID: UUID
     @State private var isPresented = false
 
     var body: some View {
-        let current = model.presentation.selectedTab.flatMap { model.taskRun(tabID: $0.id) }
+        let run = model.taskRuns[paneID]
         Button {
             isPresented.toggle()
         } label: {
-            // Only a running task's elapsed time changes; otherwise the tab bar needn't redraw every second.
-            TimelineView(.periodic(from: .now, by: current?.run.isRunning == true ? 1 : 3600)) { context in
-                let text = current?.run.statusText(now: context.date) ?? "Tasks"
-                HStack(spacing: 5) {
-                    Image(systemName: symbol(current?.run)).font(.system(size: 11))
-                    Text(text).lineLimit(1).truncationMode(.middle)
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).accessibilityHidden(true)
+            // Only a running task's elapsed time changes; otherwise the header needn't redraw every second.
+            TimelineView(.periodic(from: .now, by: run?.isRunning == true ? 1 : 3600)) { context in
+                HStack(spacing: 4) {
+                    Image(systemName: symbol(run))
+                    Text(run?.statusText(now: context.date) ?? "Tasks").lineLimit(1).truncationMode(.middle)
+                    Image(systemName: "chevron.down").font(.system(size: 7, weight: .semibold)).accessibilityHidden(true)
                 }
-                .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                .monospacedDigit()
                 .accessibilityElement(children: .ignore).accessibilityLabel("Tasks")
-                .accessibilityValue(current.map { $0.run.statusText(now: context.date) } ?? "")
+                .accessibilityValue(run?.statusText(now: context.date) ?? "")
             }
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Capsule().fill(model.themeColor(.accent).opacity(current?.run.isActive == true ? 0.18 : 0)))
-            .frame(maxWidth: 240)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(Capsule().fill(model.themeColor(.accent).opacity(run?.isActive == true ? 0.18 : 0)))
+            .frame(maxWidth: 220)
         }
-        .buttonStyle(.plain).padding(.horizontal, 6).help("Run a task in the active pane")
-        .popover(isPresented: $isPresented, arrowEdge: .bottom) { TaskPopover(model: model) }
+        .help("Run a task in this pane")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) { TaskPopover(model: model, paneID: paneID) }
     }
 
     private func symbol(_ run: TaskRun?) -> String {
@@ -45,23 +45,24 @@ struct TaskDropdownButton: View {
 /// The project's launch.json tasks and detected tasks, each with its exact line and a Run, Stop or Add button.
 private struct TaskPopover: View {
     @ObservedObject var model: AppWorkspaceModel
+    let paneID: UUID
     @State private var loaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !loaded {
                 ProgressView("Looking for tasks…").frame(maxWidth: .infinity)
-            } else if let catalog = model.taskCatalog {
+            } else if let catalog = model.taskCatalog, catalog.paneID == paneID {
                 content(catalog)
             } else {
                 Text("No project folder").font(.headline)
-                Text("The active pane isn't inside a folder with .trellis or .git, or it isn't a local shell.")
+                Text("This pane isn't inside a folder with .trellis or .git, or it isn't a local shell.")
                     .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(14).frame(width: 440)
         .task {
-            await model.refreshTaskCatalog()
+            await model.refreshTaskCatalog(paneID: paneID)
             loaded = true
         }
     }
@@ -101,7 +102,7 @@ private struct TaskPopover: View {
             Button(catalog.file == .missing ? "Create launch.json" : "Edit launch.json") { Task { await model.editLaunchFile() } }
                 .help(catalog.path)
             Spacer()
-            Button("Reload") { Task { await model.refreshTaskCatalog() } }
+            Button("Reload") { Task { await model.refreshTaskCatalog(paneID: paneID) } }
         }.controlSize(.small)
     }
 }
@@ -170,7 +171,7 @@ private struct TaskRow: View {
             let availability = model.taskAvailability(paneID: paneID)
             Button("Run") { model.runTask(task, fromFile: detected == nil) }.controlSize(.small)
                 .disabled(availability != .ready || model.taskLine(task, fromFile: detected == nil) == nil)
-                .help(availability.reason ?? "Type this line into the active pane")
+                .help(availability.reason ?? "Type this line into this pane")
                 .accessibilityLabel("Run \(task.name)")
         }
     }
