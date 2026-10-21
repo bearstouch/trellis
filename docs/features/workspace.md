@@ -54,4 +54,4 @@ Limits: split ratios are finite and between 0.1 and 0.9, nesting is at most 16 l
 
 ## Closing the native window
 
-Closing the terminal-bearing native window while sessions are live asks once whether to end them, including sessions the broker would keep (FR-R03). If you accept, the workspaces close and the app returns to its empty state. Reopening the main window shows the current state. Quitting has its own running-session confirmation. See [macOS support](../platform/macos.md) (`MAC-04`).
+Closing the terminal-bearing native window while sessions are live asks once whether to end them, including sessions the broker would keep (FR-R03). If you accept, the sessions end and the window hides, but windows, tabs and splits stay as stopped panes and remain saved, so a later Quit and relaunch restores them (FR-R01). Reopening the main window shows the same layout with stopped panes. Quitting has its own running-session confirmation. See [macOS support](../platform/macos.md) (`MAC-04`).

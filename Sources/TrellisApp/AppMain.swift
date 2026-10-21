@@ -528,7 +528,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         startupTask?.cancel()
         model.stopAll()
         Task {
-            let closed = await model.closeAllWorkspaces()
+            let closed = await model.endSessionsForWindowClose()
             if closed, !terminationPending { window.orderOut(nil) }
             closingWindow = false
         }

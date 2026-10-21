@@ -1669,6 +1669,15 @@ public final class AppWorkspaceModel: ObservableObject {
         return closed
     }
 
+    /// Closing the native window (MAC-04) ends every session but keeps windows, tabs and splits as stopped panes,
+    /// so a later Quit saves the layout instead of an empty workspace.
+    @discardableResult
+    public func endSessionsForWindowClose() async -> Bool {
+        guard await shutdown() else { return false }
+        shuttingDown = false
+        return await flushWorkspaceSave()
+    }
+
     @discardableResult
     public func closeAllWorkspaces() async -> Bool {
         guard await shutdown() else { return false }

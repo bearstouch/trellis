@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **Save as Workspace File…** (window sidebar menu, File menu) writes the window with editable commands, in a stable, diff-friendly format (FR-WF06).
   - API layouts can now carry tab colors internally, but the automation layout format is unchanged and still never carries commands.
 
+### Fixed
+
+- **Window close keeps the workspace:** closing the main window with the red button ends the sessions but keeps windows, tabs and splits as stopped panes, so a following Quit no longer saves an empty workspace (MAC-04, FR-R01).
+
 ## [0.11.1] - 2026-10-20
 
 The first Developer ID signed and notarized release, under the new `com.bearstouch.trellis` bundle identifier.
