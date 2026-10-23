@@ -397,7 +397,11 @@ public struct WorkspaceRootView: View {
                     .accessibilityLabel("Tab name")
                     .accessibilityHint("Return saves, Escape cancels")
                     .onAppear { tabNameFocused = true }
-                    .onChange(of: model.tabRenameFocusRequest) { _, _ in tabNameFocused = true }
+                    .onChange(of: model.tabRenameFocusRequest) { _, _ in
+                        // The palette's AppKit field took focus without SwiftUI noticing, so `true` alone may change nothing.
+                        tabNameFocused = false
+                        DispatchQueue.main.async { tabNameFocused = true }
+                    }
                     .onSubmit { commitTabRename(tab.id) }
                     .onExitCommand {
                         Task { await model.finishTabRename(tab.id, draft: model.tabRenameDraft, action: .cancel) }
