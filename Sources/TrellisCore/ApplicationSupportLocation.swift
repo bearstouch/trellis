@@ -3,7 +3,8 @@ import Foundation
 /// Keeps existing installations usable after the product rename. Legacy names
 /// appear only here and in saved-settings/environment compatibility handling.
 public enum ApplicationSupportLocation {
-    public static func prepare(root: URL, bundleIdentifier: String?) throws -> URL {
+    /// `isRunning` says whether an app with a legacy identifier is running now.
+    public static func prepare(root: URL, bundleIdentifier: String?, isRunning: (String) -> Bool = { _ in false }) throws -> URL {
         let identifier = bundleIdentifier ?? AppInstanceIdentity.production
         let destination = root.appendingPathComponent(identifier, isDirectory: true)
         let files = FileManager.default
@@ -22,6 +23,9 @@ public enum ApplicationSupportLocation {
             // `control.json` names the copied-from instance's socket; if that app still runs, keeping it would
             // make this one refuse to serve automation (`anotherInstanceRunning`). Each instance publishes its own.
             try? files.removeItem(at: staging.appendingPathComponent("control.json"))
+            // `broker.json` likewise names its session broker, which keeps serving that app while it runs: sharing it
+            // would leave this one unable to keep sessions running. After it quits, the copy reattaches its kept sessions.
+            if isRunning(legacy) { try? files.removeItem(at: staging.appendingPathComponent("broker.json")) }
             if legacy != AppInstanceIdentity.legacyProduction { try migrateConflictingThemes(in: staging) }
             try files.moveItem(at: staging, to: destination)
             break

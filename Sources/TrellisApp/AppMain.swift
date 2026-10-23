@@ -627,7 +627,7 @@ struct TrellisMain {
             } else {
                 directory = try ApplicationSupportLocation.prepare(
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
-                    bundleIdentifier: identity.identifier)
+                    bundleIdentifier: identity.identifier, isRunning: { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty })
             }
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
