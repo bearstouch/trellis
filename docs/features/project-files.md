@@ -64,6 +64,7 @@ Titles and the name also reject control characters, line separators and invisibl
 
 - Opening a repository never runs anything by itself. Detection only reads `.trellis/project.json` (or the legacy `workspace.json`), and only to show its name.
 - The file must be a regular file you own, not a symbolic link.
+- Trellis never writes `project.json` or `launch.json` through a `.trellis` folder that is a symbolic link, since it could point outside the project.
 - Trust covers one version of one file in one folder. Pulling a change to the file, or cloning the repository somewhere else, asks again.
 - Commands run in your login shell with your permissions, like anything you type. Trust only files you've read.
 - Pane commands typed by a project file are not [`session.execute`](../api/methods.md) calls, and no automation grant is involved. Automation can't open project files, and API layouts still can't carry commands.

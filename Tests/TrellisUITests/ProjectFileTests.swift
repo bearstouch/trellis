@@ -340,6 +340,21 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveNeverWritesThroughALinkedTrellisFolder() async throws {
+        let elsewhere = scratch.appendingPathComponent("elsewhere").path
+        try FileManager.default.createDirectory(atPath: elsewhere, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: project + "/.trellis", withDestinationPath: elsewhere)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Linked")
+        let windowID = try XCTUnwrap(created)
+        let draft = try model.projectFileDraft(windowID: windowID, root: project)
+        XCTAssertFalse(model.writeProjectFile(draft))
+        XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: elsewhere), [])
+    }
+
+    @MainActor
     func testSaveKeepsALinkedFolderInsideTheProject() async throws {
         let outside = scratch.appendingPathComponent("vendored").path
         try FileManager.default.createDirectory(atPath: outside, withIntermediateDirectories: true)

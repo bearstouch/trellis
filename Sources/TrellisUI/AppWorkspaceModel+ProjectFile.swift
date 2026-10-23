@@ -370,6 +370,25 @@ extension AppWorkspaceModel {
 
     public func cancelProjectSave() { pendingProjectSave = nil }
 
+    /// Writes a `.trellis/` repository file, not Trellis state: readable by the project's tools like any other source
+    /// file. A linked `.trellis` folder or file is refused, since it could point the write outside the project.
+    func writeRepositoryFile(_ data: Data, to url: URL) -> Bool {
+        let manager = FileManager.default
+        guard ![url.deletingLastPathComponent(), url].contains(where: { (try? manager.destinationOfSymbolicLink(atPath: $0.path)) != nil }) else {
+            errorMessage = "\(url.path) or its folder is a symbolic link, so nothing was written."
+            return false
+        }
+        do {
+            try manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+            try? manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            return true
+        } catch {
+            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
+            return false
+        }
+    }
+
     /// Writes the reviewed file, trusts its bytes and makes the window the project's window. A failure leaves the
     /// file, trust and bindings as they were.
     @discardableResult
@@ -404,16 +423,7 @@ extension AppWorkspaceModel {
             errorMessage = "The window changed while saving. Nothing was written; try again."
             return false
         }
-        let url = ProjectFile.url(projectRoot: draft.root)
-        do {
-            // A repository file, not Trellis state: readable by the project's tools like any other source file.
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
-        } catch {
-            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
-            return false
-        }
+        guard writeRepositoryFile(data, to: ProjectFile.url(projectRoot: draft.root)) else { return false }
         // The user wrote these commands, so this version is trusted; failures here only mean a later review.
         if var list = try? projectTrustList() {
             list.trust(root: draft.root, digest: ProjectTrustList.digest(data))

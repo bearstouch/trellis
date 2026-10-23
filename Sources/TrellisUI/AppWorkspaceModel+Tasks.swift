@@ -299,7 +299,7 @@ extension AppWorkspaceModel {
             errorMessage = "The task can't be added: " + LaunchFileJSON.describe(error)
             return nil
         }
-        guard writeLaunchFile(data, to: url) else { return nil }
+        guard writeRepositoryFile(data, to: url) else { return nil }
         if var list = try? launchTrustList(), catalog.data == nil || catalog.digest.map({ list.isTrusted(root: catalog.root, digest: $0) }) == true {
             list.trust(root: catalog.root, digest: ProjectTrustList.digest(data))
             try? saveLaunchTrust(list)
@@ -314,7 +314,7 @@ extension AppWorkspaceModel {
         let url = LaunchFile.url(projectRoot: catalog.root)
         if case .missing = catalog.file, !FileManager.default.fileExists(atPath: url.path), !isSymbolicLink(url) {
             let data = LaunchFileJSON.encode(LaunchFile())
-            guard writeLaunchFile(data, to: url) else { return }
+            guard writeRepositoryFile(data, to: url) else { return }
             // No tasks, nothing to review.
             if var list = try? launchTrustList() {
                 list.trust(root: catalog.root, digest: ProjectTrustList.digest(data))
@@ -326,19 +326,6 @@ extension AppWorkspaceModel {
     }
 
     private func isSymbolicLink(_ url: URL) -> Bool { (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil }
-
-    /// A repository file, not Trellis state: readable by the project's tools like a project file.
-    private func writeLaunchFile(_ data: Data, to url: URL) -> Bool {
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
-            return true
-        } catch {
-            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
-            return false
-        }
-    }
 
     // MARK: Trust (FR-TK06)
 

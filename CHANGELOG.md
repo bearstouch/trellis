@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Save as Project** warns that SSH panes and panes running another program will reopen as local shells, instead of saving them silently as plain shell panes (FR-WF06).
 - **Scratchpad:** line numbers and issue marks no longer shift by one when the editor is scrolled into a wrapped line, and only newlines start a line, as validation counts them (FR-SP02, FR-SP04).
 - **Command palette:** typing stays responsive with long queries or long task commands: each keystroke searches once, queries over 64 letters match nothing, and only the first 512 characters of a row are searched (FR-CP04).
+- **Save as Project**, adding a task and **Create launch.json** refuse a `.trellis` folder that is a symbolic link, instead of writing wherever it points (FR-WF06, FR-TK02).
 
 ## [0.13.0] - 2026-10-23
 
