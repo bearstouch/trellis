@@ -403,7 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Trellis",
             .applicationIcon: NSApp.applicationIconImage!,
-            .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
+            .applicationVersion: AppVersion.bundled ?? "Development",
             .version: "",
             NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "",
             .credits: credits
@@ -654,7 +654,7 @@ struct TrellisMain {
             let handler = AuthorizingControlHandler(
                 grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
-            let mcp = MCPServer(handler: handler, serverVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")
+            let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
             let forwarder = EventForwarder(hub: events, instanceID: instanceID)
             model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
             // Appearance is global; the hub gates it on theme.read, not window scope.

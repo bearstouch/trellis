@@ -19,7 +19,7 @@ public final class DiagnosticsExporter {
     public func report() async -> DiagnosticsReport {
         let info = ProcessInfo.processInfo
         var report = DiagnosticsReport(
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development",
+            appVersion: AppVersion.bundled ?? "development",
             systemVersion: info.operatingSystemVersionString, architecture: Self.architecture)
         report.count(model.snapshot)
         report.savedHosts = await hosts.library.hosts.count
