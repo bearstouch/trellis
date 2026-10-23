@@ -318,7 +318,8 @@ public struct WorkspaceRootView: View {
             VStack(spacing: 14) {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
-                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n")
+                // A view's key equivalent runs before the menu's, which the open palette disables (FR-CP02).
+                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
         } else {
             VStack(spacing: 0) {

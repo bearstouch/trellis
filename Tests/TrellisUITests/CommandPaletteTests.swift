@@ -170,4 +170,47 @@ final class CommandPaletteTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(performed, [])
     }
+
+    func testOpeningWithARecentThemeOnTopDoesNotPreviewIt() async throws {
+        let model = try await makeModel()
+        model.openCommandPalette()
+        model.setCommandPaletteQuery("theme nord dark")
+        model.runCommandPaletteItem()
+        try await eventually { model.appearance.darkThemeID == "trellis-nord-dark" }
+        model.useTheme("trellis-dracula-dark")
+        let theme = model.effectiveTheme
+        model.openCommandPalette()
+        XCTAssertEqual(model.commandPaletteSelectedMatch(in: model.commandPaletteSections)?.item.target, .theme("trellis-nord-dark"))
+        XCTAssertNil(model.previewedTheme, "opening isn't moving the selection")
+        XCTAssertEqual(model.effectiveTheme, theme)
+        model.moveCommandPaletteSelection(by: 1)
+        model.moveCommandPaletteSelection(by: -1)
+        XCTAssertEqual(model.effectiveTheme.id, "trellis-nord-dark")
+        model.closeCommandPalette()
+        XCTAssertEqual(model.effectiveTheme, theme)
+    }
+
+    func testClosingReturnsFocusToTheScratchpadEditorElseTheActivePane() async throws {
+        let model = try await makeModel()
+        let terminal = try XCTUnwrap(model.activeTerminal)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let editor = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let paletteField = NSTextField(frame: NSRect(x: 0, y: 200, width: 200, height: 24))
+        terminal.view.frame = NSRect(x: 250, y: 0, width: 200, height: 100)
+        [editor, paletteField, terminal.view].forEach { window.contentView?.addSubview($0) }
+        // The editor had focus; the palette's field takes it while open.
+        XCTAssertTrue(window.makeFirstResponder(editor))
+        model.openCommandPalette()
+        window.makeFirstResponder(paletteField)
+        model.closeCommandPalette()
+        try await eventually { window.firstResponder === editor }
+        // From a terminal (or a field editor), focus goes to the active pane.
+        XCTAssertTrue(window.makeFirstResponder(terminal.view))
+        model.openCommandPalette()
+        window.makeFirstResponder(paletteField)
+        model.closeCommandPalette()
+        try await eventually { window.firstResponder === terminal.view }
+    }
 }
