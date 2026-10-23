@@ -86,6 +86,6 @@ public enum LaunchFileJSON {
 
     /// One issue per line for an alert or the menu.
     public static func describe(_ error: LayoutParseError) -> String {
-        error.issues.map { ($0.key.map { "\($0): " } ?? "") + $0.message }.joined(separator: " ")
+        error.text
     }
 }

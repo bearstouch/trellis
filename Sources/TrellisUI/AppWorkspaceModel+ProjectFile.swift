@@ -133,21 +133,30 @@ extension AppWorkspaceModel {
     /// An unreadable trust file fails closed: nothing is trusted and it is never overwritten.
     func projectTrustList() throws -> ProjectTrustList {
         if let projectTrust { return projectTrust }
-        do {
-            let stored = try projectTrustURL.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
-            let list = try stored.map { try JSONDecoder().decode(ProjectTrustList.self, from: $0) } ?? ProjectTrustList()
-            // A newer format is unreadable too: rewriting it would drop what this version doesn't know.
-            guard list.version == ProjectTrustList().version else { throw ProjectFileFailure("") }
-            projectTrust = list
-            return list
-        } catch { throw ProjectFileFailure("Trusted project files could not be read, so project file commands can't run.") }
+        let list = try Self.readTrustList(projectTrustURL, failure: "Trusted project files could not be read, so project file commands can't run.")
+        projectTrust = list
+        return list
     }
 
     private func saveProjectTrust(_ list: ProjectTrustList) throws {
-        if let url = projectTrustURL {
-            do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw ProjectFileFailure("Trusted project files could not be saved.") }
-        }
+        try Self.writeTrustList(list, to: projectTrustURL, failure: "Trusted project files could not be saved.")
         projectTrust = list
+    }
+
+    /// A stored trust list, or an empty one when there is none. Unreadable, invalid or newer lists throw `failure`:
+    /// rewriting a newer one would drop what this version doesn't know.
+    static func readTrustList(_ url: URL?, failure: String) throws -> ProjectTrustList {
+        do {
+            let stored = try url.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
+            let list = try stored.map { try JSONDecoder().decode(ProjectTrustList.self, from: $0) } ?? ProjectTrustList()
+            guard list.version == ProjectTrustList().version else { throw ProjectFileFailure(failure) }
+            return list
+        } catch { throw ProjectFileFailure(failure) }
+    }
+
+    static func writeTrustList(_ list: ProjectTrustList, to url: URL?, failure: String) throws {
+        guard let url else { return }
+        do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw ProjectFileFailure(failure) }
     }
 
     // MARK: Opening (FR-WF04)
@@ -176,7 +185,7 @@ extension AppWorkspaceModel {
         switch ProjectFileJSON.parse(data) {
         case .success(let parsed): file = parsed
         case .failure(let error):
-            errorMessage = "The project file can't be opened: " + error.issues.map { ($0.key.map { "\($0): " } ?? "") + $0.message }.joined(separator: " ")
+            errorMessage = "The project file can't be opened: " + error.text
             return
         }
         let plan: LayoutPlan
@@ -239,7 +248,7 @@ extension AppWorkspaceModel {
             }, keepLiveLaunches: true)
         guard plan.canApply else {
             throw ProjectFileFailure(
-                "The project file can't be opened: " + (plan.errors + plan.conflicts).map { ($0.key.map { "\($0): " } ?? "") + $0.message }.joined(separator: " "))
+                "The project file can't be opened: " + (plan.errors + plan.conflicts).map(\.text).joined(separator: " "))
         }
         return plan
     }
@@ -406,7 +415,7 @@ extension AppWorkspaceModel {
     public func writeProjectFile(_ draft: ProjectFileDraft) -> Bool {
         let file = draft.file.settingCommands(draft.commands)
         if let issue = file.issues.first {
-            errorMessage = (issue.key.map { "\($0): " } ?? "") + issue.message
+            errorMessage = issue.text
             return false
         }
         // What is written must open again: the same strict parse, keys and limits as `loadProjectFile`.
@@ -421,7 +430,7 @@ extension AppWorkspaceModel {
                 .errors
         }
         if let issue = problems.first {
-            errorMessage = "The window can't be saved as a project file: " + (issue.key.map { "\($0): " } ?? "") + issue.message
+            errorMessage = "The window can't be saved as a project file: " + issue.text
             return false
         }
         guard !layoutApplyInFlight else {

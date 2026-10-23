@@ -5,6 +5,8 @@ import TrellisCore
 /// wrong types, and executable content such as `process` launches are errors.
 public struct LayoutParseError: Error, Equatable, Sendable {
     public let issues: [LayoutIssue]
+    /// Every issue, for one error message.
+    public var text: String { issues.map(\.text).joined(separator: " ") }
 }
 
 public enum LayoutJSON {

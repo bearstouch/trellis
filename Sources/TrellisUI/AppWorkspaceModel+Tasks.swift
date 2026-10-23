@@ -335,19 +335,13 @@ extension AppWorkspaceModel {
     /// nothing is trusted and it is never overwritten.
     func launchTrustList() throws -> ProjectTrustList {
         if let launchTrust { return launchTrust }
-        do {
-            let stored = try launchTrustURL.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
-            let list = try stored.map { try JSONDecoder().decode(ProjectTrustList.self, from: $0) } ?? ProjectTrustList()
-            guard list.version == ProjectTrustList().version else { throw ProjectFileFailure("") }
-            launchTrust = list
-            return list
-        } catch { throw ProjectFileFailure("Trusted launch.json files could not be read, so launch.json tasks can't run.") }
+        let list = try Self.readTrustList(launchTrustURL, failure: "Trusted launch.json files could not be read, so launch.json tasks can't run.")
+        launchTrust = list
+        return list
     }
 
     private func saveLaunchTrust(_ list: ProjectTrustList) throws {
-        if let url = launchTrustURL {
-            do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw ProjectFileFailure("Trusted launch.json files could not be saved.") }
-        }
+        try Self.writeTrustList(list, to: launchTrustURL, failure: "Trusted launch.json files could not be saved.")
         launchTrust = list
     }
 }
