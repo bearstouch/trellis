@@ -267,4 +267,40 @@ final class ScratchpadTests: XCTestCase {
         await model.toggleScratchpad()
         XCTAssertEqual(model.scratchpadFocusRequest, request + 1, "Opening focuses the editor")
     }
+
+    @MainActor
+    func testSavingNamesTheFileAndClearingTracksUnsavedChanges() async throws {
+        let (model, pane) = try await makeModel()
+        defer { cleanUp(model) }
+        try mark(model, pane, .promptStart(directory: project))
+        XCTAssertFalse(model.scratchpadHasUnsavedChanges, "An empty buffer has nothing to lose")
+        model.scratchpad.text = "echo one\n"
+        XCTAssertTrue(model.scratchpadHasUnsavedChanges)
+        XCTAssertNil(model.scratchpadSaved, "No file name until saved")
+
+        let task = await model.saveScratchpadAsTask(name: "Ship it", scriptName: "ship-it", group: nil)
+        XCTAssertEqual(task?.command, "bash .trellis/scratch/ship-it.sh")
+        XCTAssertEqual(model.scratchpadSaved?.fileName, "ship-it.sh")
+        XCTAssertEqual(model.scratchpad.name, "ship-it")
+        XCTAssertFalse(model.scratchpadHasUnsavedChanges)
+        model.scratchpad.text = "echo two\n"
+        XCTAssertTrue(model.scratchpadHasUnsavedChanges, "Edited since saving")
+        model.scratchpad.language = .sh
+        model.scratchpad.text = "echo one\n"
+        XCTAssertTrue(model.scratchpadHasUnsavedChanges, "A different language is a change")
+        model.scratchpad.language = .bash
+        XCTAssertFalse(model.scratchpadHasUnsavedChanges)
+
+        let badName = await model.saveScratchpadAsTask(name: "Other", scriptName: "has space", group: nil)
+        XCTAssertNil(badName)
+        XCTAssertEqual(model.scratchpadSaved?.fileName, "ship-it.sh", "A failed save keeps the saved state")
+
+        model.scratchpad.language = .javascript
+        model.clearScratchpad()
+        XCTAssertEqual(model.scratchpad, ScratchpadDocument(language: .javascript), "A new buffer in the same language")
+        XCTAssertNil(model.scratchpadSaved)
+        XCTAssertNil(model.scratchpadCheck)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project + "/.trellis/scratch/ship-it.sh"), "The saved script and task stay")
+        XCTAssertEqual(model.taskCatalog?.tasks.map(\.name), ["Ship it"])
+    }
 }

@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - A language selector for sh, bash and JavaScript; each language is one registry entry, so more can be added (FR-SP03).
   - **Validate** runs `sh -n`, `bash -n` or `node --check` and shows errors with their line numbers (FR-SP04).
   - **Run** types `<interpreter> '<file>'` into the focused pane when its shell is at its prompt, and follows it like a task (FR-SP05).
-  - **Save as Task** writes the script to `.trellis/scratch/` and adds a task to `launch.json`; **Save & Run** also runs it (FR-SP06).
+  - **Save as Task** asks for a task and file name, writes the script to `.trellis/scratch/` and adds a task to `launch.json`; the sheet's **Save & Run** also runs it. The header then shows the saved file's name, with **Edited** after changes (FR-SP06).
+  - **Clear** starts an empty buffer, asking first when there are unsaved changes (FR-SP09).
 
 ## [0.12.0] - 2026-10-22
 

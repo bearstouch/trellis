@@ -36,6 +36,15 @@ final class ScratchpadTests: XCTestCase {
         }
     }
 
+    func testSuggestedNamesComeFromTaskNames() {
+        XCTAssertEqual(ScratchpadDocument.suggestedName(for: "Deploy preview!"), "deploy-preview")
+        XCTAssertEqual(ScratchpadDocument.suggestedName(for: "  Run  tests: UI "), "run-tests-ui")
+        XCTAssertEqual(ScratchpadDocument.suggestedName(for: "v1.2_build"), "v1.2_build")
+        XCTAssertEqual(ScratchpadDocument.suggestedName(for: "...ünï"), "n", "Leading dots and dashes go")
+        XCTAssertEqual(ScratchpadDocument.suggestedName(for: "!!!"), "script")
+        XCTAssertEqual(ScratchpadDocument.suggestedName(for: String(repeating: "a", count: 90)).count, 64)
+    }
+
     func testIssuesFlagHiddenCharactersByLineButAllowTabs() {
         XCTAssertEqual(ScratchpadDocument(text: "if true; then\n\techo ok\nfi\n").issues, [])
         XCTAssertEqual(ScratchpadDocument(text: "  \n ").issues.map(\.message), ["Write a command or script first."])

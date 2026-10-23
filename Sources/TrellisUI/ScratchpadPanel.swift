@@ -2,16 +2,20 @@ import AppKit
 import SwiftUI
 import TrellisCore
 
-/// The command scratchpad beside the panes (FR-SP01): name, language, editor, check result, and icon buttons whose
+/// The command scratchpad beside the panes (FR-SP01): saved file, language, editor, check result, and icon buttons whose
 /// tooltips and labels say what they do and, when disabled, why.
 struct ScratchpadPanel: View {
     @ObservedObject var model: AppWorkspaceModel
     @State private var saveDraft: SaveDraft?
+    @State private var confirmingClear = false
 
     struct SaveDraft: Identifiable {
         let id = UUID()
         var name: String
         var group: TaskGroup?
+        /// Follows the task name until edited.
+        var scriptName: String
+        var scriptNameEdited = false
     }
 
     var body: some View {
@@ -34,6 +38,15 @@ struct ScratchpadPanel: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command scratchpad")
         .sheet(item: $saveDraft) { draft in saveSheet(draft) }
+        .alert("Clear the scratchpad?", isPresented: $confirmingClear) {
+            Button("Clear", role: .destructive) { model.clearScratchpad() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                model.scratchpadSaved == nil
+                    ? "This script hasn't been saved as a task. Clearing it can't be undone."
+                    : "Changes since you saved \(model.scratchpadSaved?.fileName ?? "the script") will be lost. The saved script and its task stay.")
+        }
     }
 
     private var editorFont: NSFont {
@@ -46,19 +59,28 @@ struct ScratchpadPanel: View {
 
     // MARK: Header
 
+    /// The file name appears once the script is saved as a task, with **Edited** while the buffer differs from it.
     private var header: some View {
         HStack(spacing: 8) {
             Image(systemName: "chevron.left.forwardslash.chevron.right").foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
-            HStack(spacing: 0) {
-                TextField("Name", text: Binding(get: { model.scratchpad.name }, set: { model.scratchpad.name = $0 }))
-                    .textFieldStyle(.plain).fontWeight(.semibold).accessibilityLabel("Script name")
-                Text("." + model.scratchpad.language.fileExtension).font(.system(size: 11, design: .monospaced)).foregroundStyle(model.themeColor(.mutedForeground))
-                    .accessibilityHidden(true)
+            if let saved = model.scratchpadSaved {
+                Text(saved.fileName).fontWeight(.semibold).lineLimit(1).truncationMode(.middle)
+                    .help("\(ScratchpadDocument.projectDirectory)/\(saved.fileName)").accessibilityLabel("Saved script \(saved.fileName)")
+                if model.scratchpadHasUnsavedChanges {
+                    Text("Edited").font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).accessibilityLabel("Unsaved changes")
+                }
+            } else {
+                Text("Scratchpad").fontWeight(.semibold).accessibilityAddTraits(.isHeader)
             }
-            .padding(.horizontal, 7).frame(height: 24)
-            .background(RoundedRectangle(cornerRadius: 5).fill(model.themeColor(.background)))
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(model.themeColor(.border)))
+            Spacer(minLength: 4)
             languageMenu
+            Button {
+                if model.scratchpadHasUnsavedChanges { confirmingClear = true } else { model.clearScratchpad() }
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.plain).foregroundStyle(model.themeColor(.mutedForeground)).disabled(model.scratchpad.isEmpty && model.scratchpadSaved == nil)
+            .help("Clear Scratchpad").accessibilityLabel("Clear Scratchpad")
             Button {
                 Task { await model.toggleScratchpad() }
             } label: {
@@ -197,37 +219,59 @@ struct ScratchpadPanel: View {
     // MARK: Save as Task (FR-SP06)
 
     private func beginSave() {
-        saveDraft = SaveDraft(name: model.scratchpad.name, group: nil)
+        let saved = model.scratchpadSaved
+        saveDraft = SaveDraft(name: saved?.name ?? "", group: nil, scriptName: saved?.name ?? "", scriptNameEdited: saved != nil)
     }
 
     private func saveSheet(_ draft: SaveDraft) -> some View {
-        let binding = Binding(get: { saveDraft ?? draft }, set: { saveDraft = $0 })
-        let document = model.scratchpad
+        let current = saveDraft ?? draft
+        let taskName = Binding(
+            get: { current.name },
+            set: { name in
+                saveDraft?.name = name
+                if saveDraft?.scriptNameEdited == false { saveDraft?.scriptName = ScratchpadDocument.suggestedName(for: name) }
+            })
+        let scriptName = Binding(
+            get: { current.scriptName },
+            set: {
+                saveDraft?.scriptName = $0; saveDraft?.scriptNameEdited = true
+            })
+        var document = model.scratchpad
+        document.name = current.scriptName
+        let problem = LaunchFile.taskNameProblem(current.name) ?? ScratchpadDocument.nameProblem(current.scriptName)
         return VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Save as Task").font(.headline)
                 Text("Adds a task to this project's launch.json.").font(.caption).foregroundStyle(.secondary)
             }
-            TextField("Task name", text: binding.name)
-            Picker("Group", selection: binding.group) {
-                Text("None").tag(TaskGroup?.none)
-                ForEach(TaskGroup.allCases, id: \.self) { Text($0.rawValue).tag(TaskGroup?.some($0)) }
-            }.pickerStyle(.segmented)
+            Form {
+                TextField("Task name", text: taskName)
+                HStack(spacing: 4) {
+                    TextField("File name", text: scriptName)
+                    Text("." + document.language.fileExtension).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
+                }
+                Picker("Group", selection: Binding(get: { current.group }, set: { saveDraft?.group = $0 })) {
+                    Text("None").tag(TaskGroup?.none)
+                    ForEach(TaskGroup.allCases, id: \.self) { Text($0.rawValue).tag(TaskGroup?.some($0)) }
+                }.pickerStyle(.segmented)
+            }
             VStack(alignment: .leading, spacing: 5) {
                 Text("Command").font(.caption).fontWeight(.semibold)
                 Text(document.taskCommand).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
                     .padding(7).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
                 Text(
-                    "The script is saved to \(ScratchpadDocument.projectDirectory)/\(document.fileName) and runs from the project folder. If launch.json was trusted, it stays trusted."
+                    current.name.isEmpty || problem == nil
+                        ? "The script is saved to \(ScratchpadDocument.projectDirectory)/\(document.fileName) and runs from the project folder. If launch.json was trusted, it stays trusted."
+                        : problem ?? ""
                 )
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { saveDraft = nil }.keyboardShortcut(.cancelAction)
-                Button("Save") { finishSave(run: false) }.keyboardShortcut(.defaultAction)
-                Button("Save & Run") { finishSave(run: true) }
+                Button("Save") { finishSave(run: false) }.keyboardShortcut(.defaultAction).disabled(problem != nil)
+                Button("Save & Run") { finishSave(run: true) }.disabled(problem != nil)
             }
         }
         .padding(20).frame(width: 440)
@@ -237,7 +281,11 @@ struct ScratchpadPanel: View {
         guard let draft = saveDraft else { return }
         saveDraft = nil
         Task {
-            if run { await model.saveScratchpadAndRun(name: draft.name, group: draft.group) } else { await model.saveScratchpadAsTask(name: draft.name, group: draft.group) }
+            if run {
+                await model.saveScratchpadAndRun(name: draft.name, scriptName: draft.scriptName, group: draft.group)
+            } else {
+                await model.saveScratchpadAsTask(name: draft.name, scriptName: draft.scriptName, group: draft.group)
+            }
         }
     }
 

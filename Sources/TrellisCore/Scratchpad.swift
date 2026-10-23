@@ -51,6 +51,17 @@ public struct ScratchpadDocument: Equatable, Sendable {
         return ProjectFile.commandProblem(line) == nil ? line : nil
     }
 
+    /// A file name for a task name: lower case, other characters as single dashes, e.g. "Deploy preview!" → "deploy-preview".
+    public static func suggestedName(for taskName: String) -> String {
+        var name = ""
+        for scalar in taskName.lowercased().unicodeScalars {
+            let kept = scalar.isASCII && (scalar.properties.isAlphabetic || ("0"..."9").contains(scalar) || scalar == "_" || scalar == ".")
+            if kept { name.unicodeScalars.append(scalar) } else if !name.isEmpty, !name.hasSuffix("-") { name += "-" }
+        }
+        name = String(name.prefix(maximumNameLength)).trimmingCharacters(in: CharacterSet(charactersIn: "-."))
+        return nameProblem(name) == nil ? name : "script"
+    }
+
     /// The name becomes a file name and part of a typed command, so it is limited to characters that need no quoting.
     public static func nameProblem(_ name: String) -> String? {
         let allowed = name.unicodeScalars.allSatisfy { $0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0) || "._-".unicodeScalars.contains($0)) }

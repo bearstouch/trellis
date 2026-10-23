@@ -88,8 +88,9 @@ extension AppWorkspaceModel {
     /// Writes the buffer to `.trellis/scratch/<file>` in the focused pane's project and adds a task that runs it to
     /// launch.json (FR-SP06). If adding the task fails, the script file is put back as it was.
     @discardableResult
-    public func saveScratchpadAsTask(name: String, group: TaskGroup?) async -> LaunchTask? {
-        let document = scratchpad
+    public func saveScratchpadAsTask(name: String, scriptName: String? = nil, group: TaskGroup?) async -> LaunchTask? {
+        var document = scratchpad
+        if let scriptName { document.name = scriptName }
         if let issue = document.issues.first {
             errorMessage = issue.message
             return nil
@@ -135,12 +136,30 @@ extension AppWorkspaceModel {
             return nil
         }
         scratchpadSavedPaths.insert(url.path)
+        // Keep any edit made while saving; it shows as unsaved.
+        if scratchpad.text == document.text, scratchpad.language == document.language { scratchpad.name = document.name }
+        scratchpadSaved = document
         return task
     }
 
+    /// The buffer has text that isn't in its saved script (FR-SP09).
+    public var scratchpadHasUnsavedChanges: Bool {
+        guard !scratchpad.isEmpty else { return false }
+        return scratchpadSaved.map { $0.text != scratchpad.text || $0.language != scratchpad.language } ?? true
+    }
+
+    /// Starts a new, empty buffer in the same language. The saved script and its task stay; the view confirms first
+    /// when there are unsaved changes.
+    public func clearScratchpad() {
+        scratchpad = ScratchpadDocument(language: scratchpad.language)
+        scratchpadSaved = nil
+        scratchpadCheck = nil
+        scratchpadFocusRequest &+= 1
+    }
+
     /// Saves, then runs the saved task, which asks for review first if launch.json isn't trusted (FR-TK06).
-    public func saveScratchpadAndRun(name: String, group: TaskGroup?) async {
-        guard let task = await saveScratchpadAsTask(name: name, group: group) else { return }
+    public func saveScratchpadAndRun(name: String, scriptName: String? = nil, group: TaskGroup?) async {
+        guard let task = await saveScratchpadAsTask(name: name, scriptName: scriptName, group: group) else { return }
         runTask(task, fromFile: true)
     }
 }
