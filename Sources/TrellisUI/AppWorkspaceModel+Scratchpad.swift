@@ -132,7 +132,8 @@ extension AppWorkspaceModel {
             return nil
         }
         await finishScratchpadSave(document, url: written.url)
-        scratchpadSavedTask = task
+        // Another file may have been opened (or the buffer cleared) while the file list refreshed.
+        if scratchpadSaved == document { scratchpadSavedTask = task }
         return task
     }
 
