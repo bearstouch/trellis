@@ -39,9 +39,11 @@ public struct ProjectFile: Equatable, Sendable {
         public let tab: Int, key: String, pane: Pane
     }
 
+    /// The document's `$schema`, kept so saving over the file doesn't drop the editor's validation.
+    public var schema: String?
     public var name: String
     public var tabs: [Tab]
-    public init(name: String, tabs: [Tab]) { self.name = name; self.tabs = tabs }
+    public init(schema: String? = nil, name: String, tabs: [Tab]) { self.schema = schema; self.name = name; self.tabs = tabs }
 
     /// Where a project file is written: always `project.json`.
     public static func url(projectRoot: String) -> URL { url(projectRoot: projectRoot, fileName: fileName) }

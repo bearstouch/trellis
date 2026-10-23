@@ -370,9 +370,10 @@ extension AppWorkspaceModel {
             for (key, binding) in bindings where declared.contains(key) { keys[binding.id] = key }
             for entry in existing.entries { if let command = entry.pane.command, let id = bindings[entry.key]?.id { commands[id] = command } }
         }
-        let exported = ProjectFile.export(
+        var exported = ProjectFile.export(
             window: window, snapshot: snapshot, projectRoot: root, directory: { self.projectPaneDirectory($0, root: root) }, command: { self.projectFileCommands[$0] ?? commands[$0] },
             key: { keys[$0] })
+        exported.file.schema = existing?.schema
         return ProjectFileDraft(
             windowID: windowID, root: root, file: exported.file, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
             replacesExisting: FileManager.default.fileExists(atPath: url.path), commands: exported.file.entries.map { $0.pane.command ?? "" })

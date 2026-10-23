@@ -310,6 +310,12 @@ final class ProjectFileTests: XCTestCase {
         XCTAssertEqual(file.entries.map(\.pane.directory), ["src", nil])
         XCTAssertEqual(file.entries.map(\.pane.command), ["make watch", nil])
 
+        // A $schema the user added survives saving over the file.
+        let withSchema = "{\n  \"$schema\": \"./schema.json\"," + String(decoding: data, as: UTF8.self).dropFirst()
+        try withSchema.write(toFile: project + "/.trellis/project.json", atomically: true, encoding: .utf8)
+        XCTAssertEqual(try model.projectFileDraft(windowID: windowID, root: project).file.schema, "./schema.json")
+        try data.write(to: URL(fileURLWithPath: project + "/.trellis/project.json"))
+
         // Saving again keeps the command and writes the same bytes.
         model.beginSaveProjectFile(windowID: windowID)
         let again = try XCTUnwrap(model.pendingProjectSave)

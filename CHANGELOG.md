@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Scratchpad:** saving again after **Save as Task** offers the same task name and group, instead of the file name and no group (FR-SP06).
 - **Scratchpad:** the private copies **Run** writes are deleted when Trellis quits, or at the next launch after a crash, instead of staying on disk (FR-SP07).
 - **Scratchpad:** **Validate** no longer ties up a shared worker thread while the check runs, and its 5-second timeout can never signal a process that has already exited (FR-SP04).
+- **Save as Project** keeps the existing file's `$schema` line, so editor validation keeps working after saving over it (FR-WF06).
 
 ## [0.13.0] - 2026-10-23
 

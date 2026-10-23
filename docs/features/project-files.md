@@ -38,7 +38,7 @@ All requirements here are P1.
 
 | Element | Rules |
 | --- | --- |
-| Document | `version` (must be `1`), `name` (the window name, 1–200 characters) and 1–50 `tabs`. An optional `$schema` string is ignored. Any other field is an error. Files are limited to 256 KB. |
+| Document | `version` (must be `1`), `name` (the window name, 1–200 characters) and 1–50 `tabs`. An optional `$schema` string is kept, first, when a window is saved over the file. Any other field is an error. Files are limited to 256 KB. |
 | `tab` | `title` (1–200 characters) and `root`, with optional `color` (`red`, `orange`, `yellow`, `green`, `blue`, `purple`, `gray`) and `key` |
 | Pane | `{type: "pane"}` with optional `title`, `directory`, `command` and `key` |
 | Split | `{type: "split", axis: x\|y, children: [node, node]}` with optional `ratio` (0.1–0.9, default 0.5) and `key`. `ratio` is the first child's share. |
