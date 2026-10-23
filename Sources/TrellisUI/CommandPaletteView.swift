@@ -72,14 +72,22 @@ struct CommandPaletteView: View {
     private func results(_ sections: [CommandPaletteSection], selected: CommandPaletteMatch?, maxHeight: CGFloat) -> some View {
         let rows = sections.reduce(0) { $0 + $1.matches.count }
         let height = CGFloat(rows) * Self.rowHeight + CGFloat(sections.count) * Self.headerHeight + 12
+        // The section whose first row is selected scrolls to its header, so the top of the list is always reachable.
+        let anchor = { (id: String?) -> String? in
+            guard let id else { return nil }
+            return sections.first { $0.matches.first?.item.id == id }.map { "section:" + $0.id } ?? id
+        }
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                // Not lazy: a lazy stack kept rows from the previous query and lost their scroll position. Results are
+                // small, and a new query or scope starts a fresh list at the top.
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(sections) { section in
                         Text(section.title.uppercased())
                             .font(.system(size: 11, weight: .semibold)).tracking(0.4).foregroundStyle(model.themeColor(.mutedForeground))
                             .padding(.horizontal, 20).frame(height: Self.headerHeight, alignment: .bottomLeading)
                             .accessibilityAddTraits(.isHeader)
+                            .id("section:" + section.id)
                         ForEach(section.matches, id: \.item.id) { match in
                             row(match, selected: match.item.id == selected?.item.id).id(match.item.id)
                         }
@@ -87,9 +95,12 @@ struct CommandPaletteView: View {
                 }
                 .padding(.vertical, 6)
             }
+            .id("\(model.commandPaletteScope?.rawValue ?? "all"):\(model.commandPaletteQuery)")
             .frame(height: min(height, min(maxHeight, 9 * Self.rowHeight + 3 * Self.headerHeight + 12)))
             .accessibilityLabel("Results")
-            .onChange(of: selected?.item.id) { _, id in if let id { proxy.scrollTo(id) } }
+            .onChange(of: selected?.item.id) { _, id in
+                if let target = anchor(id) { withAnimation(nil) { proxy.scrollTo(target) } }
+            }
         }
     }
 
