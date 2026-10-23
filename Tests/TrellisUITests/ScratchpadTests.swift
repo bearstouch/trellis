@@ -235,6 +235,22 @@ final class ScratchpadTests: XCTestCase {
     }
 
     @MainActor
+    func testReplacingWithShorterTextKeepsASelection() {
+        // AppKit raises on an empty selection array: Clear and opening a shorter file used to crash the app.
+        let clamp = ScratchpadEditor.Coordinator.clamped
+        XCTAssertEqual(clamp([NSRange(location: 40, length: 3)], 0), [NSRange(location: 0, length: 0)])
+        XCTAssertEqual(clamp([NSRange(location: 3, length: 9)], 5), [NSRange(location: 3, length: 2)])
+        XCTAssertEqual(clamp([], 4), [NSRange(location: 4, length: 0)])
+        let textView = NSTextView()
+        textView.string = String(repeating: "line\n", count: 20)
+        textView.setSelectedRange(NSRange(location: 60, length: 4))
+        let selection = textView.selectedRanges.map(\.rangeValue)
+        textView.string = ""
+        textView.selectedRanges = clamp(selection, 0).map { NSValue(range: $0) }
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
+    }
+
+    @MainActor
     func testSaveAndRunOfAnUntrustedFileAsksForReview() async throws {
         let (model, pane) = try await makeModel()
         defer { cleanUp(model) }

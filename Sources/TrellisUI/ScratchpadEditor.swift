@@ -97,7 +97,8 @@ struct ScratchpadEditor: NSViewRepresentable {
             if textView.string != editor.text {
                 let selection = textView.selectedRanges
                 textView.string = editor.text
-                textView.selectedRanges = selection.filter { NSMaxRange($0.rangeValue) <= (editor.text as NSString).length }
+                // Clamped, never dropped: AppKit raises on an empty selection array, as after Clear or opening a shorter file.
+                textView.selectedRanges = Self.clamped(selection.map(\.rangeValue), length: (editor.text as NSString).length).map { NSValue(range: $0) }
                 restyle = true
             }
             if force || styled?.font != editor.font || styled?.palette != editor.palette || styled?.language != editor.language {
@@ -124,6 +125,15 @@ struct ScratchpadEditor: NSViewRepresentable {
                     window.makeFirstResponder(textView)
                 }
             }
+        }
+
+        /// Each range moved inside `length`; at least the insertion point at the end.
+        static func clamped(_ ranges: [NSRange], length: Int) -> [NSRange] {
+            let inside = ranges.map { range -> NSRange in
+                let location = min(range.location, length)
+                return NSRange(location: location, length: min(range.length, length - location))
+            }
+            return inside.isEmpty ? [NSRange(location: length, length: 0)] : inside
         }
 
         func highlight() {
