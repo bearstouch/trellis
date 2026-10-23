@@ -38,7 +38,7 @@ final class ScratchpadTests: XCTestCase {
     }
 
     @MainActor
-    private func makeModel(checks: Checks = Checks()) async throws -> (AppWorkspaceModel, UUID) {
+    private func makeModel(checks: Checks = Checks(), directory: String? = nil) async throws -> (AppWorkspaceModel, UUID) {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis-sp-\(UUID().uuidString)"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: scratch.appendingPathComponent("state")))
@@ -46,7 +46,7 @@ final class ScratchpadTests: XCTestCase {
         model.confirmCloseSessions = { _ in true }
         model.scratchpadDirectory = scratch.appendingPathComponent("run")
         model.scratchpadProcessRunner = { _, _, _ in checks.next() }
-        let saved = await model.saveLaunchSettings(shell: shell, directory: project)
+        let saved = await model.saveLaunchSettings(shell: shell, directory: directory ?? project)
         XCTAssertTrue(saved)
         _ = await model.createWindow(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
@@ -357,5 +357,22 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertNil(launchFile(), "No task for notes")
         XCTAssertEqual(model.scratchpadSaved?.fileName, "plan.md")
         XCTAssertEqual(model.scratchpadFiles?.files, ["plan.md"])
+    }
+
+    @MainActor
+    func testSavingOutsideAProjectCreatesTheScratchFolderThere() async throws {
+        let plain = scratch.appendingPathComponent("plain").path
+        try FileManager.default.createDirectory(atPath: plain, withIntermediateDirectories: true)
+        let (model, pane) = try await makeModel(directory: plain)
+        defer { cleanUp(model) }
+        try mark(model, pane, .promptStart(directory: plain))
+        await model.refreshScratchpadFiles()
+        XCTAssertNil(model.scratchpadFiles, "Not a project yet")
+        model.scratchpad = ScratchpadDocument(language: .bash, text: "echo hi\n")
+        let task = await model.saveScratchpadAsTask(name: "hi", scriptName: "hi", group: nil)
+        XCTAssertEqual(task?.command, "bash .trellis/scratch/hi.sh")
+        XCTAssertEqual(try String(contentsOfFile: plain + "/.trellis/scratch/hi.sh", encoding: .utf8), "echo hi\n")
+        XCTAssertTrue((try? String(contentsOfFile: plain + "/.trellis/launch.json", encoding: .utf8))?.contains("hi.sh") == true)
+        XCTAssertEqual(model.scratchpadFiles, ScratchpadFileList(root: plain, files: ["hi.sh"]), "The folder is a project now")
     }
 }

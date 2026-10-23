@@ -135,11 +135,21 @@ extension AppWorkspaceModel {
         }
         guard let paneID = scratchpadPaneID else { return nil }
         await refreshTaskCatalog(paneID: paneID)
-        guard let catalog = taskCatalog, catalog.paneID == paneID else {
-            errorMessage = "Saving needs a project: a local pane in a folder with .git or .trellis."
-            return nil
+        let rootPath: String
+        if let catalog = taskCatalog, catalog.paneID == paneID {
+            rootPath = catalog.root
+        } else {
+            // No project yet: the pane's folder becomes one once `.trellis` is created in it.
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch),
+                let directory = paneDirectory(paneID).map(Self.canonical), directory != "/", directory != Self.canonical(home)
+            else {
+                errorMessage = "Saving needs a local pane in a project folder. Your home folder and / can't hold a project; cd into a folder first."
+                return nil
+            }
+            rootPath = directory
         }
-        let root = URL(fileURLWithPath: catalog.root, isDirectory: true)
+        let root = URL(fileURLWithPath: rootPath, isDirectory: true)
         let folder = root.appendingPathComponent(ScratchpadDocument.projectDirectory, isDirectory: true)
         let url = folder.appendingPathComponent(document.fileName)
         let manager = FileManager.default
@@ -163,6 +173,8 @@ extension AppWorkspaceModel {
             errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
             return nil
         }
+        // A new `.trellis` made the folder a project; tasks are added to its launch.json.
+        if taskCatalog?.root != rootPath { await refreshTaskCatalog(paneID: paneID) }
         return (url, previous)
     }
 
