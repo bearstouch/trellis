@@ -340,6 +340,24 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveKeepsALinkedFolderInsideTheProject() async throws {
+        let outside = scratch.appendingPathComponent("vendored").path
+        try FileManager.default.createDirectory(atPath: outside, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: project + "/vendor", withDestinationPath: outside)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Vendor")
+        let windowID = try XCTUnwrap(created)
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        try await waitFor { model.terminals[pane]?.sessionState == .running }
+        // The shell is in the project's linked folder: it stays there rather than resolving outside the project.
+        try prompt(model, pane, project + "/vendor")
+        let draft = try model.projectFileDraft(windowID: windowID, root: project)
+        XCTAssertEqual(draft.warnings, [])
+        XCTAssertEqual(draft.file.entries.map(\.pane.directory), ["vendor"])
+    }
+
+    @MainActor
     func testSaveFailureAndCorruptTrustLeaveEverythingAsItWas() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }

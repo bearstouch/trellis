@@ -328,9 +328,20 @@ extension AppWorkspaceModel {
         }
     }
 
-    /// `paneDirectory` with symlinks resolved, comparable with a canonical project root: a shell's `$PWD` keeps the
-    /// logical path it was reached by.
-    func canonicalPaneDirectory(_ paneID: UUID) -> String? { paneDirectory(paneID).map(Self.canonical) }
+    /// `paneDirectory` as seen from a canonical project root: a shell's `$PWD` keeps the logical path it was reached by,
+    /// so it is resolved, unless it is already inside the root (a linked folder in the project stays where it is).
+    func projectPaneDirectory(_ paneID: UUID, root: String) -> String? {
+        guard let path = paneDirectory(paneID) else { return nil }
+        let logical = URL(fileURLWithPath: path).standardizedFileURL.path
+        return logical == root || logical.hasPrefix(root + "/") ? logical : Self.canonical(path)
+    }
+
+    /// A shell's directory for comparing with a task's folder under a canonical root, by the same rule.
+    func taskCurrentDirectory(paneID: UUID, directory: String) -> String? {
+        guard let path = currentDirectory(paneID: paneID) else { return nil }
+        let logical = URL(fileURLWithPath: path).standardizedFileURL.path
+        return logical == URL(fileURLWithPath: directory).standardizedFileURL.path ? logical : Self.canonical(path)
+    }
 
     public func projectFileDraft(windowID: UUID, root: String) throws -> ProjectFileDraft {
         let root = Self.canonical(root)
@@ -350,7 +361,7 @@ extension AppWorkspaceModel {
             for entry in existing.entries { if let command = entry.pane.command, let id = bindings[entry.key]?.id { commands[id] = command } }
         }
         let exported = ProjectFile.export(
-            window: window, snapshot: snapshot, projectRoot: root, directory: canonicalPaneDirectory, command: { self.projectFileCommands[$0] ?? commands[$0] },
+            window: window, snapshot: snapshot, projectRoot: root, directory: { self.projectPaneDirectory($0, root: root) }, command: { self.projectFileCommands[$0] ?? commands[$0] },
             key: { keys[$0] })
         return ProjectFileDraft(
             windowID: windowID, root: root, file: exported.file, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
@@ -388,7 +399,7 @@ extension AppWorkspaceModel {
             return false
         }
         guard let window = snapshot.windows.first(where: { $0.id == draft.windowID }), let bindings = file.bindings(window: window, snapshot: snapshot),
-            ProjectFile.export(window: window, snapshot: snapshot, projectRoot: draft.root, directory: canonicalPaneDirectory, command: { _ in nil }).paneIDs == draft.paneIDs
+            ProjectFile.export(window: window, snapshot: snapshot, projectRoot: draft.root, directory: { self.projectPaneDirectory($0, root: draft.root) }, command: { _ in nil }).paneIDs == draft.paneIDs
         else {
             errorMessage = "The window changed while saving. Nothing was written; try again."
             return false
