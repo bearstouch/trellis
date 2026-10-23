@@ -117,6 +117,10 @@ final class ProjectFileTests: XCTestCase {
         XCTAssertEqual(exported.file.entries.count, 3, "The layout is still saved")
     }
 
+    func testTheTabOfferIsSpokenAsAProject() {
+        XCTAssertEqual(WorkspaceAccessibility.projectOfferText("Trellis"), "project Trellis available to load")
+    }
+
     func testBindingsMatchTheWindowShapeOnly() throws {
         let (snapshot, window, panes) = snapshot()
         let file = ProjectFile.export(window: window, snapshot: snapshot, projectRoot: "/p", directory: { _ in nil }, command: { _ in nil }).file

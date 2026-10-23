@@ -385,7 +385,7 @@ public struct WorkspaceRootView: View {
         let shownOffer = hoveredTabID == tab.id || selected ? offer : nil
         let parts: [String] = [
             descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : "",
-            offer.map { "workspace \($0.name) available" } ?? ""
+            offer.map { WorkspaceAccessibility.projectOfferText($0.name) } ?? ""
         ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
         let label = HStack(spacing: 8) {
