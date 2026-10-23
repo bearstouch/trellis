@@ -52,7 +52,7 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var themeBusy = false
     @Published public private(set) var themeReplacementID: String?
     let themeLibrary: ThemeLibrary?
-    private var systemIsDark = false
+    private(set) var systemIsDark = false
     public var themesDirectory: URL? { themeLibrary?.directory }
     public var effectiveChromeMode: ChromeMode {
         if let previewedTheme { return previewedTheme.appearance == .light ? .light : .dark }
@@ -405,6 +405,25 @@ public final class AppWorkspaceModel: ObservableObject {
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Returns the chosen project folder; injected by tests.
     public var chooseProjectFolder: (_ message: String, _ directory: String?) -> String? = { ProjectFilePanels.chooseFolder(message: $0, directory: $1) }
+    /// The command palette (FR-CP01–FR-CP08): runtime only; the query is never persisted or logged.
+    @Published public internal(set) var commandPaletteVisible = false
+    @Published public internal(set) var commandPaletteQuery = ""
+    @Published public internal(set) var commandPaletteScope: CommandPaletteScope?
+    @Published public internal(set) var commandPaletteSelection: String?
+    /// Bumped when the palette's field should take keyboard focus.
+    @Published public internal(set) var commandPaletteFocusRequest = 0
+    var commandPaletteRecents = CommandPaletteRecents()
+    /// The actions their menus enabled when the palette opened, read before its field took focus (FR-CP03).
+    var commandPaletteActions: [ShortcutAction] = []
+    /// True only while the palette owns the workspace theme preview (FR-CP08).
+    var commandPalettePreviewing = false
+    /// What had keyboard focus when the palette opened, other than a terminal or a field editor (FR-CP01).
+    weak var commandPaletteReturnFocus: NSView?
+    /// Set by the app: runs an action as its menu item does, and says whether that item is enabled.
+    public var performShortcutAction: ((ShortcutAction) -> Void)?
+    public var canPerformShortcutAction: ((ShortcutAction) -> Bool)?
+    /// The saved hosts the palette lists; set by the app to the host library's committed list.
+    public var commandPaletteHosts: () -> [SavedHost] = { [] }
     private var recoveryBackup: RestoredWorkspace?
     private var recoveryReason: WorkspacePersistenceError?
     private var pendingSaveTask: Task<Void, Never>?
@@ -1153,7 +1172,7 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyAppearance(terminalAppearance)
         terminal.optionAsMeta = keyboard.optionAsMeta
         terminal.searchShortcut = keyboard.shortcuts[.findInPane]
-        terminal.inputSuspended = editingTabID != nil
+        terminal.inputSuspended = editingTabID != nil || commandPaletteVisible
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self, weak terminal] in
@@ -1451,7 +1470,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func endTabRenameEditing() {
         editingTabID = nil
-        terminals.values.forEach { $0.inputSuspended = false }
+        terminals.values.forEach { $0.inputSuspended = commandPaletteVisible }
     }
 
     public func renameTab(_ id: UUID, title: String) async {

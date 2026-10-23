@@ -51,6 +51,7 @@ nav:
       - Project files: features/project-files.md
       - Tasks: features/tasks.md
       - Command scratchpad: features/scratchpad.md
+      - Command palette: features/command-palette.md
       - Terminal: features/terminal.md
       - Shell integration: features/shell-integration.md
       - SSH hosts: features/ssh-hosts.md

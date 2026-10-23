@@ -47,7 +47,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     // Saved keyboard settings store raw values; this keeps its name from before project files were renamed.
     case openProjectFile = "openWorkspaceFile"
     case findInPane, findNext, findPrevious, previousPrompt, nextPrompt, clearPane
-    case zoomIn, zoomOut, actualSize, toggleSidebar, toggleScratchpad
+    case zoomIn, zoomOut, actualSize, toggleSidebar, toggleScratchpad, commandPalette
     case splitLeftRight, splitTopBottom, maximizePane
     case focusLeft, focusRight, focusUp, focusDown
     case resizeLeft, resizeRight, resizeUp, resizeDown
@@ -77,6 +77,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .actualSize: "Actual Size"
         case .toggleSidebar: "Toggle Sidebar"
         case .toggleScratchpad: "Toggle Scratchpad"
+        case .commandPalette: "Command Palette…"
         case .splitLeftRight: "Split Left/Right"
         case .splitTopBottom: "Split Top/Bottom"
         case .maximizePane: "Maximize / Restore Pane"
@@ -106,7 +107,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         switch self {
         case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .openProjectFile: .file
         case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt, .clearPane: .edit
-        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleScratchpad: .view
+        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleScratchpad, .commandPalette: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             .pane
@@ -133,6 +134,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .actualSize: KeyChord("0")
         case .toggleSidebar: KeyChord("s", [.command, .control])
         case .toggleScratchpad: KeyChord("e", [.command, .option])
+        case .commandPalette: KeyChord("p", [.command, .shift])
         case .splitLeftRight: KeyChord("d")
         case .splitTopBottom: KeyChord("d", [.command, .shift])
         case .maximizePane: KeyChord("return", [.command, .shift])
@@ -254,7 +256,7 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
     private struct Override: Codable { var chord: KeyChord? }
 
     /// Actions whose default chord shipped after saved maps already existed.
-    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .openProjectFile, .toggleScratchpad]
+    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .openProjectFile, .toggleScratchpad, .commandPalette]
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
