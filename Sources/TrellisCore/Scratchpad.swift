@@ -235,27 +235,72 @@ public enum ScratchpadValidator {
     /// The app's environment without `codeLoadingVariables`, so a check never runs anything.
     static func checkEnvironment(_ environment: [String: String]) -> [String: String] { environment.filter { !codeLoadingVariables.contains($0.key) } }
 
+    /// On a GCD thread, not Swift concurrency's pool: the check blocks for up to `timeout`.
     public static let runProcess: ScratchpadProcessRunner = { executable, arguments, timeout in
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process(), pipe = Pipe()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.standardInput = FileHandle.nullDevice
-            process.environment = checkEnvironment(ProcessInfo.processInfo.environment)
-            process.standardOutput = pipe
-            process.standardError = pipe
-            try process.run()
-            let box = ProcessBox(process)
-            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if box.process.isRunning { box.process.terminate() } }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            if process.terminationReason == .uncaughtSignal { throw ScratchpadCheckTimedOut() }
-            return ScratchpadProcessResult(status: process.terminationStatus, output: String(decoding: data.prefix(maximumOutput), as: UTF8.self))
-        }.value
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { continuation.resume(with: Result { try runBlocking(executable, arguments, timeout: timeout) }) }
+        }
     }
 
-    private final class ProcessBox: @unchecked Sendable {
-        let process: Process
-        init(_ process: Process) { self.process = process }
+    /// The child is waited for without being reaped (`WNOWAIT`), and the timer signals it only on `queue` before it is
+    /// marked exited, so a timeout can never signal a reused PID.
+    static func runBlocking(_ executable: String, _ arguments: [String], timeout: TimeInterval) throws -> ScratchpadProcessResult {
+        var fds: [Int32] = [-1, -1]
+        guard pipe(&fds) == 0 else { throw POSIXError(.EMFILE) }
+        var actions: posix_spawn_file_actions_t? = nil
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_adddup2(&actions, fds[1], 1)
+        posix_spawn_file_actions_adddup2(&actions, fds[1], 2)
+        posix_spawn_file_actions_addclose(&actions, fds[0])
+        posix_spawn_file_actions_addclose(&actions, fds[1])
+        // Like Process: default signal handling, nothing blocked, and no descriptor but the three above inherited.
+        var attributes: posix_spawnattr_t? = nil
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        var none = sigset_t(), all = sigset_t()
+        sigemptyset(&none); sigfillset(&all)
+        posix_spawnattr_setsigmask(&attributes, &none)
+        posix_spawnattr_setsigdefault(&attributes, &all)
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_CLOEXEC_DEFAULT))
+        let argv = ([executable] + arguments).map { strdup($0) } + [nil]
+        let envp = checkEnvironment(ProcessInfo.processInfo.environment).map { strdup($0.key + "=" + $0.value) } + [nil]
+        defer { (argv + envp).forEach { free($0) } }
+        var pid: pid_t = 0
+        let spawned = posix_spawn(&pid, executable, &actions, &attributes, argv, envp)
+        close(fds[1])
+        guard spawned == 0 else {
+            close(fds[0])
+            throw POSIXError(POSIXErrorCode(rawValue: spawned) ?? .ENOENT)
+        }
+        let queue = DispatchQueue(label: "scratchpad.check")
+        var exited = false, timedOut = false
+        let timer = DispatchWorkItem {
+            guard !exited else { return }
+            timedOut = true
+            kill(pid, SIGTERM)
+        }
+        queue.asyncAfter(deadline: .now() + timeout, execute: timer)
+        var output = Data(), buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = read(fds[0], &buffer, buffer.count)
+            if count > 0 {
+                if output.count < maximumOutput { output.append(contentsOf: buffer[0..<count]) }
+            } else if count == 0 || errno != EINTR {
+                break
+            }
+        }
+        close(fds[0])
+        var info = siginfo_t()
+        while waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) != 0 && errno == EINTR {}
+        queue.sync {
+            exited = true; timer.cancel()
+        }
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) == -1 && errno == EINTR {}
+        let signaled = status & 0x7f != 0
+        if timedOut && signaled { throw ScratchpadCheckTimedOut() }
+        return ScratchpadProcessResult(status: signaled ? status & 0x7f : (status >> 8) & 0xff, output: String(decoding: output.prefix(maximumOutput), as: UTF8.self))
     }
 }

@@ -24,6 +24,24 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertEqual(Set(ScratchpadLanguage.all.map(\.id)).count, ScratchpadLanguage.all.count, "Ids are unique")
     }
 
+    func testTheCheckRunnerReportsStatusOutputAndTimeouts() async throws {
+        let passed = try await ScratchpadValidator.runProcess("/bin/sh", ["-c", "echo out; echo err >&2; exit 3"], 5)
+        XCTAssertEqual(passed.status, 3)
+        XCTAssertEqual(passed.output, "out\nerr\n")
+        let input = try await ScratchpadValidator.runProcess("/bin/cat", [], 5)
+        XCTAssertEqual(input.output, "", "Standard input is /dev/null")
+        let started = Date()
+        do {
+            _ = try await ScratchpadValidator.runProcess("/bin/sleep", ["5"], 0.2)
+            XCTFail("Expected a timeout")
+        } catch is ScratchpadCheckTimedOut {}
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+        do {
+            _ = try await ScratchpadValidator.runProcess("/nonexistent/checker", [], 5)
+            XCTFail("Expected a spawn failure")
+        } catch is ScratchpadCheckTimedOut { XCTFail("Not a timeout") } catch {}
+    }
+
     func testRunLineAndTaskCommandQuoteForTheShell() {
         let document = ScratchpadDocument(name: "deploy-1.2", language: .bash, text: "echo hi")
         XCTAssertEqual(document.taskCommand, "bash .trellis/scratch/deploy-1.2.sh")
