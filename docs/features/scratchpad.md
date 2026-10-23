@@ -20,13 +20,14 @@ Each language is one entry in a registry: its name, file extension, the interpre
 
 | Part | What it does |
 | --- | --- |
-| Header | **Scratchpad** until the script is saved as a task, then the saved file's name, with **Edited** while the buffer differs from it. Then the language selector, **Clear** (trash) and a close button. |
+| Header | **Scratchpad** until the script is saved as a task, then the saved file's name, with **Edited** while the buffer differs from it. Then the language selector and a close button. |
 | Editor | Plain text in the terminal font and colors, with line numbers. Smart quotes, dashes, text replacement, spelling and link detection are off, so what you type is what runs. Undo, Find (⌘F, ⌘G and ⌘⇧G, or whatever Find is bound to; they search the editor, not the pane, while it has focus) and the standard editing commands work. Tab inserts a tab; Ctrl-Tab moves focus out. |
 | Check result | **Syntax OK** with the check that ran, or each problem as `Line N: message` with a symbol, or **Not checked** when the interpreter couldn't be found or started. Lines with a problem are also marked in the gutter. Editing the text clears the result. |
-| Footer | **Runs in** the focused pane's title and its state (at prompt, busy, task running, not running, remote shell, no shell integration), then three icon buttons. |
+| Footer | **Runs in** the focused pane's title and its state (at prompt, busy, task running, not running, remote shell, no shell integration), then four icon buttons. |
 
 | Button | Shortcut while the editor has focus | Does |
 | --- | --- | --- |
+| Clear (trash) | — | Starts an empty buffer (FR-SP09). |
 | Validate (✓ in a circle) | ⌥⌘V | Checks the syntax. |
 | Save as Task (tray) | ⌥⌘S | Opens the save sheet, which offers **Save** and **Save & Run**. |
 | Run (filled play) | ⌘Return | Checks, then runs in the focused pane. |
@@ -45,7 +46,7 @@ The buttons are icons only. Each has a tooltip and an accessibility label with i
 | FR-SP06 | Save as a task. | The sheet asks for the task name, the file name (letters, digits, `.`, `-` and `_`, not starting with `.` or `-`; suggested from the task name until you edit it, e.g. **Deploy preview** → `deploy-preview`) and an optional group, and shows the command verbatim. Save stays disabled, with the reason shown, until both names are valid. Saving again after a save offers the same names. **Save** writes the buffer to `.trellis/scratch/<name>.<ext>` in the focused pane's project (mode 0644) and appends a task `{"name", "command": "<interpreter> .trellis/scratch/<name>.<ext>", "group"}` to `launch.json` through the same path as adding a detected task (FR-TK04): same-command tasks aren't duplicated, a taken name gets a number, a file that changed since it was read or doesn't parse is left alone, and trust carries over only from a trusted or missing file. An existing script file is replaced only if this scratchpad saved it during this session and it can still be read; otherwise saving asks you to rename. A symbolic link in `.trellis`, `.trellis/scratch` or the file is refused. If the task can't be added, the script file is restored or removed. Without a project the sheet's save reports why and writes nothing. **Save & Run** then runs the task like the Tasks menu, with review if the file isn't trusted (FR-TK06). |
 | FR-SP07 | Keep the buffer private. | The buffer, name, language, check result and panel state live in memory only: they aren't saved with the workspace and are gone after quitting. Nothing from the scratchpad is logged. Only Validate (temporary private file), Run (private state folder) and Save (the project) write the text to disk. |
 | FR-SP08 | Make the panel accessible. | The panel is a labelled group. The pane button has the label **Scratchpad** and the selected trait while pressed. **Edited** is text, not a color or dot. The language selector (label and value), editor and each icon button have labels; tooltips give the shortcut, or the reason when disabled. Check results use words and symbols, never color alone, and the gutter marks are repeated as `Line N` text. |
-| FR-SP09 | Clear the buffer. | **Clear** (trash icon in the header) starts an empty buffer in the same language and clears the check result and the saved file name. It asks first, with **Clear** and **Cancel**, when the buffer has unsaved changes: text that was never saved, or text or language that differs from the last save. A saved, unchanged buffer clears at once. The saved script and its task are never removed. It is disabled when there is nothing to clear. |
+| FR-SP09 | Clear the buffer. | **Clear** (trash icon in the footer, left of Validate) starts an empty buffer in the same language and clears the check result and the saved file name. It asks first, with **Clear** and **Cancel**, when the buffer has unsaved changes: text that was never saved, or text or language that differs from the last save. A saved, unchanged buffer clears at once. The saved script and its task are never removed. It is disabled when there is nothing to clear. |
 
 ## Trust and safety
 

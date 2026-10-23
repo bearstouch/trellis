@@ -55,6 +55,7 @@ struct ScratchpadPanel: View {
 
     private var canValidate: Bool { !model.scratchpad.isEmpty && !model.scratchpadChecking }
     private var canSave: Bool { !model.scratchpad.isEmpty }
+    private var canClear: Bool { !model.scratchpad.isEmpty || model.scratchpadSaved != nil }
     private var canRun: Bool { model.scratchpadRunBlocker == nil && !model.scratchpadChecking }
 
     // MARK: Header
@@ -74,13 +75,6 @@ struct ScratchpadPanel: View {
             }
             Spacer(minLength: 4)
             languageMenu
-            Button {
-                if model.scratchpadHasUnsavedChanges { confirmingClear = true } else { model.clearScratchpad() }
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.plain).foregroundStyle(model.themeColor(.mutedForeground)).disabled(model.scratchpad.isEmpty && model.scratchpadSaved == nil)
-            .help("Clear Scratchpad").accessibilityLabel("Clear Scratchpad")
             Button {
                 Task { await model.toggleScratchpad() }
             } label: {
@@ -168,6 +162,9 @@ struct ScratchpadPanel: View {
             Image(systemName: "terminal").accessibilityHidden(true)
             Text(targetText).lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 8)
+            iconButton("trash", "Clear Scratchpad", shortcut: "", enabled: canClear, reason: "The scratchpad is already empty.") {
+                if model.scratchpadHasUnsavedChanges { confirmingClear = true } else { model.clearScratchpad() }
+            }
             iconButton("checkmark.circle", "Validate Syntax", shortcut: "⌥⌘V", enabled: canValidate, reason: "Write a command or script first.") {
                 Task { await model.validateScratchpad() }
             }
@@ -202,7 +199,7 @@ struct ScratchpadPanel: View {
     private func iconButton(
         _ symbol: String, _ title: String, shortcut: String, enabled: Bool, reason: String?, prominent: Bool = false, action: @escaping () -> Void
     ) -> some View {
-        let help = enabled ? "\(title) (\(shortcut))" : "\(title) — \(reason ?? "unavailable")"
+        let help = enabled ? (shortcut.isEmpty ? title : "\(title) (\(shortcut))") : "\(title) — \(reason ?? "unavailable")"
         return Button(action: action) {
             Image(systemName: symbol).font(.system(size: prominent ? 11 : 13)).frame(width: prominent ? 30 : 24, height: 22)
                 .foregroundStyle(prominent && enabled ? model.accentForeground : enabled ? model.themeColor(.foreground) : model.themeColor(.mutedForeground))
