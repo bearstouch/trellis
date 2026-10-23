@@ -106,6 +106,8 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertEqual(model.taskAvailability(paneID: pane), .taskActive)
         XCTAssertEqual(model.scratchpadRunBlocker, TaskRunAvailability.taskActive.reason)
         XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/.trellis"), "Running never touches the project")
+        model.removeScratchpadRunFiles()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file), "Run's copy is gone at quit")
     }
 
     @MainActor

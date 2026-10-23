@@ -135,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop() }
+    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles() }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
     static func helperPath(_ name: String) -> String? {

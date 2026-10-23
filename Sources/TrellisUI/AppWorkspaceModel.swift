@@ -500,6 +500,7 @@ public final class AppWorkspaceModel: ObservableObject {
             refreshEffectiveTheme()
         }
         guard let persistence else { return false }
+        removeScratchpadRunFiles()
         isRestoring = true
         pendingOperations += 1
         defer { isRestoring = false; pendingOperations -= 1 }

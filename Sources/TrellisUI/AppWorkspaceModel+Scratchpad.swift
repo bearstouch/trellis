@@ -28,6 +28,13 @@ extension AppWorkspaceModel {
         scratchpadDirectory ?? (persistence?.directory ?? FileManager.default.temporaryDirectory).appendingPathComponent("scratch", isDirectory: true)
     }
 
+    /// Run's copies are deleted at quit and, after a crash, at the next launch: the shell reads one after Run returns, so
+    /// it can't go sooner. A running script keeps its open file. Only the state directory's folder, never a shared one.
+    public func removeScratchpadRunFiles() {
+        guard scratchpadDirectory != nil || persistence != nil else { return }
+        try? FileManager.default.removeItem(at: scratchpadRunDirectory)
+    }
+
     /// Shows or hides the panel. From a pane's button it focuses that pane first; the panel stays open when the
     /// button belongs to another pane than the focused one.
     public func toggleScratchpad(paneID: UUID? = nil) async {
