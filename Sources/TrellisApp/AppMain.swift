@@ -84,6 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         model.openHosts = { [weak self] in self?.showHosts() }
+        // FR-CP03, FR-CP07: palette actions are the menu's, validated and run the same way.
+        model.canPerformShortcutAction = { [weak self] in self?.validateShortcut($0) ?? false }
+        model.performShortcutAction = { [weak self] in self?.perform($0) }
+        model.commandPaletteHosts = { [hosts] in hosts.hosts }
         model.resolveHost = { [hosts] id in await hosts.host(id) }
         if let helper = Self.helperPath(AskpassBroker.helperName) {
             model.askpass = AskpassBroker(helperPath: helper)
@@ -208,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -245,6 +249,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func performShortcut(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return }
+        perform(action)
+    }
+
+    private func perform(_ action: ShortcutAction) {
         // ⌘W/⌘⇧W close an auxiliary window (Settings) instead of workspace content.
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window {
             key.performClose(nil)
@@ -279,6 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
         case .toggleSidebar: model.toggleSidebar()
         case .toggleScratchpad: Task { await model.toggleScratchpad() }
+        case .commandPalette: model.toggleCommandPalette()
         case .splitLeftRight, .splitTopBottom:
             if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
         case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
@@ -309,11 +318,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
+        // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
+        if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
         if [.newWindow, .saveWorkspace, .showHosts, .openProjectFile, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
+        if action == .commandPalette { return !model.isRestoring && model.recoveryMessage == nil }
         if action == .toggleScratchpad { return !model.presentation.isEmpty }
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
