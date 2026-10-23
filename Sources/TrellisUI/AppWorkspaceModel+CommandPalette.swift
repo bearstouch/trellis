@@ -14,23 +14,36 @@ extension AppWorkspaceModel {
         guard !commandPaletteVisible, !isRestoring, recoveryMessage == nil, !shuttingDown else { return }
         // Read now: some actions are enabled only while a terminal, not the palette's field, has focus.
         commandPaletteActions = ShortcutAction.allCases.filter { $0 != .commandPalette && $0.tabIndex == nil && canPerformShortcutAction?($0) == true }
+        // The scratchpad editor gets its focus back; a terminal's is the active pane's, which may change meanwhile.
+        let focused = (activeTerminal?.view.window ?? NSApp.keyWindow)?.firstResponder as? NSView
+        let isFieldEditor = (focused as? NSText)?.isFieldEditor ?? false
+        commandPaletteReturnFocus = isFieldEditor || terminals.values.contains { $0.view === focused } ? nil : focused
         commandPaletteQuery = ""
         commandPaletteScope = nil
         commandPaletteVisible = true
         commandPaletteFocusRequest &+= 1
         terminals.values.forEach { $0.inputSuspended = true }
-        selectFirstCommandPaletteItem()
+        // Opening is not moving the selection: a recent theme on top must not repaint the workspace (FR-CP08).
+        commandPaletteSelection = commandPaletteSections.first?.matches.first?.item.id
         if let paneID = presentation.activePane?.id { Task { await refreshTaskCatalog(paneID: paneID) } }
     }
 
-    /// Esc, the backdrop, the shortcut again, or a row that ran: focus goes back to the (now) active pane.
+    /// Esc, the backdrop, the shortcut again, or a row that ran: focus goes back to what had it (the scratchpad
+    /// editor), else to the (now) active pane.
     public func closeCommandPalette() {
         guard commandPaletteVisible else { return }
         endCommandPalettePreview()
         commandPaletteVisible = false
         commandPaletteSelection = nil
         terminals.values.forEach { $0.inputSuspended = editingTabID != nil }
-        focusActiveTerminal()
+        let previous = commandPaletteReturnFocus
+        commandPaletteReturnFocus = nil
+        guard let previous, previous.window != nil else { return focusActiveTerminal() }
+        let terminal = activeTerminal
+        DispatchQueue.main.async {
+            if let window = previous.window, !previous.isHiddenOrHasHiddenAncestor, window.makeFirstResponder(previous) { return }
+            if let terminal { terminal.view.window?.makeFirstResponder(terminal.view) }
+        }
     }
 
     public func setCommandPaletteQuery(_ query: String) {

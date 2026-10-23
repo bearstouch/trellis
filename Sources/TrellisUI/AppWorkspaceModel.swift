@@ -417,6 +417,8 @@ public final class AppWorkspaceModel: ObservableObject {
     var commandPaletteActions: [ShortcutAction] = []
     /// True only while the palette owns the workspace theme preview (FR-CP08).
     var commandPalettePreviewing = false
+    /// What had keyboard focus when the palette opened, other than a terminal or a field editor (FR-CP01).
+    weak var commandPaletteReturnFocus: NSView?
     /// Set by the app: runs an action as its menu item does, and says whether that item is enabled.
     public var performShortcutAction: ((ShortcutAction) -> Void)?
     public var canPerformShortcutAction: ((ShortcutAction) -> Bool)?

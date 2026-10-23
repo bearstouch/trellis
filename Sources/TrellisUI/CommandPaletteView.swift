@@ -135,7 +135,8 @@ struct CommandPaletteView: View {
         .padding(.horizontal, 8)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            [item.title, item.kind.noun == "action" ? "\(item.subtitle) action" : "\(item.kind.noun), \(subtitle)", item.shortcut?.description]
+            // A scope row reads "Go to Tab…, 3 tabs in 2 windows", not "… windows action".
+            [item.title, item.isScope ? subtitle : item.kind == .action ? "\(item.subtitle) action" : "\(item.kind.noun), \(subtitle)", item.shortcut?.description]
                 .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         )
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
@@ -302,6 +303,10 @@ private struct CommandPaletteField: NSViewRepresentable {
             case #selector(NSResponder.insertBacktab(_:)): break
             case #selector(NSResponder.cancelOperation(_:)): model.closeCommandPalette()
             case #selector(NSResponder.deleteBackward(_:)): return textView.string.isEmpty && model.leaveCommandPaletteScope()
+            // ⌘⌫ clears the whole field, not only the text before the caret; still one undoable edit.
+            case #selector(NSResponder.deleteToBeginningOfLine(_:)), #selector(NSResponder.deleteToBeginningOfParagraph(_:)):
+                textView.selectAll(nil)
+                textView.deleteBackward(nil)
             // ⌘Return has no text binding of its own; it arrives as noop.
             case Selector(("noop:")):
                 guard let event = NSApp.currentEvent, event.type == .keyDown, [36, 76].contains(event.keyCode), event.modifierFlags.contains(.command) else { return false }
