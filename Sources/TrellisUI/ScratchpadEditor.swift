@@ -5,7 +5,6 @@ import TrellisCore
 /// The panel's commands, also reachable from the keyboard while the editor has focus.
 struct ScratchpadEditorCommands {
     var run: () -> Void = {}
-    var saveAndRun: () -> Void = {}
     var validate: () -> Void = {}
     var save: () -> Void = {}
 }
@@ -172,7 +171,7 @@ struct ScratchpadEditor: NSViewRepresentable {
 }
 
 /// Handles the scratchpad's shortcuts only while it has focus, before the menus see them: ⌘Return runs,
-/// ⌥⌘Return saves and runs, ⌥⌘V validates and ⌥⌘S saves.
+/// ⌥⌘V validates and ⌥⌘S saves.
 final class ScratchpadTextView: NSTextView {
     var commands = ScratchpadEditorCommands()
 
@@ -182,7 +181,6 @@ final class ScratchpadTextView: NSTextView {
         let isReturn = event.keyCode == 36 || event.keyCode == 76
         switch (flags, isReturn, event.charactersIgnoringModifiers?.lowercased()) {
         case ([.command], true, _): commands.run()
-        case ([.command, .option], true, _): commands.saveAndRun()
         case ([.command, .option], false, "v"): commands.validate()
         case ([.command, .option], false, "s"): commands.save()
         default: return super.performKeyEquivalent(with: event)
@@ -212,6 +210,8 @@ final class ScratchpadLineRuler: NSRulerView {
 
     override var isFlipped: Bool { true }
     override var requiredThickness: CGFloat { ruleThickness }
+    /// Only the numbers: the ruler's own background and edge line would frame the editor.
+    override func draw(_ dirtyRect: NSRect) { drawHashMarksAndLabels(in: dirtyRect) }
 
     @objc private func redraw() { needsDisplay = true }
 

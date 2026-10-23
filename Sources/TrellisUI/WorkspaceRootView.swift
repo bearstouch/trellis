@@ -351,7 +351,8 @@ public struct WorkspaceRootView: View {
 
     /// Drag to resize the scratchpad; the canvas takes the rest, so split minimums follow (FR-SP01).
     private var scratchpadResizeHandle: some View {
-        model.themeColor(.border).frame(width: 1).padding(.horizontal, 2).contentShape(Rectangle())
+        // A 1-point line, like the other dividers, with a wider invisible grab area over its neighbors.
+        Color.clear.frame(width: 7).overlay(model.themeColor(.border).frame(width: 1)).contentShape(Rectangle()).padding(.horizontal, -3).zIndex(1)
             .onHover { inside in
                 guard inside != scratchpadCursorPushed else { return }
                 scratchpadCursorPushed = inside

@@ -23,13 +23,12 @@ Each language is one entry in a registry: its name, file extension, the interpre
 | Header | The script's name (letters, digits, `.`, `-` and `_`; it becomes the file name), the language selector and a close button. |
 | Editor | Plain text in the terminal font and colors, with line numbers. Smart quotes, dashes, text replacement, spelling and link detection are off, so what you type is what runs. Undo, Find (⌘F, ⌘G and ⌘⇧G, or whatever Find is bound to; they search the editor, not the pane, while it has focus) and the standard editing commands work. Tab inserts a tab; Ctrl-Tab moves focus out. |
 | Check result | **Syntax OK** with the check that ran, or each problem as `Line N: message` with a symbol, or **Not checked** when the interpreter couldn't be found or started. Lines with a problem are also marked in the gutter. Editing the text clears the result. |
-| Footer | **Runs in** the focused pane's title and its state (at prompt, busy, task running, not running, remote shell, no shell integration), then four icon buttons. |
+| Footer | **Runs in** the focused pane's title and its state (at prompt, busy, task running, not running, remote shell, no shell integration), then three icon buttons. |
 
 | Button | Shortcut while the editor has focus | Does |
 | --- | --- | --- |
 | Validate (✓ in a circle) | ⌥⌘V | Checks the syntax. |
-| Save as Task (tray) | ⌥⌘S | Opens the save sheet. |
-| Save as Task and Run (play in a square) | ⌥⌘Return | Opens the save sheet with **Save & Run** as the default button. |
+| Save as Task (tray) | ⌥⌘S | Opens the save sheet, which offers **Save** and **Save & Run**. |
 | Run (filled play) | ⌘Return | Checks, then runs in the focused pane. |
 
 The buttons are icons only. Each has a tooltip and an accessibility label with its name and shortcut; a disabled button's tooltip and hint say why it is disabled.

@@ -12,7 +12,6 @@ struct ScratchpadPanel: View {
         let id = UUID()
         var name: String
         var group: TaskGroup?
-        var runAfterSaving: Bool
     }
 
     var body: some View {
@@ -25,9 +24,8 @@ struct ScratchpadPanel: View {
                 focusRequest: model.scratchpadFocusRequest,
                 commands: ScratchpadEditorCommands(
                     run: { if canRun { Task { await model.runScratchpad() } } },
-                    saveAndRun: { if canSave { beginSave(run: true) } },
                     validate: { if canValidate { Task { await model.validateScratchpad() } } },
-                    save: { if canSave { beginSave(run: false) } }))
+                    save: { if canSave { beginSave() } }))
             checkResult
             Divider().overlay(model.separatorOverlay)
             footer
@@ -152,10 +150,7 @@ struct ScratchpadPanel: View {
                 Task { await model.validateScratchpad() }
             }
             iconButton("square.and.arrow.down", "Save as Task…", shortcut: "⌥⌘S", enabled: canSave, reason: "Write a command or script first.") {
-                beginSave(run: false)
-            }
-            iconButton("play.square", "Save as Task and Run", shortcut: "⌥⌘↩", enabled: canSave, reason: "Write a command or script first.") {
-                beginSave(run: true)
+                beginSave()
             }
             iconButton("play.fill", "Run in \(targetName)", shortcut: "⌘↩", enabled: canRun, reason: model.scratchpadRunBlocker, prominent: true) {
                 Task { await model.runScratchpad() }
@@ -201,8 +196,8 @@ struct ScratchpadPanel: View {
 
     // MARK: Save as Task (FR-SP06)
 
-    private func beginSave(run: Bool) {
-        saveDraft = SaveDraft(name: model.scratchpad.name, group: nil, runAfterSaving: run)
+    private func beginSave() {
+        saveDraft = SaveDraft(name: model.scratchpad.name, group: nil)
     }
 
     private func saveSheet(_ draft: SaveDraft) -> some View {
@@ -231,8 +226,8 @@ struct ScratchpadPanel: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { saveDraft = nil }.keyboardShortcut(.cancelAction)
-                Button("Save") { finishSave(run: false) }.keyboardShortcut(draft.runAfterSaving ? nil : .defaultAction)
-                Button("Save & Run") { finishSave(run: true) }.keyboardShortcut(draft.runAfterSaving ? .defaultAction : nil)
+                Button("Save") { finishSave(run: false) }.keyboardShortcut(.defaultAction)
+                Button("Save & Run") { finishSave(run: true) }
             }
         }
         .padding(20).frame(width: 440)
