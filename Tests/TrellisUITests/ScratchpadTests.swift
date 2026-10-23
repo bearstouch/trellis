@@ -303,4 +303,59 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: project + "/.trellis/scratch/ship-it.sh"), "The saved script and task stay")
         XCTAssertEqual(model.taskCatalog?.tasks.map(\.name), ["Ship it"])
     }
+
+    @MainActor
+    func testTheSelectorListsSavedScratchpadsAndOpensThem() async throws {
+        let (model, pane) = try await makeModel()
+        defer { cleanUp(model) }
+        try mark(model, pane, .promptStart(directory: project))
+        await model.refreshScratchpadFiles()
+        XCTAssertEqual(model.scratchpadFiles, ScratchpadFileList(root: project, files: []))
+        let folder = project + "/.trellis/scratch"
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try "#!/bin/sh\necho old\n".write(toFile: folder + "/build.sh", atomically: true, encoding: .utf8)
+        try "console.log(1)\n".write(toFile: folder + "/check.js", atomically: true, encoding: .utf8)
+        try "# Notes\n".write(toFile: folder + "/Notes 2.md", atomically: true, encoding: .utf8)
+        try "x".write(toFile: folder + "/tool.py", atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(atPath: folder + "/linked.sh", withDestinationPath: "/etc/hosts")
+        await model.refreshScratchpadFiles()
+        XCTAssertEqual(model.scratchpadFiles?.files, ["build.sh", "check.js"], "Only scripts it could have saved; no links")
+
+        let opened = await model.openScratchpadFile("build.sh")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(model.scratchpad, ScratchpadDocument(name: "build", language: .sh, text: "#!/bin/sh\necho old\n"))
+        XCTAssertEqual(model.scratchpadSaved?.fileName, "build.sh")
+        XCTAssertFalse(model.scratchpadHasUnsavedChanges)
+        model.scratchpad.text += "echo new\n"
+        let task = await model.saveScratchpadAsTask(name: "build", group: .build)
+        XCTAssertEqual(task?.command, "sh .trellis/scratch/build.sh", "An opened script can be saved over")
+        XCTAssertEqual(try String(contentsOfFile: folder + "/build.sh", encoding: .utf8), "#!/bin/sh\necho old\necho new\n")
+
+        let link = await model.openScratchpadFile("linked.sh")
+        XCTAssertFalse(link, "Links are never read")
+        let missing = await model.openScratchpadFile("gone.sh")
+        XCTAssertFalse(missing)
+        XCTAssertEqual(model.scratchpadSaved?.fileName, "build.sh", "A failed open keeps the buffer")
+    }
+
+    @MainActor
+    func testMarkdownIsSavedAsAFileWithoutATaskAndNeverRuns() async throws {
+        let checks = Checks()
+        let (model, pane) = try await makeModel(checks: checks)
+        defer { cleanUp(model) }
+        try mark(model, pane, .promptStart(directory: project))
+        model.scratchpad = ScratchpadDocument(language: .markdown, text: "# Plan\n- ship 👨\u{200D}👩\u{200D}👧\n")
+        XCTAssertEqual(model.scratchpadRunBlocker, "Markdown isn't run.")
+        let ran = await model.runScratchpad()
+        XCTAssertFalse(ran)
+        XCTAssertEqual(checks.count, 0)
+        let asTask = await model.saveScratchpadAsTask(name: "plan", group: nil)
+        XCTAssertNil(asTask)
+        let saved = await model.saveScratchpadFile(scriptName: "plan")
+        XCTAssertTrue(saved)
+        XCTAssertEqual(try String(contentsOfFile: project + "/.trellis/scratch/plan.md", encoding: .utf8), model.scratchpad.text)
+        XCTAssertNil(launchFile(), "No task for notes")
+        XCTAssertEqual(model.scratchpadSaved?.fileName, "plan.md")
+        XCTAssertEqual(model.scratchpadFiles?.files, ["plan.md"])
+    }
 }

@@ -3,7 +3,15 @@ import Foundation
 import TrellisControl
 import TrellisCore
 
-/// The command scratchpad (FR-SP01–FR-SP08): write a script beside the panes, check it, run it in the focused pane or
+/// A project's saved scratchpads, by file name.
+public struct ScratchpadFileList: Equatable, Sendable {
+    /// The canonical project folder.
+    public let root: String
+    public let files: [String]
+    public var projectName: String { URL(fileURLWithPath: root).lastPathComponent }
+}
+
+/// The command scratchpad (FR-SP01–FR-SP10): write a script beside the panes, check it, run it in the focused pane or
 /// save it as a project task.
 extension AppWorkspaceModel {
     /// The pane Run types into: the focused one.
@@ -35,6 +43,7 @@ extension AppWorkspaceModel {
     /// Why Run can't type into the focused pane now; nil when it can (FR-SP05).
     public var scratchpadRunBlocker: String? {
         guard let paneID = scratchpadPaneID else { return "Select a pane to run in." }
+        if !scratchpad.language.isRunnable { return "\(scratchpad.language.displayName) isn't run." }
         if scratchpad.isEmpty { return "Write a command or script first." }
         if let reason = taskAvailability(paneID: paneID).reason { return reason }
         if scratchpadCheck?.outcome == .failed {
@@ -91,31 +100,54 @@ extension AppWorkspaceModel {
     public func saveScratchpadAsTask(name: String, scriptName: String? = nil, group: TaskGroup?) async -> LaunchTask? {
         var document = scratchpad
         if let scriptName { document.name = scriptName }
-        if let issue = document.issues.first {
-            errorMessage = issue.message
+        guard let command = document.taskCommand else {
+            errorMessage = "\(document.language.displayName) isn't run, so it can't be a task. Save it as a file instead."
             return nil
         }
         if let problem = LaunchFile.taskNameProblem(name) {
             errorMessage = problem
             return nil
         }
+        guard let written = await writeScratchpadFile(document) else { return nil }
+        guard let task = await addTask(LaunchTask(name: name, command: command, group: group)) else {
+            if let previous = written.previous { try? previous.write(to: written.url, options: .atomic) } else { try? FileManager.default.removeItem(at: written.url) }
+            return nil
+        }
+        await finishScratchpadSave(document, url: written.url)
+        return task
+    }
+
+    /// Saves text that isn't run, like Markdown notes, to `.trellis/scratch/<file>` without a task (FR-SP06).
+    @discardableResult
+    public func saveScratchpadFile(scriptName: String? = nil) async -> Bool {
+        var document = scratchpad
+        if let scriptName { document.name = scriptName }
+        guard let written = await writeScratchpadFile(document) else { return false }
+        await finishScratchpadSave(document, url: written.url)
+        return true
+    }
+
+    /// Writes `document` into the focused pane's project; `previous` is the replaced content, for undoing the write.
+    private func writeScratchpadFile(_ document: ScratchpadDocument) async -> (url: URL, previous: Data?)? {
+        if let issue = document.issues.first {
+            errorMessage = issue.message
+            return nil
+        }
         guard let paneID = scratchpadPaneID else { return nil }
         await refreshTaskCatalog(paneID: paneID)
         guard let catalog = taskCatalog, catalog.paneID == paneID else {
-            errorMessage = "Save as Task needs a project: a local pane in a folder with .git or .trellis."
+            errorMessage = "Saving needs a project: a local pane in a folder with .git or .trellis."
             return nil
         }
         let root = URL(fileURLWithPath: catalog.root, isDirectory: true)
         let folder = root.appendingPathComponent(ScratchpadDocument.projectDirectory, isDirectory: true)
         let url = folder.appendingPathComponent(document.fileName)
         let manager = FileManager.default
-        // Through a symbolic link the script could land outside the project.
-        let linked = [root.appendingPathComponent(ProjectFile.directoryName), folder, url].contains { (try? manager.destinationOfSymbolicLink(atPath: $0.path)) != nil }
-        guard !linked else {
+        guard !Self.scratchpadPathIsLinked(root: root, file: url) else {
             errorMessage = "\(url.path) or one of its folders is a symbolic link, so nothing was saved."
             return nil
         }
-        // Only a file this scratchpad saved, and can read back for restoring, is replaced.
+        // Only a file this scratchpad saved or opened, and can read back for restoring, is replaced.
         let exists = manager.fileExists(atPath: url.path)
         let previous = exists && scratchpadSavedPaths.contains(url.path) ? try? Data(contentsOf: url) : nil
         guard !exists || previous != nil else {
@@ -131,15 +163,82 @@ extension AppWorkspaceModel {
             errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
             return nil
         }
-        guard let task = await addTask(LaunchTask(name: name, command: document.taskCommand, group: group)) else {
-            if let previous { try? previous.write(to: url, options: .atomic) } else { try? manager.removeItem(at: url) }
-            return nil
-        }
+        return (url, previous)
+    }
+
+    private func finishScratchpadSave(_ document: ScratchpadDocument, url: URL) async {
         scratchpadSavedPaths.insert(url.path)
         // Keep any edit made while saving; it shows as unsaved.
         if scratchpad.text == document.text, scratchpad.language == document.language { scratchpad.name = document.name }
         scratchpadSaved = document
-        return task
+        await refreshScratchpadFiles()
+    }
+
+    /// Through a symbolic link a script could be read from or written to outside the project.
+    nonisolated static func scratchpadPathIsLinked(root: URL, file: URL? = nil) -> Bool {
+        let folder = root.appendingPathComponent(ScratchpadDocument.projectDirectory, isDirectory: true)
+        return ([root.appendingPathComponent(ProjectFile.directoryName), folder] + (file.map { [$0] } ?? [])).contains {
+            (try? FileManager.default.destinationOfSymbolicLink(atPath: $0.path)) != nil
+        }
+    }
+
+    // MARK: Saved scratchpads (FR-SP10)
+
+    /// Rereads the focused pane's project's `.trellis/scratch` off the main actor; nil when the pane has no project.
+    public func refreshScratchpadFiles() async {
+        guard let paneID = scratchpadPaneID, let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch),
+            let directory = paneDirectory(paneID)
+        else {
+            scratchpadFiles = nil
+            return
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let list = await Task.detached(priority: .utility) { Self.loadScratchpadFiles(directory: directory, home: home) }.value
+        if scratchpadPaneID == paneID, scratchpadFiles != list { scratchpadFiles = list }
+    }
+
+    nonisolated static func loadScratchpadFiles(directory: String, home: String) -> ScratchpadFileList? {
+        let manager = FileManager.default
+        guard let found = ProjectFileLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
+        let root = canonical(found)
+        let rootURL = URL(fileURLWithPath: root, isDirectory: true)
+        guard !scratchpadPathIsLinked(root: rootURL) else { return ScratchpadFileList(root: root, files: []) }
+        let folder = rootURL.appendingPathComponent(ScratchpadDocument.projectDirectory).path
+        let files = ((try? manager.contentsOfDirectory(atPath: folder)) ?? []).filter { name in
+            // attributesOfItem doesn't follow a final link, so links are skipped.
+            ScratchpadDocument.isScriptFileName(name) && (try? manager.attributesOfItem(atPath: folder + "/" + name)[.type] as? FileAttributeType) == .typeRegular
+        }
+        return ScratchpadFileList(root: root, files: files.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
+    }
+
+    /// Loads a saved script into the buffer; it counts as saved, so Save may replace it. The view confirms first when
+    /// the buffer has unsaved changes.
+    @discardableResult
+    public func openScratchpadFile(_ fileName: String) async -> Bool {
+        guard let list = scratchpadFiles, ScratchpadDocument.isScriptFileName(fileName) else { return false }
+        let root = URL(fileURLWithPath: list.root, isDirectory: true)
+        let url = root.appendingPathComponent(ScratchpadDocument.projectDirectory).appendingPathComponent(fileName)
+        let data: Data?
+        do {
+            guard !Self.scratchpadPathIsLinked(root: root) else { throw CocoaError(.fileReadNoPermission) }
+            data = try OwnerOnlyFile.read(url, limit: ScratchpadDocument.maximumBytes)
+        } catch {
+            errorMessage = "\(fileName) must be a regular file you own, at most 64 KB, in a folder that isn't a symbolic link."
+            return false
+        }
+        guard let data, let text = String(data: data, encoding: .utf8) else {
+            errorMessage = data == nil ? "\(fileName) no longer exists." : "\(fileName) isn't UTF-8 text."
+            await refreshScratchpadFiles()
+            return false
+        }
+        let language = ScratchpadLanguage.detect(fileName: fileName, text: text) ?? .bash
+        let document = ScratchpadDocument(name: (fileName as NSString).deletingPathExtension, language: language, text: text)
+        scratchpad = document
+        scratchpadSaved = document
+        scratchpadCheck = nil
+        scratchpadSavedPaths.insert(url.path)
+        scratchpadFocusRequest &+= 1
+        return true
     }
 
     /// The buffer has text that isn't in its saved script (FR-SP09).

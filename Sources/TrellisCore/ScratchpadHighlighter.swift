@@ -18,6 +18,7 @@ public enum ScratchpadHighlighter {
         switch grammar {
         case .shell: return shell(units)
         case .javascript: return javascript(units)
+        case .markdown: return markdown(units)
         }
     }
 
@@ -220,6 +221,111 @@ public enum ScratchpadHighlighter {
                 tokens.append(ScratchpadToken(i, j - i, .operator))
                 i = j
                 continue
+            }
+            i += 1
+        }
+        return tokens
+    }
+
+    // MARK: Markdown
+
+    /// Line by line: fenced code (fences as comments, contents as strings), headings, list, quote and rule markers,
+    /// then inline code, emphasis, links and HTML comments.
+    private static func markdown(_ u: [UInt16]) -> [ScratchpadToken] {
+        var tokens: [ScratchpadToken] = [], start = 0, fence: UInt16?
+        let n = u.count
+        while start < n {
+            var end = start
+            while end < n, u[end] != newline { end += 1 }
+            var first = start
+            while first < end, first - start < 4, u[first] == space { first += 1 }
+            let marker = first < end ? u[first] : 0
+            var run = first
+            while run < end, u[run] == marker { run += 1 }
+            if (marker == unit("`") || marker == unit("~")) && run - first >= 3 && (fence == nil || fence == marker) {
+                tokens.append(ScratchpadToken(start, end - start, .comment))
+                fence = fence == nil ? marker : nil
+            } else if fence != nil {
+                if end > start { tokens.append(ScratchpadToken(start, end - start, .string)) }
+            } else if marker == unit("#"), (1...6).contains(run - first), run == end || u[run] == space {
+                tokens.append(ScratchpadToken(start, end - start, .keyword))
+            } else if [unit("-"), unit("*"), unit("_")].contains(marker), u[first..<end].filter({ $0 != space }).allSatisfy({ $0 == marker }),
+                u[first..<end].filter({ $0 == marker }).count >= 3
+            {
+                tokens.append(ScratchpadToken(first, end - first, .operator))
+            } else {
+                var inline = first
+                if marker == unit(">") {
+                    tokens.append(ScratchpadToken(first, 1, .operator))
+                    inline = first + 1
+                } else if [unit("-"), unit("*"), unit("+")].contains(marker), first + 1 < end, u[first + 1] == space {
+                    tokens.append(ScratchpadToken(first, 1, .operator))
+                    inline = first + 2
+                } else if isDigit(marker) {
+                    var digits = first
+                    while digits < end, isDigit(u[digits]) { digits += 1 }
+                    if digits < end, u[digits] == unit(".") || u[digits] == unit(")"), digits + 1 == end || u[digits + 1] == space {
+                        tokens.append(ScratchpadToken(first, digits + 1 - first, .operator))
+                        inline = digits + 1
+                    }
+                }
+                tokens += markdownInline(u, from: inline, to: end)
+            }
+            start = end + 1
+        }
+        return tokens
+    }
+
+    private static func markdownInline(_ u: [UInt16], from: Int, to end: Int) -> [ScratchpadToken] {
+        var tokens: [ScratchpadToken] = [], i = from
+        func find(_ target: [UInt16], after: Int) -> Int? {
+            var j = after
+            while j + target.count <= end {
+                if Array(u[j..<(j + target.count)]) == target { return j }
+                j += 1
+            }
+            return nil
+        }
+        while i < end {
+            let c = u[i]
+            if c == backslash { i += 2; continue }
+            if c == unit("`") {
+                var ticks = i
+                while ticks < end, u[ticks] == c { ticks += 1 }
+                let fenceLength = ticks - i
+                if let close = find(Array(repeating: c, count: fenceLength), after: ticks) {
+                    tokens.append(ScratchpadToken(i, close + fenceLength - i, .string))
+                    i = close + fenceLength
+                } else {
+                    i = ticks
+                }
+                continue
+            }
+            if c == unit("<"), let open = find(Array("<!--".utf16), after: i), open == i, let close = find(Array("-->".utf16), after: i + 4) {
+                tokens.append(ScratchpadToken(i, close + 3 - i, .comment))
+                i = close + 3
+                continue
+            }
+            if c == unit("*") || c == unit("_") {
+                let strong = i + 1 < end && u[i + 1] == c
+                let delimiter = Array(repeating: c, count: strong ? 2 : 1)
+                // An opening delimiter is followed by text, not a space.
+                if i + delimiter.count < end, !isSpace(u[i + delimiter.count]), let close = find(delimiter, after: i + delimiter.count + 1) {
+                    tokens.append(ScratchpadToken(i, close + delimiter.count - i, .variable))
+                    i = close + delimiter.count
+                    continue
+                }
+                i += delimiter.count
+                continue
+            }
+            if c == unit("[") || (c == unit("!") && i + 1 < end && u[i + 1] == unit("[")) {
+                let open = c == unit("!") ? i + 1 : i
+                if let close = find([unit("]")], after: open + 1), close + 1 < end, u[close + 1] == unit("("), let paren = find([unit(")")], after: close + 2) {
+                    tokens.append(ScratchpadToken(i, close + 1 - i, .command))
+                    tokens.append(ScratchpadToken(close + 1, paren + 1 - (close + 1), .string))
+                    i = paren + 1
+                    continue
+                }
             }
             i += 1
         }

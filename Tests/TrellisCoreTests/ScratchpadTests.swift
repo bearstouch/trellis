@@ -15,8 +15,11 @@ final class ScratchpadTests: XCTestCase {
     }
 
     func testLanguagesAreARegistryWithTheirChecksAndInterpreters() {
-        XCTAssertEqual(ScratchpadLanguage.all.map(\.id), ["sh", "bash", "javascript"])
-        XCTAssertEqual(ScratchpadLanguage.all.map(\.checkDescription), ["sh -n", "bash -n", "node --check"])
+        XCTAssertEqual(ScratchpadLanguage.all.map(\.id), ["sh", "bash", "javascript", "markdown"])
+        XCTAssertEqual(ScratchpadLanguage.all.map(\.checkDescription), ["sh -n", "bash -n", "node --check", nil])
+        XCTAssertFalse(ScratchpadLanguage.markdown.isRunnable)
+        XCTAssertNil(ScratchpadDocument(name: "notes", language: .markdown, text: "# Hi").taskCommand)
+        XCTAssertNil(ScratchpadDocument(name: "notes", language: .markdown, text: "# Hi").runLine(path: "/tmp/notes.md", kind: .zsh))
         XCTAssertEqual(ScratchpadLanguage.javascript.fileExtension, "js")
         XCTAssertEqual(Set(ScratchpadLanguage.all.map(\.id)).count, ScratchpadLanguage.all.count, "Ids are unique")
     }
@@ -43,6 +46,52 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertEqual(ScratchpadDocument.suggestedName(for: "...ünï"), "n", "Leading dots and dashes go")
         XCTAssertEqual(ScratchpadDocument.suggestedName(for: "!!!"), "script")
         XCTAssertEqual(ScratchpadDocument.suggestedName(for: String(repeating: "a", count: 90)).count, 64)
+    }
+
+    func testSavedFilesMapBackToTheirLanguage() {
+        XCTAssertEqual(ScratchpadLanguage.detect(fileName: "a.js", text: ""), .javascript)
+        XCTAssertEqual(ScratchpadLanguage.detect(fileName: "a.md", text: ""), .markdown)
+        XCTAssertEqual(ScratchpadLanguage.detect(fileName: "a.sh", text: "echo"), .bash, "No #! line: bash")
+        XCTAssertEqual(ScratchpadLanguage.detect(fileName: "a.sh", text: "#!/bin/sh\necho"), .sh)
+        XCTAssertEqual(ScratchpadLanguage.detect(fileName: "a.sh", text: "#!/usr/bin/env -S sh -e\n"), .sh)
+        XCTAssertEqual(ScratchpadLanguage.detect(fileName: "a.sh", text: "#!/usr/bin/env bash\n"), .bash)
+        XCTAssertEqual(ScratchpadLanguage.detect(fileName: "a.sh", text: "#!/bin/zsh\n"), .bash, "Unknown shells open as bash")
+        XCTAssertNil(ScratchpadLanguage.detect(fileName: "a.py", text: ""))
+        for name in ["deploy.sh", "notes.md", "x.js"] { XCTAssertTrue(ScratchpadDocument.isScriptFileName(name), name) }
+        for name in ["deploy", ".hidden.sh", "a b.sh", "x.py", "-x.md"] { XCTAssertFalse(ScratchpadDocument.isScriptFileName(name), name) }
+    }
+
+    func testMarkdownHighlightingAndNoHiddenCharacterCheck() {
+        let tokens = kinds(
+            """
+            # Release notes
+            Some **bold**, _em_ and `code` with a [link](https://x.dev) <!-- hidden -->
+            - item
+            12. step
+            > quote
+            ---
+            ```bash
+            # not a heading
+            ```
+            """, .markdown)
+        XCTAssertTrue(contains(tokens, "# Release notes", .keyword))
+        XCTAssertTrue(contains(tokens, "**bold**", .variable))
+        XCTAssertTrue(contains(tokens, "_em_", .variable))
+        XCTAssertTrue(contains(tokens, "`code`", .string))
+        XCTAssertTrue(contains(tokens, "[link]", .command))
+        XCTAssertTrue(contains(tokens, "(https://x.dev)", .string))
+        XCTAssertTrue(contains(tokens, "<!-- hidden -->", .comment))
+        XCTAssertTrue(contains(tokens, "-", .operator))
+        XCTAssertTrue(contains(tokens, "12.", .operator))
+        XCTAssertTrue(contains(tokens, ">", .operator))
+        XCTAssertTrue(contains(tokens, "---", .operator))
+        XCTAssertTrue(contains(tokens, "```bash", .comment))
+        XCTAssertTrue(contains(tokens, "# not a heading", .string), "Inside a fence")
+        XCTAssertFalse(contains(tokens, "# not a heading", .keyword))
+        for text in ["**open", "`open", "[a](b", "```\nopen", "<!-- open", "1."] {
+            for token in ScratchpadHighlighter.tokens(in: text, grammar: .markdown) { XCTAssertLessThanOrEqual(NSMaxRange(token.range), (text as NSString).length, text) }
+        }
+        XCTAssertEqual(ScratchpadDocument(name: "n", language: .markdown, text: "family 👨\u{200D}👩\u{200D}👧").issues, [], "Joiners render in notes")
     }
 
     func testIssuesFlagHiddenCharactersByLineButAllowTabs() {
@@ -191,6 +240,11 @@ final class ScratchpadTests: XCTestCase {
             XCTFail("Nothing runs")
             return ScratchpadProcessResult(status: 0, output: "")
         }
+        let markdown = await check(ScratchpadDocument(name: "n", language: .markdown, text: "# Hi")) { _, _, _ in
+            XCTFail("Markdown isn't checked")
+            return ScratchpadProcessResult(status: 0, output: "")
+        }
+        XCTAssertEqual(markdown.outcome, .notChecked)
         XCTAssertEqual(missing.outcome, .notChecked)
         XCTAssertEqual(missing.issues.first?.message, "node wasn't found, so the syntax wasn't checked.")
         let hidden = await check(ScratchpadDocument(text: "echo \u{202E}x")) { _, _, _ in

@@ -3,13 +3,13 @@ import Foundation
 /// A language the command scratchpad can highlight, check and run (FR-SP03). The selector lists `all`, so another
 /// language is one more entry here.
 public struct ScratchpadLanguage: Hashable, Identifiable, Sendable {
-    public enum Grammar: Sendable { case shell, javascript }
+    public enum Grammar: Sendable { case shell, javascript, markdown }
 
     public let id: String
     public let displayName: String
     public let fileExtension: String
-    /// The program Run types; the pane's shell finds it on its own PATH.
-    public let interpreter: String
+    /// The program Run types; the pane's shell finds it on its own PATH. Nil for text that is never run, like Markdown.
+    public let interpreter: String?
     /// Placed before the file to check its syntax without running it.
     public let checkArguments: [String]
     public let grammar: Grammar
@@ -18,10 +18,27 @@ public struct ScratchpadLanguage: Hashable, Identifiable, Sendable {
     public static let bash = ScratchpadLanguage(id: "bash", displayName: "bash", fileExtension: "sh", interpreter: "bash", checkArguments: ["-n"], grammar: .shell)
     public static let javascript = ScratchpadLanguage(
         id: "javascript", displayName: "JavaScript", fileExtension: "js", interpreter: "node", checkArguments: ["--check"], grammar: .javascript)
-    public static let all: [ScratchpadLanguage] = [.sh, .bash, .javascript]
+    public static let markdown = ScratchpadLanguage(id: "markdown", displayName: "Markdown", fileExtension: "md", interpreter: nil, checkArguments: [], grammar: .markdown)
+    public static let all: [ScratchpadLanguage] = [.sh, .bash, .javascript, .markdown]
+
+    /// Can be checked, run and saved as a task.
+    public var isRunnable: Bool { interpreter != nil }
+
+    /// The language of a saved script: by extension, and for `.sh` by its `#!` line (`sh` only when it names sh).
+    public static func detect(fileName: String, text: String) -> ScratchpadLanguage? {
+        let ext = (fileName as NSString).pathExtension
+        let candidates = all.filter { $0.fileExtension == ext }
+        guard candidates.count > 1 else { return candidates.first }
+        let shebang = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        guard shebang.hasPrefix("#!") else { return candidates.first { $0 == .bash } ?? candidates.first }
+        let words = shebang.dropFirst(2).split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        let program = words.first == "/usr/bin/env" ? words.dropFirst().first { !$0.hasPrefix("-") } : words.first
+        let name = program.map { ($0 as NSString).lastPathComponent }
+        return candidates.first { $0.interpreter == name } ?? candidates.first { $0 == .bash } ?? candidates.first
+    }
 
     /// What the syntax check runs, as shown to the user.
-    public var checkDescription: String { ([interpreter] + checkArguments).joined(separator: " ") }
+    public var checkDescription: String? { interpreter.map { ([$0] + checkArguments).joined(separator: " ") } }
 }
 
 /// The scratchpad's buffer. It lives in memory; only Run and Save write it to a file (FR-SP07).
@@ -43,12 +60,19 @@ public struct ScratchpadDocument: Equatable, Sendable {
     public var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// The command a saved task runs from the project folder. The name needs no quoting (see `nameProblem`).
-    public var taskCommand: String { language.interpreter + " " + Self.projectDirectory + "/" + fileName }
+    public var taskCommand: String? { language.interpreter.map { $0 + " " + Self.projectDirectory + "/" + fileName } }
 
     /// The line Run types for a script written to `path`.
     public func runLine(path: String, kind: ShellIntegrationKind) -> String? {
-        let line = language.interpreter + " " + TaskCommand.shellQuote(path, kind: kind)
+        guard let interpreter = language.interpreter else { return nil }
+        let line = interpreter + " " + TaskCommand.shellQuote(path, kind: kind)
         return ProjectFile.commandProblem(line) == nil ? line : nil
+    }
+
+    /// Saved scripts the scratchpad can open: names it could have written, with a registered extension.
+    public static func isScriptFileName(_ fileName: String) -> Bool {
+        let name = fileName as NSString
+        return nameProblem(name.deletingPathExtension) == nil && ScratchpadLanguage.all.contains { $0.fileExtension == name.pathExtension }
     }
 
     /// A file name for a task name: lower case, other characters as single dashes, e.g. "Deploy preview!" → "deploy-preview".
@@ -78,6 +102,8 @@ public struct ScratchpadDocument: Equatable, Sendable {
         if let problem = Self.nameProblem(name) { issues.append(ScratchpadIssue(line: nil, problem)) }
         if isEmpty { issues.append(ScratchpadIssue(line: nil, "Write a command or script first.")) }
         if text.utf8.count > Self.maximumBytes { issues.append(ScratchpadIssue(line: nil, "The script is larger than 64 KB.")) }
+        // Text that never runs may hold anything that renders, like emoji joined with zero-width joiners.
+        guard language.isRunnable else { return issues }
         var line = 1, flagged = false
         for scalar in text.unicodeScalars {
             if scalar == "\n" { line += 1; flagged = false; continue }
@@ -152,8 +178,11 @@ public enum ScratchpadValidator {
         let issues = document.issues
         guard issues.isEmpty else { return ScratchpadCheck(.failed, issues: issues) }
         let language = document.language
-        guard let executable = resolve(language.interpreter, searchPath: searchPath, isExecutable: isExecutable) else {
-            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "\(language.interpreter) wasn't found, so the syntax wasn't checked.")])
+        guard let interpreter = language.interpreter, let checker = language.checkDescription else {
+            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "\(language.displayName) has no syntax check.")])
+        }
+        guard let executable = resolve(interpreter, searchPath: searchPath, isExecutable: isExecutable) else {
+            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "\(interpreter) wasn't found, so the syntax wasn't checked.")])
         }
         let file = directory.appendingPathComponent("check-\(UUID().uuidString).\(language.fileExtension)")
         do {
@@ -165,7 +194,6 @@ public enum ScratchpadValidator {
             return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "The script couldn't be written for checking.")])
         }
         defer { try? FileManager.default.removeItem(at: file) }
-        let checker = language.checkDescription
         do {
             let result = try await run(executable, language.checkArguments + [file.path], timeout)
             if result.status == 0 { return ScratchpadCheck(.passed, checker: checker) }
@@ -193,6 +221,7 @@ public enum ScratchpadValidator {
                 guard let match = text.firstMatch(of: #/: (?:line )?(\d+): (.+)$/#), let line = Int(match.1) else { return nil }
                 return ScratchpadIssue(line: line, String(match.2))
             }
+        case .markdown: return []
         case .javascript:
             guard let first = lines.first, let match = first.firstMatch(of: /:(\d+)$/), let line = Int(match.1) else { return [] }
             let message = lines.first { $0.firstMatch(of: #/^[A-Za-z]*Error: /#) != nil } ?? "Syntax error."

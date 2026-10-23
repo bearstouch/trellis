@@ -393,6 +393,8 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var scratchpadFocusRequest = 0
     /// The buffer as it was last saved as a task, so the header can name its file and Clear knows what would be lost.
     @Published public internal(set) var scratchpadSaved: ScratchpadDocument?
+    /// The focused pane's project's saved scratchpads (FR-SP10); nil when it has no project.
+    @Published public internal(set) var scratchpadFiles: ScratchpadFileList?
     /// The project scripts the scratchpad saved, the only existing ones Save may replace.
     var scratchpadSavedPaths: Set<String> = []
     /// Where Run writes the buffer; the state directory's `scratch` folder unless a test injects one.
