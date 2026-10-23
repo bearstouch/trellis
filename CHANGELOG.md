@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Command palette:** **View → Command Palette…** (⇧⌘P, rebindable) opens a searchable list over the workspace of every enabled action with its shortcut, every window, tab and pane, saved hosts, the focused pane's tasks and the installed themes; Return runs the selected row through its menu path (FR-CP01–FR-CP07).
+  - Fuzzy matching with bold, underlined matched letters, alias keywords, recent items first when the field is empty, and **Go to Window/Tab/Pane…**, **Connect to Host…**, **Run Task…** and **Use Theme…** scopes (FR-CP04–FR-CP06).
+  - Arrowing onto a theme previews it; Esc restores the previous colors (FR-CP08).
 - **Command scratchpad:** a panel beside the panes for writing a command or script, opened with the `</>` button left of **Tasks** in a local pane's header or **View → Show Scratchpad** (⌥⌘E) (FR-SP01).
   - Syntax highlighting in the terminal's font and theme colors, with line numbers and no smart-quote or dash substitution (FR-SP02).
   - A language selector for sh, bash, JavaScript and Markdown; each language is one registry entry, so more can be added (FR-SP03).

@@ -55,6 +55,7 @@ public struct WorkspaceRootView: View {
         .background(model.usesNativeChrome ? model.themeColor(.surface) : model.themeColor(.background))
         .tint(model.chromeTint)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
+        .modifier(CommandPaletteHost(model: model))
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
