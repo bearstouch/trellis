@@ -85,6 +85,15 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(model.presentation.selectedTab?.id, firstTab)
     }
 
+    func testSectionsFollowTheWorkspaceWhileThePaletteIsOpen() async throws {
+        let model = try await makeModel()
+        model.openCommandPalette()
+        model.setCommandPaletteQuery("zebra")
+        XCTAssertTrue(model.commandPaletteSections.isEmpty)
+        await model.createWindow(name: "zebra", startSession: false)
+        XCTAssertEqual(model.commandPaletteSections.first?.matches.first?.item.title, "zebra", "A cached search never hides a change")
+    }
+
     func testThemePreviewIsRestoredExactlyAndASettingsPreviewIsLeftAlone() async throws {
         let model = try await makeModel()
         let document = try ThemeValidator.validate(XCTUnwrap(model.allThemes.first { $0.id == "trellis-dracula-dark" }).encoded())

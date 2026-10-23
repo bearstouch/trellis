@@ -413,6 +413,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the palette's field should take keyboard focus.
     @Published public internal(set) var commandPaletteFocusRequest = 0
     var commandPaletteRecents = CommandPaletteRecents()
+    var commandPaletteSearchCache: (key: CommandPaletteSearchKey, sections: [CommandPaletteSection])?
     /// The actions their menus enabled when the palette opened, read before its field took focus (FR-CP03).
     var commandPaletteActions: [ShortcutAction] = []
     /// True only while the palette owns the workspace theme preview (FR-CP08).

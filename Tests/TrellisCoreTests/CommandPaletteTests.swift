@@ -27,6 +27,15 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertGreaterThan(wordStarts, inner)
     }
 
+    func testFuzzyMatchBoundsLongQueriesAndTexts() {
+        let letters = String(repeating: "a", count: FuzzyMatch.maximumQueryLetters)
+        XCTAssertNotNil(FuzzyMatch.match(letters, in: letters))
+        XCTAssertNil(FuzzyMatch.match(letters + "a", in: letters + "a"), "Longer queries match nothing")
+        let long = String(repeating: "x", count: FuzzyMatch.maximumTextCharacters)
+        XCTAssertNil(FuzzyMatch.match("y", in: long + "y"), "Only the start of a long text is searched")
+        XCTAssertEqual(FuzzyMatch.match("xy", in: String(long.dropLast()) + "y")?.positions.last, FuzzyMatch.maximumTextCharacters - 1)
+    }
+
     func testTitleMatchesRankAboveAliasesAndAliasesStillFind() {
         let items = [ShortcutAction.maximizePane, .splitTopBottom, .splitLeftRight, .newTab, .resizeLeft].map(action)
         let sections = CommandPaletteSearch.sections(items: items, query: "spl", scope: nil, recents: [])

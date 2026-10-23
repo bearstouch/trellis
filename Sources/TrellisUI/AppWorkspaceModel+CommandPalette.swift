@@ -5,6 +5,14 @@ import TrellisCore
 /// A second Return-like key on a host row (FR-CP07).
 public enum CommandPaletteModifier: Sendable { case none, command, option }
 
+/// What a palette search depends on; the same inputs give the same sections.
+struct CommandPaletteSearchKey: Equatable {
+    let items: [CommandPaletteItem]
+    let query: String
+    let scope: CommandPaletteScope?
+    let recents: [String]
+}
+
 /// The command palette (FR-CP01–FR-CP08): one searchable list of actions and places. Every row runs through the path
 /// its menu item or control uses, so the palette adds no mutation of its own.
 extension AppWorkspaceModel {
@@ -32,6 +40,7 @@ extension AppWorkspaceModel {
     /// editor), else to the (now) active pane.
     public func closeCommandPalette() {
         guard commandPaletteVisible else { return }
+        commandPaletteSearchCache = nil
         endCommandPalettePreview()
         commandPaletteVisible = false
         commandPaletteSelection = nil
@@ -67,8 +76,13 @@ extension AppWorkspaceModel {
         return true
     }
 
+    /// Asked for several times per keystroke (selection, preview, the view), so the search runs once per input.
     public var commandPaletteSections: [CommandPaletteSection] {
-        CommandPaletteSearch.sections(items: commandPaletteItems, query: commandPaletteQuery, scope: commandPaletteScope, recents: commandPaletteRecents.ids)
+        let key = CommandPaletteSearchKey(items: commandPaletteItems, query: commandPaletteQuery, scope: commandPaletteScope, recents: commandPaletteRecents.ids)
+        if let cached = commandPaletteSearchCache, cached.key == key { return cached.sections }
+        let sections = CommandPaletteSearch.sections(items: key.items, query: key.query, scope: key.scope, recents: key.recents)
+        commandPaletteSearchCache = (key, sections)
+        return sections
     }
 
     /// The highlighted row: the chosen one while it is still listed, else the first.

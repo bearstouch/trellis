@@ -139,15 +139,26 @@ public struct CommandPaletteRecents: Equatable, Sendable {
 }
 
 public enum FuzzyMatch {
+    /// Longer queries match nothing, and only the start of a long text is searched, so a pasted query or a long
+    /// task command can't stall typing: the search is quadratic.
+    public static let maximumQueryLetters = 64
+    public static let maximumTextCharacters = 512
+
     /// The best placement of the query's letters, in order and case-insensitively, inside `text`; nil when one is
     /// missing. Whitespace in the query is ignored. Positions are character offsets into `text`.
     public static func match(_ query: String, in text: String) -> (score: Int, positions: [Int])? {
         let needle = query.filter { !$0.isWhitespace }.map { $0.lowercased() }
-        let original = Array(text)
-        let haystack = original.map { $0.lowercased() }
-        let m = needle.count, n = haystack.count
+        let m = needle.count
         guard m > 0 else { return (0, []) }
+        guard m <= maximumQueryLetters else { return nil }
+        let original = Array(text.prefix(maximumTextCharacters))
+        let haystack = original.map { $0.lowercased() }
+        let n = haystack.count
         guard m <= n else { return nil }
+        // Most candidates lack a letter: one pass rules them out before the full search.
+        var next = 0
+        for letter in haystack where next < m && letter == needle[next] { next += 1 }
+        guard next == m else { return nil }
         func bonus(_ j: Int) -> Int {
             if j == 0 { return 10 }
             let previous = original[j - 1]
