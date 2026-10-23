@@ -401,7 +401,9 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the editor should take keyboard focus.
     @Published public internal(set) var scratchpadFocusRequest = 0
     /// The buffer as it was last saved or opened, so the header can name its file and Clear knows what would be lost.
-    @Published public internal(set) var scratchpadSaved: ScratchpadDocument?
+    @Published public internal(set) var scratchpadSaved: ScratchpadDocument? { didSet { scratchpadSavedTask = nil } }
+    /// The task the saved script was saved as, so saving again offers its name and group (FR-SP06).
+    public internal(set) var scratchpadSavedTask: LaunchTask?
     /// The focused pane's project's saved scratchpads (FR-SP10); nil when it has no project.
     @Published public internal(set) var scratchpadFiles: ScratchpadFileList?
     /// The project scripts the scratchpad saved, the only existing ones Save may replace.

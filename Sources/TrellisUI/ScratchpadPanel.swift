@@ -276,8 +276,8 @@ struct ScratchpadPanel: View {
     // MARK: Save as Task, or as a file for text that isn't run (FR-SP06)
 
     private func beginSave() {
-        let saved = model.scratchpadSaved
-        saveDraft = SaveDraft(name: saved?.name ?? "", group: nil, scriptName: saved?.name ?? "", scriptNameEdited: saved != nil)
+        let saved = model.scratchpadSaved, task = model.scratchpadSavedTask
+        saveDraft = SaveDraft(name: task?.name ?? saved?.name ?? "", group: task?.group, scriptName: saved?.name ?? "", scriptNameEdited: saved != nil)
     }
 
     private func saveSheet(_ draft: SaveDraft) -> some View {

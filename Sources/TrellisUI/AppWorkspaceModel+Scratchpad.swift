@@ -125,6 +125,7 @@ extension AppWorkspaceModel {
             return nil
         }
         await finishScratchpadSave(document, url: written.url)
+        scratchpadSavedTask = task
         return task
     }
 

@@ -153,6 +153,7 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: script)[.posixPermissions] as? Int, 0o644)
         XCTAssertEqual(model.taskCatalog?.tasks, [try XCTUnwrap(task)])
         XCTAssertTrue(launchFile()?.contains(#""command": "bash .trellis/scratch/deploy.sh""#) == true)
+        XCTAssertEqual(model.scratchpadSavedTask, task, "Saving again offers the same task name and group")
 
         // Saving again updates the script it saved and doesn't add a second task.
         model.scratchpad.text = "echo two\n"
@@ -160,6 +161,9 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertEqual(again?.name, "Deploy preview", "The existing task with the same command")
         XCTAssertEqual(try String(contentsOfFile: script, encoding: .utf8), "echo two\n")
         XCTAssertEqual(model.taskCatalog?.tasks.count, 1)
+
+        model.clearScratchpad()
+        XCTAssertNil(model.scratchpadSavedTask, "A new buffer has no task yet")
 
         // A new file was trusted with the task, so Save & Run runs without review.
         model.scratchpad = ScratchpadDocument(name: "check", language: .javascript, text: "console.log(1)\n")
