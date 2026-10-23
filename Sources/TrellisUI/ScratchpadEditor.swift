@@ -242,8 +242,7 @@ final class ScratchpadLineRuler: NSRulerView {
         let visible = scrollView.contentView.bounds
         let glyphs = layout.glyphRange(forBoundingRect: visible, in: container)
         let characters = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        var line = 1
-        string.enumerateSubstrings(in: NSRange(location: 0, length: characters.location), options: [.byLines, .substringNotRequired]) { _, _, _, _ in line += 1 }
+        let (lines, next) = Self.lines(in: string, visible: characters)
         func draw(_ number: Int, fragment: NSRect) {
             let y = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView).y
             let flagged = issueLines.contains(number)
@@ -259,15 +258,28 @@ final class ScratchpadLineRuler: NSRulerView {
                 NSRect(x: ruleThickness - 3, y: y, width: 3, height: fragment.height).fill()
             }
         }
-        var index = characters.location
-        while index < NSMaxRange(characters) {
-            let lineRange = string.lineRange(for: NSRange(location: index, length: 0))
-            draw(line, fragment: layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: lineRange.location), effectiveRange: nil))
-            line += 1
-            index = NSMaxRange(lineRange)
-        }
+        for line in lines { draw(line.number, fragment: layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: line.location), effectiveRange: nil)) }
         // The empty last line after a final newline, or an empty buffer.
-        if layout.extraLineFragmentTextContainer != nil { draw(line, fragment: layout.extraLineFragmentRect) }
+        if layout.extraLineFragmentTextContainer != nil { draw(next, fragment: layout.extraLineFragmentRect) }
+    }
+
+    /// The lines starting in, or wrapping into, `visible`, numbered by `\n` alone as validation counts them, and the number
+    /// after the last. The first visible fragment may continue a wrapped line, so numbering starts at that line's start.
+    nonisolated static func lines(in string: NSString, visible: NSRange) -> (lines: [(number: Int, location: Int)], next: Int) {
+        let length = string.length
+        var location = min(visible.location, length)
+        let previous = string.range(of: "\n", options: [.literal, .backwards], range: NSRange(location: 0, length: location))
+        location = previous.location == NSNotFound ? 0 : previous.location + 1
+        var number = 1 + string.substring(to: location).utf16.reduce(0) { $1 == 10 ? $0 + 1 : $0 }
+        var lines: [(number: Int, location: Int)] = []
+        while location < min(NSMaxRange(visible), length) {
+            lines.append((number, location))
+            number += 1
+            let newline = string.range(of: "\n", options: .literal, range: NSRange(location: location, length: length - location))
+            guard newline.location != NSNotFound else { break }
+            location = newline.location + 1
+        }
+        return (lines, number)
     }
 }
 

@@ -249,6 +249,21 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertTrue(ScratchpadEditor.allowsChange(of: over, in: NSRange(location: 0, length: 1), to: ""), "Deleting from an oversized buffer")
     }
 
+    func testRulerNumbersLinesByNewlineFromTheStartOfAWrappedLine() {
+        let text = "a\nb\nccccccccc\nd\ne" as NSString
+        func numbers(from location: Int, length: Int = 3) -> [Int] { ScratchpadLineRuler.lines(in: text, visible: NSRange(location: location, length: length)).lines.map(\.number) }
+        XCTAssertEqual(numbers(from: 0), [1, 2])
+        // The view starts inside line 3's wrapped continuation: that line is still 3.
+        let lines = ScratchpadLineRuler.lines(in: text, visible: NSRange(location: 8, length: 9))
+        XCTAssertEqual(lines.lines.map(\.number), [3, 4, 5])
+        XCTAssertEqual(lines.lines.first?.location, 4)
+        // Only \n separates lines, as validation counts them.
+        let separators = "a\u{2028}b\rc\nd" as NSString
+        XCTAssertEqual(ScratchpadLineRuler.lines(in: separators, visible: NSRange(location: 6, length: 1)).lines.map(\.number), [2])
+        XCTAssertEqual(ScratchpadLineRuler.lines(in: "x\n", visible: NSRange(location: 0, length: 2)).next, 2, "The empty line after a final newline")
+        XCTAssertEqual(ScratchpadLineRuler.lines(in: "", visible: NSRange(location: 0, length: 0)).next, 1)
+    }
+
     @MainActor
     func testReplacingWithShorterTextKeepsASelection() {
         // AppKit raises on an empty selection array: Clear and opening a shorter file used to crash the app.
