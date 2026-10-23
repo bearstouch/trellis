@@ -14,6 +14,8 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Themes:** 10 editor-inspired families plus a JSON theme library, with separate light and dark slots and live preview.
 - **SSH hosts:** a saved host library and `~/.ssh/config` discovery, using `/usr/bin/ssh` and optional Keychain-stored passwords.
 - **Tasks and project files:** run `.trellis/launch.json` tasks from a pane header and check a project's layout in as `.trellis/project.json`.
+- **Command palette:** ⇧⌘P opens one searchable list of every action, window, tab, pane, saved host, task and theme.
+- **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
 - **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
 - **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.
 - **Privacy:** no telemetry; terminal output and typed input are never logged.

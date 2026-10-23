@@ -47,6 +47,8 @@ public struct WorkspaceAccessibility: Sendable {
     }
 
     public static func commandFailureText(_ code: Int32) -> String { "Last command failed (exit \(code))" }
+    /// Spoken with a tab whose shell is in a project, matching its **Load Project** button (FR-WF02).
+    public static func projectOfferText(_ name: String) -> String { "project \(name) available to load" }
 
     public let windows: [AccessibilityDescriptor]
     public let tabs: [AccessibilityDescriptor]

@@ -40,6 +40,26 @@ final class ProductRenameTests: XCTestCase {
         }
         XCTAssertTrue(files.fileExists(atPath: themes.appendingPathComponent("trellis-light.theme.json").path))
     }
+    func testMigrationKeepsTheBrokerRecordOnlyWhenThePreviousAppHasQuit() throws {
+        let files = FileManager.default
+        for running in [false, true] {
+            let root = files.temporaryDirectory.appendingPathComponent("trellis-rename-\(UUID())")
+            defer { try? files.removeItem(at: root) }
+            let legacy = root.appendingPathComponent(AppInstanceIdentity.legacyProduction)
+            try files.createDirectory(at: legacy, withIntermediateDirectories: true)
+            for name in ["workspace.json", "broker.json", "control.json"] { try Data(name.utf8).write(to: legacy.appendingPathComponent(name)) }
+            var asked: [String] = []
+            let destination = try ApplicationSupportLocation.prepare(root: root, bundleIdentifier: AppInstanceIdentity.production) {
+                asked.append($0); return running
+            }
+            XCTAssertEqual(asked, [AppInstanceIdentity.legacyProduction])
+            XCTAssertTrue(files.fileExists(atPath: destination.appendingPathComponent("workspace.json").path))
+            XCTAssertFalse(files.fileExists(atPath: destination.appendingPathComponent("control.json").path))
+            XCTAssertEqual(files.fileExists(atPath: destination.appendingPathComponent("broker.json").path), !running)
+            XCTAssertTrue(files.fileExists(atPath: legacy.appendingPathComponent("broker.json").path), "The legacy folder is left alone")
+        }
+    }
+
     func testMigrationCopiesWorkspaceAndThemesWithoutChangingLegacyData() throws {
         let files = FileManager.default
         let root = files.temporaryDirectory.appendingPathComponent("trellis-rename-\(UUID())")

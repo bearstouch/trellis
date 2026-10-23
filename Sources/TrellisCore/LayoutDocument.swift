@@ -49,6 +49,8 @@ public struct LayoutIssue: Equatable, Sendable {
     public let key: String?
     public let message: String
     public init(key: String?, _ message: String) { self.key = key; self.message = message }
+    /// `key: message`, or the message alone, as error messages show it.
+    public var text: String { (key.map { "\($0): " } ?? "") + message }
 }
 
 public struct LayoutPlan: Equatable, Sendable {

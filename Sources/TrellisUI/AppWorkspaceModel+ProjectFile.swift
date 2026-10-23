@@ -133,21 +133,30 @@ extension AppWorkspaceModel {
     /// An unreadable trust file fails closed: nothing is trusted and it is never overwritten.
     func projectTrustList() throws -> ProjectTrustList {
         if let projectTrust { return projectTrust }
-        do {
-            let stored = try projectTrustURL.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
-            let list = try stored.map { try JSONDecoder().decode(ProjectTrustList.self, from: $0) } ?? ProjectTrustList()
-            // A newer format is unreadable too: rewriting it would drop what this version doesn't know.
-            guard list.version == ProjectTrustList().version else { throw ProjectFileFailure("") }
-            projectTrust = list
-            return list
-        } catch { throw ProjectFileFailure("Trusted project files could not be read, so project file commands can't run.") }
+        let list = try Self.readTrustList(projectTrustURL, failure: "Trusted project files could not be read, so project file commands can't run.")
+        projectTrust = list
+        return list
     }
 
     private func saveProjectTrust(_ list: ProjectTrustList) throws {
-        if let url = projectTrustURL {
-            do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw ProjectFileFailure("Trusted project files could not be saved.") }
-        }
+        try Self.writeTrustList(list, to: projectTrustURL, failure: "Trusted project files could not be saved.")
         projectTrust = list
+    }
+
+    /// A stored trust list, or an empty one when there is none. Unreadable, invalid or newer lists throw `failure`:
+    /// rewriting a newer one would drop what this version doesn't know.
+    static func readTrustList(_ url: URL?, failure: String) throws -> ProjectTrustList {
+        do {
+            let stored = try url.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
+            let list = try stored.map { try JSONDecoder().decode(ProjectTrustList.self, from: $0) } ?? ProjectTrustList()
+            guard list.version == ProjectTrustList().version else { throw ProjectFileFailure(failure) }
+            return list
+        } catch { throw ProjectFileFailure(failure) }
+    }
+
+    static func writeTrustList(_ list: ProjectTrustList, to url: URL?, failure: String) throws {
+        guard let url else { return }
+        do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw ProjectFileFailure(failure) }
     }
 
     // MARK: Opening (FR-WF04)
@@ -155,6 +164,7 @@ extension AppWorkspaceModel {
     /// Reads and checks a project's file, then opens it at once when it has no commands or this exact version
     /// is trusted; otherwise it waits for review in `pendingProjectReview`.
     public func loadProjectFile(root: String) async {
+        guard projectFileCanOpen() else { return }
         let root = Self.canonical(root)
         let data: Data
         guard let url = Self.projectFileURL(root) else {
@@ -175,7 +185,7 @@ extension AppWorkspaceModel {
         switch ProjectFileJSON.parse(data) {
         case .success(let parsed): file = parsed
         case .failure(let error):
-            errorMessage = "The project file can't be opened: " + error.issues.map { ($0.key.map { "\($0): " } ?? "") + $0.message }.joined(separator: " ")
+            errorMessage = "The project file can't be opened: " + error.text
             return
         }
         let plan: LayoutPlan
@@ -197,6 +207,13 @@ extension AppWorkspaceModel {
 
     public enum ProjectReviewDecision: Sendable { case cancel, openWithoutCommands, trustAndOpen }
 
+    /// A project opens only into a usable workspace: not while it is restoring or showing recovery.
+    private func projectFileCanOpen() -> Bool {
+        guard isRestoring || recoveryMessage != nil || shuttingDown else { return true }
+        errorMessage = "The workspace isn't available yet, so the project wasn't opened. Try again once it has loaded."
+        return false
+    }
+
     public func resolveProjectReview(_ id: UUID, _ decision: ProjectReviewDecision) async {
         guard let review = pendingProjectReview, review.id == id else { return }
         pendingProjectReview = nil
@@ -204,6 +221,8 @@ extension AppWorkspaceModel {
         case .cancel: return
         case .openWithoutCommands: await openReviewedProjectFile(review, runCommands: false)
         case .trustAndOpen:
+            // Trust is recorded only when the window can open now; a later open would run the commands unreviewed.
+            guard projectFileCanOpen() else { return }
             do {
                 var list = try projectTrustList()
                 list.trust(root: review.root, digest: review.digest)
@@ -229,7 +248,7 @@ extension AppWorkspaceModel {
             }, keepLiveLaunches: true)
         guard plan.canApply else {
             throw ProjectFileFailure(
-                "The project file can't be opened: " + (plan.errors + plan.conflicts).map { ($0.key.map { "\($0): " } ?? "") + $0.message }.joined(separator: " "))
+                "The project file can't be opened: " + (plan.errors + plan.conflicts).map(\.text).joined(separator: " "))
         }
         return plan
     }
@@ -328,6 +347,21 @@ extension AppWorkspaceModel {
         }
     }
 
+    /// `paneDirectory` as seen from a canonical project root: a shell's `$PWD` keeps the logical path it was reached by,
+    /// so it is resolved, unless it is already inside the root (a linked folder in the project stays where it is).
+    func projectPaneDirectory(_ paneID: UUID, root: String) -> String? {
+        guard let path = paneDirectory(paneID) else { return nil }
+        let logical = URL(fileURLWithPath: path).standardizedFileURL.path
+        return logical == root || logical.hasPrefix(root + "/") ? logical : Self.canonical(path)
+    }
+
+    /// A shell's directory for comparing with a task's folder under a canonical root, by the same rule.
+    func taskCurrentDirectory(paneID: UUID, directory: String) -> String? {
+        guard let path = currentDirectory(paneID: paneID) else { return nil }
+        let logical = URL(fileURLWithPath: path).standardizedFileURL.path
+        return logical == URL(fileURLWithPath: directory).standardizedFileURL.path ? logical : Self.canonical(path)
+    }
+
     public func projectFileDraft(windowID: UUID, root: String) throws -> ProjectFileDraft {
         let root = Self.canonical(root)
         guard let window = snapshot.windows.first(where: { $0.id == windowID }) else { throw ProjectFileFailure("The window no longer exists.") }
@@ -345,9 +379,10 @@ extension AppWorkspaceModel {
             for (key, binding) in bindings where declared.contains(key) { keys[binding.id] = key }
             for entry in existing.entries { if let command = entry.pane.command, let id = bindings[entry.key]?.id { commands[id] = command } }
         }
-        let exported = ProjectFile.export(
-            window: window, snapshot: snapshot, projectRoot: root, directory: paneDirectory, command: { self.projectFileCommands[$0] ?? commands[$0] },
+        var exported = ProjectFile.export(
+            window: window, snapshot: snapshot, projectRoot: root, directory: { self.projectPaneDirectory($0, root: root) }, command: { self.projectFileCommands[$0] ?? commands[$0] },
             key: { keys[$0] })
+        exported.file.schema = existing?.schema
         return ProjectFileDraft(
             windowID: windowID, root: root, file: exported.file, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
             replacesExisting: FileManager.default.fileExists(atPath: url.path), commands: exported.file.entries.map { $0.pane.command ?? "" })
@@ -355,13 +390,32 @@ extension AppWorkspaceModel {
 
     public func cancelProjectSave() { pendingProjectSave = nil }
 
+    /// Writes a `.trellis/` repository file, not Trellis state: readable by the project's tools like any other source
+    /// file. A linked `.trellis` folder or file is refused, since it could point the write outside the project.
+    func writeRepositoryFile(_ data: Data, to url: URL) -> Bool {
+        let manager = FileManager.default
+        guard ![url.deletingLastPathComponent(), url].contains(where: { (try? manager.destinationOfSymbolicLink(atPath: $0.path)) != nil }) else {
+            errorMessage = "\(url.path) or its folder is a symbolic link, so nothing was written."
+            return false
+        }
+        do {
+            try manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+            try? manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            return true
+        } catch {
+            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
+            return false
+        }
+    }
+
     /// Writes the reviewed file, trusts its bytes and makes the window the project's window. A failure leaves the
     /// file, trust and bindings as they were.
     @discardableResult
     public func writeProjectFile(_ draft: ProjectFileDraft) -> Bool {
         let file = draft.file.settingCommands(draft.commands)
         if let issue = file.issues.first {
-            errorMessage = (issue.key.map { "\($0): " } ?? "") + issue.message
+            errorMessage = issue.text
             return false
         }
         // What is written must open again: the same strict parse, keys and limits as `loadProjectFile`.
@@ -376,7 +430,7 @@ extension AppWorkspaceModel {
                 .errors
         }
         if let issue = problems.first {
-            errorMessage = "The window can't be saved as a project file: " + (issue.key.map { "\($0): " } ?? "") + issue.message
+            errorMessage = "The window can't be saved as a project file: " + issue.text
             return false
         }
         guard !layoutApplyInFlight else {
@@ -384,21 +438,12 @@ extension AppWorkspaceModel {
             return false
         }
         guard let window = snapshot.windows.first(where: { $0.id == draft.windowID }), let bindings = file.bindings(window: window, snapshot: snapshot),
-            ProjectFile.export(window: window, snapshot: snapshot, projectRoot: draft.root, directory: paneDirectory, command: { _ in nil }).paneIDs == draft.paneIDs
+            ProjectFile.export(window: window, snapshot: snapshot, projectRoot: draft.root, directory: { self.projectPaneDirectory($0, root: draft.root) }, command: { _ in nil }).paneIDs == draft.paneIDs
         else {
             errorMessage = "The window changed while saving. Nothing was written; try again."
             return false
         }
-        let url = ProjectFile.url(projectRoot: draft.root)
-        do {
-            // A repository file, not Trellis state: readable by the project's tools like any other source file.
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
-        } catch {
-            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
-            return false
-        }
+        guard writeRepositoryFile(data, to: ProjectFile.url(projectRoot: draft.root)) else { return false }
         // The user wrote these commands, so this version is trusted; failures here only mean a later review.
         if var list = try? projectTrustList() {
             list.trust(root: draft.root, digest: ProjectTrustList.digest(data))

@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import TrellisControl
 import TrellisCore
+import TrellisTerminal
 
 /// The Tasks menu's view of one project (FR-TK02), read when the menu opens.
 public struct TaskCatalog: Equatable, Sendable {
@@ -139,7 +140,8 @@ extension AppWorkspaceModel {
         var environment: [(name: String, value: String)] = []
         if fromFile, case .loaded(let file) = catalog.file { environment = file.environment(for: task) }
         return TaskCommand.compose(
-            command: task.command, directory: task.directory(projectRoot: catalog.root), currentDirectory: currentDirectory(paneID: catalog.paneID),
+            command: task.command, directory: task.directory(projectRoot: catalog.root),
+            currentDirectory: taskCurrentDirectory(paneID: catalog.paneID, directory: task.directory(projectRoot: catalog.root)),
             environment: environment, shell: shell.path, kind: shell.kind)
     }
 
@@ -196,17 +198,23 @@ extension AppWorkspaceModel {
         }
         guard
             let line = TaskCommand.compose(
-                command: task.command, directory: task.directory(projectRoot: root), currentDirectory: currentDirectory(paneID: paneID),
+                command: task.command, directory: task.directory(projectRoot: root),
+                currentDirectory: taskCurrentDirectory(paneID: paneID, directory: task.directory(projectRoot: root)),
                 environment: file?.environment(for: task) ?? [], shell: shell.path, kind: shell.kind)
         else {
             errorMessage = "“\(task.name)” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long."
             return false
         }
+        return sendTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: task.name)
+    }
+
+    /// Types `line` after Ctrl-E Ctrl-U and follows it as a task run. Callers check `taskAvailability` first.
+    func sendTaskLine(_ line: String, to terminal: NativeTerminal, paneID: UUID, taskID: String, name: String) -> Bool {
         do { try terminal.adapter.send(Data(("\u{05}\u{15}" + line + "\r").utf8)) } catch {
             errorMessage = "The task could not be typed. The session may have stopped."
             return false
         }
-        taskRuns[paneID] = TaskRun(taskID: taskID, name: task.name, at: activityNow())
+        taskRuns[paneID] = TaskRun(taskID: taskID, name: name, at: activityNow())
         return true
     }
 
@@ -256,42 +264,48 @@ extension AppWorkspaceModel {
 
     // MARK: Editing launch.json (FR-TK04)
 
-    /// Appends a detected task, unless the file changed since the menu read it or doesn't parse. The new version is
-    /// trusted only when the old one was, or there was none, so adding never trusts someone else's tasks.
+    /// Appends a detected task, unless the file changed since the menu read it or doesn't parse.
     @discardableResult
-    public func addDetectedTask(_ detected: DetectedTask) async -> Bool {
-        guard let catalog = taskCatalog else { return false }
+    public func addDetectedTask(_ detected: DetectedTask) async -> Bool { await addTask(detected.task) != nil }
+
+    /// Appends `task` to the catalog's launch.json and returns it as stored (renamed if its name was taken), or the
+    /// task already there with the same command. Nothing is written if the file changed since the catalog read it or
+    /// doesn't parse. The new version is trusted only when the old one was, or there was none, so adding never trusts
+    /// someone else's tasks.
+    func addTask(_ task: LaunchTask) async -> LaunchTask? {
+        guard let catalog = taskCatalog else { return nil }
         if case .invalid(let reason) = catalog.file {
             errorMessage = "launch.json wasn't changed. " + reason
-            return false
+            return nil
         }
         let url = LaunchFile.url(projectRoot: catalog.root)
         let current: Data?
         do { current = try OwnerOnlyFile.read(url, limit: LaunchFile.maximumBytes) } catch {
             errorMessage = "launch.json wasn't changed. It must be a regular file you own, at most 64 KB, and not a symbolic link."
-            return false
+            return nil
         }
         guard current == catalog.data else {
             errorMessage = "launch.json changed since the Tasks menu read it. Nothing was written; check the file and try again."
             await refreshTaskCatalog()
-            return false
+            return nil
         }
         var existing = LaunchFile()
         if case .loaded(let file) = catalog.file { existing = file }
-        let (updated, added) = existing.adding(detected.task)
-        guard added else { return true }
+        let (updated, added) = existing.adding(task)
+        let stored = updated.tasks.last { $0.command == task.command && $0.cwd == task.cwd }
+        guard added else { return stored }
         let data = LaunchFileJSON.encode(updated)
         if case .failure(let error) = LaunchFileJSON.parse(data) {
             errorMessage = "The task can't be added: " + LaunchFileJSON.describe(error)
-            return false
+            return nil
         }
-        guard writeLaunchFile(data, to: url) else { return false }
+        guard writeRepositoryFile(data, to: url) else { return nil }
         if var list = try? launchTrustList(), catalog.data == nil || catalog.digest.map({ list.isTrusted(root: catalog.root, digest: $0) }) == true {
             list.trust(root: catalog.root, digest: ProjectTrustList.digest(data))
             try? saveLaunchTrust(list)
         }
         await refreshTaskCatalog()
-        return true
+        return stored
     }
 
     /// Opens launch.json in the user's editor, creating an empty one first when there is none.
@@ -300,7 +314,7 @@ extension AppWorkspaceModel {
         let url = LaunchFile.url(projectRoot: catalog.root)
         if case .missing = catalog.file, !FileManager.default.fileExists(atPath: url.path), !isSymbolicLink(url) {
             let data = LaunchFileJSON.encode(LaunchFile())
-            guard writeLaunchFile(data, to: url) else { return }
+            guard writeRepositoryFile(data, to: url) else { return }
             // No tasks, nothing to review.
             if var list = try? launchTrustList() {
                 list.trust(root: catalog.root, digest: ProjectTrustList.digest(data))
@@ -313,19 +327,6 @@ extension AppWorkspaceModel {
 
     private func isSymbolicLink(_ url: URL) -> Bool { (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil }
 
-    /// A repository file, not Trellis state: readable by the project's tools like a project file.
-    private func writeLaunchFile(_ data: Data, to url: URL) -> Bool {
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
-            return true
-        } catch {
-            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
-            return false
-        }
-    }
-
     // MARK: Trust (FR-TK06)
 
     private var launchTrustURL: URL? { persistence?.directory.appendingPathComponent("launch-trust.json") }
@@ -334,19 +335,13 @@ extension AppWorkspaceModel {
     /// nothing is trusted and it is never overwritten.
     func launchTrustList() throws -> ProjectTrustList {
         if let launchTrust { return launchTrust }
-        do {
-            let stored = try launchTrustURL.flatMap { try OwnerOnlyFile.read($0, limit: 4_194_304) }
-            let list = try stored.map { try JSONDecoder().decode(ProjectTrustList.self, from: $0) } ?? ProjectTrustList()
-            guard list.version == ProjectTrustList().version else { throw ProjectFileFailure("") }
-            launchTrust = list
-            return list
-        } catch { throw ProjectFileFailure("Trusted launch.json files could not be read, so launch.json tasks can't run.") }
+        let list = try Self.readTrustList(launchTrustURL, failure: "Trusted launch.json files could not be read, so launch.json tasks can't run.")
+        launchTrust = list
+        return list
     }
 
     private func saveLaunchTrust(_ list: ProjectTrustList) throws {
-        if let url = launchTrustURL {
-            do { try OwnerOnlyFile.publish(try JSONEncoder().encode(list), to: url) } catch { throw ProjectFileFailure("Trusted launch.json files could not be saved.") }
-        }
+        try Self.writeTrustList(list, to: launchTrustURL, failure: "Trusted launch.json files could not be saved.")
         launchTrust = list
     }
 }

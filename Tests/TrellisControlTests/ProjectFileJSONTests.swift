@@ -58,6 +58,10 @@ final class ProjectFileJSONTests: XCTestCase {
         ).get()
         guard case .split(_, _, let ratio, _) = file.tabs[0].root else { return XCTFail("split expected") }
         XCTAssertEqual(ratio, 0.5)
+        XCTAssertEqual(file.schema, "./project-file.schema.json")
+        let encoded = String(decoding: ProjectFileJSON.encode(file), as: UTF8.self)
+        XCTAssertTrue(encoded.hasPrefix("{\n  \"$schema\": \"./project-file.schema.json\",\n  \"version\": 1,"), encoded)
+        XCTAssertEqual(try ProjectFileJSON.parse(Data(encoded.utf8)).get(), file)
     }
 
     func testRejectsUnsafeOrMalformedContent() throws {

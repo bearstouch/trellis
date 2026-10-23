@@ -52,7 +52,7 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var themeBusy = false
     @Published public private(set) var themeReplacementID: String?
     let themeLibrary: ThemeLibrary?
-    private var systemIsDark = false
+    private(set) var systemIsDark = false
     public var themesDirectory: URL? { themeLibrary?.directory }
     public var effectiveChromeMode: ChromeMode {
         if let previewedTheme { return previewedTheme.appearance == .light ? .light : .dark }
@@ -343,6 +343,8 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public var windowRenameRequest: UUID?
     @Published public private(set) var editingTabID: UUID?
     @Published public var tabRenameDraft = ""
+    /// Bumped to give the tab name field its focus back (after the command palette closed over it).
+    @Published public internal(set) var tabRenameFocusRequest = 0
     @Published public private(set) var keyboard: KeyboardSettings
     @Published public private(set) var keyboardNotice: String?
     public var onKeyboardSettingsChanged: (() -> Void)?
@@ -380,10 +382,60 @@ public final class AppWorkspaceModel: ObservableObject {
     var launchTrust: ProjectTrustList?
     /// How long after Stop the button offers Force Stop (FR-TK08).
     var taskStopEscalation: TimeInterval = 2
+    /// The command scratchpad (FR-SP01–FR-SP10): runtime only, never persisted or logged. Run and Save write the
+    /// buffer to a file; nothing else does.
+    @Published public internal(set) var scratchpadVisible = false
+    /// Published apart from the model, so typing re-renders only the scratchpad panel, not every workspace view.
+    public let scratchpadBuffer = ScratchpadBuffer()
+    public var scratchpad: ScratchpadDocument {
+        get { scratchpadBuffer.document }
+        set {
+            let old = scratchpadBuffer.document
+            scratchpadBuffer.document = newValue
+            // A check describes the text it ran on; any edit makes it stale.
+            if (newValue.text != old.text || newValue.language != old.language) && scratchpadCheck != nil { scratchpadCheck = nil }
+        }
+    }
+    @Published public internal(set) var scratchpadCheck: ScratchpadCheck?
+    @Published public internal(set) var scratchpadChecking = false
+    /// Bumped when the editor should take keyboard focus.
+    @Published public internal(set) var scratchpadFocusRequest = 0
+    /// The buffer as it was last saved or opened, so the header can name its file and Clear knows what would be lost.
+    @Published public internal(set) var scratchpadSaved: ScratchpadDocument? { didSet { scratchpadSavedTask = nil } }
+    /// The task the saved script was saved as, so saving again offers its name and group (FR-SP06).
+    public internal(set) var scratchpadSavedTask: LaunchTask?
+    /// The focused pane's project's saved scratchpads (FR-SP10); nil when it has no project.
+    @Published public internal(set) var scratchpadFiles: ScratchpadFileList?
+    /// The project scripts the scratchpad saved, the only existing ones Save may replace.
+    var scratchpadSavedPaths: Set<String> = []
+    /// Where Run writes the buffer; the state directory's `scratch` folder unless a test injects one.
+    var scratchpadDirectory: URL?
+    /// Runs the syntax check; injected by tests.
+    public var scratchpadProcessRunner: ScratchpadProcessRunner = ScratchpadValidator.runProcess
     /// Opens launch.json in the user's editor; injected by tests.
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Returns the chosen project folder; injected by tests.
     public var chooseProjectFolder: (_ message: String, _ directory: String?) -> String? = { ProjectFilePanels.chooseFolder(message: $0, directory: $1) }
+    /// The command palette (FR-CP01–FR-CP08): runtime only; the query is never persisted or logged.
+    @Published public internal(set) var commandPaletteVisible = false
+    @Published public internal(set) var commandPaletteQuery = ""
+    @Published public internal(set) var commandPaletteScope: CommandPaletteScope?
+    @Published public internal(set) var commandPaletteSelection: String?
+    /// Bumped when the palette's field should take keyboard focus.
+    @Published public internal(set) var commandPaletteFocusRequest = 0
+    var commandPaletteRecents = CommandPaletteRecents()
+    var commandPaletteSearchCache: (key: CommandPaletteSearchKey, sections: [CommandPaletteSection])?
+    /// The actions their menus enabled when the palette opened, read before its field took focus (FR-CP03).
+    var commandPaletteActions: [ShortcutAction] = []
+    /// True only while the palette owns the workspace theme preview (FR-CP08).
+    var commandPalettePreviewing = false
+    /// What had keyboard focus when the palette opened, other than a terminal or a field editor (FR-CP01).
+    weak var commandPaletteReturnFocus: NSView?
+    /// Set by the app: runs an action as its menu item does, and says whether that item is enabled.
+    public var performShortcutAction: ((ShortcutAction) -> Void)?
+    public var canPerformShortcutAction: ((ShortcutAction) -> Bool)?
+    /// The saved hosts the palette lists; set by the app to the host library's committed list.
+    public var commandPaletteHosts: () -> [SavedHost] = { [] }
     private var recoveryBackup: RestoredWorkspace?
     private var recoveryReason: WorkspacePersistenceError?
     private var pendingSaveTask: Task<Void, Never>?
@@ -448,6 +500,7 @@ public final class AppWorkspaceModel: ObservableObject {
             refreshEffectiveTheme()
         }
         guard let persistence else { return false }
+        removeScratchpadRunFiles()
         isRestoring = true
         pendingOperations += 1
         defer { isRestoring = false; pendingOperations -= 1 }
@@ -1132,7 +1185,7 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyAppearance(terminalAppearance)
         terminal.optionAsMeta = keyboard.optionAsMeta
         terminal.searchShortcut = keyboard.shortcuts[.findInPane]
-        terminal.inputSuspended = editingTabID != nil
+        terminal.inputSuspended = editingTabID != nil || commandPaletteVisible
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self, weak terminal] in
@@ -1430,7 +1483,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func endTabRenameEditing() {
         editingTabID = nil
-        terminals.values.forEach { $0.inputSuspended = false }
+        terminals.values.forEach { $0.inputSuspended = commandPaletteVisible }
     }
 
     public func renameTab(_ id: UUID, title: String) async {

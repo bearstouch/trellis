@@ -10,6 +10,20 @@ cd "$(dirname "$0")/.."
 identity="${TRELLIS_SIGN_IDENTITY:--}"
 version=$(python3 -c 'import json;print(json.load(open("release/manifest.json"))["version"])')
 minimum=$(python3 -c 'import json;print(json.load(open("release/manifest.json"))["minimumMacOS"])')
+# macOS wants numeric bundle versions: CFBundleShortVersionString is the X.Y.Z core, and CFBundleVersion adds a build
+# that orders pre-releases before the release (alpha.N = N, beta.N = 30+N, rc.N = 60+N, release = 100). The full
+# version, label included, goes to TrellisVersion for the app to show.
+bundle_versions=$(python3 - "$version" <<'PY'
+import re, sys
+match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.([1-9]\d?))?", sys.argv[1])
+if not match or (match[5] and int(match[5]) >= 30): sys.exit(f"Unsupported version {sys.argv[1]!r}: use X.Y.Z or X.Y.Z-alpha|beta|rc.N with N < 30.")
+core = ".".join(match.group(1, 2, 3))
+build = 100 if not match[4] else {"alpha": 0, "beta": 30, "rc": 60}[match[4]] + int(match[5])
+print(core, f"{core}.{build}")
+PY
+)
+short_version=${bundle_versions% *}
+bundle_version=${bundle_versions#* }
 dist="$PWD/dist"
 rm -rf "$dist"
 mkdir -p "$dist"
@@ -51,8 +65,9 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleExecutable</key><string>Trellis</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>$version</string>
-<key>CFBundleVersion</key><string>$version</string>
+<key>CFBundleShortVersionString</key><string>$short_version</string>
+<key>CFBundleVersion</key><string>$bundle_version</string>
+<key>TrellisVersion</key><string>$version</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>LSMinimumSystemVersion</key><string>$minimum</string>
 </dict></plist>
@@ -105,6 +120,7 @@ files = {a for a in manifest["artifacts"] if os.path.exists(os.path.join(os.path
 problems = []
 if info["LSMinimumSystemVersion"] != manifest["minimumMacOS"]: problems.append("minimum macOS mismatch")
 if info["CFBundleIdentifier"] != manifest["bundleIdentifier"]: problems.append("bundle identifier mismatch")
+if info.get("TrellisVersion") != manifest["version"] or not manifest["version"].startswith(info["CFBundleShortVersionString"]): problems.append("version mismatch")
 for binary in ["Contents/MacOS/Trellis", "Contents/Helpers/trellis", "Contents/Helpers/trellis-askpass", "Contents/Helpers/trellis-broker"]:
     missing = set(manifest["architectures"]) - set(archs(os.path.join(app, binary)))
     if missing: problems.append(f"{binary} lacks {sorted(missing)}")

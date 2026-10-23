@@ -122,6 +122,35 @@ final class TaskRunnerTests: XCTestCase {
     }
 
     @MainActor
+    func testShellInTheProjectThroughASymlinkNeedsNoCd() async throws {
+        let link = scratch.appendingPathComponent("link").path
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: project)
+        let (model, pane) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.refreshTaskCatalog()
+        try mark(model, pane, .promptStart(directory: link))
+        XCTAssertEqual(model.taskLine(try detected(model, "swift: build").task, fromFile: false), "swift build")
+    }
+
+    @MainActor
+    func testALinkedTrellisFolderIsNeverWrittenThrough() async throws {
+        let elsewhere = scratch.appendingPathComponent("elsewhere").path
+        try FileManager.default.createDirectory(atPath: elsewhere, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: project + "/.trellis", withDestinationPath: elsewhere)
+        let (model, pane) = try await makeModel()
+        defer { cleanUp(model) }
+        var opened: [URL] = []
+        model.openLaunchFile = { opened.append($0) }
+        try mark(model, pane, .promptStart(directory: project))
+        await model.refreshTaskCatalog()
+        let added = await model.addDetectedTask(try detected(model, "swift: build"))
+        XCTAssertFalse(added)
+        XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true)
+        await model.editLaunchFile()
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: elsewhere), [], "Nothing is written outside the project")
+    }
+
+    @MainActor
     func testFileTasksAreReviewedOncePerVersionAndVariablesWrapTheCommand() async throws {
         let (model, pane) = try await makeModel()
         defer { cleanUp(model) }

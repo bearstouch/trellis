@@ -26,6 +26,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Clipboard API (`clipboard.read`/`clipboard.write` are reserved) | [Authorization](../api/authorization.md#capabilities) |
 | P1 | Per-window, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
 | P2 | tmux awareness, richer terminal protocols, plugins | |
+| P2 | Command palette: saved scratchpads as items (with the unsaved-changes confirmation), recents kept across launches | `FR-CP03`, `FR-CP05`, [Command palette](../features/command-palette.md#not-included) |
 | P2 | Links: open `file:line:column` in a configured editor, a pointing-hand cursor over links, detecting `ssh` typed inside a local shell | `FR-L02`, `FR-L04`, [Links](../features/terminal.md#links) |
 
 **Not planned:** Windows, Linux and iOS; cloud sync; a web UI; a remote API server beyond the optional MCP server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import.

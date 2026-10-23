@@ -117,6 +117,22 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testNothingOpensOrIsTrustedWhileTheWorkspaceIsInRecovery() async throws {
+        _ = NSApplication.shared
+        let persistence = WorkspacePersistence(directory: scratch.appendingPathComponent("state"))
+        try Data("{\"schemaVersion\":999}".utf8).write(to: persistence.currentURL)
+        let model = AppWorkspaceModel(
+            store: try WorkspaceStore(), preferences: try XCTUnwrap(UserDefaults(suiteName: "trellis-wf-\(UUID().uuidString)")), persistence: persistence)
+        _ = await model.loadWorkspace()
+        XCTAssertNotNil(model.recoveryMessage)
+        try writeFile(layout(command: "echo WF-MARKER"))
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview)
+        XCTAssertTrue(model.errorMessage?.contains("isn't available") == true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scratch.appendingPathComponent("state/workspace-trust.json").path))
+    }
+
+    @MainActor
     func testUntrustedCommandsWaitForReviewAndOpenWithoutCommandsTypesNothing() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
@@ -294,6 +310,12 @@ final class ProjectFileTests: XCTestCase {
         XCTAssertEqual(file.entries.map(\.pane.directory), ["src", nil])
         XCTAssertEqual(file.entries.map(\.pane.command), ["make watch", nil])
 
+        // A $schema the user added survives saving over the file.
+        let withSchema = "{\n  \"$schema\": \"./schema.json\"," + String(decoding: data, as: UTF8.self).dropFirst()
+        try withSchema.write(toFile: project + "/.trellis/project.json", atomically: true, encoding: .utf8)
+        XCTAssertEqual(try model.projectFileDraft(windowID: windowID, root: project).file.schema, "./schema.json")
+        try data.write(to: URL(fileURLWithPath: project + "/.trellis/project.json"))
+
         // Saving again keeps the command and writes the same bytes.
         model.beginSaveProjectFile(windowID: windowID)
         let again = try XCTUnwrap(model.pendingProjectSave)
@@ -315,6 +337,61 @@ final class ProjectFileTests: XCTestCase {
         XCTAssertEqual(model.snapshot.windows.count, windows + 1)
         XCTAssertEqual(model.snapshot.panes.count, paneCount + 1)
         XCTAssertNil(model.projectFileOffer(tabID: tab.id))
+    }
+
+    @MainActor
+    func testSaveThroughSymlinkedFolderKeepsPaneDirectories() async throws {
+        let link = scratch.appendingPathComponent("link").path
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: project)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Linked")
+        let windowID = try XCTUnwrap(created)
+        let first = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        let split = await model.splitPane(first, axis: .y)
+        let second = try XCTUnwrap(split)
+        try await waitFor { [first, second].allSatisfy { model.terminals[$0]?.sessionState == .running } }
+        // A shell's $PWD keeps the logical path through the link; the root is canonical.
+        try prompt(model, first, link + "/src")
+        try prompt(model, second, link)
+        let draft = try model.projectFileDraft(windowID: windowID, root: link)
+        XCTAssertEqual(draft.root, project)
+        XCTAssertEqual(draft.warnings, [])
+        XCTAssertEqual(draft.file.entries.map(\.pane.directory), ["src", nil])
+        XCTAssertTrue(model.writeProjectFile(draft))
+    }
+
+    @MainActor
+    func testSaveNeverWritesThroughALinkedTrellisFolder() async throws {
+        let elsewhere = scratch.appendingPathComponent("elsewhere").path
+        try FileManager.default.createDirectory(atPath: elsewhere, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: project + "/.trellis", withDestinationPath: elsewhere)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Linked")
+        let windowID = try XCTUnwrap(created)
+        let draft = try model.projectFileDraft(windowID: windowID, root: project)
+        XCTAssertFalse(model.writeProjectFile(draft))
+        XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: elsewhere), [])
+    }
+
+    @MainActor
+    func testSaveKeepsALinkedFolderInsideTheProject() async throws {
+        let outside = scratch.appendingPathComponent("vendored").path
+        try FileManager.default.createDirectory(atPath: outside, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: project + "/vendor", withDestinationPath: outside)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Vendor")
+        let windowID = try XCTUnwrap(created)
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        try await waitFor { model.terminals[pane]?.sessionState == .running }
+        // The shell is in the project's linked folder: it stays there rather than resolving outside the project.
+        try prompt(model, pane, project + "/vendor")
+        let draft = try model.projectFileDraft(windowID: windowID, root: project)
+        XCTAssertEqual(draft.warnings, [])
+        XCTAssertEqual(draft.file.entries.map(\.pane.directory), ["vendor"])
     }
 
     @MainActor

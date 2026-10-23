@@ -7,6 +7,12 @@ import class SwiftTerm.TerminalView
 public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
     @State private var windowToRename: ManagedWindow?
+    /// The scratchpad's width; layout only, never persisted.
+    @State private var scratchpadWidth: CGFloat = 380
+    @State private var scratchpadDragStart: CGFloat?
+    /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
+    @State private var scratchpadCursorPushed = false
+    static let scratchpadWidths: ClosedRange<CGFloat> = 280...640
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var hoveredTabID: UUID?
@@ -49,6 +55,7 @@ public struct WorkspaceRootView: View {
         .background(model.usesNativeChrome ? model.themeColor(.surface) : model.themeColor(.background))
         .tint(model.chromeTint)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
+        .modifier(CommandPaletteHost(model: model))
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
@@ -311,7 +318,8 @@ public struct WorkspaceRootView: View {
             VStack(spacing: 14) {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
-                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n")
+                // A view's key equivalent runs before the menu's, which the open palette disables (FR-CP02).
+                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
         } else {
             VStack(spacing: 0) {
@@ -332,9 +340,39 @@ public struct WorkspaceRootView: View {
                     .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
                 Divider().overlay(model.separatorOverlay)
-                terminalCanvas
+                HStack(spacing: 0) {
+                    terminalCanvas
+                    if model.scratchpadVisible {
+                        scratchpadResizeHandle
+                        ScratchpadPanel(model: model, buffer: model.scratchpadBuffer).frame(width: scratchpadWidth)
+                    }
+                }
             }
         }
+    }
+
+    /// Drag to resize the scratchpad; the canvas takes the rest, so split minimums follow (FR-SP01).
+    private var scratchpadResizeHandle: some View {
+        // A 1-point line, like the other dividers, with a wider invisible grab area over its neighbors.
+        Color.clear.frame(width: 7).overlay(model.themeColor(.border).frame(width: 1)).contentShape(Rectangle()).padding(.horizontal, -3).zIndex(1)
+            .onHover { inside in
+                guard inside != scratchpadCursorPushed else { return }
+                scratchpadCursorPushed = inside
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .onDisappear { if scratchpadCursorPushed { scratchpadCursorPushed = false; NSCursor.pop() } }
+            .gesture(
+                DragGesture(minimumDistance: 1).onChanged { value in
+                    let start = scratchpadDragStart ?? scratchpadWidth
+                    scratchpadDragStart = start
+                    scratchpadWidth = min(max(start - value.translation.width, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
+                }.onEnded { _ in scratchpadDragStart = nil }
+            )
+            .accessibilityElement().accessibilityLabel("Scratchpad width").accessibilityValue("\(Int(scratchpadWidth)) points")
+            .accessibilityAdjustableAction { direction in
+                let next = scratchpadWidth + (direction == .increment ? 20 : -20)
+                scratchpadWidth = min(max(next, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
+            }
     }
 
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
@@ -347,7 +385,7 @@ public struct WorkspaceRootView: View {
         let shownOffer = hoveredTabID == tab.id || selected ? offer : nil
         let parts: [String] = [
             descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : "",
-            offer.map { "workspace \($0.name) available" } ?? ""
+            offer.map { WorkspaceAccessibility.projectOfferText($0.name) } ?? ""
         ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
         let label = HStack(spacing: 8) {
@@ -359,6 +397,11 @@ public struct WorkspaceRootView: View {
                     .accessibilityLabel("Tab name")
                     .accessibilityHint("Return saves, Escape cancels")
                     .onAppear { tabNameFocused = true }
+                    .onChange(of: model.tabRenameFocusRequest) { _, _ in
+                        // The palette's AppKit field took focus without SwiftUI noticing, so `true` alone may change nothing.
+                        tabNameFocused = false
+                        DispatchQueue.main.async { tabNameFocused = true }
+                    }
                     .onSubmit { commitTabRename(tab.id) }
                     .onExitCommand {
                         Task { await model.finishTabRename(tab.id, draft: model.tabRenameDraft, action: .cancel) }

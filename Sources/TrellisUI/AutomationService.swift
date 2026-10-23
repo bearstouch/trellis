@@ -786,7 +786,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
     @MainActor private func systemInfo(_ access: GrantAccess) -> JSONValue {
         .object([
             "apiVersion": .number(1), "instanceId": .string(instanceID.uuidString),
-            "appVersion": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"),
+            "appVersion": .string(AppVersion.bundled ?? "development"),
             "capabilities": .array(access.grant.capabilities.sorted().map { .string($0.rawValue) }),
             "limits": .object(["maxFrameBytes": .number(Double(ControlFramer.maximumFrame)), "maxPanes": .number(100), "maxNesting": .number(16)])
         ])

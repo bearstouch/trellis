@@ -23,6 +23,9 @@ public struct LaunchFile: Equatable, Sendable {
 
     public func task(named name: String) -> LaunchTask? { tasks.first { $0.name == name } }
 
+    /// Why `name` can't name a task, or nil.
+    public static func taskNameProblem(_ name: String) -> String? { ProjectFile.textProblem(name, limit: 100).map { "The task name " + $0 } }
+
     /// The variables `task` runs with, sorted by name so the typed line is stable (FR-TK09).
     public func environment(for task: LaunchTask) -> [(name: String, value: String)] {
         env.merging(task.env) { $1 }.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }

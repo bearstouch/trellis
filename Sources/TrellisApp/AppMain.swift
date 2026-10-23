@@ -84,6 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         model.openHosts = { [weak self] in self?.showHosts() }
+        // FR-CP03, FR-CP07: palette actions are the menu's, validated and run the same way.
+        model.canPerformShortcutAction = { [weak self] in self?.validateShortcut($0) ?? false }
+        model.performShortcutAction = { [weak self] in self?.perform($0) }
+        model.commandPaletteHosts = { [hosts] in hosts.hosts }
         model.resolveHost = { [hosts] id in await hosts.host(id) }
         if let helper = Self.helperPath(AskpassBroker.helperName) {
             model.askpass = AskpassBroker(helperPath: helper)
@@ -131,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop() }
+    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles() }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
     static func helperPath(_ name: String) -> String? {
@@ -208,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.toggleSidebar, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -245,6 +249,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func performShortcut(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return }
+        perform(action)
+    }
+
+    private func perform(_ action: ShortcutAction) {
         // ⌘W/⌘⇧W close an auxiliary window (Settings) instead of workspace content.
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window {
             key.performClose(nil)
@@ -268,9 +276,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
         case .openProjectFile: openProjectFile()
-        case .findInPane: model.activeTerminal?.showSearch()
-        case .findNext: model.activeTerminal?.findInPane()
-        case .findPrevious: model.activeTerminal?.findInPane(forward: false)
+        case .findInPane: if !performTextFinderAction(.showFindInterface) { model.activeTerminal?.showSearch() }
+        case .findNext: if !performTextFinderAction(.nextMatch) { model.activeTerminal?.findInPane() }
+        case .findPrevious: if !performTextFinderAction(.previousMatch) { model.activeTerminal?.findInPane(forward: false) }
         case .previousPrompt: model.activeTerminal?.scrollToPrompt(forward: false)
         case .nextPrompt: model.activeTerminal?.scrollToPrompt(forward: true)
         case .clearPane: model.activeTerminal?.clear()
@@ -278,6 +286,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
         case .toggleSidebar: model.toggleSidebar()
+        case .toggleScratchpad: Task { await model.toggleScratchpad() }
+        case .commandPalette: model.toggleCommandPalette()
         case .splitLeftRight, .splitTopBottom:
             if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
         case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
@@ -297,13 +307,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    /// Find in a focused text view with its own find bar (the scratchpad editor) searches there, not in the pane.
+    private func performTextFinderAction(_ action: NSTextFinder.Action) -> Bool {
+        guard let text = window?.firstResponder as? NSTextView, text.usesFindBar, !text.isFieldEditor else { return false }
+        let sender = NSMenuItem()
+        sender.tag = action.rawValue
+        text.performTextFinderAction(sender)
+        return true
+    }
+
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
+        // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
+        if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if [.newWindow, .saveWorkspace, .showHosts, .openProjectFile, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if action == .openProjectFile { return !model.isRestoring && model.recoveryMessage == nil }
+        if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
+        if action == .commandPalette { return !model.isRestoring && model.recoveryMessage == nil }
+        if action == .toggleScratchpad { return !model.presentation.isEmpty }
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
@@ -335,6 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if menuItem.action == #selector(performShortcut(_:)) {
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
+            if action == .toggleScratchpad { menuItem.title = model.scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad" }
             return validateShortcut(action)
         }
         if menuItem.action == #selector(saveProjectFile) { return model.snapshot.activeWindowID != nil }
@@ -378,7 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Trellis",
             .applicationIcon: NSApp.applicationIconImage!,
-            .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
+            .applicationVersion: AppVersion.bundled ?? "Development",
             .version: "",
             NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "",
             .credits: credits
@@ -603,7 +628,7 @@ struct TrellisMain {
             } else {
                 directory = try ApplicationSupportLocation.prepare(
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
-                    bundleIdentifier: identity.identifier)
+                    bundleIdentifier: identity.identifier, isRunning: { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty })
             }
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
@@ -629,7 +654,7 @@ struct TrellisMain {
             let handler = AuthorizingControlHandler(
                 grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
-            let mcp = MCPServer(handler: handler, serverVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")
+            let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
             let forwarder = EventForwarder(hub: events, instanceID: instanceID)
             model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
             // Appearance is global; the hub gates it on theme.read, not window scope.

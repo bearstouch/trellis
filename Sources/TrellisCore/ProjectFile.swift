@@ -39,9 +39,11 @@ public struct ProjectFile: Equatable, Sendable {
         public let tab: Int, key: String, pane: Pane
     }
 
+    /// The document's `$schema`, kept so saving over the file doesn't drop the editor's validation.
+    public var schema: String?
     public var name: String
     public var tabs: [Tab]
-    public init(name: String, tabs: [Tab]) { self.name = name; self.tabs = tabs }
+    public init(schema: String? = nil, name: String, tabs: [Tab]) { self.schema = schema; self.name = name; self.tabs = tabs }
 
     /// Where a project file is written: always `project.json`.
     public static func url(projectRoot: String) -> URL { url(projectRoot: projectRoot, fileName: fileName) }
@@ -203,6 +205,15 @@ public struct ProjectFile: Equatable, Sendable {
             case .pane(let id):
                 paneIDs.append(id)
                 let title = snapshot.panes[id]?.title
+                // The format holds only local login shells; anything else reopens as one.
+                switch snapshot.panes[id].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
+                case .host?:
+                    warnings.append("“\(title ?? "Untitled pane")” is an SSH pane; project files hold only local shells, so it will open as a local shell.")
+                case .process(let executable, let arguments, _)? where arguments != ["-l"]:
+                    let program = URL(fileURLWithPath: executable).lastPathComponent
+                    warnings.append("“\(title ?? "Untitled pane")” runs \(program); project files hold only local shells, so it will open as a local shell.")
+                default: break
+                }
                 var relative: String?
                 if let path = directory(id).map({ URL(fileURLWithPath: $0).standardizedFileURL.path }) {
                     if path == projectRoot {

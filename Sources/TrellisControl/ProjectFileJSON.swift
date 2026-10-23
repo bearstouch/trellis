@@ -66,7 +66,7 @@ public enum ProjectFileJSON {
             return .failure(LayoutParseError(issues: issues))
         }
         guard root["version"] == .number(1) else { return .failure(LayoutParseError(issues: issues + [LayoutIssue(key: nil, "Only project file version 1 is supported.")])) }
-        if let schema = root["$schema"] { _ = string(schema, nil, "$schema") }
+        let schema = root["$schema"].flatMap { string($0, nil, "$schema") }
         let name = string(root["name"], nil, "name")
         guard case .array(let rawTabs)? = root["tabs"], !rawTabs.isEmpty else {
             return .failure(LayoutParseError(issues: issues + [LayoutIssue(key: nil, "tabs must be a non-empty array.")]))
@@ -85,7 +85,7 @@ public enum ProjectFileJSON {
             tabs.append(ProjectFile.Tab(key: key, title: title, color: color, root: root))
         }
         guard issues.isEmpty, let name else { return .failure(LayoutParseError(issues: issues)) }
-        let file = ProjectFile(name: name, tabs: tabs)
+        let file = ProjectFile(schema: schema, name: name, tabs: tabs)
         let semantic = file.issues
         return semantic.isEmpty ? .success(file) : .failure(LayoutParseError(issues: semantic))
     }
@@ -117,6 +117,7 @@ public enum ProjectFileJSON {
             fields.append(("root", encoded(tab.root)))
             return .object(fields)
         }
-        return StableJSON.render(.object([("version", .number(1)), ("name", .string(file.name)), ("tabs", .array(tabs))]))
+        let schema: [(String, StableJSON.Value)] = file.schema.map { [("$schema", .string($0))] } ?? []
+        return StableJSON.render(.object(schema + [("version", .number(1)), ("name", .string(file.name)), ("tabs", .array(tabs))]))
     }
 }
