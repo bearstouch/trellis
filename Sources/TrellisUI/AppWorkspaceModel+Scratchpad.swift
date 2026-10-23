@@ -70,7 +70,7 @@ extension AppWorkspaceModel {
     /// pane, like a task. A failed check stops it; a check that couldn't run doesn't.
     @discardableResult
     public func runScratchpad() async -> Bool {
-        guard let paneID = scratchpadPaneID else { return false }
+        guard let paneID = scratchpadPaneID, scratchpad.language.isRunnable else { return false }
         if let reason = taskAvailability(paneID: paneID).reason {
             errorMessage = reason
             return false
@@ -109,8 +109,13 @@ extension AppWorkspaceModel {
             return nil
         }
         guard let written = await writeScratchpadFile(document) else { return nil }
-        guard let task = await addTask(LaunchTask(name: name, command: command, group: group)) else {
+        // The catalog may have moved to another pane while saving; the task must go next to this script.
+        let sameProject = taskCatalog?.root == written.root
+        if !sameProject { errorMessage = "The project's tasks couldn't be read, so no task was added." }
+        guard sameProject, let task = await addTask(LaunchTask(name: name, command: command, group: group)) else {
             if let previous = written.previous { try? previous.write(to: written.url, options: .atomic) } else { try? FileManager.default.removeItem(at: written.url) }
+            // Folders made for this save go too, so a failed save doesn't turn the folder into a project.
+            for folder in written.created.reversed() { rmdir(folder.path) }
             return nil
         }
         await finishScratchpadSave(document, url: written.url)
@@ -127,8 +132,9 @@ extension AppWorkspaceModel {
         return true
     }
 
-    /// Writes `document` into the focused pane's project; `previous` is the replaced content, for undoing the write.
-    private func writeScratchpadFile(_ document: ScratchpadDocument) async -> (url: URL, previous: Data?)? {
+    /// Writes `document` into the focused pane's project; `previous` is the replaced content and `created` the folders
+    /// made for it, for undoing the write.
+    private func writeScratchpadFile(_ document: ScratchpadDocument) async -> (url: URL, root: String, previous: Data?, created: [URL])? {
         if let issue = document.issues.first {
             errorMessage = issue.message
             return nil
@@ -159,23 +165,25 @@ extension AppWorkspaceModel {
         }
         // Only a file this scratchpad saved or opened, and can read back for restoring, is replaced.
         let exists = manager.fileExists(atPath: url.path)
-        let previous = exists && scratchpadSavedPaths.contains(url.path) ? try? Data(contentsOf: url) : nil
+        let previous = exists && scratchpadSavedPaths.contains(url.path) ? (try? OwnerOnlyFile.read(url, limit: ScratchpadDocument.maximumBytes)) ?? nil : nil
         guard !exists || previous != nil else {
             errorMessage = "\(ScratchpadDocument.projectDirectory)/\(document.fileName) already exists. Rename the script to save it."
             return nil
         }
+        let created = [root.appendingPathComponent(ProjectFile.directoryName), folder].filter { !manager.fileExists(atPath: $0.path) }
         do {
             try manager.createDirectory(at: folder, withIntermediateDirectories: true)
             try Data(document.text.utf8).write(to: url, options: .atomic)
             // A repository file, like launch.json.
             try? manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
         } catch {
+            for folder in created.reversed() { rmdir(folder.path) }
             errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
             return nil
         }
         // A new `.trellis` made the folder a project; tasks are added to its launch.json.
         if taskCatalog?.root != rootPath { await refreshTaskCatalog(paneID: paneID) }
-        return (url, previous)
+        return (url, rootPath, previous, created)
     }
 
     private func finishScratchpadSave(_ document: ScratchpadDocument, url: URL) async {

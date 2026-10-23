@@ -183,6 +183,18 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertEqual(ScratchpadHighlighter.tokens(in: "a 😀 \"é\"", grammar: .shell).last?.range, NSRange(location: 5, length: 3), "UTF-16 offsets: the emoji counts as two")
     }
 
+    func testMarkdownHighlightingStaysLinearOnUnclosedMarkers() {
+        // Each unclosed `[`, `*`, `<` or backtick used to rescan the rest of its line: a 60 KB line took minutes.
+        let start = Date()
+        for marker in ["[", "*a ", "<", "a`", "_ ", "![x]"] {
+            let line = String(repeating: marker, count: 60_000 / marker.count)
+            for token in ScratchpadHighlighter.tokens(in: line, grammar: .markdown) { XCTAssertLessThanOrEqual(NSMaxRange(token.range), (line as NSString).length) }
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+        let tokens = ScratchpadHighlighter.tokens(in: "*a* [l](u) [x] <!-- c --> `c` **b**", grammar: .markdown)
+        XCTAssertEqual(tokens.map(\.range.location), [0, 4, 7, 15, 26, 30], "Reused searches still find each first match")
+    }
+
     // MARK: Validation
 
     private var folder: URL!
@@ -253,6 +265,22 @@ final class ScratchpadTests: XCTestCase {
         }
         XCTAssertEqual(hidden.outcome, .failed)
         XCTAssertEqual(hidden.issues.first?.line, 1)
+    }
+
+    func testChecksNeverInheritVariablesThatLoadCode() async throws {
+        XCTAssertEqual(
+            ScratchpadValidator.checkEnvironment(["PATH": "/bin", "BASH_ENV": "/tmp/x", "ENV": "/tmp/y", "NODE_OPTIONS": "--require /tmp/z", "NODE_PATH": "/tmp", "HOME": "/h"]),
+            ["PATH": "/bin", "HOME": "/h"])
+        try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: "/bin/bash"))
+        // A real bash -n with BASH_ENV set in the app would run the file it names.
+        let marker = folder.appendingPathComponent("ran").path
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "touch '\(marker)'\n".write(to: folder.appendingPathComponent("env.sh"), atomically: true, encoding: .utf8)
+        setenv("BASH_ENV", folder.appendingPathComponent("env.sh").path, 1)
+        defer { unsetenv("BASH_ENV") }
+        let result = await ScratchpadValidator.check(ScratchpadDocument(name: "x", language: .bash, text: "echo ok\n"), directory: folder, searchPath: ["/bin"])
+        XCTAssertEqual(result.outcome, .passed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker), "BASH_ENV wasn't run")
     }
 
     func testSearchPathAddsHomebrewAndSystemFoldersOnce() {

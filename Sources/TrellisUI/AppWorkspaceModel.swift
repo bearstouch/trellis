@@ -380,7 +380,7 @@ public final class AppWorkspaceModel: ObservableObject {
     var launchTrust: ProjectTrustList?
     /// How long after Stop the button offers Force Stop (FR-TK08).
     var taskStopEscalation: TimeInterval = 2
-    /// The command scratchpad (FR-SP01–FR-SP08): runtime only, never persisted or logged. Run and Save write the
+    /// The command scratchpad (FR-SP01–FR-SP10): runtime only, never persisted or logged. Run and Save write the
     /// buffer to a file; nothing else does.
     @Published public internal(set) var scratchpadVisible = false
     @Published public var scratchpad = ScratchpadDocument() {
@@ -391,7 +391,7 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var scratchpadChecking = false
     /// Bumped when the editor should take keyboard focus.
     @Published public internal(set) var scratchpadFocusRequest = 0
-    /// The buffer as it was last saved as a task, so the header can name its file and Clear knows what would be lost.
+    /// The buffer as it was last saved or opened, so the header can name its file and Clear knows what would be lost.
     @Published public internal(set) var scratchpadSaved: ScratchpadDocument?
     /// The focused pane's project's saved scratchpads (FR-SP10); nil when it has no project.
     @Published public internal(set) var scratchpadFiles: ScratchpadFileList?

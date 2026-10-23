@@ -278,13 +278,18 @@ public enum ScratchpadHighlighter {
 
     private static func markdownInline(_ u: [UInt16], from: Int, to end: Int) -> [ScratchpadToken] {
         var tokens: [ScratchpadToken] = [], i = from
+        // Searches start further along each time, so the last answer per target is reused while it still holds; without
+        // it a line of unclosed `[` or `*` takes quadratic time.
+        var found: [[UInt16]: (after: Int, at: Int?)] = [:]
         func find(_ target: [UInt16], after: Int) -> Int? {
-            var j = after
+            if let known = found[target], known.after <= after, known.at.map({ $0 >= after }) ?? true { return known.at }
+            var j = after, at: Int?
             while j + target.count <= end {
-                if Array(u[j..<(j + target.count)]) == target { return j }
+                if u[j..<(j + target.count)].elementsEqual(target) { at = j; break }
                 j += 1
             }
-            return nil
+            found[target] = (after, at)
+            return at
         }
         while i < end {
             let c = u[i]
@@ -301,7 +306,7 @@ public enum ScratchpadHighlighter {
                 }
                 continue
             }
-            if c == unit("<"), let open = find(Array("<!--".utf16), after: i), open == i, let close = find(Array("-->".utf16), after: i + 4) {
+            if c == unit("<"), i + 4 <= end, u[i..<(i + 4)].elementsEqual("<!--".utf16), let close = find(Array("-->".utf16), after: i + 4) {
                 tokens.append(ScratchpadToken(i, close + 3 - i, .comment))
                 i = close + 3
                 continue

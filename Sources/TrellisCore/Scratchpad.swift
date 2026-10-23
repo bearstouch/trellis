@@ -229,12 +229,19 @@ public enum ScratchpadValidator {
         }
     }
 
+    /// Variables that make a shell or node load and run code even when only checking syntax.
+    static let codeLoadingVariables: Set<String> = ["BASH_ENV", "ENV", "NODE_OPTIONS", "NODE_PATH"]
+
+    /// The app's environment without `codeLoadingVariables`, so a check never runs anything.
+    static func checkEnvironment(_ environment: [String: String]) -> [String: String] { environment.filter { !codeLoadingVariables.contains($0.key) } }
+
     public static let runProcess: ScratchpadProcessRunner = { executable, arguments, timeout in
         try await Task.detached(priority: .userInitiated) {
             let process = Process(), pipe = Pipe()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
             process.standardInput = FileHandle.nullDevice
+            process.environment = checkEnvironment(ProcessInfo.processInfo.environment)
             process.standardOutput = pipe
             process.standardError = pipe
             try process.run()

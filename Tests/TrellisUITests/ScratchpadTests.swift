@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 import TrellisControl
 import TrellisCore
@@ -195,6 +196,20 @@ final class ScratchpadTests: XCTestCase {
     }
 
     @MainActor
+    func testAFailedSaveRemovesTheScratchFolderItMade() async throws {
+        let (model, pane) = try await makeModel()
+        defer { cleanUp(model) }
+        try mark(model, pane, .promptStart(directory: project))
+        try FileManager.default.createDirectory(atPath: project + "/.trellis", withIntermediateDirectories: true)
+        try "{".write(toFile: project + "/.trellis/launch.json", atomically: true, encoding: .utf8)
+        model.scratchpad = ScratchpadDocument(language: .bash, text: "echo hi\n")
+        let task = await model.saveScratchpadAsTask(name: "hi", scriptName: "hi", group: nil)
+        XCTAssertNil(task)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/.trellis/scratch"), "Made for the save, removed with its script")
+        XCTAssertEqual(launchFile(), "{")
+    }
+
+    @MainActor
     func testSaveNeverReplacesAnUnreadableScriptAndCanReplaceEveryScriptItSaved() async throws {
         let (model, pane) = try await makeModel()
         defer { cleanUp(model) }
@@ -249,6 +264,36 @@ final class ScratchpadTests: XCTestCase {
         textView.selectedRanges = clamp(selection, 0).map { NSValue(range: $0) }
         XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
     }
+
+    @MainActor
+    func testUndoAfterClearOrOpenNeverReachesIntoTheOldText() throws {
+        // Typing's undo steps named ranges past the end of the new, shorter text: ⌘Z after Clear raised.
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        let textView = ScratchpadTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.allowsUndo = true
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        let box = TextBox()
+        let editor = {
+            ScratchpadEditor(
+                text: Binding(get: { box.text }, set: { box.text = $0 }), language: .bash, font: .systemFont(ofSize: 12), palette: .builtIn, issueLines: [], focusRequest: 0,
+                commands: ScratchpadEditorCommands())
+        }
+        let coordinator = ScratchpadEditor.Coordinator(editor())
+        coordinator.textView = textView
+        textView.delegate = coordinator
+        coordinator.apply(editor(), force: true)
+        textView.insertText("echo a longer command line", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(box.text, "echo a longer command line")
+        box.text = "x"
+        coordinator.apply(editor(), force: false)
+        let undo = try XCTUnwrap(textView.undoManager)
+        if undo.canUndo { undo.undo() }
+        XCTAssertEqual(textView.string, "x")
+    }
+
+    private final class TextBox: @unchecked Sendable { var text = "" }
 
     @MainActor
     func testSaveAndRunOfAnUntrustedFileAsksForReview() async throws {
@@ -365,6 +410,7 @@ final class ScratchpadTests: XCTestCase {
         let ran = await model.runScratchpad()
         XCTAssertFalse(ran)
         XCTAssertEqual(checks.count, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scratch.appendingPathComponent("run/untitled.md").path), "Notes are never written to run")
         let asTask = await model.saveScratchpadAsTask(name: "plan", group: nil)
         XCTAssertNil(asTask)
         let saved = await model.saveScratchpadFile(scriptName: "plan")

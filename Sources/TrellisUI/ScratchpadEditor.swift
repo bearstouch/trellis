@@ -96,6 +96,9 @@ struct ScratchpadEditor: NSViewRepresentable {
             var restyle = force
             if textView.string != editor.text {
                 let selection = textView.selectedRanges
+                // Typing's undo steps name ranges in the old text; undoing one after Clear or Open would raise.
+                if let storage = textView.textStorage { textView.undoManager?.removeAllActions(withTarget: storage) }
+                textView.breakUndoCoalescing()
                 textView.string = editor.text
                 // Clamped, never dropped: AppKit raises on an empty selection array, as after Clear or opening a shorter file.
                 textView.selectedRanges = Self.clamped(selection.map(\.rangeValue), length: (editor.text as NSString).length).map { NSValue(range: $0) }
@@ -115,7 +118,7 @@ struct ScratchpadEditor: NSViewRepresentable {
                 ruler?.style(font: editor.font, palette: editor.palette)
                 restyle = true
             }
-            if restyle { highlight() }
+            if restyle { highlight(); ruler?.needsDisplay = true }
             if ruler?.issueLines != editor.issueLines { ruler?.issueLines = editor.issueLines }
             if editor.focusRequest != focusRequest {
                 focusRequest = editor.focusRequest
@@ -213,7 +216,6 @@ final class ScratchpadLineRuler: NSRulerView {
         super.init(scrollView: nil, orientation: .verticalRuler)
         clientView = textView
         ruleThickness = 40
-        NotificationCenter.default.addObserver(self, selector: #selector(redraw), name: NSText.didChangeNotification, object: textView)
     }
 
     required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -222,8 +224,6 @@ final class ScratchpadLineRuler: NSRulerView {
     override var requiredThickness: CGFloat { ruleThickness }
     /// Only the numbers: the ruler's own background and edge line would frame the editor.
     override func draw(_ dirtyRect: NSRect) { drawHashMarksAndLabels(in: dirtyRect) }
-
-    @objc private func redraw() { needsDisplay = true }
 
     func style(font: NSFont, palette: TerminalPalette) {
         self.font = NSFont.monospacedDigitSystemFont(ofSize: max(9, font.pointSize - 2), weight: .regular)
