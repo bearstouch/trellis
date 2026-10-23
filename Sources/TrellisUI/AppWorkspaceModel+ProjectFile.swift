@@ -328,6 +328,10 @@ extension AppWorkspaceModel {
         }
     }
 
+    /// `paneDirectory` with symlinks resolved, comparable with a canonical project root: a shell's `$PWD` keeps the
+    /// logical path it was reached by.
+    func canonicalPaneDirectory(_ paneID: UUID) -> String? { paneDirectory(paneID).map(Self.canonical) }
+
     public func projectFileDraft(windowID: UUID, root: String) throws -> ProjectFileDraft {
         let root = Self.canonical(root)
         guard let window = snapshot.windows.first(where: { $0.id == windowID }) else { throw ProjectFileFailure("The window no longer exists.") }
@@ -346,7 +350,7 @@ extension AppWorkspaceModel {
             for entry in existing.entries { if let command = entry.pane.command, let id = bindings[entry.key]?.id { commands[id] = command } }
         }
         let exported = ProjectFile.export(
-            window: window, snapshot: snapshot, projectRoot: root, directory: paneDirectory, command: { self.projectFileCommands[$0] ?? commands[$0] },
+            window: window, snapshot: snapshot, projectRoot: root, directory: canonicalPaneDirectory, command: { self.projectFileCommands[$0] ?? commands[$0] },
             key: { keys[$0] })
         return ProjectFileDraft(
             windowID: windowID, root: root, file: exported.file, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
@@ -384,7 +388,7 @@ extension AppWorkspaceModel {
             return false
         }
         guard let window = snapshot.windows.first(where: { $0.id == draft.windowID }), let bindings = file.bindings(window: window, snapshot: snapshot),
-            ProjectFile.export(window: window, snapshot: snapshot, projectRoot: draft.root, directory: paneDirectory, command: { _ in nil }).paneIDs == draft.paneIDs
+            ProjectFile.export(window: window, snapshot: snapshot, projectRoot: draft.root, directory: canonicalPaneDirectory, command: { _ in nil }).paneIDs == draft.paneIDs
         else {
             errorMessage = "The window changed while saving. Nothing was written; try again."
             return false

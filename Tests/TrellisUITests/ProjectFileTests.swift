@@ -318,6 +318,28 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveThroughSymlinkedFolderKeepsPaneDirectories() async throws {
+        let link = scratch.appendingPathComponent("link").path
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: project)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Linked")
+        let windowID = try XCTUnwrap(created)
+        let first = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        let split = await model.splitPane(first, axis: .y)
+        let second = try XCTUnwrap(split)
+        try await waitFor { [first, second].allSatisfy { model.terminals[$0]?.sessionState == .running } }
+        // A shell's $PWD keeps the logical path through the link; the root is canonical.
+        try prompt(model, first, link + "/src")
+        try prompt(model, second, link)
+        let draft = try model.projectFileDraft(windowID: windowID, root: link)
+        XCTAssertEqual(draft.root, project)
+        XCTAssertEqual(draft.warnings, [])
+        XCTAssertEqual(draft.file.entries.map(\.pane.directory), ["src", nil])
+        XCTAssertTrue(model.writeProjectFile(draft))
+    }
+
+    @MainActor
     func testSaveFailureAndCorruptTrustLeaveEverythingAsItWas() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Save as Project** keeps each pane's folder when the project is reached through a symbolic link, instead of warning that every pane is outside the project; tasks no longer add a `cd` when the shell is already in the project through a link (FR-WF06, FR-TK05).
+
 ## [0.13.0] - 2026-10-23
 
 This release adds the command palette and the command scratchpad.

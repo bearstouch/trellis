@@ -140,7 +140,7 @@ extension AppWorkspaceModel {
         var environment: [(name: String, value: String)] = []
         if fromFile, case .loaded(let file) = catalog.file { environment = file.environment(for: task) }
         return TaskCommand.compose(
-            command: task.command, directory: task.directory(projectRoot: catalog.root), currentDirectory: currentDirectory(paneID: catalog.paneID),
+            command: task.command, directory: task.directory(projectRoot: catalog.root), currentDirectory: currentDirectory(paneID: catalog.paneID).map(Self.canonical),
             environment: environment, shell: shell.path, kind: shell.kind)
     }
 
@@ -197,7 +197,7 @@ extension AppWorkspaceModel {
         }
         guard
             let line = TaskCommand.compose(
-                command: task.command, directory: task.directory(projectRoot: root), currentDirectory: currentDirectory(paneID: paneID),
+                command: task.command, directory: task.directory(projectRoot: root), currentDirectory: currentDirectory(paneID: paneID).map(Self.canonical),
                 environment: file?.environment(for: task) ?? [], shell: shell.path, kind: shell.kind)
         else {
             errorMessage = "“\(task.name)” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long."
