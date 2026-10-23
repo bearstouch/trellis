@@ -34,6 +34,24 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertFalse(terminal.inputSuspended)
     }
 
+    func testClosingOverATabRenameGivesTheNameFieldItsFocusBack() async throws {
+        let model = try await makeModel()
+        let terminal = try XCTUnwrap(model.activeTerminal)
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        await model.beginTabRename(tab)
+        let request = model.tabRenameFocusRequest
+        model.openCommandPalette()
+        model.closeCommandPalette()
+        XCTAssertEqual(model.tabRenameFocusRequest, request + 1)
+        XCTAssertEqual(model.editingTabID, tab)
+        XCTAssertTrue(terminal.inputSuspended, "Keys still go to the name field")
+        await model.finishTabRename(tab, draft: "renamed", action: .commit)
+        XCTAssertFalse(terminal.inputSuspended)
+        model.openCommandPalette()
+        model.closeCommandPalette()
+        XCTAssertEqual(model.tabRenameFocusRequest, request + 1, "Without a rename, the terminal gets focus")
+    }
+
     func testRunningAnActionClosesFirstThenUsesTheMenuPathAndBecomesRecent() async throws {
         let model = try await makeModel()
         var performed: [ShortcutAction] = []

@@ -47,7 +47,11 @@ extension AppWorkspaceModel {
         terminals.values.forEach { $0.inputSuspended = editingTabID != nil }
         let previous = commandPaletteReturnFocus
         commandPaletteReturnFocus = nil
-        guard let previous, previous.window != nil else { return focusActiveTerminal() }
+        guard let previous, previous.window != nil else {
+            // A tab rename's field editor isn't kept as `previous`, and terminals stay suspended until it ends.
+            if editingTabID != nil { tabRenameFocusRequest &+= 1; return }
+            return focusActiveTerminal()
+        }
         let terminal = activeTerminal
         DispatchQueue.main.async {
             if let window = previous.window, !previous.isHiddenOrHasHiddenAncestor, window.makeFirstResponder(previous) { return }

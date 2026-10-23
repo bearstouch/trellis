@@ -343,6 +343,8 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public var windowRenameRequest: UUID?
     @Published public private(set) var editingTabID: UUID?
     @Published public var tabRenameDraft = ""
+    /// Bumped to give the tab name field its focus back (after the command palette closed over it).
+    @Published public internal(set) var tabRenameFocusRequest = 0
     @Published public private(set) var keyboard: KeyboardSettings
     @Published public private(set) var keyboardNotice: String?
     public var onKeyboardSettingsChanged: (() -> Void)?
