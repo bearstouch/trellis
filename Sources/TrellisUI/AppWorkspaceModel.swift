@@ -380,6 +380,27 @@ public final class AppWorkspaceModel: ObservableObject {
     var launchTrust: ProjectTrustList?
     /// How long after Stop the button offers Force Stop (FR-TK08).
     var taskStopEscalation: TimeInterval = 2
+    /// The command scratchpad (FR-SP01–FR-SP10): runtime only, never persisted or logged. Run and Save write the
+    /// buffer to a file; nothing else does.
+    @Published public internal(set) var scratchpadVisible = false
+    @Published public var scratchpad = ScratchpadDocument() {
+        // A check describes the text it ran on; any edit makes it stale.
+        didSet { if scratchpad.text != oldValue.text || scratchpad.language != oldValue.language { scratchpadCheck = nil } }
+    }
+    @Published public internal(set) var scratchpadCheck: ScratchpadCheck?
+    @Published public internal(set) var scratchpadChecking = false
+    /// Bumped when the editor should take keyboard focus.
+    @Published public internal(set) var scratchpadFocusRequest = 0
+    /// The buffer as it was last saved or opened, so the header can name its file and Clear knows what would be lost.
+    @Published public internal(set) var scratchpadSaved: ScratchpadDocument?
+    /// The focused pane's project's saved scratchpads (FR-SP10); nil when it has no project.
+    @Published public internal(set) var scratchpadFiles: ScratchpadFileList?
+    /// The project scripts the scratchpad saved, the only existing ones Save may replace.
+    var scratchpadSavedPaths: Set<String> = []
+    /// Where Run writes the buffer; the state directory's `scratch` folder unless a test injects one.
+    var scratchpadDirectory: URL?
+    /// Runs the syntax check; injected by tests.
+    public var scratchpadProcessRunner: ScratchpadProcessRunner = ScratchpadValidator.runProcess
     /// Opens launch.json in the user's editor; injected by tests.
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Returns the chosen project folder; injected by tests.

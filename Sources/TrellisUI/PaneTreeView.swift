@@ -77,7 +77,10 @@ struct PaneTreeView: View {
                         Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
                             .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
                     }
-                    if context.kind == "Local" { TaskDropdownButton(model: model, paneID: id) }
+                    if context.kind == "Local" {
+                        scratchpadButton(id, pressed: model.scratchpadVisible && focused)
+                        TaskDropdownButton(model: model, paneID: id)
+                    }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.
@@ -141,6 +144,22 @@ struct PaneTreeView: View {
         } else {
             model.terminalBackground
         }
+    }
+
+    /// Opens the scratchpad for this pane (FR-SP01); pressed in the pane it runs in while it is open.
+    private func scratchpadButton(_ id: UUID, pressed: Bool) -> some View {
+        let title = pressed ? "Hide Scratchpad" : "Scratchpad"
+        return Button {
+            Task { await model.toggleScratchpad(paneID: id) }
+        } label: {
+            Image(systemName: "chevron.left.forwardslash.chevron.right").frame(width: 20, height: 18)
+                .foregroundStyle(pressed ? model.themeColor(.accent) : model.themeColor(.mutedForeground))
+                .background(RoundedRectangle(cornerRadius: 4).fill(pressed ? model.themeColor(.accent).opacity(0.14) : .clear))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(pressed ? model.themeColor(.accent).opacity(0.4) : .clear))
+                .contentShape(Rectangle())
+        }
+        .help(model.keyboard.shortcuts[.toggleScratchpad].map { "\(title) (\($0))" } ?? title)
+        .accessibilityLabel("Scratchpad").accessibilityAddTraits(pressed ? [.isSelected] : [])
     }
 
     private func sessionContext(_ id: UUID) -> (directory: String?, kind: String) {

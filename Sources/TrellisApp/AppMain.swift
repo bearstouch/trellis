@@ -208,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.toggleSidebar, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -268,9 +268,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
         case .openProjectFile: openProjectFile()
-        case .findInPane: model.activeTerminal?.showSearch()
-        case .findNext: model.activeTerminal?.findInPane()
-        case .findPrevious: model.activeTerminal?.findInPane(forward: false)
+        case .findInPane: if !performTextFinderAction(.showFindInterface) { model.activeTerminal?.showSearch() }
+        case .findNext: if !performTextFinderAction(.nextMatch) { model.activeTerminal?.findInPane() }
+        case .findPrevious: if !performTextFinderAction(.previousMatch) { model.activeTerminal?.findInPane(forward: false) }
         case .previousPrompt: model.activeTerminal?.scrollToPrompt(forward: false)
         case .nextPrompt: model.activeTerminal?.scrollToPrompt(forward: true)
         case .clearPane: model.activeTerminal?.clear()
@@ -278,6 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
         case .toggleSidebar: model.toggleSidebar()
+        case .toggleScratchpad: Task { await model.toggleScratchpad() }
         case .splitLeftRight, .splitTopBottom:
             if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
         case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
@@ -297,6 +298,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    /// Find in a focused text view with its own find bar (the scratchpad editor) searches there, not in the pane.
+    private func performTextFinderAction(_ action: NSTextFinder.Action) -> Bool {
+        guard let text = window?.firstResponder as? NSTextView, text.usesFindBar, !text.isFieldEditor else { return false }
+        let sender = NSMenuItem()
+        sender.tag = action.rawValue
+        text.performTextFinderAction(sender)
+        return true
+    }
+
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
@@ -304,6 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
+        if action == .toggleScratchpad { return !model.presentation.isEmpty }
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
@@ -335,6 +346,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if menuItem.action == #selector(performShortcut(_:)) {
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
+            if action == .toggleScratchpad { menuItem.title = model.scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad" }
             return validateShortcut(action)
         }
         if menuItem.action == #selector(saveProjectFile) { return model.snapshot.activeWindowID != nil }
