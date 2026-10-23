@@ -155,6 +155,7 @@ extension AppWorkspaceModel {
     /// Reads and checks a project's file, then opens it at once when it has no commands or this exact version
     /// is trusted; otherwise it waits for review in `pendingProjectReview`.
     public func loadProjectFile(root: String) async {
+        guard projectFileCanOpen() else { return }
         let root = Self.canonical(root)
         let data: Data
         guard let url = Self.projectFileURL(root) else {
@@ -197,6 +198,13 @@ extension AppWorkspaceModel {
 
     public enum ProjectReviewDecision: Sendable { case cancel, openWithoutCommands, trustAndOpen }
 
+    /// A project opens only into a usable workspace: not while it is restoring or showing recovery.
+    private func projectFileCanOpen() -> Bool {
+        guard isRestoring || recoveryMessage != nil || shuttingDown else { return true }
+        errorMessage = "The workspace isn't available yet, so the project wasn't opened. Try again once it has loaded."
+        return false
+    }
+
     public func resolveProjectReview(_ id: UUID, _ decision: ProjectReviewDecision) async {
         guard let review = pendingProjectReview, review.id == id else { return }
         pendingProjectReview = nil
@@ -204,6 +212,8 @@ extension AppWorkspaceModel {
         case .cancel: return
         case .openWithoutCommands: await openReviewedProjectFile(review, runCommands: false)
         case .trustAndOpen:
+            // Trust is recorded only when the window can open now; a later open would run the commands unreviewed.
+            guard projectFileCanOpen() else { return }
             do {
                 var list = try projectTrustList()
                 list.trust(root: review.root, digest: review.digest)

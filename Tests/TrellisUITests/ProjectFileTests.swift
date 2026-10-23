@@ -117,6 +117,22 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testNothingOpensOrIsTrustedWhileTheWorkspaceIsInRecovery() async throws {
+        _ = NSApplication.shared
+        let persistence = WorkspacePersistence(directory: scratch.appendingPathComponent("state"))
+        try Data("{\"schemaVersion\":999}".utf8).write(to: persistence.currentURL)
+        let model = AppWorkspaceModel(
+            store: try WorkspaceStore(), preferences: try XCTUnwrap(UserDefaults(suiteName: "trellis-wf-\(UUID().uuidString)")), persistence: persistence)
+        _ = await model.loadWorkspace()
+        XCTAssertNotNil(model.recoveryMessage)
+        try writeFile(layout(command: "echo WF-MARKER"))
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview)
+        XCTAssertTrue(model.errorMessage?.contains("isn't available") == true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scratch.appendingPathComponent("state/workspace-trust.json").path))
+    }
+
+    @MainActor
     func testUntrustedCommandsWaitForReviewAndOpenWithoutCommandsTypesNothing() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }

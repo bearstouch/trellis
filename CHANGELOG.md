@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Upgrading from `dev.trellis`** while the previous app is still running no longer shares its session broker, which left Keep Running sessions unable to start; after it has quit, kept sessions are still reattached (FR-R03).
 - **Command palette:** closing it while a tab is being renamed returns focus to the tab name field, instead of to a terminal whose input stays paused (FR-CP01).
 - **Scratchpad:** typing no longer re-renders the whole workspace (tab bar, sidebar and every pane header) on each keystroke; only the panel updates (FR-SP02).
+- **Open Project…** (⌘O) is disabled while the workspace is restoring or in recovery, and never records trust for a project it can't open (FR-WF06).
 
 ## [0.13.0] - 2026-10-23
 

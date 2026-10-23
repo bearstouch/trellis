@@ -321,7 +321,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
         if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if [.newWindow, .saveWorkspace, .showHosts, .openProjectFile, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if action == .openProjectFile { return !model.isRestoring && model.recoveryMessage == nil }
+        if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
