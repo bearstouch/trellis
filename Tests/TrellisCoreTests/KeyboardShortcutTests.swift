@@ -30,6 +30,8 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertEqual(map[.splitLeftRight], KeyChord("d"))
         XCTAssertEqual(map[.toggleSidebar], KeyChord("s", [.command, .control]))
         XCTAssertEqual(ShortcutAction.toggleSidebar.menu, .view)
+        XCTAssertEqual(map[.toggleScratchpad], KeyChord("e", [.command, .option]))
+        XCTAssertEqual(ShortcutAction.toggleScratchpad.menu, .view)
         XCTAssertEqual(map[.splitTopBottom], KeyChord("d", [.command, .shift]))
         XCTAssertEqual(map[.findInPane], KeyChord("f"))
         XCTAssertEqual(map[.focusLeft], KeyChord("left", [.command, .option]))

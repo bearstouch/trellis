@@ -7,6 +7,12 @@ import class SwiftTerm.TerminalView
 public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
     @State private var windowToRename: ManagedWindow?
+    /// The scratchpad's width; layout only, never persisted.
+    @State private var scratchpadWidth: CGFloat = 380
+    @State private var scratchpadDragStart: CGFloat?
+    /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
+    @State private var scratchpadCursorPushed = false
+    static let scratchpadWidths: ClosedRange<CGFloat> = 280...640
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var hoveredTabID: UUID?
@@ -332,9 +338,38 @@ public struct WorkspaceRootView: View {
                     .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
                 Divider().overlay(model.separatorOverlay)
-                terminalCanvas
+                HStack(spacing: 0) {
+                    terminalCanvas
+                    if model.scratchpadVisible {
+                        scratchpadResizeHandle
+                        ScratchpadPanel(model: model).frame(width: scratchpadWidth)
+                    }
+                }
             }
         }
+    }
+
+    /// Drag to resize the scratchpad; the canvas takes the rest, so split minimums follow (FR-SP01).
+    private var scratchpadResizeHandle: some View {
+        model.themeColor(.border).frame(width: 1).padding(.horizontal, 2).contentShape(Rectangle())
+            .onHover { inside in
+                guard inside != scratchpadCursorPushed else { return }
+                scratchpadCursorPushed = inside
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .onDisappear { if scratchpadCursorPushed { scratchpadCursorPushed = false; NSCursor.pop() } }
+            .gesture(
+                DragGesture(minimumDistance: 1).onChanged { value in
+                    let start = scratchpadDragStart ?? scratchpadWidth
+                    scratchpadDragStart = start
+                    scratchpadWidth = min(max(start - value.translation.width, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
+                }.onEnded { _ in scratchpadDragStart = nil }
+            )
+            .accessibilityElement().accessibilityLabel("Scratchpad width").accessibilityValue("\(Int(scratchpadWidth)) points")
+            .accessibilityAdjustableAction { direction in
+                let next = scratchpadWidth + (direction == .increment ? 20 : -20)
+                scratchpadWidth = min(max(next, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
+            }
     }
 
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
