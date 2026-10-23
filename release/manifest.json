@@ -1,7 +1,7 @@
 {
   "bundleIdentifier": "com.bearstouch.trellis",
   "name": "Trellis",
-  "version": "0.13.0",
+  "version": "1.0.0-beta.1",
   "minimumMacOS": "14.0",
   "architectures": ["arm64", "x86_64"],
   "packageFormat": "dmg",
