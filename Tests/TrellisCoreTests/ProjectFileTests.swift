@@ -104,6 +104,19 @@ final class ProjectFileTests: XCTestCase {
         XCTAssertEqual(sibling.warnings.count, 3)
     }
 
+    func testExportWarnsForPanesThatReopenAsLocalShells() throws {
+        var (snapshot, window, panes) = snapshot()
+        let sessions = panes.compactMap { snapshot.panes[$0]?.sessionID }
+        snapshot.sessions[sessions[0]] = WorkspaceSession(id: sessions[0], launch: .host(UUID()))
+        snapshot.sessions[sessions[1]] = WorkspaceSession(id: sessions[1], launch: .process(executable: "/usr/bin/htop", arguments: [], directory: "/p"))
+        snapshot.sessions[sessions[2]] = WorkspaceSession(id: sessions[2], launch: .process(executable: "/bin/zsh", arguments: ["-l"], directory: "/p"))
+        let exported = ProjectFile.export(window: window, snapshot: snapshot, projectRoot: "/p", directory: { _ in "/p" }, command: { _ in nil })
+        XCTAssertEqual(exported.warnings.count, 2, "The login shell is what the file holds")
+        XCTAssertTrue(exported.warnings[0].contains("“Editor” is an SSH pane"))
+        XCTAssertTrue(exported.warnings[1].contains("runs htop"))
+        XCTAssertEqual(exported.file.entries.count, 3, "The layout is still saved")
+    }
+
     func testBindingsMatchTheWindowShapeOnly() throws {
         let (snapshot, window, panes) = snapshot()
         let file = ProjectFile.export(window: window, snapshot: snapshot, projectRoot: "/p", directory: { _ in nil }, command: { _ in nil }).file
