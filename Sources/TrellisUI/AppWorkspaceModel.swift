@@ -385,9 +385,16 @@ public final class AppWorkspaceModel: ObservableObject {
     /// The command scratchpad (FR-SP01–FR-SP10): runtime only, never persisted or logged. Run and Save write the
     /// buffer to a file; nothing else does.
     @Published public internal(set) var scratchpadVisible = false
-    @Published public var scratchpad = ScratchpadDocument() {
-        // A check describes the text it ran on; any edit makes it stale.
-        didSet { if scratchpad.text != oldValue.text || scratchpad.language != oldValue.language { scratchpadCheck = nil } }
+    /// Published apart from the model, so typing re-renders only the scratchpad panel, not every workspace view.
+    public let scratchpadBuffer = ScratchpadBuffer()
+    public var scratchpad: ScratchpadDocument {
+        get { scratchpadBuffer.document }
+        set {
+            let old = scratchpadBuffer.document
+            scratchpadBuffer.document = newValue
+            // A check describes the text it ran on; any edit makes it stale.
+            if (newValue.text != old.text || newValue.language != old.language) && scratchpadCheck != nil { scratchpadCheck = nil }
+        }
     }
     @Published public internal(set) var scratchpadCheck: ScratchpadCheck?
     @Published public internal(set) var scratchpadChecking = false

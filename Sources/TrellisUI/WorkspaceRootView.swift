@@ -344,7 +344,7 @@ public struct WorkspaceRootView: View {
                     terminalCanvas
                     if model.scratchpadVisible {
                         scratchpadResizeHandle
-                        ScratchpadPanel(model: model).frame(width: scratchpadWidth)
+                        ScratchpadPanel(model: model, buffer: model.scratchpadBuffer).frame(width: scratchpadWidth)
                     }
                 }
             }

@@ -13,6 +13,12 @@ public struct ScratchpadFileList: Equatable, Sendable {
 
 /// The command scratchpad (FR-SP01–FR-SP10): write a script beside the panes, check it, run it in the focused pane or
 /// save it as a project task.
+/// The scratchpad's buffer (FR-SP01), observed by its panel alone.
+@MainActor
+public final class ScratchpadBuffer: ObservableObject {
+    @Published public internal(set) var document = ScratchpadDocument()
+}
+
 extension AppWorkspaceModel {
     /// The pane Run types into: the focused one.
     public var scratchpadPaneID: UUID? { presentation.activePane?.id }

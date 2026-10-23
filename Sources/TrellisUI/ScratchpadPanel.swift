@@ -6,6 +6,8 @@ import TrellisCore
 /// tooltips and labels say what they do and, when disabled, why.
 struct ScratchpadPanel: View {
     @ObservedObject var model: AppWorkspaceModel
+    /// Typing publishes here, not on `model`; `model.scratchpad` reads it.
+    @ObservedObject var buffer: ScratchpadBuffer
     @State private var saveDraft: SaveDraft?
     /// What would replace a buffer with unsaved changes, waiting for confirmation.
     @State private var pendingDiscard: Discard?

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import XCTest
 import TrellisControl
@@ -247,6 +248,24 @@ final class ScratchpadTests: XCTestCase {
         XCTAssertTrue(ScratchpadEditor.allowsChange(of: full, in: NSRange(location: 0, length: 2), to: "é"), "Replacing two bytes with two")
         let over = String(repeating: "x", count: limit + 10)
         XCTAssertTrue(ScratchpadEditor.allowsChange(of: over, in: NSRange(location: 0, length: 1), to: ""), "Deleting from an oversized buffer")
+    }
+
+    @MainActor
+    func testTypingPublishesOnTheBufferAloneAndStillStalesACheck() async throws {
+        let (model, _) = try await makeModel()
+        defer { cleanUp(model) }
+        var modelChanges = 0, bufferChanges = 0
+        let watchers = [model.objectWillChange.sink { modelChanges += 1 }, model.scratchpadBuffer.objectWillChange.sink { bufferChanges += 1 }]
+        model.scratchpad.text = "echo hi"
+        model.scratchpad.text += "!"
+        XCTAssertEqual(modelChanges, 0, "Workspace views don't re-render per keystroke")
+        XCTAssertEqual(bufferChanges, 2)
+        XCTAssertEqual(model.scratchpadBuffer.document.text, "echo hi!")
+        await model.validateScratchpad()
+        XCTAssertNotNil(model.scratchpadCheck)
+        model.scratchpad.text += "\n"
+        XCTAssertNil(model.scratchpadCheck, "An edit makes the check stale")
+        withExtendedLifetime(watchers) {}
     }
 
     func testRulerNumbersLinesByNewlineFromTheStartOfAWrappedLine() {
