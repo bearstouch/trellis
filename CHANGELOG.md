@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-23
+
+This release adds the command palette and the command scratchpad.
+
 ### Added
 
 - **Command palette:** **View → Command Palette…** (⇧⌘P, rebindable) opens a searchable list over the workspace of every enabled action with its shortcut, every window, tab and pane, saved hosts, the focused pane's tasks and the installed themes; Return runs the selected row through its menu path (FR-CP01–FR-CP07).
@@ -304,7 +308,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/bearstouch/trellis/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/bearstouch/trellis/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bearstouch/trellis/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/bearstouch/trellis/compare/v0.10.0...v0.11.0
