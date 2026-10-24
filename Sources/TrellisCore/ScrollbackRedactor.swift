@@ -45,8 +45,13 @@ public enum ScrollbackRedactor {
         Rule("\\bAIza[0-9A-Za-z_-]{35}\\b", needles: ["aiza"]),
         Rule("\\bnpm_[A-Za-z0-9]{36}\\b", needles: ["npm_"]),
         Rule("\\beyJ[A-Za-z0-9_-]{8,}\\.eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\b", needles: ["eyj"]),
-        // name=value, name: value, "name": "value" (env lines, YAML, JSON, `--flag=value`).
-        Rule("(?i)((?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]{0,32}\(keyword)[A-Za-z0-9_.-]{0,32}[\"']?[ \\t]*[:=][ \\t]*[\"']?)([^\\s\"',;]+)", group: 2, needles: keywordNeedles),
+        // name="value", name: 'value', "name": "value" (env lines, YAML, JSON): everything up to the closing quote,
+        // so a quoted secret with spaces, commas or semicolons is hidden whole.
+        Rule(
+            "(?i)((?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]{0,32}\(keyword)[A-Za-z0-9_.-]{0,32}[\"']?[ \\t]*[:=][ \\t]*)([\"'])((?:(?!\\2)[^\\r\\n])+)", group: 3,
+            needles: keywordNeedles),
+        // name=value, name: value, `--flag=value` unquoted: up to whitespace, which hides more rather than less.
+        Rule("(?i)((?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]{0,32}\(keyword)[A-Za-z0-9_.-]{0,32}[\"']?[ \\t]*[:=][ \\t]*)([^\\s\"'][^\\s]*)", group: 2, needles: keywordNeedles),
         // --password value, -p is too ambiguous to touch.
         Rule("(?i)(--?\(keyword)[ \\t]+)([^\\s-][^\\s]*)", group: 2, needles: keywordNeedles),
         // Text after a password-style prompt on the same line; echo is normally off, so this is a fallback.
