@@ -57,4 +57,24 @@ final class BrokerSessionClientReviewTests: XCTestCase {
         let listing = await client.existingSessions()
         XCTAssertNil(listing)
     }
+
+    func testABrokerFromAnotherHelperPathIsNeverReplaced() async throws {
+        let launcher = try makeLauncher()
+        let socket = try launcher.spawn()
+        launcher.publish(socketPath: socket)
+        // The same helper at another path, as after moving the app or App Translocation.
+        let moved = launcher.stateDirectory.deletingLastPathComponent().appendingPathComponent("moved-\(UUID())")
+        try FileManager.default.createDirectory(at: moved, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: moved) }
+        let copy = moved.appendingPathComponent(BrokerProtocol.helperName).path
+        try FileManager.default.copyItem(atPath: launcher.helperPath, toPath: copy)
+        let elsewhere = BrokerLauncher(stateDirectory: launcher.stateDirectory, helperPath: copy, clientPath: try XCTUnwrap(BrokerLauncher.currentExecutable()), idleExit: 2)
+
+        let client = BrokerSessionClient(launcher: elsewhere)
+        let ready = await client.prepare()
+        XCTAssertFalse(ready, "A live broker we can't verify is not used, and no second broker is started")
+        XCTAssertEqual(launcher.discovery()?.socketPath, socket, "broker.json still names the live broker, so its sessions stay reachable")
+        let listing = await client.existingSessions()
+        XCTAssertNil(listing)
+    }
 }

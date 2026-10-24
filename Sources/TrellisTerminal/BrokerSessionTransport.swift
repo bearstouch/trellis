@@ -237,9 +237,11 @@ public final class BrokerSessionClient: SessionBrokerClient {
         switch attempt {
         case .success(let connected): connection = connected
         case .failure(let error):
-            // Nothing answers: the broker exited. An answering but unexpected peer is left alone.
-            if error == .unavailable { launcher.removeDiscovery() }
-            return .none
+            // Nothing answers: the broker exited, so another may start.
+            guard error != .unavailable else { launcher.removeDiscovery(); return .none }
+            // An answering peer that isn't our helper (the app moved or was translocated since it started) may hold
+            // kept sessions: it is left alone like a busy broker, never replaced, until it exits by itself.
+            return .busy
         }
         do { try await connection.hello() } catch {
             return (error as? BrokerClientError) == .incompatible ? .incompatible : .busy
