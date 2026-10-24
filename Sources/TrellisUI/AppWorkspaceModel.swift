@@ -732,6 +732,8 @@ public final class AppWorkspaceModel: ObservableObject {
             publish(result.snapshot)
             guard case .start(let request) = result.effects.first else { return }
             guard !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
+                // The terminal mirrors the store's Failed, so a cancelled quit or close leaves a restartable pane.
+                if terminals[paneID] === terminal { terminal.refuseLaunch(message: "Session launch was cancelled.") }
                 publish(
                     try await service.execute(
                         .completeLaunch(
@@ -764,8 +766,9 @@ public final class AppWorkspaceModel: ObservableObject {
                     else {
                         let message = host == nil ? "This saved host is no longer available." : "Session launch was cancelled."
                         // The pane must show Failed (with Reconnect), not a startable stopped pane.
-                        if host == nil, terminals[paneID] === terminal {
-                            terminal.refuseLaunch(message: "This saved host was deleted or the host library could not be read. Close this pane or connect to another host.")
+                        if terminals[paneID] === terminal {
+                            terminal.refuseLaunch(
+                                message: host == nil ? "This saved host was deleted or the host library could not be read. Close this pane or connect to another host." : message)
                         }
                         publish(
                             try await service.execute(
@@ -792,6 +795,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     let ready = await sessionBroker.prepare()
                     guard terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
                         if let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
+                        if terminals[paneID] === terminal { terminal.refuseLaunch(message: "Session launch was cancelled.") }
                         publish(
                             try await service.execute(
                                 .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: "Session launch was cancelled."))
