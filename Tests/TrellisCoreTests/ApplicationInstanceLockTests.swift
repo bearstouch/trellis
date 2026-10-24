@@ -91,6 +91,29 @@ final class AppInstanceIdentityTests: XCTestCase {
         }
     }
 
+    func testOneAppPerWorkspaceFolderHoweverItsPathIsSpelled() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lock-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("state", isDirectory: true)
+        guard case .acquired(let first) = try ApplicationInstanceLock.acquire(stateDirectory: folder) else { return XCTFail("First launch must lock") }
+        let attributes = try FileManager.default.attributesOfItem(atPath: folder.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o700)
+        let link = root.appendingPathComponent("link", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+        try withExtendedLifetime(first) {
+            for spelling in [folder, link, root.appendingPathComponent("./state/", isDirectory: true)] {
+                guard case .alreadyRunning(let pid) = try ApplicationInstanceLock.acquire(stateDirectory: spelling) else {
+                    return XCTFail("\(spelling.path) must not get a second writer")
+                }
+                XCTAssertEqual(pid, getpid())
+            }
+        }
+        // The hand-off key follows links too.
+        XCTAssertEqual(
+            AppInstanceIdentity(bundleIdentifier: nil, stateDirectory: link).activationNotification,
+            AppInstanceIdentity(bundleIdentifier: nil, stateDirectory: folder).activationNotification)
+    }
+
     func testFixtureLaunchesUseAFreshWorkspaceUnlessOneIsGiven() {
         let tmp = URL(fileURLWithPath: "/tmp", isDirectory: true)
         XCTAssertNil(LaunchStateDirectory.resolve(arguments: ["Trellis"], temporaryDirectory: tmp), "A normal launch uses Application Support")

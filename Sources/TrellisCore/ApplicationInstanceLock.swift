@@ -12,6 +12,15 @@ public final class ApplicationInstanceLock {
         case alreadyRunning(pid_t?)
     }
 
+    public static let workspaceLockName = "instance.lock"
+
+    /// One app per workspace folder however its path is spelled (a link, `/tmp` vs `/private/tmp`, or the default
+    /// folder passed as `--state-directory`): the lock lives in the folder itself, created owner-only if missing.
+    public static func acquire(stateDirectory: URL) throws -> Acquisition {
+        try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        return try acquire(at: stateDirectory.appendingPathComponent(workspaceLockName))
+    }
+
     public static func acquire(at url: URL) throws -> Acquisition {
         let fd = open(url.path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0o600)
         guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }

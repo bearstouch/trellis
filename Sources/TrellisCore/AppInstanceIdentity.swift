@@ -11,12 +11,14 @@ public struct AppInstanceIdentity: Equatable, Sendable {
     /// Identities used before the move to the Bearstouch identifier; their data migrates once.
     public static let legacyProduction = "dev.trellis"
     public let identifier: String
-    /// The standardized `--state-directory`, when one was given.
+    /// The standardized `--state-directory` with links resolved, when one was given. The folder's own lock
+    /// (`ApplicationInstanceLock.acquire(stateDirectory:)`) is what keeps a single writer; this only picks which
+    /// running instance a launch hands off to.
     public let stateDirectory: String?
     /// An unbundled executable has no bundle identifier and is always a development build.
     public init(bundleIdentifier: String?, stateDirectory: URL? = nil) {
         identifier = bundleIdentifier ?? Self.development
-        self.stateDirectory = stateDirectory?.standardizedFileURL.path
+        self.stateDirectory = stateDirectory?.resolvingSymlinksInPath().standardizedFileURL.path
     }
     /// Names the instance's lock and activation notification.
     private var instanceKey: String {

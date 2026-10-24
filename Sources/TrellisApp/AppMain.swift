@@ -632,6 +632,15 @@ struct TrellisMain {
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
                     bundleIdentifier: identity.identifier, isRunning: { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty })
             }
+            // A single writer per workspace folder, whatever path or lock key led here.
+            let workspaceLock: ApplicationInstanceLock
+            switch try ApplicationInstanceLock.acquire(stateDirectory: directory) {
+            case .acquired(let lock): workspaceLock = lock
+            case .alreadyRunning(let pid):
+                if let pid { NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows]) }
+                return
+            }
+            defer { withExtendedLifetime(workspaceLock) {} }
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))

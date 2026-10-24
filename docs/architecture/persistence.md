@@ -12,6 +12,7 @@ All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.
 | `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each project's [project file](../features/project-files.md) window (namespace `workspace-file:<folder>`) | An unreadable file is preserved |
 | `workspace-trust.json` | Trusted project files as (canonical project folder, SHA-256 digest) pairs, and folders never to offer (FR-WF03); never the commands | `0600`. An unreadable file trusts nothing and is never overwritten. |
 | `control.json` | Discovery for the running control socket | Rewritten on every launch |
+| `instance.lock` | The running app's PID, under an exclusive `flock` held while it runs, so one app writes each folder however its path is given (a link, or the default folder passed as `--state-directory`); a second launch activates the first instead | `0600`; released on exit or crash |
 | `Themes/<id>.theme.json` | Custom themes | File names come only from validated IDs |
 | `Scrollback/<session-uuid>.txt` | Only with **Restore scrollback after quit** (FR-R04): a pane's redacted plain text | `0600` in a `0700` folder; see [below](#opt-in-scrollback-file) |
 | `broker.json` | Only after a session was kept running (FR-R03): `{protocolVersion, socketPath}` of this folder's `trellis-broker` | `0600`, read without following symlinks; no token or PID |
