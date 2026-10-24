@@ -72,6 +72,9 @@ public final class BrokerSessionTransport: TerminalProcessTransport, BrokerSessi
     private var heldBytes = 0
     private var heldExit: Int32??
     private var exitReported = false
+    /// Set while a spawn or attach reply is outstanding: its process can exit in the same read as the reply.
+    private var awaitingStart = false
+    private var ended = false
     private var replay = Data()
 
     init(sessionID: UUID, connection: BrokerConnection, delivering: Bool) {
@@ -86,6 +89,8 @@ public final class BrokerSessionTransport: TerminalProcessTransport, BrokerSessi
             sessionID: sessionID, executable: configuration.executable, arguments: [configuration.executable] + configuration.arguments,
             environment: configuration.environmentArray, directory: configuration.directory, columns: UInt16(size.columns), rows: UInt16(size.rows))
         let reply: BrokerMessage
+        awaitingStart = true
+        defer { awaitingStart = false }
         do { reply = try await connection.request(.spawn(request)) } catch {
             connection.unregister(sessionID: sessionID)
             throw LocalLaunchError.spawnFailed(EIO)
@@ -95,7 +100,8 @@ public final class BrokerSessionTransport: TerminalProcessTransport, BrokerSessi
             if case .failed(_, let code) = reply, code != 0 { throw LocalLaunchError.spawnFailed(code) }
             throw LocalLaunchError.spawnFailed(EIO)
         }
-        isRunning = true
+        // An exit handled before this resumed was already reported; the controller applies it once started.
+        isRunning = !ended
         return pid
     }
 
@@ -104,11 +110,13 @@ public final class BrokerSessionTransport: TerminalProcessTransport, BrokerSessi
         guard !used else { return nil }
         used = true
         connection.register(self, sessionID: sessionID)
+        awaitingStart = true
+        defer { awaitingStart = false }
         guard case .attached(let attachment)? = try? await connection.request(.attach(sessionID: sessionID, columns: UInt16(size.columns), rows: UInt16(size.rows))) else {
             connection.unregister(sessionID: sessionID)
             return nil
         }
-        isRunning = attachment.record.running
+        isRunning = attachment.record.running && !ended
         passwordPromptActive = attachment.passwordPrompt
         defer { replay = Data() }
         return (attachment, replay)
@@ -159,8 +167,8 @@ public final class BrokerSessionTransport: TerminalProcessTransport, BrokerSessi
     }
 
     public func brokerExited(waitStatus: Int32) {
-        guard isRunning else { return }
-        isRunning = false
+        guard isRunning || awaitingStart, !ended else { return }
+        ended = true; isRunning = false
         connection.post(.release(sessionID: sessionID))
         let code = BrokerSessionRecord.exitCode(waitStatus)
         if delivering { reportExit(code) } else { heldExit = .some(code) }

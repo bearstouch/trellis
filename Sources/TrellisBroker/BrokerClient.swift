@@ -50,7 +50,8 @@ public final class BrokerConnection {
         return BrokerConnection(fd: fd)
     }
 
-    private init(fd: Int32) {
+    /// Internal so tests can drive a connection over a socket pair.
+    init(fd: Int32) {
         io = DispatchIO(type: .stream, fileDescriptor: fd, queue: readQueue) { @Sendable _ in Darwin.close(fd) }
         io.setLimit(lowWater: 1)
         readNext(DecoderBox())
