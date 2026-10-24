@@ -10,6 +10,8 @@ public protocol BrokerSessionSink: AnyObject {
     func brokerExited(waitStatus: Int32)
     func brokerPrompt(_ active: Bool)
     func brokerDisconnected()
+    /// The broker refused input over its per-session limit.
+    func brokerInputRejected()
 }
 
 public enum BrokerClientError: Error, Equatable, Sendable {
@@ -87,7 +89,11 @@ public final class BrokerConnection {
     }
 
     public func sendInput(_ data: Data, sessionID: UUID) throws {
-        for frame in BrokerFrame.stream(.input, sessionID: sessionID, bytes: data) { try send(frame) }
+        let frames = BrokerFrame.stream(.input, sessionID: sessionID, bytes: data)
+        // All or nothing: a send that can't fit whole never delivers its first chunks.
+        guard isOpen else { throw BrokerClientError.closed }
+        guard outbox + frames.reduce(0, { $0 + $1.encoded.count }) <= Self.outboxLimit else { throw BrokerClientError.queueFull }
+        for frame in frames { try send(frame) }
     }
 
     /// Ends every session of a broker this app can't otherwise talk to, whatever its protocol version.
@@ -146,6 +152,7 @@ public final class BrokerConnection {
                 switch envelope.message {
                 case .exited(let id, let status): sinks[id]?.sink?.brokerExited(waitStatus: status)
                 case .prompt(let id, let active): sinks[id]?.sink?.brokerPrompt(active)
+                case .inputRejected(let id): sinks[id]?.sink?.brokerInputRejected()
                 case .refused: close()
                 default: break
                 }

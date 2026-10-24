@@ -180,6 +180,10 @@ public final class BrokerSessionTransport: TerminalProcessTransport, BrokerSessi
         if delivering { onPasswordPromptChanged?(active) }
     }
 
+    public func brokerInputRejected() {
+        if delivering { onInputError?(TerminalAdapterError.inputQueueFull) }
+    }
+
     /// The broker went away (a crash ends its sessions). A kept session is left to the next launch.
     public func brokerDisconnected() {
         guard isRunning, !kept else { return }

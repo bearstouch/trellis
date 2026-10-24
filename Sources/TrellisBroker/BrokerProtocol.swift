@@ -147,6 +147,9 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     case ok
     case exited(sessionID: UUID, waitStatus: Int32)
     case prompt(sessionID: UUID, active: Bool)
+    /// Input was refused because the session already holds `inputLimit` unwritten bytes; nothing more is taken
+    /// until that drains, so a paste is cut short rather than written with holes. Additive: older brokers never send it.
+    case inputRejected(sessionID: UUID)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {

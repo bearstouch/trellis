@@ -35,6 +35,7 @@ public final class BrokerServer: @unchecked Sendable {
         var finished = false
         var attached = true
         var pendingInput = 0
+        var rejectingInput = false
         var promptActive = false
         var promptCheckScheduled = false
         init(id: UUID, pid: Int32, identity: BrokerProcessIdentity?, descriptor: Int32, nonce: String?) {
@@ -319,7 +320,14 @@ public final class BrokerServer: @unchecked Sendable {
     }
 
     private func write(_ bytes: Data, to session: Session) {
-        guard session.waitStatus == nil, !session.readEnded, let io = session.io, !bytes.isEmpty, session.pendingInput + bytes.count <= Self.inputLimit else { return }
+        guard session.waitStatus == nil, !session.readEnded, let io = session.io, !bytes.isEmpty else { return }
+        if session.rejectingInput, session.pendingInput == 0 { session.rejectingInput = false }
+        guard !session.rejectingInput, session.pendingInput + bytes.count <= Self.inputLimit else {
+            // Told once per overflow; the rest of that paste is dropped too, never written around a gap.
+            if !session.rejectingInput, session.attached, client?.greeted == true { reply(nil, .inputRejected(sessionID: session.id)) }
+            session.rejectingInput = true
+            return
+        }
         session.pendingInput += bytes.count
         let payload = bytes.withUnsafeBytes { DispatchData(bytes: $0) }
         io.write(offset: 0, data: payload, queue: queue) { done, _, error in
