@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0-beta.2] - 2026-10-24
+
+The second 1.0 beta. This release adds Edit Project File, reworks Save as Project around a JSON editor, and fixes sessions kept after quit, saved scrollback redaction and the MCP server.
+
 ### Added
 
 - **Edit Project File:** a `{}` button in a local pane's header, after the scratchpad button, opens the project file found for the pane's folder in a JSON editor with **Validate** and **Save**. Saving asks first if the file changed on disk, and keeps the file trusted only if the version you opened was trusted or ran no commands (FR-WF08).
@@ -340,7 +344,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...HEAD
+[1.0.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/bearstouch/trellis/compare/v0.12.0...v1.0.0-beta.1
 [0.12.0]: https://github.com/bearstouch/trellis/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bearstouch/trellis/compare/v0.11.0...v0.11.1
