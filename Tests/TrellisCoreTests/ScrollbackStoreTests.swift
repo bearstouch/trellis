@@ -137,7 +137,8 @@ final class ScrollbackRedactorTests: XCTestCase {
             (#"{"password": "my secret pass", "user": "bob"}"#, "secret pass"),
             ("API_TOKEN='abc def ghi'", "def ghi"),
             ("PASSWORD=abc,def;ghi", "def;ghi"),
-            (#"secret: "a, b; c""#, "b; c")
+            (#"secret: "a, b; c""#, "b; c"),
+            (#"{"password": "ab\"cd efg"}"#, "cd efg")
         ] {
             assertRedacted(input, hiding: rest)
         }
