@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Save as Project** leaves out panes outside the project folder and warns that they won't be saved, instead of saving them to open in the project folder. A split keeps its other side, a tab with nothing inside is left out, and a window with nothing inside isn't saved. Opening the file again leaves the panes and tabs that were left out where they are (FR-WF04, FR-WF06).
+
 ## [1.0.0-beta.1] - 2026-10-23
 
 The first 1.0 beta. This release adds the command palette and the command scratchpad, and fixes project files, tasks and the upgrade from `dev.trellis`.

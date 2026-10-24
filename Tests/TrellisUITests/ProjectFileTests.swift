@@ -78,6 +78,14 @@ final class ProjectFileTests: XCTestCase {
     @MainActor
     private func panes(_ model: AppWorkspaceModel, _ window: ManagedWindow) -> [UUID] { window.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] } }
 
+    /// Moves the selected tab's shell into the project, so the window has a pane to save.
+    @MainActor
+    private func enterProject(_ model: AppWorkspaceModel) async throws {
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        try await waitFor { model.terminals[pane]?.sessionState == .running }
+        try prompt(model, pane, project)
+    }
+
     @MainActor
     private func prompt(_ model: AppWorkspaceModel, _ pane: UUID, _ directory: String?) throws {
         try XCTUnwrap(model.terminals[pane]).onShellIntegrationEvent?(.promptStart(directory: directory))
@@ -370,6 +378,7 @@ final class ProjectFileTests: XCTestCase {
         defer { cleanUp(model) }
         let created = await model.createWindow(name: "Linked")
         let windowID = try XCTUnwrap(created)
+        try await enterProject(model)
         let draft = try model.projectFileDraft(windowID: windowID, root: project)
         XCTAssertFalse(model.writeProjectFile(draft))
         XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true)
@@ -395,11 +404,70 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveLeavesOutTabsOutsideTheProject() async throws {
+        let outside = scratch.appendingPathComponent("outside").path
+        try FileManager.default.createDirectory(atPath: outside, withIntermediateDirectories: true)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Mixed")
+        let windowID = try XCTUnwrap(created)
+        let tabID = try XCTUnwrap(model.presentation.selectedTab).id
+        let inside = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        let split = await model.splitPane(inside, axis: .x)
+        let beside = try XCTUnwrap(split)
+        let newTab = await model.createTab(windowID: windowID)
+        let otherTab = try XCTUnwrap(newTab)
+        let away = try XCTUnwrap(model.snapshot.tabs[otherTab]).activePaneID
+        try await waitFor { [inside, beside, away].allSatisfy { model.terminals[$0]?.sessionState == .running } }
+        try prompt(model, inside, project)
+        try prompt(model, beside, outside)
+        try prompt(model, away, outside)
+        let draft = try model.projectFileDraft(windowID: windowID, root: project)
+        XCTAssertEqual(draft.paneIDs, [inside])
+        XCTAssertEqual(draft.warnings.count, 2)
+        XCTAssertTrue(draft.warnings.allSatisfy { $0.hasSuffix("so it won't be saved.") })
+        XCTAssertTrue(model.writeProjectFile(draft), model.errorMessage ?? "")
+        let url = URL(fileURLWithPath: project + "/.trellis/project.json")
+        let data = try Data(contentsOf: url)
+        let file = try ProjectFileJSON.parse(data).get()
+        XCTAssertEqual(file.tabs.count, 1)
+        XCTAssertEqual(file.entries.count, 1)
+        XCTAssertEqual(model.snapshot.windows.first { $0.id == windowID }?.tabIDs.count, 2, "The window keeps the tab left out")
+
+        // Reopening reconciles the trimmed tab in place: the omitted panes stay, nothing is added.
+        let paneCount = model.snapshot.panes.count, layout = model.snapshot.tabs[tabID]?.root
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.snapshot.activeWindowID, windowID)
+        XCTAssertEqual(model.snapshot.panes.count, paneCount)
+        XCTAssertEqual(model.snapshot.tabs[tabID]?.root, layout)
+        XCTAssertEqual(model.snapshot.windows.first { $0.id == windowID }?.tabIDs.count, 2)
+        // Saving again writes the same file, so save and reopen never pile up tabs.
+        XCTAssertTrue(model.writeProjectFile(try model.projectFileDraft(windowID: windowID, root: project)), model.errorMessage ?? "")
+        XCTAssertEqual(try Data(contentsOf: url), data)
+
+        // A pane that leaves the project while the sheet is open makes the save stop.
+        try prompt(model, beside, project)
+        let stale = try model.projectFileDraft(windowID: windowID, root: project)
+        try prompt(model, beside, outside)
+        XCTAssertFalse(model.writeProjectFile(stale))
+        XCTAssertTrue(model.errorMessage?.contains("changed while saving") == true)
+        model.errorMessage = nil
+
+        // With every pane outside, there is nothing to save.
+        try prompt(model, inside, outside)
+        XCTAssertThrowsError(try model.projectFileDraft(windowID: windowID, root: project)) {
+            XCTAssertTrue($0.localizedDescription.contains("nothing to save"))
+        }
+    }
+
+    @MainActor
     func testSaveFailureAndCorruptTrustLeaveEverythingAsItWas() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
         let created = await model.createWindow(name: "Mine")
         let windowID = try XCTUnwrap(created)
+        try await enterProject(model)
         // `.trellis` is a file, so the project file can't be written.
         try Data("x".utf8).write(to: URL(fileURLWithPath: project + "/.trellis"))
         var draft = try model.projectFileDraft(windowID: windowID, root: project)

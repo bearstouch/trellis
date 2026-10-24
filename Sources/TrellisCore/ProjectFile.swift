@@ -94,9 +94,11 @@ public struct ProjectFile: Equatable, Sendable {
     }
 
     /// Layout bindings that make `window` this file's window, so reopening the file reconciles it (FR-WF06).
-    /// Nil when the window no longer has the file's shape.
-    public func bindings(window: ManagedWindow, snapshot: WorkspaceSnapshot) -> [String: LayoutBinding]? {
-        guard window.tabIDs.count == tabs.count else { return nil }
+    /// `tabIDs` and `paneIDs` are the live tabs and panes the file holds, as `export` returns them; the panes it
+    /// left out are pruned from the live tabs before matching. Nil when the window no longer has the file's shape.
+    public func bindings(window: ManagedWindow, tabIDs: [UUID], paneIDs: [UUID], snapshot: WorkspaceSnapshot) -> [String: LayoutBinding]? {
+        guard tabIDs.count == tabs.count, tabIDs.allSatisfy(window.tabIDs.contains) else { return nil }
+        let kept = Set(paneIDs)
         var result = [Self.windowKey: LayoutBinding(kind: .window, id: window.id)]
         func visit(_ node: Node, _ layout: PaneLayout, tab: Int, path: String) -> Bool {
             switch (node, layout) {
@@ -109,8 +111,11 @@ public struct ProjectFile: Equatable, Sendable {
             default: return false
             }
         }
-        for (index, (tab, id)) in zip(tabs, window.tabIDs).enumerated() {
-            guard let live = snapshot.tabs[id], visit(tab.root, live.root, tab: index, path: "") else { return nil }
+        for (index, (tab, id)) in zip(tabs, tabIDs).enumerated() {
+            guard let live = snapshot.tabs[id],
+                let root = live.root.paneIDs.filter({ !kept.contains($0) }).reduce(Optional(live.root), { $0?.removing(paneID: $1) }),
+                visit(tab.root, root, tab: index, path: "")
+            else { return nil }
             result[Self.tabKey(tab, index: index)] = LayoutBinding(kind: .tab, id: id)
         }
         return result
@@ -192,47 +197,55 @@ public struct ProjectFile: Equatable, Sendable {
         return Resolved(layout: LayoutDocument(windows: [LayoutWindow(key: Self.windowKey, name: name, tabs: tabs)]), commands: commands)
     }
 
-    /// The window as a project file. `directory` gives a pane's absolute folder; folders outside the project
-    /// are dropped with a warning, since a shared file can only name folders inside it. `key` keeps keys a
-    /// previous file declared, so saving over it keeps matching the same panes.
+    /// The window as a project file. `directory` gives a pane's absolute folder; panes outside the project are
+    /// left out with a warning (a split keeps its other side, a tab with none left is left out), since a shared
+    /// file can only name folders inside it; reopening leaves them where they are. `tabIDs` has each file tab's
+    /// live tab. `key` keeps keys a previous file declared, so saving over it keeps matching the same panes.
     public static func export(
         window: ManagedWindow, snapshot: WorkspaceSnapshot, projectRoot: String, directory: (UUID) -> String?, command: (UUID) -> String?,
         key: (UUID) -> String? = { _ in nil }
-    ) -> (file: ProjectFile, paneIDs: [UUID], warnings: [String]) {
-        var warnings: [String] = [], paneIDs: [UUID] = []
-        func build(_ layout: PaneLayout) -> Node {
-            switch layout {
-            case .pane(let id):
-                paneIDs.append(id)
-                let title = snapshot.panes[id]?.title
-                // The format holds only local login shells; anything else reopens as one.
-                switch snapshot.panes[id].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
-                case .host?:
-                    warnings.append("“\(title ?? "Untitled pane")” is an SSH pane; project files hold only local shells, so it will open as a local shell.")
-                case .process(let executable, let arguments, _)? where arguments != ["-l"]:
-                    let program = URL(fileURLWithPath: executable).lastPathComponent
-                    warnings.append("“\(title ?? "Untitled pane")” runs \(program); project files hold only local shells, so it will open as a local shell.")
-                default: break
-                }
-                var relative: String?
-                if let path = directory(id).map({ URL(fileURLWithPath: $0).standardizedFileURL.path }) {
-                    if path == projectRoot {
-                        relative = nil
-                    } else if path.hasPrefix(projectRoot + "/"), let inside = relativeDirectory(String(path.dropFirst(projectRoot.count + 1))) {
+    ) -> (file: ProjectFile, tabIDs: [UUID], paneIDs: [UUID], warnings: [String]) {
+        var warnings: [String] = [], paneIDs: [UUID] = [], tabs: [Tab] = [], tabIDs: [UUID] = []
+        for tab in window.tabIDs.compactMap({ snapshot.tabs[$0] }) {
+            var tabWarnings: [String] = [], tabPanes: [UUID] = [], outside: [String] = []
+            func build(_ layout: PaneLayout) -> Node? {
+                switch layout {
+                case .pane(let id):
+                    let title = snapshot.panes[id]?.title
+                    var relative: String?
+                    if let path = directory(id).map({ URL(fileURLWithPath: $0).standardizedFileURL.path }), path != projectRoot {
+                        guard path.hasPrefix(projectRoot + "/"), let inside = relativeDirectory(String(path.dropFirst(projectRoot.count + 1))) else {
+                            outside.append("“\(title ?? "Untitled pane")” in “\(tab.title)” is in \(path), outside the project folder, so it won't be saved.")
+                            return nil
+                        }
                         relative = inside
-                    } else {
-                        warnings.append("“\(title ?? "Untitled pane")” is in \(path), outside the project folder, so it will open in the project folder.")
                     }
+                    tabPanes.append(id)
+                    // The format holds only local login shells; anything else reopens as one.
+                    switch snapshot.panes[id].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
+                    case .host?:
+                        tabWarnings.append("“\(title ?? "Untitled pane")” is an SSH pane; project files hold only local shells, so it will open as a local shell.")
+                    case .process(let executable, let arguments, _)? where arguments != ["-l"]:
+                        let program = URL(fileURLWithPath: executable).lastPathComponent
+                        tabWarnings.append("“\(title ?? "Untitled pane")” runs \(program); project files hold only local shells, so it will open as a local shell.")
+                    default: break
+                    }
+                    return .pane(Pane(key: key(id), title: title, directory: relative, command: command(id)))
+                case .split(let id, let axis, let ratio, let children):
+                    let kept = children.compactMap(build)
+                    guard kept.count == children.count else { return kept.first }
+                    return .split(key: key(id), axis: axis, ratio: (ratio * 1000).rounded() / 1000, children: kept)
                 }
-                return .pane(Pane(key: key(id), title: title, directory: relative, command: command(id)))
-            case .split(let id, let axis, let ratio, let children):
-                return .split(key: key(id), axis: axis, ratio: (ratio * 1000).rounded() / 1000, children: children.map(build))
             }
+            guard let root = build(tab.root) else {
+                warnings.append("Tab “\(tab.title)” is outside the project folder, so it won't be saved.")
+                continue
+            }
+            tabs.append(Tab(key: key(tab.id), title: tab.title, color: tab.color, root: root))
+            tabIDs.append(tab.id)
+            paneIDs += tabPanes; warnings += tabWarnings + outside
         }
-        let tabs = window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in
-            Tab(key: key(tab.id), title: tab.title, color: tab.color, root: build(tab.root))
-        }
-        return (ProjectFile(name: window.name, tabs: tabs), paneIDs, warnings)
+        return (ProjectFile(name: window.name, tabs: tabs), tabIDs, paneIDs, warnings)
     }
 }
 

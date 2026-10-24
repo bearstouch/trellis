@@ -32,6 +32,8 @@ public struct ProjectFileDraft: Identifiable, Equatable, Sendable {
     public let windowID: UUID
     public let root: String
     public let file: ProjectFile
+    /// One per file tab: the live tab it is bound to.
+    public let tabIDs: [UUID]
     public let paneIDs: [UUID]
     public let warnings: [String]
     public let replacesExisting: Bool
@@ -245,7 +247,7 @@ extension AppWorkspaceModel {
             hostExists: { _ in false },
             directoryExists: { path in
                 var isDirectory: ObjCBool = false; return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
-            }, keepLiveLaunches: true)
+            }, keepLiveLaunches: true, keepOmittedPanes: true)
         guard plan.canApply else {
             throw ProjectFileFailure(
                 "The project file can't be opened: " + (plan.errors + plan.conflicts).map(\.text).joined(separator: " "))
@@ -383,8 +385,11 @@ extension AppWorkspaceModel {
             window: window, snapshot: snapshot, projectRoot: root, directory: { self.projectPaneDirectory($0, root: root) }, command: { self.projectFileCommands[$0] ?? commands[$0] },
             key: { keys[$0] })
         exported.file.schema = existing?.schema
+        guard !exported.file.tabs.isEmpty else {
+            throw ProjectFileFailure("No pane is in \(root), so there is nothing to save. cd into the project in a pane first.")
+        }
         return ProjectFileDraft(
-            windowID: windowID, root: root, file: exported.file, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
+            windowID: windowID, root: root, file: exported.file, tabIDs: exported.tabIDs, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
             replacesExisting: FileManager.default.fileExists(atPath: url.path), commands: exported.file.entries.map { $0.pane.command ?? "" })
     }
 
@@ -437,8 +442,11 @@ extension AppWorkspaceModel {
             errorMessage = "A layout is being applied. Nothing was written; try again."
             return false
         }
-        guard let window = snapshot.windows.first(where: { $0.id == draft.windowID }), let bindings = file.bindings(window: window, snapshot: snapshot),
-            ProjectFile.export(window: window, snapshot: snapshot, projectRoot: draft.root, directory: { self.projectPaneDirectory($0, root: draft.root) }, command: { _ in nil }).paneIDs == draft.paneIDs
+        guard let window = snapshot.windows.first(where: { $0.id == draft.windowID }),
+            let bindings = file.bindings(window: window, tabIDs: draft.tabIDs, paneIDs: draft.paneIDs, snapshot: snapshot),
+            case let current = ProjectFile.export(
+                window: window, snapshot: snapshot, projectRoot: draft.root, directory: { self.projectPaneDirectory($0, root: draft.root) }, command: { _ in nil }),
+            current.tabIDs == draft.tabIDs, current.paneIDs == draft.paneIDs
         else {
             errorMessage = "The window changed while saving. Nothing was written; try again."
             return false
