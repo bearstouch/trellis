@@ -605,7 +605,12 @@ struct TrellisMain {
         app.setActivationPolicy(.regular)
         NativeTerminalFont.registerBundledFonts()
         do {
-            let identity = AppInstanceIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
+            var stateDirectory: URL?
+            if let index = CommandLine.arguments.firstIndex(of: "--state-directory"), CommandLine.arguments.indices.contains(index + 1) {
+                stateDirectory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
+            }
+            // Keyed by the state directory too: a launch for another workspace must not just activate this one.
+            let identity = AppInstanceIdentity(bundleIdentifier: Bundle.main.bundleIdentifier, stateDirectory: stateDirectory)
             let lockURL = identity.lockURL(in: FileManager.default.temporaryDirectory)
             let instanceLock: ApplicationInstanceLock
             switch try ApplicationInstanceLock.acquire(at: lockURL) {
@@ -623,8 +628,8 @@ struct TrellisMain {
                     into: .standard, legacy: UserDefaults.standard.persistentDomain(forName: AppInstanceIdentity.legacyProduction))
             }
             let directory: URL
-            if let index = CommandLine.arguments.firstIndex(of: "--state-directory"), CommandLine.arguments.indices.contains(index + 1) {
-                directory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
+            if let stateDirectory {
+                directory = stateDirectory
             } else {
                 directory = try ApplicationSupportLocation.prepare(
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],

@@ -66,6 +66,31 @@ final class AppInstanceIdentityTests: XCTestCase {
             try ApplicationSupportLocation.prepare(root: root, bundleIdentifier: unbundled.identifier))
     }
 
+    func testEachStateDirectoryIsItsOwnInstance() throws {
+        let tmp = URL(fileURLWithPath: "/tmp", isDirectory: true)
+        let plain = AppInstanceIdentity(bundleIdentifier: nil)
+        let isolated = AppInstanceIdentity(bundleIdentifier: nil, stateDirectory: URL(fileURLWithPath: "/abs/test", isDirectory: true))
+        let same = AppInstanceIdentity(bundleIdentifier: nil, stateDirectory: URL(fileURLWithPath: "/abs/./test/", isDirectory: true))
+        let other = AppInstanceIdentity(bundleIdentifier: nil, stateDirectory: URL(fileURLWithPath: "/abs/other", isDirectory: true))
+        XCTAssertEqual(plain.lockURL(in: tmp, uid: 501).lastPathComponent, "com.bearstouch.trellis.dev-501.instance.lock", "The default is unchanged")
+        XCTAssertNotEqual(isolated.lockURL(in: tmp, uid: 501), plain.lockURL(in: tmp, uid: 501))
+        XCTAssertNotEqual(isolated.activationNotification, plain.activationNotification, "Never activates an instance on another workspace")
+        XCTAssertEqual(isolated.lockURL(in: tmp, uid: 501), same.lockURL(in: tmp, uid: 501), "The same folder is one instance")
+        XCTAssertEqual(isolated.activationNotification, same.activationNotification)
+        XCTAssertNotEqual(isolated.lockURL(in: tmp, uid: 501), other.lockURL(in: tmp, uid: 501))
+        XCTAssertEqual(isolated.identifier, plain.identifier, "Same identity for preferences")
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        guard case .acquired(let running) = try ApplicationInstanceLock.acquire(at: plain.lockURL(in: directory)) else { return XCTFail("First instance must lock") }
+        withExtendedLifetime(running) {
+            guard case .acquired = try? ApplicationInstanceLock.acquire(at: isolated.lockURL(in: directory)) else {
+                return XCTFail("A --state-directory launch must run beside the default dev instance")
+            }
+        }
+    }
+
     func testInstalledAndDevelopmentLocksAreHeldIndependently() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

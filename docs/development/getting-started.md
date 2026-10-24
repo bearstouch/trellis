@@ -25,7 +25,7 @@ swift build
 swift run Trellis --state-directory "$PWD/.build/dev-state"
 ```
 
-**Use `--state-directory` while developing.** Development builds (`swift run`, and the `Trellis Dev` bundle from `run-feasibility.sh`) are the `com.bearstouch.trellis.dev` identity. Without the flag they use `~/Library/Application Support/com.bearstouch.trellis.dev/`, never the installed app's `com.bearstouch.trellis` data, and they have their own instance lock, so they run beside an installed Trellis. The path must be absolute.
+**Use `--state-directory` while developing.** Development builds (`swift run`, and the `Trellis Dev` bundle from `run-feasibility.sh`) are the `com.bearstouch.trellis.dev` identity. Without the flag they use `~/Library/Application Support/com.bearstouch.trellis.dev/`, never the installed app's `com.bearstouch.trellis` data, and they have their own instance lock, so they run beside an installed Trellis. Each `--state-directory` folder has its own lock too, so an isolated run never hands off to a dev instance already open on another workspace. The path must be absolute.
 
 ## Everyday commands
 

@@ -22,7 +22,7 @@
 
 Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when it's launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
 
-The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, [state directory](../architecture/persistence.md#what-is-saved-and-where) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
+The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, [state directory](../architecture/persistence.md#what-is-saved-and-where) and control socket, so an installed Trellis and a development instance can run at the same time. A launch with `--state-directory` is its own instance as well: it runs beside one using another workspace, and only a second launch for the same folder activates the running one instead. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
 
 ## Files, credentials and permissions
 
