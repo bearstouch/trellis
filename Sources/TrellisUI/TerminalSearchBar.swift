@@ -42,7 +42,9 @@ struct SearchableTerminalSurface: View {
     let background: Color
     var body: some View {
         VStack(spacing: 0) {
-            if terminal.searchVisible { TerminalSearchBar(terminal: terminal) }
+            // Keyed by terminal: a reused surface (another tab of the same shape) must not keep the previous
+            // pane's field, whose coordinator would type into, search and close that pane instead.
+            if terminal.searchVisible { TerminalSearchBar(terminal: terminal).id(ObjectIdentifier(terminal)) }
             // Opening/selecting a pane with an active find field must not let
             // the native terminal host steal that field's first responder.
             NativeTerminalSurface(terminal: terminal, isFocused: isFocused && !terminal.searchVisible)
