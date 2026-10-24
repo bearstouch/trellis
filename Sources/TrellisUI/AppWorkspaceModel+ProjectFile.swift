@@ -38,6 +38,8 @@ public struct ProjectFileDraft: Identifiable, Equatable, Sendable {
     public let paneIDs: [UUID]
     public let warnings: [String]
     public let replacesExisting: Bool
+    /// Commands prefilled from a version that was never trusted; a file that keeps any of them is saved untrusted (FR-WF03).
+    public let unreviewedCommands: Set<String>
     /// The JSON the user edits; written byte for byte once it checks out.
     public var text: String
     public var path: String { ProjectFile.url(projectRoot: root).path }
@@ -299,9 +301,10 @@ extension AppWorkspaceModel {
         guard let windowID = plan.bindings[ProjectFile.windowKey]?.id else { return nil }
         pruneProjectFileState()
         for (key, paneID) in plan.createdPanes {
-            if let command = resolved.commands[key] {
+            // Declined commands are never carried over as the user's own, so a later save can't trust them (FR-WF03).
+            if runCommands, let command = resolved.commands[key] {
                 projectFileCommands[paneID] = command
-                if runCommands, let sessionID = snapshot.panes[paneID]?.sessionID { pendingProjectCommands[sessionID] = command }
+                if let sessionID = snapshot.panes[paneID]?.sessionID { pendingProjectCommands[sessionID] = command }
             }
         }
         await selectWindow(windowID)
@@ -395,7 +398,9 @@ extension AppWorkspaceModel {
         guard let window = snapshot.windows.first(where: { $0.id == windowID }) else { throw ProjectFileFailure("The window no longer exists.") }
         let url = ProjectFile.url(projectRoot: root)
         // Keys and commands the current file (or the legacy one, when it's the only one) carry over to the panes they are bound to.
-        let existing = Self.projectFileURL(root).flatMap { try? OwnerOnlyFile.read($0, limit: ProjectFile.maximumBytes) }.flatMap { try? ProjectFileJSON.parse($0).get() }
+        let existingData = Self.projectFileURL(root).flatMap { try? OwnerOnlyFile.read($0, limit: ProjectFile.maximumBytes) }
+        let existing = existingData.flatMap { try? ProjectFileJSON.parse($0).get() }
+        let existingTrusted = existing.map { !$0.hasCommands } ?? true || existingData.map { (try? projectTrustList())?.isTrusted(root: root, digest: ProjectTrustList.digest($0)) == true } == true
         // The legacy file is never deleted: it is the user's repository file, so they remove it themselves.
         let legacy = FileManager.default.fileExists(atPath: ProjectFile.legacyURL(projectRoot: root).path)
         let legacyWarning =
@@ -407,16 +412,24 @@ extension AppWorkspaceModel {
             for (key, binding) in bindings where declared.contains(key) { keys[binding.id] = key }
             for entry in existing.entries { if let command = entry.pane.command, let id = bindings[entry.key]?.id { commands[id] = command } }
         }
+        var unreviewed: Set<String> = []
         var exported = ProjectFile.export(
-            window: window, snapshot: snapshot, projectRoot: root, directory: { self.projectPaneDirectory($0, root: root) }, command: { self.projectFileCommands[$0] ?? commands[$0] },
+            window: window, snapshot: snapshot, projectRoot: root, directory: { self.projectPaneDirectory($0, root: root) },
+            command: { paneID in
+                if let command = self.projectFileCommands[paneID] { return command }
+                if let command = commands[paneID], !existingTrusted { unreviewed.insert(command) }
+                return commands[paneID]
+            },
             key: { keys[$0] })
         exported.file.schema = existing?.schema
         guard !exported.file.tabs.isEmpty else {
             throw ProjectFileFailure("No pane is in \(root), so there is nothing to save. cd into the project in a pane first.")
         }
+        let unreviewedWarning = "Commands from the current file were never trusted. If you keep them, opening the saved file asks before running them."
         return ProjectFileDraft(
-            windowID: windowID, root: root, file: exported.file, tabIDs: exported.tabIDs, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
-            replacesExisting: FileManager.default.fileExists(atPath: url.path), text: String(decoding: ProjectFileJSON.encode(exported.file), as: UTF8.self))
+            windowID: windowID, root: root, file: exported.file, tabIDs: exported.tabIDs, paneIDs: exported.paneIDs,
+            warnings: exported.warnings + (legacy ? [legacyWarning] : []) + (unreviewed.isEmpty ? [] : [unreviewedWarning]),
+            replacesExisting: FileManager.default.fileExists(atPath: url.path), unreviewedCommands: unreviewed, text: String(decoding: ProjectFileJSON.encode(exported.file), as: UTF8.self))
     }
 
     /// Checks the draft's text with the same strict parse, keys and limits as `loadProjectFile`.
@@ -558,8 +571,10 @@ extension AppWorkspaceModel {
         }
         let data = Data(draft.text.utf8)
         guard writeRepositoryFile(data, to: ProjectFile.url(projectRoot: draft.root)) else { return false }
-        // The user wrote these commands, so this version is trusted; failures here only mean a later review.
-        if var list = try? projectTrustList() {
+        // The user wrote these commands, so this version is trusted, unless it keeps one carried over from a version
+        // that was never trusted; failures here only mean a later review.
+        let reviewed = !file.entries.contains { $0.pane.command.map(draft.unreviewedCommands.contains) == true }
+        if reviewed, var list = try? projectTrustList() {
             list.trust(root: draft.root, digest: ProjectTrustList.digest(data))
             try? saveProjectTrust(list)
         }
@@ -567,7 +582,7 @@ extension AppWorkspaceModel {
         if (try? layoutBindings(Self.projectNamespace(draft.root))) != nil { try? saveLayoutBindings(Self.projectNamespace(draft.root), checked.bindings ?? [:]) }
         // Unbound panes no longer belong to the file, so a later save mustn't prefill the old file's commands into them.
         if checked.bindings != nil {
-            for (entry, paneID) in zip(file.entries, draft.paneIDs) { projectFileCommands[paneID] = entry.pane.command }
+            for (entry, paneID) in zip(file.entries, draft.paneIDs) { projectFileCommands[paneID] = entry.pane.command.flatMap { draft.unreviewedCommands.contains($0) ? nil : $0 } }
         } else {
             for paneID in draft.paneIDs { projectFileCommands.removeValue(forKey: paneID) }
         }

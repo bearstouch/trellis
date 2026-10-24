@@ -163,6 +163,37 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testSavingAfterOpenWithoutCommandsNeverTrustsTheDeclinedCommands() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        try writeFile(layout(command: "echo WF-MARKER"))
+        await model.loadProjectFile(root: project)
+        await model.resolveProjectReview(try XCTUnwrap(model.pendingProjectReview).id, .openWithoutCommands)
+        let opened = try window(model, named: "Demo")
+        XCTAssertTrue(model.projectFileCommands.isEmpty, "Declined commands aren't carried over as the user's own")
+        model.chooseProjectFolder = { _, _ in self.project }
+
+        model.beginSaveProjectFile(windowID: opened.id)
+        let draft = try XCTUnwrap(model.pendingProjectSave)
+        XCTAssertEqual(draft.commands.first, "echo WF-MARKER", "The file's commands still carry over")
+        XCTAssertEqual(draft.unreviewedCommands, ["echo WF-MARKER"])
+        XCTAssertTrue(draft.warnings.contains { $0.contains("never trusted") }, "\(draft.warnings)")
+        XCTAssertTrue(model.writeProjectFile(draft), model.errorMessage ?? "")
+        XCTAssertTrue(model.projectFileCommands.isEmpty)
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview, "A saved file that keeps a declined command still asks first")
+        await model.resolveProjectReview(review.id, .cancel)
+
+        // Removing the unreviewed command leaves only what the user wrote, which is trusted.
+        model.beginSaveProjectFile(windowID: opened.id)
+        var edited = try XCTUnwrap(model.pendingProjectSave)
+        edited.commands[0] = "make watch"
+        XCTAssertTrue(model.writeProjectFile(edited), model.errorMessage ?? "")
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview)
+    }
+
+    @MainActor
     func testTrustedCommandRunsOnceAtFirstPromptAndChangesNeedReviewAgain() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
