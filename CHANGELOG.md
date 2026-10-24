@@ -15,6 +15,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Save as Project** shows the project file as JSON in an editor with **Validate** and **Save**, instead of a command field per pane. Save checks the file first and asks before replacing an existing `project.json`; an edit that reshapes the layout saves with a warning that opening it creates a new window (FR-WF06).
 - **Save as Project** leaves out panes outside the project folder and warns that they won't be saved, instead of saving them to open in the project folder. A split keeps its other side, a tab with nothing inside is left out, and a window with nothing inside isn't saved. Opening the file again leaves the panes and tabs that were left out where they are (FR-WF04, FR-WF06).
 
+### Fixed
+
+- **Project files:** after **Open Without Commands**, **Save as Project** no longer trusts the declined commands; a saved file that keeps one still shows the review sheet on the next open. Commands changed in **Edit Project File** are what a later **Save as Project** carries over (FR-WF03, FR-WF06, FR-WF08).
+- **Sessions kept after quit:** a command that exits at once no longer leaves its pane running forever; a paste over 1 MiB into a program that isn't reading is reported instead of losing chunks silently; and moving the app no longer starts a second broker that orphans the first one's sessions (FR-R03).
+- **Saved scrollback** redacts quoted secrets whole, such as `PASSWORD="correct horse battery"` or a JSON value with spaces (FR-R05).
+- **Find in pane** acts on the pane it is shown for after switching between tabs of the same layout.
+- A launch interrupted by a quit or close that you then cancel leaves the pane Failed with **Restart**, instead of a **Start** that can't work.
+- **MCP server:** a flood of blank lines or tiny pipelined requests no longer ties up a CPU core before authentication; `events.subscribe` with `afterSequence` replays only the subscribed topics.
+- **Development:** `--state-directory` launches no longer hand off to a dev instance open on another workspace, and `--fixture` always runs in its own empty workspace.
+
 ## [1.0.0-beta.1] - 2026-10-23
 
 The first 1.0 beta. This release adds the command palette and the command scratchpad, and fixes project files, tasks and the upgrade from `dev.trellis`.
