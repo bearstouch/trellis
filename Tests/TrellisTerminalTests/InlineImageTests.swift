@@ -107,10 +107,10 @@ final class InlineImageTests: XCTestCase {
         let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
         let terminal = view.getTerminal()
         let png = try Self.png(width: 8, height: 8).base64EncodedString()
-        // Other tests and their helpers (brokers) add and remove `trellis-*` entries here concurrently; only a new
-        // entry of anything else could be a download.
+        // Other tests, their helpers and system tools add and remove entries here concurrently; only a new image
+        // file could be the refused download (`x.png`).
         func temporaryEntries() throws -> Set<String> {
-            Set(try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { !$0.hasPrefix("trellis-") })
+            Set(try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { $0.lowercased().hasSuffix(".png") })
         }
         let before = try temporaryEntries()
         native.adapter.receive(Data("\u{1b}]1337;File=name=eC5wbmc=;inline=0:\(png)\u{07}".utf8))
