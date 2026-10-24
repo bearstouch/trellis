@@ -20,14 +20,18 @@ struct ScratchpadEditor: NSViewRepresentable {
     let issueLines: Set<Int>
     let focusRequest: Int
     let commands: ScratchpadEditorCommands
+    var accessibilityName = "Script editor"
+    /// Read after the language name, as in "sh script".
+    var contentNoun = "script"
+    var maximumBytes = ScratchpadDocument.maximumBytes
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    /// Whether replacing `range` keeps the buffer within 64 KB; a change that doesn't grow it, such as deleting from a
-    /// larger buffer set by the model, is always allowed.
-    static func allowsChange(of text: String, in range: NSRange, to replacement: String) -> Bool {
+    /// Whether replacing `range` keeps the buffer within `limit` (64 KB for scripts); a change that doesn't grow it,
+    /// such as deleting from a larger buffer set by the model, is always allowed.
+    static func allowsChange(of text: String, in range: NSRange, to replacement: String, limit: Int = ScratchpadDocument.maximumBytes) -> Bool {
         let removed = (text as NSString).substring(with: range).utf8.count, added = replacement.utf8.count
-        return added <= removed || text.utf8.count - removed + added <= ScratchpadDocument.maximumBytes
+        return added <= removed || text.utf8.count - removed + added <= limit
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -57,7 +61,7 @@ struct ScratchpadEditor: NSViewRepresentable {
         textView.isAutomaticDataDetectionEnabled = false
         textView.smartInsertDeleteEnabled = false
         textView.textContainerInset = NSSize(width: 4, height: 10)
-        textView.setAccessibilityLabel("Script editor")
+        textView.setAccessibilityLabel(accessibilityName)
         textView.delegate = context.coordinator
         textView.string = text
         scroll.documentView = textView
@@ -92,7 +96,7 @@ struct ScratchpadEditor: NSViewRepresentable {
         func apply(_ editor: ScratchpadEditor, force: Bool) {
             guard let textView else { return }
             textView.commands = editor.commands
-            textView.setAccessibilityValueDescription("\(editor.language.displayName) script")
+            textView.setAccessibilityValueDescription("\(editor.language.displayName) \(editor.contentNoun)")
             var restyle = force
             if textView.string != editor.text {
                 let selection = textView.selectedRanges
@@ -174,9 +178,11 @@ struct ScratchpadEditor: NSViewRepresentable {
             ruler?.needsDisplay = true
         }
 
-        /// The buffer is limited to 64 KB, so checking and highlighting stay quick.
+        /// The buffer is limited (64 KB for scripts), so checking and highlighting stay quick.
         func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
-            guard let replacementString, !ScratchpadEditor.allowsChange(of: textView.string, in: range, to: replacementString) else { return true }
+            guard let replacementString, !ScratchpadEditor.allowsChange(of: textView.string, in: range, to: replacementString, limit: parent.maximumBytes) else {
+                return true
+            }
             NSSound.beep()
             return false
         }

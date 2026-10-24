@@ -6,8 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Edit Project File:** a `{}` button in a local pane's header, after the scratchpad button, opens the project file found for the pane's folder in a JSON editor with **Validate** and **Save**. Saving asks first if the file changed on disk, and keeps the file trusted only if the version you opened was trusted or ran no commands (FR-WF08).
+
 ### Changed
 
+- **Save as Project** shows the project file as JSON in an editor with **Validate** and **Save**, instead of a command field per pane. Save checks the file first and asks before replacing an existing `project.json`; an edit that reshapes the layout saves with a warning that opening it creates a new window (FR-WF06).
 - **Save as Project** leaves out panes outside the project folder and warns that they won't be saved, instead of saving them to open in the project folder. A split keeps its other side, a tab with nothing inside is left out, and a window with nothing inside isn't saved. Opening the file again leaves the panes and tabs that were left out where they are (FR-WF04, FR-WF06).
 
 ## [1.0.0-beta.1] - 2026-10-23

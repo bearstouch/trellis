@@ -105,16 +105,9 @@ public struct WorkspaceRootView: View {
                 }
             }.padding(24).frame(width: 540)
         }
-        .sheet(item: Binding(get: { model.pendingProjectReview }, set: { if $0 == nil, let id = model.pendingProjectReview?.id { Task { await model.resolveProjectReview(id, .cancel) } } })) {
-            ProjectFileReviewView(model: model, review: $0)
-        }
-        .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
-            TaskReviewView(model: model, review: $0)
-        }
-        .sheet(item: Binding(get: { model.pendingProjectSave }, set: { if $0 == nil { model.cancelProjectSave() } })) {
-            ProjectFileSaveView(model: model, draft: $0)
-        }
-        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+        .modifier(ProjectSheets(model: model))
+        // A project file sheet shows its own errors; an alert behind it could go unseen (FR-WF06, FR-WF08).
+        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil && !model.showsProjectSheet }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
@@ -559,6 +552,27 @@ extension TabColor {
 /// the side it comes from, where an accent bar marks it. The payload is the item's UUID and the drop reads it back, so
 /// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a window never moves
 /// anything. Off while renaming, so a drag in the name field selects text.
+/// Project file and task sheets (FR-WF03, FR-WF06, FR-WF08, FR-TK06), apart so the root's modifier chain type-checks.
+private struct ProjectSheets: ViewModifier {
+    @ObservedObject var model: AppWorkspaceModel
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: Binding(get: { model.pendingProjectReview }, set: { if $0 == nil, let id = model.pendingProjectReview?.id { Task { await model.resolveProjectReview(id, .cancel) } } })) {
+                ProjectFileReviewView(model: model, review: $0)
+            }
+            .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
+                TaskReviewView(model: model, review: $0)
+            }
+            .sheet(item: Binding(get: { model.pendingProjectSave }, set: { if $0 == nil { model.cancelProjectSave() } })) {
+                ProjectFileSaveView(model: model, draft: $0)
+            }
+            .sheet(item: Binding(get: { model.pendingProjectEdit }, set: { if $0 == nil { model.cancelProjectEdit() } })) {
+                ProjectFileEditView(model: model, edit: $0)
+            }
+    }
+}
+
 private struct DragReorder: ViewModifier {
     let id: UUID
     let order: [UUID]

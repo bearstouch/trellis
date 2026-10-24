@@ -26,20 +26,38 @@ public struct ProjectFileReview: Identifiable, Equatable, Sendable {
     public let path: String
 }
 
-/// The window as a project file, with editable commands, before it is written (FR-WF06).
+/// The window as a project file, edited as JSON before it is written (FR-WF06).
 public struct ProjectFileDraft: Identifiable, Equatable, Sendable {
     public let id = UUID()
     public let windowID: UUID
     public let root: String
+    /// The window as exported; `text` starts as its encoding.
     public let file: ProjectFile
     /// One per file tab: the live tab it is bound to.
     public let tabIDs: [UUID]
     public let paneIDs: [UUID]
     public let warnings: [String]
     public let replacesExisting: Bool
-    /// One per pane, in `file.entries` order.
-    public var commands: [String]
+    /// The JSON the user edits; written byte for byte once it checks out.
+    public var text: String
     public var path: String { ProjectFile.url(projectRoot: root).path }
+}
+
+/// A project file open for editing as JSON (FR-WF08), with the bytes it was read from.
+public struct ProjectFileEdit: Identifiable, Equatable, Sendable {
+    public let id = UUID()
+    /// The canonical project folder.
+    public let root: String
+    /// The file that was read and is written back: `project.json`, or the legacy `workspace.json`.
+    public let path: String
+    public let original: Data
+    public var text: String
+}
+
+/// What checking a draft's text found: errors block saving, warnings don't.
+public struct ProjectFileCheck: Equatable, Sendable {
+    public let errors: [String], warnings: [String]
+    public var isValid: Bool { errors.isEmpty }
 }
 
 /// Folder pickers for project files; injected so tests never show a panel.
@@ -390,10 +408,103 @@ extension AppWorkspaceModel {
         }
         return ProjectFileDraft(
             windowID: windowID, root: root, file: exported.file, tabIDs: exported.tabIDs, paneIDs: exported.paneIDs, warnings: exported.warnings + (legacy ? [legacyWarning] : []),
-            replacesExisting: FileManager.default.fileExists(atPath: url.path), commands: exported.file.entries.map { $0.pane.command ?? "" })
+            replacesExisting: FileManager.default.fileExists(atPath: url.path), text: String(decoding: ProjectFileJSON.encode(exported.file), as: UTF8.self))
     }
 
-    public func cancelProjectSave() { pendingProjectSave = nil }
+    /// Checks the draft's text with the same strict parse, keys and limits as `loadProjectFile`.
+    public func checkProjectFile(_ draft: ProjectFileDraft) -> ProjectFileCheck { checkedProjectFile(draft).check }
+
+    /// Whether saving would replace a file, asked when Save is pressed rather than when the sheet opened.
+    public func projectFileExists(_ draft: ProjectFileDraft) -> Bool { FileManager.default.fileExists(atPath: draft.path) }
+
+    /// The parsed file, and the bindings that make the draft's window the project's window when the edited layout
+    /// still has the window's shape.
+    private func checkedProjectFile(_ draft: ProjectFileDraft) -> (check: ProjectFileCheck, file: ProjectFile?, bindings: [String: LayoutBinding]?) {
+        let parsed = Self.parsedProjectText(draft.text, root: draft.root)
+        guard let file = parsed.file else { return (ProjectFileCheck(errors: parsed.errors, warnings: []), nil, nil) }
+        let bindings = snapshot.windows.first { $0.id == draft.windowID }.flatMap {
+            file.bindings(window: $0, tabIDs: draft.tabIDs, paneIDs: draft.paneIDs, snapshot: snapshot)
+        }
+        let unbound = "The tabs or splits no longer match this window, so opening the file creates a new window instead of using this one."
+        return (ProjectFileCheck(errors: [], warnings: bindings == nil ? [unbound] : []), file, bindings)
+    }
+
+    public func cancelProjectSave() { pendingProjectSave = nil; errorMessage = nil }
+
+    /// Project file text parsed with the same strict rules, keys and limits as `loadProjectFile`; nil with the problems.
+    nonisolated static func parsedProjectText(_ text: String, root: String) -> (file: ProjectFile?, errors: [String]) {
+        func describe(_ issue: LayoutIssue) -> String { issue.key.map { "\($0): \(issue.text)" } ?? issue.text }
+        let file: ProjectFile
+        switch ProjectFileJSON.parse(Data(text.utf8)) {
+        case .failure(let error): return (nil, error.issues.map(describe))
+        case .success(let parsed): file = parsed
+        }
+        let issues =
+            file.issues.isEmpty
+            ? LayoutPlanner.plan(
+                file.resolve(projectRoot: root).layout, bindings: [:], snapshot: WorkspaceSnapshot(), home: "/", hostExists: { _ in false },
+                directoryExists: { _ in true }
+            ).errors : file.issues
+        return issues.isEmpty ? (file, []) : (nil, issues.map(describe))
+    }
+
+    // MARK: Editing (FR-WF08)
+
+    /// Opens the project file found for the pane's directory in the JSON editor.
+    public func beginEditProjectFile(paneID: UUID) {
+        guard let offer = projectFileOffers[paneID] else { return }
+        let url = URL(fileURLWithPath: offer.path)
+        guard let data = try? OwnerOnlyFile.read(url, limit: ProjectFile.maximumBytes) else {
+            errorMessage = "\(offer.path) could not be read. It must be a regular file you own, at most 256 KB."
+            return
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            errorMessage = "\(offer.path) isn't UTF-8 text, so it can't be edited here."
+            return
+        }
+        pendingProjectEdit = ProjectFileEdit(root: offer.root, path: offer.path, original: data, text: text)
+    }
+
+    public func cancelProjectEdit() { pendingProjectEdit = nil; errorMessage = nil }
+
+    /// While a project file sheet is open it shows `errorMessage` itself.
+    public var showsProjectSheet: Bool { pendingProjectSave != nil || pendingProjectEdit != nil }
+
+    public func checkProjectFileEdit(_ edit: ProjectFileEdit) -> ProjectFileCheck {
+        ProjectFileCheck(errors: Self.parsedProjectText(edit.text, root: edit.root).errors, warnings: [])
+    }
+
+    /// Whether the file on disk is no longer what the editor opened, so saving would replace someone else's change.
+    /// Read like opening (no links, FIFOs or oversized files, which could hang or flood the main thread); anything that
+    /// can't be read that way counts as changed.
+    public func projectFileEditChangedOnDisk(_ edit: ProjectFileEdit) -> Bool {
+        (try? OwnerOnlyFile.read(URL(fileURLWithPath: edit.path), limit: ProjectFile.maximumBytes)) != edit.original
+    }
+
+    /// Writes the edited text byte for byte. The new bytes are trusted only when the opened version was trusted or ran
+    /// nothing, so editing a file whose commands were never reviewed can't skip the review (FR-WF03).
+    @discardableResult
+    public func writeProjectFileEdit(_ edit: ProjectFileEdit) -> Bool {
+        let parsed = Self.parsedProjectText(edit.text, root: edit.root)
+        guard let file = parsed.file else {
+            errorMessage = "The project file can't be saved: " + (parsed.errors.first ?? "it isn't valid.")
+            return false
+        }
+        let list = try? projectTrustList()
+        let openedWithoutCommands = (try? ProjectFileJSON.parse(edit.original).get()).map { !$0.hasCommands } ?? false
+        let keepsTrust = openedWithoutCommands || list?.isTrusted(root: edit.root, digest: ProjectTrustList.digest(edit.original)) == true
+        let data = Data(edit.text.utf8)
+        guard writeRepositoryFile(data, to: URL(fileURLWithPath: edit.path)) else { return false }
+        if keepsTrust, file.hasCommands, var list {
+            list.trust(root: edit.root, digest: ProjectTrustList.digest(data))
+            try? saveProjectTrust(list)
+        }
+        for (paneID, offer) in projectFileOffers where offer.path == edit.path {
+            projectFileOffers[paneID] = ProjectFileOffer(root: offer.root, name: file.name, path: offer.path)
+        }
+        pendingProjectEdit = nil
+        return true
+    }
 
     /// Writes a `.trellis/` repository file, not Trellis state: readable by the project's tools like any other source
     /// file. A linked `.trellis` folder or file is refused, since it could point the write outside the project.
@@ -414,28 +525,13 @@ extension AppWorkspaceModel {
         }
     }
 
-    /// Writes the reviewed file, trusts its bytes and makes the window the project's window. A failure leaves the
-    /// file, trust and bindings as they were.
+    /// Writes the edited text byte for byte, trusts those bytes and, when the layout still fits the window, makes it
+    /// the project's window. A failure leaves the file, trust and bindings as they were.
     @discardableResult
     public func writeProjectFile(_ draft: ProjectFileDraft) -> Bool {
-        let file = draft.file.settingCommands(draft.commands)
-        if let issue = file.issues.first {
-            errorMessage = issue.text
-            return false
-        }
-        // What is written must open again: the same strict parse, keys and limits as `loadProjectFile`.
-        let data = ProjectFileJSON.encode(file)
-        let reread = ProjectFileJSON.parse(data).map { $0.resolve(projectRoot: draft.root).layout }
-        let problems: [LayoutIssue]
-        switch reread {
-        case .failure(let error): problems = error.issues
-        case .success(let layout):
-            problems =
-                LayoutPlanner.plan(layout, bindings: [:], snapshot: WorkspaceSnapshot(), home: "/", hostExists: { _ in false }, directoryExists: { _ in true })
-                .errors
-        }
-        if let issue = problems.first {
-            errorMessage = "The window can't be saved as a project file: " + issue.text
+        let checked = checkedProjectFile(draft)
+        guard let file = checked.file else {
+            errorMessage = "The project file can't be saved: " + (checked.check.errors.first ?? "it isn't valid.")
             return false
         }
         guard !layoutApplyInFlight else {
@@ -443,22 +539,30 @@ extension AppWorkspaceModel {
             return false
         }
         guard let window = snapshot.windows.first(where: { $0.id == draft.windowID }),
-            let bindings = file.bindings(window: window, tabIDs: draft.tabIDs, paneIDs: draft.paneIDs, snapshot: snapshot),
             case let current = ProjectFile.export(
                 window: window, snapshot: snapshot, projectRoot: draft.root, directory: { self.projectPaneDirectory($0, root: draft.root) }, command: { _ in nil }),
-            current.tabIDs == draft.tabIDs, current.paneIDs == draft.paneIDs
+            current.tabIDs == draft.tabIDs, current.paneIDs == draft.paneIDs,
+            // The same panes regrouped while the sheet was open would otherwise read as an edit that unbinds the window.
+            draft.file.bindings(window: window, tabIDs: draft.tabIDs, paneIDs: draft.paneIDs, snapshot: snapshot) != nil
         else {
             errorMessage = "The window changed while saving. Nothing was written; try again."
             return false
         }
+        let data = Data(draft.text.utf8)
         guard writeRepositoryFile(data, to: ProjectFile.url(projectRoot: draft.root)) else { return false }
         // The user wrote these commands, so this version is trusted; failures here only mean a later review.
         if var list = try? projectTrustList() {
             list.trust(root: draft.root, digest: ProjectTrustList.digest(data))
             try? saveProjectTrust(list)
         }
-        if (try? layoutBindings(Self.projectNamespace(draft.root))) != nil { try? saveLayoutBindings(Self.projectNamespace(draft.root), bindings) }
-        for (entry, paneID) in zip(file.entries, draft.paneIDs) { projectFileCommands[paneID] = entry.pane.command }
+        // A layout that no longer fits the window unbinds it, so the old bindings can't half-match the new file.
+        if (try? layoutBindings(Self.projectNamespace(draft.root))) != nil { try? saveLayoutBindings(Self.projectNamespace(draft.root), checked.bindings ?? [:]) }
+        // Unbound panes no longer belong to the file, so a later save mustn't prefill the old file's commands into them.
+        if checked.bindings != nil {
+            for (entry, paneID) in zip(file.entries, draft.paneIDs) { projectFileCommands[paneID] = entry.pane.command }
+        } else {
+            for paneID in draft.paneIDs { projectFileCommands.removeValue(forKey: paneID) }
+        }
         pruneProjectFileState()
         pendingProjectSave = nil
         return true

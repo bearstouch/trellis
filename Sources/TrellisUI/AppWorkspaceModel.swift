@@ -367,6 +367,7 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var projectFileOffers: [UUID: ProjectFileOffer] = [:]
     @Published public internal(set) var pendingProjectReview: ProjectFileReview?
     @Published public internal(set) var pendingProjectSave: ProjectFileDraft?
+    @Published public internal(set) var pendingProjectEdit: ProjectFileEdit?
     /// Trusted commands waiting for their new shell's first prompt, by session (FR-WF05); never persisted or logged.
     var pendingProjectCommands: [UUID: String] = [:]
     /// The command each pane was opened with, so saving its window keeps it (FR-WF06); runtime only.
