@@ -107,11 +107,16 @@ final class InlineImageTests: XCTestCase {
         let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
         let terminal = view.getTerminal()
         let png = try Self.png(width: 8, height: 8).base64EncodedString()
-        let downloads = try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).count
+        // Other tests and their helpers (brokers) add and remove `trellis-*` entries here concurrently; only a new
+        // entry of anything else could be a download.
+        func temporaryEntries() throws -> Set<String> {
+            Set(try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { !$0.hasPrefix("trellis-") })
+        }
+        let before = try temporaryEntries()
         native.adapter.receive(Data("\u{1b}]1337;File=name=eC5wbmc=;inline=0:\(png)\u{07}".utf8))
         native.adapter.receive(Data("\u{1b}]1337;File=inline=1:\(Data("%PDF-1.4".utf8).base64EncodedString())\u{07}".utf8))
         XCTAssertFalse(terminal.buffer.hasAnyImages, "Downloads and non-bitmap data show nothing")
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).count, downloads)
+        XCTAssertEqual(try temporaryEntries().subtracting(before), [], "Nothing is downloaded")
         let row = terminal.getCursorLocation().y
         native.adapter.receive(Data("\u{1b}]1337;File=inline=1;width=4;height=3:\(png)\u{07}after".utf8))
         XCTAssertTrue(terminal.buffer.hasAnyImages)
