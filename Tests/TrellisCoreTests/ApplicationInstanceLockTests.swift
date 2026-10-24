@@ -91,6 +91,19 @@ final class AppInstanceIdentityTests: XCTestCase {
         }
     }
 
+    func testFixtureLaunchesUseAFreshWorkspaceUnlessOneIsGiven() {
+        let tmp = URL(fileURLWithPath: "/tmp", isDirectory: true)
+        XCTAssertNil(LaunchStateDirectory.resolve(arguments: ["Trellis"], temporaryDirectory: tmp), "A normal launch uses Application Support")
+        XCTAssertEqual(
+            LaunchStateDirectory.resolve(arguments: ["Trellis", "--fixture"], temporaryDirectory: tmp, uniqueName: { "x" })?.path, "/tmp/trellis-fixture-x",
+            "Never the developer's workspace")
+        XCTAssertNotEqual(
+            LaunchStateDirectory.resolve(arguments: ["Trellis", "--fixture"], temporaryDirectory: tmp),
+            LaunchStateDirectory.resolve(arguments: ["Trellis", "--fixture"], temporaryDirectory: tmp), "Each fixture launch starts empty")
+        XCTAssertEqual(LaunchStateDirectory.resolve(arguments: ["Trellis", "--fixture", "--state-directory", "/abs/q"], temporaryDirectory: tmp)?.path, "/abs/q")
+        XCTAssertEqual(LaunchStateDirectory.resolve(arguments: ["Trellis", "--state-directory", "/abs/q"], temporaryDirectory: tmp)?.path, "/abs/q")
+    }
+
     func testInstalledAndDevelopmentLocksAreHeldIndependently() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
