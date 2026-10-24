@@ -11,4 +11,6 @@ public enum AppVersion {
         let info = Bundle.main.infoDictionary
         return info?["TrellisVersion"] as? String ?? info?["CFBundleShortVersionString"] as? String
     }
+    /// `X.Y.Z-alpha|beta|rc.N` builds are pre-releases; they follow the beta update channel by default (MAC-14).
+    public static func isPrerelease(_ version: String) -> Bool { version.contains("-") }
 }

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Software updates:** **Trellis → Check for Updates…** and **Settings → Updates** download, verify and install new versions in place with Sparkle 2. Automatic daily checks are off until you turn them on, and **Include beta versions** chooses whether pre-releases are offered (on by default in pre-release builds). A check downloads only the update list and sends no system profile. Installing quits through the usual confirmation, so sessions kept after quit keep running (MAC-14).
+
+### Changed
+
+- **Privacy:** the update check is the one network request Trellis makes by itself, and only when you check or turn on automatic checks (MAC-14).
+
 ## [1.0.0-beta.2] - 2026-10-24
 
 The second 1.0 beta. This release adds Edit Project File, reworks Save as Project around a JSON editor, and fixes sessions kept after quit, saved scrollback redaction and the MCP server.

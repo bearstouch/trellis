@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var appearanceObserver: NSKeyValueObservation?
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
+    private var updater: SparkleUpdater?
+    private var updates: UpdateSettingsModel?
 
     private let identity: AppInstanceIdentity
 
@@ -64,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         syncAccessibilityDisplayOptions()
+        // MAC-14: only builds with a feed get an updater; fixture launches stay offline.
+        if !CommandLine.arguments.contains("--fixture"), let updater = SparkleUpdater() {
+            self.updater = updater; updates = UpdateSettingsModel(updater: updater)
+        }
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -177,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let app = NSMenuItem(); app.submenu = NSMenu(title: "Trellis")
         let about = app.submenu?.addItem(withTitle: "About Trellis", action: #selector(aboutAction), keyEquivalent: "")
         about?.target = self
+        if updater != nil { app.submenu?.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesAction), keyEquivalent: "").target = self }
         app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
         app.submenu?.addItem(.separator())
@@ -363,6 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return validateShortcut(action)
         }
         if menuItem.action == #selector(saveProjectFile) { return model.snapshot.activeWindowID != nil }
+        if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
@@ -411,6 +419,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func settingsAction() { showSettings() }
+    @objc private func checkForUpdatesAction() { updates?.checkNow() }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {
         let exporter = DiagnosticsExporter(model: model, hosts: hosts, grants: grants) { [control] in control.isRunning }
@@ -518,7 +527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.title = "Settings"
             panel.contentMinSize = NSSize(width: 860, height: 620)
             panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(rootView: AppSettingsView(model: model, grants: grants, hosts: hosts))
+            panel.contentView = NSHostingView(rootView: AppSettingsView(model: model, grants: grants, hosts: hosts, updates: updates))
             settingsCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.model.cancelThemePreview() }
             }

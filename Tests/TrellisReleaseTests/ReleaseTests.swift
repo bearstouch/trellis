@@ -17,7 +17,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis-broker"), "The keep-running session broker is bundled")
         XCTAssertTrue(UninstallPlanner.firstStep.contains("trellis-broker"), "Uninstalling first ends kept sessions")
         XCTAssertEqual(UninstallPlanner.keychainServices, ["Trellis Automation", "Trellis SSH Host"], "Uninstall lists every Keychain service")
-        XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT"] + Array(repeating: "OFL-1.1", count: 6))
+        XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT", "MIT"] + Array(repeating: "OFL-1.1", count: 6))
         // Package.swift's deployment target must match the release policy.
         let package = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)
         let packageMinimum = package.contains(".macOS(.v14)") ? "14.0" : "unknown"
@@ -35,6 +35,29 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(problems.count, 4, "\(problems)")
         XCTAssertTrue(problems.contains { $0.contains("x86_64") })
         XCTAssertTrue(problems.contains { $0.contains("Helpers/trellis") })
+    }
+
+    func testSparkleIsPinnedBundledAndKeyed() throws {
+        let manifest = try manifest()
+        let sparkle = try XCTUnwrap(manifest.dependencies.first { $0.name == "Sparkle" })
+        XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"), "MAC-14: Sparkle is embedded")
+        XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Resources/Sparkle-LICENSE.txt"))
+        // The manifest records exactly what SwiftPM resolved, and Package.swift pins that exact version.
+        let resolved = try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("Package.resolved"))) as? [String: Any]
+        let pin = try XCTUnwrap((resolved?["pins"] as? [[String: Any]])?.first { $0["identity"] as? String == "sparkle" }?["state"] as? [String: String])
+        XCTAssertEqual(pin["version"], sparkle.version)
+        XCTAssertEqual(pin["revision"], sparkle.revision)
+        let package = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)
+        XCTAssertTrue(package.contains("exact: \"\(sparkle.version)\""))
+
+        let product = ReleaseManifest.BuiltProduct(bundleIdentifier: manifest.bundleIdentifier, minimumMacOS: manifest.minimumMacOS, architectures: Set(manifest.architectures), files: Set(manifest.artifacts))
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("release/manifest.json"))) as! [String: Any]
+        json["sparklePublicKey"] = Data(repeating: 7, count: 32).base64EncodedString()
+        let keyed = try JSONDecoder().decode(ReleaseManifest.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(keyed.problems(packageMinimumMacOS: manifest.minimumMacOS, product: product), [])
+        json["sparklePublicKey"] = "not-a-key"
+        let broken = try JSONDecoder().decode(ReleaseManifest.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(broken.problems(packageMinimumMacOS: manifest.minimumMacOS, product: product), ["sparklePublicKey is not a base64 Ed25519 public key."])
     }
 
     func testCliLinkPlanIsUserLocal() {

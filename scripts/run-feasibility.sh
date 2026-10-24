@@ -23,7 +23,7 @@ cleanup() {
 trap cleanup 0
 trap 'exit 130' INT
 trap 'exit 143' TERM
-mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Helpers" "$bundle/Contents/Resources"
+mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Helpers" "$bundle/Contents/Resources" "$bundle/Contents/Frameworks"
 # Always assemble fresh files: do not overwrite a running executable or merge
 # into an old read-only resource tree or stale signature.
 cp "$bin_path/Trellis" "$bundle/Contents/MacOS/Trellis"
@@ -51,11 +51,14 @@ PLIST
 cp -R "$bin_path/SwiftTerm_SwiftTerm.bundle" "$bundle/Contents/Resources/"
 cp -R "$bin_path/Trellis_TrellisCore.bundle" "$bundle/Contents/Resources/"
 cp Design/AppIcon/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
+# The app links Sparkle; the Info.plist has no SUFeedURL, so a development bundle never checks for updates (MAC-14).
+/usr/bin/ditto "$bin_path/Sparkle.framework" "$bundle/Contents/Frameworks/Sparkle.framework"
 # The SwiftPM command-line signature does not seal an app's Info.plist/resources.
 # Sign the completed development bundle; no certificate or account is required.
 # com.bearstouch.trellis.dev keeps its own instance lock and state, apart from an installed Trellis.
 /usr/bin/codesign --force --sign - --identifier com.bearstouch.trellis.dev.askpass "$bundle/Contents/Helpers/trellis-askpass"
 /usr/bin/codesign --force --sign - --identifier com.bearstouch.trellis.dev.broker "$bundle/Contents/Helpers/trellis-broker"
+scripts/sign-sparkle.sh "$bundle" -
 /usr/bin/codesign --force --sign - --identifier com.bearstouch.trellis.dev "$bundle"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$bundle"
 if [ -e "$destination" ]; then

@@ -20,7 +20,9 @@ let package = Package(
         .executable(name: "trellis-broker", targets: ["TrellisBrokerMain"])
     ],
     dependencies: [
-        .package(path: "ThirdParty/SwiftTerm")
+        .package(path: "ThirdParty/SwiftTerm"),
+        // MAC-14: in-place updates. Linked only by the app target; packaging embeds Sparkle.framework.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
     ],
     targets: [
         .target(name: "TrellisAskpass"),
@@ -34,7 +36,10 @@ let package = Package(
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),
         .target(name: "TrellisMCP", dependencies: ["TrellisControl", "TrellisCore"]),
         .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
-        .executableTarget(name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl", "TrellisMCP"]),
+        .executableTarget(
+            name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl", "TrellisMCP", .product(name: "Sparkle", package: "Sparkle")],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+        ),
         .target(name: "TrellisRelease"),
         .target(name: "TrellisCLI", dependencies: ["TrellisControl", "TrellisRelease"]),
         .executableTarget(name: "TrellisCLIMain", dependencies: ["TrellisCLI"]),

@@ -5,9 +5,11 @@
   "minimumMacOS": "14.0",
   "architectures": ["arm64", "x86_64"],
   "packageFormat": "dmg",
-  "artifacts": ["Trellis.app/Contents/MacOS/Trellis", "Trellis.app/Contents/Helpers/trellis", "Trellis.app/Contents/Helpers/trellis-askpass", "Trellis.app/Contents/Helpers/trellis-broker", "Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt", "Trellis.app/Contents/Resources/RobotoMono-OFL.txt", "Trellis.app/Contents/Resources/JetBrainsMono-OFL.txt", "Trellis.app/Contents/Resources/CascadiaMono-OFL.txt", "Trellis.app/Contents/Resources/IBMPlexMono-OFL.txt", "Trellis.app/Contents/Resources/IosevkaFixed-OFL.txt", "Trellis.app/Contents/Resources/AtkinsonHyperlegibleMono-OFL.txt"],
+  "sparklePublicKey": "3l7FZ0cGMIfRYRgLrTKb/A79KOgD8Ls7MCIsydJiOlY=",
+  "artifacts": ["Trellis.app/Contents/MacOS/Trellis", "Trellis.app/Contents/Helpers/trellis", "Trellis.app/Contents/Helpers/trellis-askpass", "Trellis.app/Contents/Helpers/trellis-broker", "Trellis.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle", "Trellis.app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate", "Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt", "Trellis.app/Contents/Resources/Sparkle-LICENSE.txt", "Trellis.app/Contents/Resources/RobotoMono-OFL.txt", "Trellis.app/Contents/Resources/JetBrainsMono-OFL.txt", "Trellis.app/Contents/Resources/CascadiaMono-OFL.txt", "Trellis.app/Contents/Resources/IBMPlexMono-OFL.txt", "Trellis.app/Contents/Resources/IosevkaFixed-OFL.txt", "Trellis.app/Contents/Resources/AtkinsonHyperlegibleMono-OFL.txt"],
   "dependencies": [
     {"name": "SwiftTerm", "version": "1.20.0", "revision": "5d14406844143538cd8f8851d2d8a67c1fe443e5", "license": "MIT", "licenseFile": "ThirdParty/SwiftTerm-LICENSE.txt"},
+    {"name": "Sparkle", "version": "2.10.0", "revision": "eef1a539a373c1f1a320624b1130fc5de7b2e100", "license": "MIT", "licenseFile": "ThirdParty/Sparkle-LICENSE.txt"},
     {"name": "Roboto Mono", "version": "3.001", "revision": "895ec691990d041dd727c7b5afa3ce56525d98e6", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/RobotoMono-OFL.txt"},
     {"name": "JetBrains Mono", "version": "2.304", "revision": "cd5227bd1f61dff3bbd6c814ceaf7ffd95e947d9", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/JetBrainsMono-OFL.txt"},
     {"name": "Cascadia Mono NF", "version": "2407.24", "revision": "56bcca3f2c1e4cb19458954f0e2bb4635960df91", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/CascadiaMono-OFL.txt"},
