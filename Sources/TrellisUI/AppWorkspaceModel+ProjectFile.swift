@@ -520,6 +520,14 @@ extension AppWorkspaceModel {
             list.trust(root: edit.root, digest: ProjectTrustList.digest(data))
             try? saveProjectTrust(list)
         }
+        // A later Save as Project… prefills the edited commands, not the ones the panes were opened with, and only
+        // those of a trusted version (FR-WF03).
+        if let bindings = try? layoutBindings(Self.projectNamespace(edit.root)) {
+            for binding in bindings.values { projectFileCommands.removeValue(forKey: binding.id) }
+            if keepsTrust {
+                for entry in file.entries { if let command = entry.pane.command, let id = bindings[entry.key]?.id { projectFileCommands[id] = command } }
+            }
+        }
         for (paneID, offer) in projectFileOffers where offer.path == edit.path {
             projectFileOffers[paneID] = ProjectFileOffer(root: offer.root, name: file.name, path: offer.path)
         }

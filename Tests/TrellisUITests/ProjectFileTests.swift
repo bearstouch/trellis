@@ -194,6 +194,32 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testEditingTheFileChangesWhatALaterSavePrefills() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        try writeFile(layout(command: "make dev"))
+        await model.loadProjectFile(root: project)
+        await model.resolveProjectReview(try XCTUnwrap(model.pendingProjectReview).id, .trustAndOpen)
+        let opened = try window(model, named: "Demo")
+        await model.createWindow(name: "Pane")
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        try await enterProject(model)
+        try await waitFor { model.projectFileOffers[pane] != nil }
+        model.beginEditProjectFile(paneID: pane)
+        var edit = try XCTUnwrap(model.pendingProjectEdit)
+        edit.text = layout(command: "make test")
+        XCTAssertTrue(model.writeProjectFileEdit(edit), model.errorMessage ?? "")
+        XCTAssertEqual(try model.projectFileDraft(windowID: opened.id, root: project).commands.first, "make test", "The edit is what a save carries over")
+
+        // Removing the command in the editor removes it from the next save too.
+        model.beginEditProjectFile(paneID: pane)
+        var removed = try XCTUnwrap(model.pendingProjectEdit)
+        removed.text = layout()
+        XCTAssertTrue(model.writeProjectFileEdit(removed), model.errorMessage ?? "")
+        XCTAssertEqual(try model.projectFileDraft(windowID: opened.id, root: project).commands.first, "")
+    }
+
+    @MainActor
     func testTrustedCommandRunsOnceAtFirstPromptAndChangesNeedReviewAgain() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
