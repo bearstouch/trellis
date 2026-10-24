@@ -48,6 +48,7 @@ public final class BrokerServer: @unchecked Sendable {
         let io: DispatchIO
         var decoder = BrokerFrameDecoder()
         var greeted = false
+        var features: Set<String> = []
         var pending = 0
         var closing = false
         init(io: DispatchIO) { self.io = io }
@@ -186,7 +187,8 @@ public final class BrokerServer: @unchecked Sendable {
     private func handle(_ frame: BrokerFrame, from connection: Client) {
         if frame.kind == .stopAll { stopEverything(); return }
         guard connection.greeted else {
-            guard let envelope = frame.envelope, case .hello(let version) = envelope.message else { dropClient(); return }
+            guard let envelope = frame.envelope, case .hello(let version, let features) = envelope.message else { dropClient(); return }
+            connection.features = Set(features ?? [])
             let answer = BrokerCore.hello(version, brokerPID: ownPID)
             reply(envelope.requestID, answer)
             if case .welcome = answer { connection.greeted = true } else { connection.closing = true }
@@ -324,7 +326,9 @@ public final class BrokerServer: @unchecked Sendable {
         if session.rejectingInput, session.pendingInput == 0 { session.rejectingInput = false }
         guard !session.rejectingInput, session.pendingInput + bytes.count <= Self.inputLimit else {
             // Told once per overflow; the rest of that paste is dropped too, never written around a gap.
-            if !session.rejectingInput, session.attached, client?.greeted == true { reply(nil, .inputRejected(sessionID: session.id)) }
+            if !session.rejectingInput, session.attached, client?.greeted == true, client?.features.contains(BrokerProtocol.inputRejectedFeature) == true {
+                reply(nil, .inputRejected(sessionID: session.id))
+            }
             session.rejectingInput = true
             return
         }

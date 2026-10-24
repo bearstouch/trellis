@@ -61,7 +61,7 @@ public final class BrokerConnection {
 
     /// Fails with `incompatible` when the broker speaks another protocol version.
     public func hello() async throws {
-        switch try await request(.hello(protocolVersion: BrokerProtocol.version)) {
+        switch try await request(.hello(protocolVersion: BrokerProtocol.version, features: [BrokerProtocol.inputRejectedFeature])) {
         case .welcome(_, let pid): brokerPID = pid
         case .refused: close(); throw BrokerClientError.incompatible
         default: close(); throw BrokerClientError.incompatible

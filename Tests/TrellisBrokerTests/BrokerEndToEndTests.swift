@@ -119,6 +119,34 @@ final class BrokerEndToEndTests: XCTestCase {
         XCTAssertEqual(sink.rejected, 1, "One report per overflow, not one per chunk")
     }
 
+    func testAClientThatDidNotAskIsNeverSentInputRejected() async throws {
+        let launcher = try launcher()
+        let socket = try launcher.spawn()
+        launcher.publish(socketPath: socket)
+        // An older app: its hello lists no features, and it would drop the connection on an event it can't decode.
+        var connection: BrokerConnection?
+        let deadline = Date().addingTimeInterval(3)
+        while connection == nil, Date() < deadline {
+            if let candidate = try? BrokerConnection.connect(socketPath: socket, brokerExecutable: launcher.helperPath),
+                case .welcome? = try? await candidate.request(.hello(protocolVersion: BrokerProtocol.version))
+            {
+                connection = candidate
+            } else {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        let old = try XCTUnwrap(connection)
+        connections.append(old)
+        let sink = Sink()
+        let id = try await spawn(old, "printf 'ready\\n'; exec sleep 600", sink: sink)
+        try await waitFor { sink.text.contains("ready") }
+        for _ in 0..<4 { try old.sendInput(Data(repeating: UInt8(ascii: "x"), count: 512 * 1024), sessionID: id) }
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(sink.rejected, 0)
+        XCTAssertTrue(old.isOpen, "The connection stays up")
+        XCTAssertFalse(sink.disconnected)
+    }
+
     func testAnInputTooLargeForTheOutboxSendsNothing() async throws {
         let launcher = try launcher()
         let (_, connection) = try await start(launcher)
