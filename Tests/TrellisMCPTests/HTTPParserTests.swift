@@ -35,6 +35,27 @@ final class HTTPParserTests: XCTestCase {
         XCTAssertEqual(requests.map(\.path), ["/a", "/b"])
     }
 
+    func testBlankLinesAndPipelinedRequestsInOneReadCostLinearTime() throws {
+        var parser = HTTPRequestParser()
+        // Each blank line or request used to copy the rest of the buffer: a flood of them pinned a core before any auth.
+        let started = Date()
+        XCTAssertEqual(try parser.append(Data(String(repeating: "\r\n", count: 262_144).utf8)), [])
+        XCTAssertFalse(parser.hasPartialRequest)
+        let many = String(repeating: "GET /mcp HTTP/1.1\r\nHost: a\r\n\r\n\r\n", count: 20_000)
+        XCTAssertEqual(try parser.append(Data(many.utf8)).count, 20_000)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        XCTAssertFalse(parser.hasPartialRequest)
+    }
+
+    func testABlankLineSplitAcrossReadsIsSkipped() throws {
+        var parser = HTTPRequestParser()
+        XCTAssertEqual(try parser.append(Data("GET /a HTTP/1.1\r\nHost: a\r\n\r\n\r".utf8)).map(\.path), ["/a"])
+        XCTAssertTrue(parser.hasPartialRequest)
+        XCTAssertEqual(try parser.append(Data("\nGET /b HTTP/1.1\r\nHost: a\r\n\r\nGET /c".utf8)).map(\.path), ["/b"])
+        XCTAssertEqual(try parser.append(Data(" HTTP/1.1\r\nHost: a\r\n\r\n".utf8)).map(\.path), ["/c"])
+        XCTAssertFalse(parser.hasPartialRequest)
+    }
+
     func testHTTP10ClosesUnlessKeepAliveIsRequested() throws {
         XCTAssertFalse(try parse("GET / HTTP/1.0\r\n\r\n")[0].keepAlive)
         XCTAssertTrue(try parse("GET / HTTP/1.0\r\nConnection: keep-alive\r\n\r\n")[0].keepAlive)
