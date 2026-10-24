@@ -6,6 +6,7 @@ Usage: python3 scripts/test-feasibility-launcher.py <compiled Swift bin path>
 from pathlib import Path
 import hashlib
 import os
+import plistlib
 import shutil
 import stat
 import subprocess
@@ -30,6 +31,7 @@ def main():
         (root / ".build").mkdir()
         launcher = root / "scripts/run-feasibility.sh"
         shutil.copy2(project / "scripts/run-feasibility.sh", launcher)
+        shutil.copy2(project / "scripts/sign-sparkle.sh", root / "scripts/sign-sparkle.sh")
         icon = root / "Design/AppIcon/AppIcon.icns"
         icon.parent.mkdir(parents=True)
         shutil.copy2(project / "Design/AppIcon/AppIcon.icns", icon)
@@ -43,6 +45,8 @@ def main():
         shutil.copytree(products / "SwiftTerm_SwiftTerm.bundle", resources)
         theme_resources = built / "Trellis_TrellisCore.bundle"
         shutil.copytree(products / "Trellis_TrellisCore.bundle", theme_resources)
+        sparkle = built / "Sparkle.framework"
+        shutil.copytree(products / "Sparkle.framework", sparkle, symlinks=True)
         shader = resources / "Shaders.metal"
         shader.chmod(0o444)
         source_hash = digest(built / "Trellis")
@@ -85,6 +89,13 @@ def main():
             for script in ("zsh/.zshenv", "bash/trellis.bash", "fish/vendor_conf.d/trellis-shell-integration.fish"):
                 assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/ShellIntegration/{script}").is_file(), f"assembled app has no {script}"
             assert digest(destination / "Contents/Resources/AppIcon.icns") == digest(icon)
+            framework = destination / "Contents/Frameworks/Sparkle.framework"
+            assert (framework / "Versions/B/Sparkle").is_file(), "assembled app has no Sparkle.framework"
+            assert not (framework / "Versions/B/XPCServices").exists(), "the unsandboxed app ships no Sparkle XPC services"
+            subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(framework)], check=True)
+            assert (sparkle / "Versions/B/XPCServices").is_dir(), "preparing Sparkle changed the Swift build product"
+            with (destination / "Contents/Info.plist").open("rb") as plist:
+                assert "SUFeedURL" not in plistlib.load(plist), "a development bundle must never check for updates"
             for helper in helpers:
                 installed = destination / "Contents/Helpers" / helper
                 assert installed.is_file() and os.access(installed, os.X_OK), f"assembled app has no executable {helper}"
@@ -114,6 +125,12 @@ def main():
         missing_themes.rename(theme_resources)
         verify()
         assert before == (digest(executable), digest(seal), log.read_bytes())
+        missing_sparkle = built / "missing-sparkle"
+        sparkle.rename(missing_sparkle)
+        run("--build-only", success=False)
+        missing_sparkle.rename(sparkle)
+        verify()
+        assert before == (digest(executable), digest(seal), log.read_bytes())
         for helper in helpers:
             missing_helper = built / f"missing-{helper}"
             (built / helper).rename(missing_helper)
@@ -121,7 +138,7 @@ def main():
             missing_helper.rename(built / helper)
             verify()
             assert before == (digest(executable), digest(seal), log.read_bytes())
-    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, signed bundled helpers, unchanged source, argument forwarding, build-only, and failed-build preservation")
+    print("PASS: sealed fresh bundles, repeat assembly, read-only resources, signed bundled helpers, embedded Sparkle without a feed, unchanged source, argument forwarding, build-only, and failed-build preservation")
 
 
 if __name__ == "__main__":

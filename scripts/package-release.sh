@@ -10,6 +10,9 @@ cd "$(dirname "$0")/.."
 identity="${TRELLIS_SIGN_IDENTITY:--}"
 version=$(python3 -c 'import json;print(json.load(open("release/manifest.json"))["version"])')
 minimum=$(python3 -c 'import json;print(json.load(open("release/manifest.json"))["minimumMacOS"])')
+# MAC-14: a build gets an update feed only when the manifest records the Sparkle public key.
+sparkle_key=$(python3 -c 'import json;print(json.load(open("release/manifest.json")).get("sparklePublicKey") or "")')
+feed_url="https://raw.githubusercontent.com/bearstouch/trellis/appcast/appcast.xml"
 # macOS wants numeric bundle versions: CFBundleShortVersionString is the X.Y.Z core, and CFBundleVersion adds a build
 # that orders pre-releases before the release (alpha.N = N, beta.N = 30+N, rc.N = 60+N, release = 100). The full
 # version, label included, goes to TrellisVersion for the app to show.
@@ -42,19 +45,31 @@ mkdir -p "$bin"
 for product in Trellis trellis-cli trellis-askpass trellis-broker; do
     /usr/bin/lipo -create "$arm/$product" "$intel/$product" -output "$bin/$product"
 done
-# Resource bundles are architecture-independent.
+# Resource bundles are architecture-independent; Sparkle's framework is already Universal 2.
 cp -R "$arm/SwiftTerm_SwiftTerm.bundle" "$arm/Trellis_TrellisCore.bundle" "$bin/"
+/usr/bin/ditto "$arm/Sparkle.framework" "$bin/Sparkle.framework"
 
 app="$dist/Trellis.app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources" "$app/Contents/Frameworks"
 cp "$bin/Trellis" "$app/Contents/MacOS/Trellis"
 cp "$bin/trellis-cli" "$app/Contents/Helpers/trellis"
 cp "$bin/trellis-askpass" "$app/Contents/Helpers/trellis-askpass"
 cp "$bin/trellis-broker" "$app/Contents/Helpers/trellis-broker"
 cp -R "$bin/SwiftTerm_SwiftTerm.bundle" "$bin/Trellis_TrellisCore.bundle" "$app/Contents/Resources/"
+/usr/bin/ditto "$bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
 rm -rf "$bin"
 cp Design/AppIcon/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cp ThirdParty/SwiftTerm-LICENSE.txt "$app/Contents/Resources/SwiftTerm-LICENSE.txt"
+cp ThirdParty/Sparkle-LICENSE.txt "$app/Contents/Resources/Sparkle-LICENSE.txt"
+if [ -n "$sparkle_key" ]; then
+    updates="<key>SUFeedURL</key><string>$feed_url</string>
+<key>SUPublicEDKey</key><string>$sparkle_key</string>
+<key>SUEnableAutomaticChecks</key><false/>
+<key>SUEnableSystemProfiling</key><false/>"
+else
+    echo "warning: release/manifest.json has no sparklePublicKey; this build has no updater." >&2
+    updates=""
+fi
 cp Sources/TrellisCore/Resources/Fonts/*-OFL.txt "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -70,6 +85,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>TrellisVersion</key><string>$version</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>LSMinimumSystemVersion</key><string>$minimum</string>
+$updates
 </dict></plist>
 PLIST
 
@@ -84,7 +100,17 @@ sign() {
 sign "$app/Contents/Helpers/trellis" com.bearstouch.trellis.cli
 sign "$app/Contents/Helpers/trellis-askpass" com.bearstouch.trellis.askpass
 sign "$app/Contents/Helpers/trellis-broker" com.bearstouch.trellis.broker
-sign "$app" com.bearstouch.trellis
+scripts/sign-sparkle.sh "$app" "$identity"
+# Ad-hoc signatures have no Team ID, so library validation would refuse the embedded Sparkle.framework. Only these
+# non-distributable builds relax it; Developer ID builds keep library validation.
+if [ "$identity" = "-" ]; then
+    entitlements="$dist/adhoc.entitlements"
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+        '<plist version="1.0"><dict><key>com.apple.security.cs.disable-library-validation</key><true/></dict></plist>' > "$entitlements"
+    /usr/bin/codesign --force --options runtime --sign - --identifier com.bearstouch.trellis --entitlements "$entitlements" "$app"
+else
+    sign "$app" com.bearstouch.trellis
+fi
 
 dmg="$dist/Trellis-$version.dmg"
 scripts/make-dmg.sh "$app" "$dmg" "Trellis $version"
@@ -108,7 +134,8 @@ runtime=false
 /usr/bin/codesign --display --verbose=4 "$app" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && \
     /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && \
     /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis-askpass" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && \
-    /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis-broker" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && runtime=true
+    /usr/bin/codesign --display --verbose=4 "$app/Contents/Helpers/trellis-broker" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && \
+    /usr/bin/codesign --display --verbose=4 "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" 2>&1 | grep -Eq "^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime" && runtime=true
 gatekeeper=$(/usr/sbin/spctl --assess --type execute --verbose=2 "$app" 2>&1 || true)
 python3 - "$app" "$dmg" "$identity" "$verified" "$runtime" "$notarized" "$stapled" "$gatekeeper" "$notary_requested" <<'PY'
 import json, plistlib, subprocess, sys, os
@@ -125,13 +152,17 @@ for binary in ["Contents/MacOS/Trellis", "Contents/Helpers/trellis", "Contents/H
     missing = set(manifest["architectures"]) - set(archs(os.path.join(app, binary)))
     if missing: problems.append(f"{binary} lacks {sorted(missing)}")
 problems += [f"missing {a}" for a in manifest["artifacts"] if a not in files]
+if info.get("SUPublicEDKey", "") != (manifest.get("sparklePublicKey") or ""): problems.append("SUPublicEDKey does not match the manifest")
+entitlements = subprocess.run(["codesign", "--display", "--entitlements", "-", app], capture_output=True, text=True).stdout
+if identity != "-" and "disable-library-validation" in entitlements: problems.append("a distributable build must keep library validation")
 # A requested notarization that fails must not leave a "successful" signed build behind.
 if notary_requested == "true" and stapled != "true": problems.append("notarization or stapling failed")
 evidence = {
     "version": manifest["version"], "dmg": os.path.basename(dmg), "signingIdentity": "ad-hoc (not distributable)" if identity == "-" else identity,
     "architectures": {"app": archs(os.path.join(app, "Contents/MacOS/Trellis")), "cli": archs(os.path.join(app, "Contents/Helpers/trellis"))},
     "minimumMacOS": info["LSMinimumSystemVersion"], "signatureVerified": verified == "true", "hardenedRuntime": runtime == "true",
-    "notarized": notarized == "true", "stapled": stapled == "true", "gatekeeperLocal": gatekeeper.strip(), "manifestProblems": problems,
+    "notarized": notarized == "true", "stapled": stapled == "true", "gatekeeperLocal": gatekeeper.strip(),
+    "updateFeed": info.get("SUFeedURL"), "manifestProblems": problems,
 }
 json.dump(evidence, open(os.path.join(os.path.dirname(app), "release-evidence.json"), "w"), indent=2)
 print(json.dumps(evidence, indent=2))

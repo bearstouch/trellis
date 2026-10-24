@@ -33,7 +33,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 - Terminal output is untrusted. Don't add features where the terminal triggers clipboard access, file access or URL opening without a user gesture.
 - Build processes from an executable plus an argument array. Never interpolate into a shell command line, and never add SSH trust-bypass flags.
 - Tokens never go in argv, environment variables or error messages.
-- Don't add telemetry or network calls.
+- Don't add telemetry or network calls. The one exception is the user-controlled update check (MAC-14): an appcast `GET` with no system profile, made only on a gesture or after the user turns on automatic checks.
 - Be especially careful in these areas: the control socket and grants (`TrellisControl`), the MCP server (`TrellisMCP`), escape-sequence handling (OSC 52, Kitty graphics, OSC 1337 inline images, links), paste review, SSH invocation, and persistence permissions. Report vulnerabilities privately; see [Contribution workflow](workflow.md#security-issues).
 
 ## Code style

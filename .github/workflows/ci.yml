@@ -56,3 +56,6 @@ jobs:
 
       - name: Launcher regression
         run: python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"
+
+      - name: Appcast generator
+        run: python3 -I scripts/test-update-appcast.py

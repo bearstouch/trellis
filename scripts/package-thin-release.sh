@@ -30,10 +30,21 @@ for pair in arm64:apple-silicon x86_64:intel; do
     sign "$app/Contents/Helpers/trellis" com.bearstouch.trellis.cli
     sign "$app/Contents/Helpers/trellis-askpass" com.bearstouch.trellis.askpass
     sign "$app/Contents/Helpers/trellis-broker" com.bearstouch.trellis.broker
-    sign "$app" com.bearstouch.trellis
+    scripts/sign-sparkle.sh "$app" "$identity" "$arch"
+    # Ad-hoc signatures have no Team ID, so library validation would refuse the embedded Sparkle.framework. Only these
+    # non-distributable builds relax it; Developer ID builds keep library validation.
+    if [ "$identity" = "-" ]; then
+        entitlements="$PWD/dist/adhoc.entitlements"
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict><key>com.apple.security.cs.disable-library-validation</key><true/></dict></plist>' > "$entitlements"
+        /usr/bin/codesign --force --options runtime --sign - --identifier com.bearstouch.trellis --entitlements "$entitlements" "$app"
+    else
+        sign "$app" com.bearstouch.trellis
+    fi
     /usr/bin/codesign --verify --deep --strict "$app"
     [ "$(/usr/bin/lipo -archs "$app/Contents/MacOS/Trellis")" = "$arch" ] || { echo "$label app is not $arch" >&2; exit 1; }
     [ "$(/usr/bin/lipo -archs "$app/Contents/Helpers/trellis")" = "$arch" ] || { echo "$label CLI is not $arch" >&2; exit 1; }
+    [ "$(/usr/bin/lipo -archs "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle")" = "$arch" ] || { echo "$label Sparkle is not $arch" >&2; exit 1; }
 
     dmg="$PWD/dist/Trellis-$version-$label.dmg"
     scripts/make-dmg.sh "$app" "$dmg" "Trellis $version"
