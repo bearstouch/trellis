@@ -429,8 +429,12 @@ final class ProjectFileTests: XCTestCase {
         // An edit that keeps the window's shape is written byte for byte, trusted, and binds the window.
         draft.text = #"{"version": 1, "name": "Edited", "tabs": [{"title": "Renamed", "root": {"type": "pane", "command": "make"}}]}"#
         XCTAssertEqual(model.checkProjectFile(draft), ProjectFileCheck(errors: [], warnings: []))
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        XCTAssertNil(model.projectFileOffers[pane])
         XCTAssertTrue(model.writeProjectFile(draft), model.errorMessage ?? "")
         XCTAssertEqual(try String(contentsOfFile: draft.path, encoding: .utf8), draft.text)
+        // The pane finds the new file without leaving its folder, so its header offers to edit it.
+        try await waitFor { model.projectFileOffers[pane]?.path == draft.path }
         XCTAssertTrue(model.projectFileExists(draft))
         let windows = model.snapshot.windows.count
         await model.loadProjectFile(root: project)

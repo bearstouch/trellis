@@ -126,6 +126,14 @@ extension AppWorkspaceModel {
         }
     }
 
+    /// Looks again from every pane's last directory, after a project file was written there: lookups are skipped
+    /// while a pane's directory stays the same, so a new file would otherwise go unseen until the next `cd`.
+    func redetectProjectFiles() {
+        let lookups = projectFileLookups
+        projectFileLookups = [:]
+        for (paneID, directory) in lookups { detectProjectFile(paneID: paneID, directory: directory) }
+    }
+
     /// The offer a tab shows: its active pane's, else any pane's. Never for the project's own window or a
     /// folder the user declined.
     public func projectFileOffer(tabID: UUID) -> ProjectFileOffer? {
@@ -564,6 +572,7 @@ extension AppWorkspaceModel {
             for paneID in draft.paneIDs { projectFileCommands.removeValue(forKey: paneID) }
         }
         pruneProjectFileState()
+        redetectProjectFiles()
         pendingProjectSave = nil
         return true
     }
