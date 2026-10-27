@@ -139,7 +139,25 @@
              } else {
                  midx = ansi > 7 ? (Int (ansi) - 8) : Int(ansi)
              }
-@@ -694,8 +776,11 @@ extension TerminalView {
+@@ -562,6 +644,17 @@ extension TerminalView {
+         }
+     }
+ 
++    // Trellis draws dotted and dashed underlines (and links) as a solid line,
++    // which reads better at terminal sizes; the buffer keeps the requested style.
++    func drawnUnderlineStyle(_ style: UnderlineStyle) -> UnderlineStyle {
++        switch style {
++        case .none, .dotted, .dashed:
++            return .single
++        case .single, .double, .curly:
++            return style
++        }
++    }
++
+     // Clears the cached state for colors and triggers a full display
+     func colorsChanged ()
+     {
+@@ -694,8 +787,11 @@ extension TerminalView {
              return
          }
          let blinkRows = visibleBlinkRows()
@@ -153,7 +171,7 @@
          guard canBlink else {
              textBlinkTimer?.invalidate()
              textBlinkTimer = nil
-@@ -716,6 +801,13 @@ extension TerminalView {
+@@ -716,6 +812,13 @@ extension TerminalView {
          RunLoop.main.add(timer, forMode: .common)
      }
  
@@ -167,7 +185,7 @@
      func setTextBlinkVisibleForTesting(_ visible: Bool) {
          textBlinkTimer?.invalidate()
          textBlinkTimer = nil
-@@ -818,19 +910,7 @@ extension TerminalView {
+@@ -818,19 +921,7 @@ extension TerminalView {
              swap (&bg, &fg)
          }
          
@@ -188,7 +206,16 @@
          
          var nsattr: [NSAttributedString.Key:Any] = [
              .font: tf,
-@@ -882,20 +962,8 @@ extension TerminalView {
+@@ -841,7 +932,7 @@ extension TerminalView {
+             let underlineColor = attribute.underlineColor.map {
+                 mapColor(color: $0, isFg: true, isBold: flags.contains(.bold), useBrightColors: useBrightColors)
+             } ?? fg
+-            let underlineVariant = attribute.underlineStyle == .none ? .single : attribute.underlineStyle
++            let underlineVariant = drawnUnderlineStyle(attribute.underlineStyle)
+             nsattr [.underlineColor] = underlineColor
+             nsattr [.underlineStyle] = nsUnderlineStyle(underlineVariant).rawValue
+             nsattr [SwiftTermUnderlineStyleKey] = Int(underlineVariant.rawValue)
+@@ -882,20 +973,8 @@ extension TerminalView {
          if case .ansi256(let code) = fg, code > 7, !useBrightColors {
              useBoldForBrightColor = true
          }
@@ -210,7 +237,16 @@
          
          var fgColor = mapColor (color: fg, isFg: true, isBold: isBold, useBrightColors: useBrightColors)
          let bgColor = mapColor (color: bg, isFg: false, isBold: false)
-@@ -921,6 +989,16 @@ extension TerminalView {
+@@ -912,7 +991,7 @@ extension TerminalView {
+             let underlineColor = attribute.underlineColor.map {
+                 mapColor(color: $0, isFg: true, isBold: isBold, useBrightColors: useBrightColors)
+             } ?? fgColor
+-            let underlineVariant = attribute.underlineStyle == .none ? .single : attribute.underlineStyle
++            let underlineVariant = drawnUnderlineStyle(attribute.underlineStyle)
+             nsattr [.underlineColor] = underlineColor
+             nsattr [.underlineStyle] = nsUnderlineStyle(underlineVariant).rawValue
+             nsattr [SwiftTermUnderlineStyleKey] = Int(underlineVariant.rawValue)
+@@ -921,11 +1000,21 @@ extension TerminalView {
              nsattr [.strikethroughColor] = fgColor
              nsattr [.strikethroughStyle] = NSUnderlineStyle.single.rawValue
          }
@@ -227,7 +263,13 @@
  
          if withUrl {
              nsattr [.underlineStyle] = NSUnderlineStyle.single.rawValue
-@@ -1074,6 +1152,9 @@ extension TerminalView {
+             nsattr [.underlineColor] = fgColor
+-            nsattr [SwiftTermUnderlineStyleKey] = Int(UnderlineStyle.dashed.rawValue)
++            nsattr [SwiftTermUnderlineStyleKey] = Int(UnderlineStyle.single.rawValue)
+ 
+             // Add to cache; truecolor attributes are unbounded, so cap it
+             if urlAttributes.count >= 4096 {
+@@ -1074,6 +1163,9 @@ extension TerminalView {
          var blockElements: [BlockElementRenderItem] = []
          var boxDrawings: [BoxDrawingRenderItem] = []
          var powerlineGlyphs: [PowerlineRenderItem] = []
@@ -237,7 +279,7 @@
          
          // Batching state: accumulate consecutive characters with the same attributes
          var pendingText = ""
-@@ -1082,7 +1163,8 @@ extension TerminalView {
+@@ -1082,7 +1174,8 @@ extension TerminalView {
          var lastAttr: Attribute? = nil
          var lastHasUrl = false
          var lastIsSelected = false
@@ -247,7 +289,7 @@
  
          func flushPending() {
              if !pendingText.isEmpty, let attrs = pendingAttrs {
-@@ -1132,19 +1214,33 @@ extension TerminalView {
+@@ -1132,19 +1225,33 @@ extension TerminalView {
              }
  
              let isSelected = isColumnSelected(selectionColumns, column: col, width: width)
@@ -284,7 +326,7 @@
                  var batchAttributes = attributes
                  if isSelected {
                      batchAttributes[.selectionBackgroundColor] = selectedTextBackgroundColor
-@@ -1156,13 +1252,14 @@ extension TerminalView {
+@@ -1156,13 +1263,14 @@ extension TerminalView {
                          batchAttributes[.strikethroughColor] = selectedTextForegroundColor
                      }
                  }
@@ -300,7 +342,7 @@
                  }
                  if needsDirectionOverride {
                      // SwiftTerm owns cell placement. A BiDi layout is already in
-@@ -1182,7 +1279,7 @@ extension TerminalView {
+@@ -1182,7 +1290,7 @@ extension TerminalView {
  
              // Render Powerline separators independently of the font so their
              // joining edge shares the background's exact pixel boundary.
@@ -309,7 +351,7 @@
                                                customGlyphsEnabled: customBlockGlyphs) {
                  flushPending()
                  let fgColor = (currentAttributes[.foregroundColor] as? TTColor) ?? effectiveNativeForegroundColor
-@@ -1196,7 +1293,7 @@ extension TerminalView {
+@@ -1196,7 +1304,7 @@ extension TerminalView {
                  previousPlaceholderAttribute = nil
              // Renders box drawing characters independently of the font
              // U+2500...U+257F
@@ -318,7 +360,7 @@
                 renderCodePoint >= UInt32(BoxDrawingRenderer.lowerBoundary),
                 renderCodePoint <= UInt32(BoxDrawingRenderer.upperBoundary) {
                  flushPending()
-@@ -1210,7 +1307,7 @@ extension TerminalView {
+@@ -1210,7 +1318,7 @@ extension TerminalView {
                  previousPlaceholderAttribute = nil
              // Renders block elements independently of the font
              // U+2580...U+259F
@@ -327,7 +369,7 @@
                        (renderCodePoint >= UInt32(BlockElementMapping.lowerBoundary)
                         && renderCodePoint <= UInt32(BlockElementMapping.upperBoundary)),
                        let rects = BlockElementMapping.rects(for: renderCodePoint) {
-@@ -1235,7 +1332,7 @@ extension TerminalView {
+@@ -1235,7 +1343,7 @@ extension TerminalView {
                  builder?.append(text: " ", attributes: currentAttributes, cellUTF16Lengths: [1])
                  previousPlaceholder = placeholder
                  previousPlaceholderAttribute = attr
@@ -336,7 +378,7 @@
                  // In BiDi rows, Arabic-script cells and cells holding combining
                  // sequences or emoji are isolated into their own column-anchored
                  // segment so that font-side ligation or extra mark glyphs cannot
-@@ -1259,12 +1356,28 @@ extension TerminalView {
+@@ -1259,12 +1367,28 @@ extension TerminalView {
                  builder = nil
                  previousPlaceholder = nil
                  previousPlaceholderAttribute = nil
@@ -367,7 +409,7 @@
                      // Steer font fallback away from Apple Color Emoji for
                      // default-text-presentation symbols (see prefersTextPresentation).
                      pendingText.append("\u{FE0E}")
-@@ -1294,6 +1407,32 @@ extension TerminalView {
+@@ -1294,6 +1418,32 @@ extension TerminalView {
                              powerlineGlyphs: powerlineGlyphs)
      }
  
@@ -400,7 +442,7 @@
      func shouldUnderlineLink(row: Int, column: Int, width: Int, cell: CharData) -> Bool
      {
          switch linkHighlightMode {
-@@ -1325,7 +1464,8 @@ extension TerminalView {
+@@ -1325,7 +1475,8 @@ extension TerminalView {
      // "k=v:k2=v2;URL"
      func urlAndParamsFrom(payload: String) -> (String, [String:String])?
      {
@@ -410,7 +452,7 @@
          if split.count > 1 {
              let pairs = split[0].split(separator: ":")
              var params: [String:String] = [:]
-@@ -1507,10 +1647,18 @@ extension TerminalView {
+@@ -1507,10 +1658,18 @@ extension TerminalView {
          return selectionRange.lowerBound < endColumn && column < selectionRange.upperBound
      }
  
@@ -430,7 +472,7 @@
  
          if attributes.keys.contains(.underlineStyle) {
              // draw underline at font.normal.underlinePosition baseline
-@@ -1547,11 +1695,11 @@ extension TerminalView {
+@@ -1547,11 +1706,11 @@ extension TerminalView {
                  switch style {
                  case .dashed:
                      let pattern: [CGFloat] = [dashLength]
@@ -444,7 +486,7 @@
                  default:
                      break
                  }
-@@ -1564,13 +1712,14 @@ extension TerminalView {
+@@ -1564,13 +1723,14 @@ extension TerminalView {
                  let step = max(thickness, 1)
                  let path = TTBezierPath()
                  path.lineWidth = thickness
@@ -465,7 +507,7 @@
                  }
                  path.stroke()
              }
-@@ -1580,23 +1729,20 @@ extension TerminalView {
+@@ -1580,23 +1740,20 @@ extension TerminalView {
              currentContext.setShouldAntialias(false)
              currentContext.setStrokeColor(cachedCGColor(underlineColor))
  
@@ -503,7 +545,7 @@
              }
          }
  
-@@ -1611,32 +1757,44 @@ extension TerminalView {
+@@ -1611,32 +1768,44 @@ extension TerminalView {
              currentContext.setShouldAntialias(false)
              currentContext.setStrokeColor(cachedCGColor(strikeColor))
  
@@ -516,13 +558,13 @@
 +            path.move(to: CGPoint(x: startX, y: baselineY + strikePosition))
 +            path.addLine(to: CGPoint(x: endX, y: baselineY + strikePosition))
 +            path.lineWidth = strikeThickness
-+
+ 
 +            if strikeStyle.contains(.patternDash) {
 +                let pattern: [CGFloat] = [2.0]
 +                path.setLineDash(pattern, count: pattern.count, phase: phase.truncatingRemainder(dividingBy: 4))
 +            }
 +            path.stroke()
- 
++
 +            if strikeStyle.contains(.double) {
 +                let path2 = TTBezierPath()
 +                let offset = strikeThickness + 1
@@ -568,7 +610,7 @@
          currentContext.restoreGState()
      }
  
-@@ -1760,7 +1918,117 @@ extension TerminalView {
+@@ -1760,7 +1929,117 @@ extension TerminalView {
          }
      }
  
@@ -687,7 +729,7 @@
      // TODO: this should not render any lines outside the dirtyRect
      func drawTerminalContents (dirtyRect: TTRect, context: CGContext, bufferOffset: Int)
      {
-@@ -1903,31 +2171,7 @@ extension TerminalView {
+@@ -1903,31 +2182,7 @@ extension TerminalView {
                  overTextKittyImages.sort(by: sortKitty)
              }
  
@@ -720,7 +762,7 @@
  
              // Background fill loop — uses cached CTLines
              context.saveGState()
-@@ -1936,36 +2180,12 @@ extension TerminalView {
+@@ -1936,36 +2191,12 @@ extension TerminalView {
              context.setLineWidth(0)
  
              for prepared in preparedSegments {
@@ -760,7 +802,7 @@
  
                      // Runs carrying the default background are not filled: the
                      // view's layer background already paints that color, and
-@@ -2038,7 +2258,6 @@ extension TerminalView {
+@@ -2038,7 +2269,6 @@ extension TerminalView {
  
              // Glyph drawing loop — reuses cached CTLines
              for prepared in preparedSegments {
@@ -768,7 +810,7 @@
                  for preparedRun in prepared.runs {
                      let run = preparedRun.run
                      let runGlyphsCount = CTRunGetGlyphCount(run)
-@@ -2052,50 +2271,8 @@ extension TerminalView {
+@@ -2052,50 +2282,8 @@ extension TerminalView {
                          count = runGlyphsCount
                      }
  
@@ -821,7 +863,7 @@
  
                      context.setFillColor(
                          cachedCGColor(preparedRun.foregroundColor ?? effectiveNativeForegroundColor))
-@@ -2141,7 +2318,8 @@ extension TerminalView {
+@@ -2141,7 +2329,8 @@ extension TerminalView {
                      // runs; undecorated runs skip the call entirely.
                      if preparedRun.hasDecorations {
                          let runAttributes = preparedRun.attributes as? [NSAttributedString.Key: Any] ?? [:]
@@ -831,7 +873,7 @@
                      }
                  }
              }
-@@ -2304,6 +2482,7 @@ extension TerminalView {
+@@ -2304,6 +2493,7 @@ extension TerminalView {
              return
          }
          updateCursorPosition()
@@ -839,7 +881,7 @@
          guard let (rowStart, rowEnd) = terminal.getUpdateRange () else {
              if notifyUpdateChanges {
                  let buffer = terminal.displayBuffer
-@@ -2538,6 +2717,11 @@ extension TerminalView {
+@@ -2538,6 +2728,11 @@ extension TerminalView {
      }
  
  #if canImport(MetalKit)
@@ -851,7 +893,7 @@
      func requestMetalDisplay() {
          guard let metalView = metalView else {
              return
-@@ -3015,7 +3199,7 @@ extension TerminalView {
+@@ -3015,7 +3210,7 @@ extension TerminalView {
      // Inserts the specified image at the current buffer position (x, y) using the specified size requests
      // and aspect ratio request.   The insertion is done by adding slices of the image, one per line
      // to the buffer.

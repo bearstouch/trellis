@@ -644,6 +644,17 @@ extension TerminalView {
         }
     }
 
+    // Trellis draws dotted and dashed underlines (and links) as a solid line,
+    // which reads better at terminal sizes; the buffer keeps the requested style.
+    func drawnUnderlineStyle(_ style: UnderlineStyle) -> UnderlineStyle {
+        switch style {
+        case .none, .dotted, .dashed:
+            return .single
+        case .single, .double, .curly:
+            return style
+        }
+    }
+
     // Clears the cached state for colors and triggers a full display
     func colorsChanged ()
     {
@@ -921,7 +932,7 @@ extension TerminalView {
             let underlineColor = attribute.underlineColor.map {
                 mapColor(color: $0, isFg: true, isBold: flags.contains(.bold), useBrightColors: useBrightColors)
             } ?? fg
-            let underlineVariant = attribute.underlineStyle == .none ? .single : attribute.underlineStyle
+            let underlineVariant = drawnUnderlineStyle(attribute.underlineStyle)
             nsattr [.underlineColor] = underlineColor
             nsattr [.underlineStyle] = nsUnderlineStyle(underlineVariant).rawValue
             nsattr [SwiftTermUnderlineStyleKey] = Int(underlineVariant.rawValue)
@@ -980,7 +991,7 @@ extension TerminalView {
             let underlineColor = attribute.underlineColor.map {
                 mapColor(color: $0, isFg: true, isBold: isBold, useBrightColors: useBrightColors)
             } ?? fgColor
-            let underlineVariant = attribute.underlineStyle == .none ? .single : attribute.underlineStyle
+            let underlineVariant = drawnUnderlineStyle(attribute.underlineStyle)
             nsattr [.underlineColor] = underlineColor
             nsattr [.underlineStyle] = nsUnderlineStyle(underlineVariant).rawValue
             nsattr [SwiftTermUnderlineStyleKey] = Int(underlineVariant.rawValue)
@@ -1003,7 +1014,7 @@ extension TerminalView {
         if withUrl {
             nsattr [.underlineStyle] = NSUnderlineStyle.single.rawValue
             nsattr [.underlineColor] = fgColor
-            nsattr [SwiftTermUnderlineStyleKey] = Int(UnderlineStyle.dashed.rawValue)
+            nsattr [SwiftTermUnderlineStyleKey] = Int(UnderlineStyle.single.rawValue)
 
             // Add to cache; truecolor attributes are unbounded, so cap it
             if urlAttributes.count >= 4096 {

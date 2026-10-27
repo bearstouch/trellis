@@ -126,7 +126,7 @@ public struct TerminalPalette: Equatable, Sendable {
     public let ansi: [UInt32]
     init(
         background: UInt32 = 0x151719, foreground: UInt32 = 0xDEE0E5, cursor: UInt32 = 0xB9DCFF,
-        cursorText: UInt32 = 0x151719, selectionBackground: UInt32 = 0x354C6A, selectionForeground: UInt32 = 0xFFFFFF,
+        cursorText: UInt32 = 0x151719, selectionBackground: UInt32 = 0x3F6AA1, selectionForeground: UInt32 = 0xFFFFFF,
         ansi: [UInt32] = [
             0x1B202A, 0xEF8585, 0x8DDAA4, 0xF2CC7A, 0x8BB8F0, 0xC6A0E8, 0x7FD5DD, 0xCFD7E2,
             0x7C899C, 0xFFA4A4, 0xB3EFBC, 0xFFE3A3, 0xB9DCFF, 0xE4BDFF, 0xA7F2F5, 0xFFFFFF

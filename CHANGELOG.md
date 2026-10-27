@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Selection:** the dark built-in themes and the default palette use a brighter selection background, so selected text stands out from the pane. One Dark, Solarized Dark and Gruvbox Dark also brighten the selected text to keep it readable.
+- **Underlines:** links and dotted or dashed underlines (`4:4`, `4:5`) are drawn as a solid line (FR-TX02).
 - **Privacy:** the update check is the one network request Trellis makes by itself, and only when you check or turn on automatic checks (MAC-14).
 
 ## [1.0.0-beta.2] - 2026-10-24
