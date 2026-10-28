@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Software updates:** **Trellis → Check for Updates…** and **Settings → Updates** download, verify and install new versions in place with Sparkle 2. Automatic daily checks are off until you turn them on, and **Include beta versions** chooses whether pre-releases are offered (on by default in pre-release builds). A check downloads only the update list and sends no system profile. Installing quits through the usual confirmation, so sessions kept after quit keep running (MAC-14).
+- **Workspace disk writes:** **Settings → Sessions → Workspace disk writes** caps how much the workspace file and its backup may write per hour (50 MB by default). Past it, changes are saved together every 5 minutes; ⌘S and Quit still save at once (FR-R06).
 
 ### Changed
 
@@ -20,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Collapsed sidebar:** clicking a tab, **Settings** or **Hosts** while a window's tabs card was open only closed the card; the click now reaches its target (FR-W06).
+- **Disk writes:** an unchanged workspace is no longer rewritten. A long session could write gigabytes to `workspace.json` and its backup (FR-R06).
 
 ## [1.0.0-beta.2] - 2026-10-24
 

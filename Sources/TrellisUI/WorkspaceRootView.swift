@@ -1089,6 +1089,17 @@ public struct LaunchSettingsView: View {
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
             ).accessibilityIdentifier("settings.restoreScrollback")
             caption("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis.")
+            Picker(
+                "Workspace disk writes",
+                selection: Binding(get: { model.saveBudgetMegabytesPerHour }, set: { model.setSaveBudget(megabytesPerHour: $0) })
+            ) {
+                ForEach(WorkspaceWriteBudget.choices, id: \.self) { Text("Up to \($0) MB per hour").tag($0) }
+            }.accessibilityIdentifier("settings.saveBudget")
+            caption(
+                model.savesThrottled
+                    ? "Limit reached: changes are now saved together every 5 minutes. Quit and ⌘S still save at once."
+                    : "Past this, changes to windows, tabs and settings are saved together every 5 minutes instead of right away."
+            ).accessibilityIdentifier("settings.saveBudgetNote")
             Toggle("Desktop notifications", isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
             caption("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane.")
             Picker("Notify when a command finishes", selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {

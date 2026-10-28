@@ -464,6 +464,13 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var keepSessionsRunning = false
     /// FR-R04, saved per state directory.
     @Published public internal(set) var restoreScrollback = false
+    /// FR-R06, saved per state directory. True while the hour's budget is spent and saves are batched.
+    @Published public private(set) var saveBudgetMegabytesPerHour = WorkspaceWriteBudget.defaultMegabytesPerHour
+    @Published public private(set) var savesThrottled = false
+    var writeBudget = WorkspaceWriteBudget()
+    private var pendingSaveBatched = false
+    /// Injected so tests run the save delays instantly; cancellation must throw.
+    var saveSleep: @MainActor (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     let scrollbackStore: ScrollbackStore?
     /// Asked on ⌘Q with broker sessions running: kept count, then sessions that will stop.
     public var confirmKeepRunning: (Int, Int) -> QuitChoice = { _, _ in .cancel }
@@ -543,6 +550,8 @@ public final class AppWorkspaceModel: ObservableObject {
         remoteControl = restored.settings.remoteControl
         keepSessionsRunning = restored.settings.keepSessionsRunning
         restoreScrollback = restored.settings.restoreScrollback
+        saveBudgetMegabytesPerHour = restored.settings.saveBudgetMegabytesPerHour
+        writeBudget.megabytesPerHour = saveBudgetMegabytesPerHour
         onRemoteControlSettingsChanged?(remoteControl)
         reconcileThemeSelections()
         refreshEffectiveTheme()
@@ -596,13 +605,29 @@ public final class AppWorkspaceModel: ObservableObject {
         guard persistence != nil, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return }
         if saveGeneration < UInt64.max { saveGeneration += 1 }
         let generation = saveGeneration
+        // Over budget, the scheduled save takes every later change with it instead of restarting its wait (FR-R06).
+        let throttled = writeBudget.isExhausted(at: activityNow())
+        if savesThrottled != throttled { savesThrottled = throttled }
+        if throttled, pendingSaveBatched, pendingSaveTask != nil { return }
         pendingSaveTask?.cancel()
+        pendingSaveBatched = throttled
         pendingSaveTask = Task { [weak self] in
-            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
-            guard let self, !Task.isCancelled, generation == saveGeneration else { return }
-            pendingSaveTask = nil
+            guard let sleep = self?.saveSleep else { return }
+            do { try await sleep(throttled ? WorkspaceWriteBudget.throttledInterval : 0.3) } catch { return }
+            guard let self, !Task.isCancelled, throttled || generation == saveGeneration else { return }
+            pendingSaveTask = nil; pendingSaveBatched = false
             _ = await saveWorkspaceNow()
         }
+    }
+
+    /// FR-R06: one of `WorkspaceWriteBudget.choices`; anything else keeps the current budget.
+    public func setSaveBudget(megabytesPerHour: Int) {
+        guard WorkspaceWriteBudget.choices.contains(megabytesPerHour), megabytesPerHour != saveBudgetMegabytesPerHour else { return }
+        saveBudgetMegabytesPerHour = megabytesPerHour
+        writeBudget.megabytesPerHour = megabytesPerHour
+        // A raised budget ends batching now rather than after the pending batched save.
+        if pendingSaveBatched, !writeBudget.isExhausted(at: activityNow()) { pendingSaveTask?.cancel(); pendingSaveTask = nil; pendingSaveBatched = false }
+        scheduleWorkspaceSave()
     }
 
     public func toggleSidebar() {
@@ -625,7 +650,7 @@ public final class AppWorkspaceModel: ObservableObject {
         // taking the snapshot used by an explicit Save or shutdown.
         await dividerResizeTask?.value
         await waitForUpdates()
-        pendingSaveTask?.cancel(); pendingSaveTask = nil
+        pendingSaveTask?.cancel(); pendingSaveTask = nil; pendingSaveBatched = false
         return await saveWorkspaceNow()
     }
 
@@ -634,8 +659,14 @@ public final class AppWorkspaceModel: ObservableObject {
         let settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
             windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl,
-            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback)
-        do { try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration); return true } catch {
+            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback, saveBudgetMegabytesPerHour: saveBudgetMegabytesPerHour)
+        do {
+            let written = try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration)
+            writeBudget.record(written, at: activityNow())
+            let throttled = writeBudget.isExhausted(at: activityNow())
+            if savesThrottled != throttled { savesThrottled = throttled }
+            return true
+        } catch {
             errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
         }
     }

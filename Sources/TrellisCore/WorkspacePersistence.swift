@@ -11,16 +11,22 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public var keepSessionsRunning: Bool
     /// FR-R04: quitting saves each pane's redacted plain text for the next launch. Off by default.
     public var restoreScrollback: Bool
+    /// FR-R06: the hourly write budget of the workspace file and its backup, in MB (one of `WorkspaceWriteBudget.choices`).
+    public var saveBudgetMegabytesPerHour: Int
     public init(
         shell: String = LocalLaunchConfiguration.loginShell().executable,
         directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
-        appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init(), keepSessionsRunning: Bool = false, restoreScrollback: Bool = false
+        appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init(), keepSessionsRunning: Bool = false, restoreScrollback: Bool = false,
+        saveBudgetMegabytesPerHour: Int = WorkspaceWriteBudget.defaultMegabytesPerHour
     ) {
         self.shell = shell; self.directory = directory; self.windowFrame = windowFrame
         self.appearance = appearance; self.remoteControl = remoteControl
         self.keepSessionsRunning = keepSessionsRunning; self.restoreScrollback = restoreScrollback
+        self.saveBudgetMegabytesPerHour = WorkspaceWriteBudget(megabytesPerHour: saveBudgetMegabytesPerHour).megabytesPerHour
     }
-    private enum CodingKeys: String, CodingKey { case shell, directory, windowFrame, appearance, remoteControl, keepSessionsRunning, restoreScrollback }
+    private enum CodingKeys: String, CodingKey {
+        case shell, directory, windowFrame, appearance, remoteControl, keepSessionsRunning, restoreScrollback, saveBudgetMegabytesPerHour
+    }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         shell = try values.decode(String.self, forKey: .shell)
@@ -36,6 +42,9 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
         remoteControl = remote.flatMap { $0 }.flatMap { $0.isValid ? $0 : nil } ?? .init()
         keepSessionsRunning = (try? values.decodeIfPresent(Bool.self, forKey: .keepSessionsRunning)) ?? false
         restoreScrollback = (try? values.decodeIfPresent(Bool.self, forKey: .restoreScrollback)) ?? false
+        // An unknown budget falls back to the default instead of failing the workspace.
+        let budget = (try? values.decodeIfPresent(Int.self, forKey: .saveBudgetMegabytesPerHour)) ?? nil
+        saveBudgetMegabytesPerHour = WorkspaceWriteBudget(megabytesPerHour: budget ?? WorkspaceWriteBudget.defaultMegabytesPerHour).megabytesPerHour
     }
 }
 
@@ -201,17 +210,28 @@ public actor WorkspacePersistence {
         writable = true
     }
 
-    public func save(_ snapshot: WorkspaceSnapshot, settings: WorkspaceSettings, sequence: UInt64) throws {
+    /// Returns the bytes written, counting the backup; 0 when the workspace is unchanged and nothing was written.
+    @discardableResult
+    public func save(_ snapshot: WorkspaceSnapshot, settings: WorkspaceSettings, sequence: UInt64) throws -> Int {
         guard writable else { throw WorkspacePersistenceError.readOnly }
-        guard sequence >= lastSequence else { return }
+        guard sequence >= lastSequence else { return 0 }
         let data = try WorkspaceSnapshotCodec.encode(snapshot, settings: settings)
+        // Compared with the file itself, not a cached copy, so one deleted or replaced meanwhile is still rewritten (FR-R06).
+        let previous = try read(currentURL)
+        if previous == data, !replaceCorrupt { lastSequence = sequence; return 0 }
         try ensureDirectory()
-        if let previous = try read(currentURL) {
-            if (try? WorkspaceSnapshotCodec.decode(previous)) != nil { try atomicWrite(previous, to: backupURL) } else if !replaceCorrupt { writable = false; throw WorkspacePersistenceError.readOnly }
+        var written = 0
+        if let previous {
+            if (try? WorkspaceSnapshotCodec.decode(previous)) != nil {
+                try atomicWrite(previous, to: backupURL); written += previous.count
+            } else if !replaceCorrupt {
+                writable = false; throw WorkspacePersistenceError.readOnly
+            }
         }
         try atomicWrite(data, to: currentURL)
         replaceCorrupt = false
         lastSequence = sequence
+        return written + data.count
     }
 
     private func ensureDirectory() throws {
