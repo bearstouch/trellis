@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Selection:** the dark built-in themes and the default palette use a brighter selection background, so selected text stands out from the pane. One Dark, Solarized Dark and Gruvbox Dark also brighten the selected text to keep it readable.
 - **Underlines:** links and dotted or dashed underlines (`4:4`, `4:5`) are drawn as a solid line (FR-TX02).
 - **Privacy:** the update check is the one network request Trellis makes by itself, and only when you check or turn on automatic checks (MAC-14).
+- **Build:** works around a Swift 6.4 compiler crash in the session broker client.
+
+### Fixed
+
+- **Collapsed sidebar:** clicking a tab, **Settings** or **Hosts** while a window's tabs card was open only closed the card; the click now reaches its target (FR-W06).
 
 ## [1.0.0-beta.2] - 2026-10-24
 

@@ -816,21 +816,25 @@ private struct WindowHoverPreview: ViewModifier {
                 overTile = $0; schedule()
             }
             .accessibilityAction(named: "Show Tabs") { presented = true }
-            .popover(isPresented: $presented, arrowEdge: .trailing) {
-                WindowTabsPreviewCard(window: window, model: model) { tabID in
-                    close()
-                    Task { await model.selectWindowTab(windowID: window.id, tabID: tabID) }
-                }
-                .onHover {
-                    overCard = $0; schedule()
-                }
-            }
+            // Not `.popover`: a transient popover swallows the click that dismisses it, so tabs, Settings and Hosts
+            // ignored the first click while a card was up.
+            .background(PassThroughPopoverAnchor(presented: $presented, edge: .maxX, content: AnyView(card)))
             // A card dismissed by an outside click may never report the pointer leaving it.
             .onChange(of: presented) { _, shown in if !shown { overCard = false } }
             .onChange(of: model.sidebarCollapsed) { _, _ in close() }
             // Dragging a window (FR-W07) closes the card and drops a pending open, so it never pops up mid-drag.
             .onChange(of: dragStarts) { _, _ in close() }
             .onDisappear { close() }
+    }
+
+    private var card: some View {
+        WindowTabsPreviewCard(window: window, model: model) { tabID in
+            close()
+            Task { await model.selectWindowTab(windowID: window.id, tabID: tabID) }
+        }
+        .onHover {
+            overCard = $0; schedule()
+        }
     }
 
     private func schedule() {

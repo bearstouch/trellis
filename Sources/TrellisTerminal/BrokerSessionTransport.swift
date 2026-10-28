@@ -270,7 +270,8 @@ public final class BrokerSessionClient: SessionBrokerClient {
             case .none: break
             }
             let launcher = self.launcher
-            guard let socketPath = try? await Task.detached(operation: { () throws(BrokerClientError) -> String in try launcher.spawn() }).value else { return false }
+            // A non-throwing task: Swift 6.4 crashes generating IR for a typed-throws detached closure here.
+            guard let socketPath = await Task.detached(operation: { try? launcher.spawn() }).value else { return false }
             let deadline = ContinuousClock.now + .seconds(2)
             while ContinuousClock.now < deadline {
                 if let connection = try? BrokerConnection.connect(socketPath: socketPath, brokerExecutable: launcher.helperPath) {

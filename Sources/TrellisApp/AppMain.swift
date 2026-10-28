@@ -501,9 +501,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320), styleMask: [.titled], backing: .buffered, defer: false)
                 sheet.isReleasedWhenClosed = false
                 sheet.contentView = NSHostingView(
-                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak self, weak sheet] in
+                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak window, weak sheet] in
                         guard let sheet else { return }
-                        self?.window.endSheet(sheet)
+                        window?.endSheet(sheet)
                     })
                 window.beginSheet(sheet, completionHandler: nil)
             }
