@@ -55,6 +55,7 @@ nav:
       - Terminal: features/terminal.md
       - Shell integration: features/shell-integration.md
       - SSH hosts: features/ssh-hosts.md
+      - Remote workspaces: features/remote-workspaces.md
       - Themes: features/themes.md
       - Keyboard and accessibility: features/keyboard-accessibility.md
   - Automation API:

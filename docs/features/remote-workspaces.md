@@ -1,0 +1,92 @@
+# Remote workspaces
+
+A remote workspace is a sidebar window bound to a [saved SSH host](ssh-hosts.md). Every tab and split in it runs a shell on that host, in a session owned by a small Trellis helper running **on the remote machine**. The helper keeps sessions running when Trellis quits, the Mac sleeps or the network drops, and Trellis re-attaches to them with their recent output.
+
+Remote hosts can run Linux (x86_64, aarch64) or macOS (arm64, x86_64). Trellis itself still runs only on macOS.
+
+All requirements here are P1. **Status: draft.** The contract is agreed before code, and checks stay unchecked until observed (see [Status](../overview/status.md)).
+
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph Mac
+    P[Panes] --> L[Remote link<br/>one per host]
+    L --> S["/usr/bin/ssh -T"]
+    S -. tty/stderr .-> C[Connection console]
+  end
+  S == broker protocol over ssh stdio ==> B
+  subgraph Remote host
+    B[trellis-broker bridge] --> R[trellis-broker remote-broker<br/>owner-only socket]
+    R --> PTY1[shell PTY]
+    R --> PTY2[shell PTY]
+  end
+```
+
+- **One ssh process per host.** All windows bound to the same host share one link. Trellis runs the system `/usr/bin/ssh` (INT-03), with the host's saved fields, `-T` (no remote TTY) and `-e none` (no escape character), and a short POSIX `sh` bootstrap as the remote command. Your SSH config, keys, agent, known-hosts policy and proxies apply as usual.
+- **The bootstrap** reports the remote OS and architecture, installs the helper if it is missing and allowed (FR-RW02, FR-RW17), and then runs `trellis-broker bridge`. Probe, install and bridge share one connection, so you authenticate once.
+- **The bridge** connects ssh's stdin and stdout to the remote broker's owner-only Unix socket, starting the broker if needed. The broker speaks the same framed protocol as the local [session broker](../architecture/sessions.md#session-broker) (protocol version 2).
+- **The connection console** is a terminal attached to ssh's own TTY and stderr. Host-key confirmations, passwords, passphrases and one-time codes appear there, exactly as ssh asks them (FR-H04). Saved passwords are answered through `trellis-askpass` as for SSH panes (FR-H08).
+- **Nothing listens on the network.** The remote broker uses only a Unix socket. SSH is the only transport and the only authentication between the Mac and the host.
+
+## Requirements
+
+| ID | Requirement | Acceptance check |
+| --- | --- | --- |
+| FR-RW01 | Open a saved host as a remote workspace window. | **Open Remote Workspace** in the host library and the command palette creates a window named after the host, bound to it, with one tab. The sidebar shows the host and the link state. Relaunch keeps the binding. A window whose host was deleted shows "Saved host missing" and starts nothing. |
+| FR-RW02 | Install the helper only with consent, verified, atomically, without root. | Before the first install on a host, a sheet shows the host, the remote OS and architecture, the install path and the size; declining writes nothing. With **Install helper automatically** on for the host (FR-RW17), later versions install without asking. The upload is checked against the SHA-256 digest bundled with the app, then moved into place: a truncated or corrupt upload leaves no executable. An unsupported OS or architecture is refused and named. A host that already has the matching digest skips the upload. Nothing outside `~/.trellis/` is written. |
+| FR-RW03 | One SSH connection per host; SSH prompts stay interactive. | A changed host key shows ssh's warning in the console and the link fails. A password host prompts once per connection, not once per pane. argv and the remote command never contain a secret. |
+| FR-RW04 | New tabs, splits and duplicates in a remote window run on that host, in the source pane's directory. | After `cd /srv/app`, ⌘T and ⌘D open shells in `/srv/app` on the same host. The directory comes only from the pane's authenticated shell-integration marks (FR-RW05); without them, or if the directory no longer exists, the shell starts in the remote home. |
+| FR-RW05 | Remote shell integration with a per-session nonce. | zsh, bash and fish get Trellis's integration scripts, installed with the helper. The pane header shows `host:/path` without the "unverified" hint. A mark printed without the session's nonce changes nothing. Other shells start plain, and a missing script means a plain shell, not a failure. |
+| FR-RW06 | Remote sessions keep running across quit, sleep and network loss. | `sleep 600; echo done` survives ⌘Q and relaunch, Mac sleep and wake, and Wi-Fi off and on, and `done` appears. Quitting sends no signal to remote sessions. Closing a pane, tab or window ends its remote sessions after the usual confirmation (SIGHUP to the process group, guarded against PID reuse by the remote broker). Closing the native window detaches remote sessions (MAC-04). |
+| FR-RW07 | Notice a lost link and reconnect automatically when that needs no input. | A lost link is noticed within 30 s of the last traffic (heartbeat every 15 s), and immediately after wake or a network change. Panes and the sidebar show **Reconnecting** as text plus a symbol; their sessions stay `running`. Typing shows "Not sent: reconnecting" and nothing is queued. Automatic attempts run ssh with `BatchMode=yes`, back off from 1 s to 60 s with jitter, and pause while the Mac is offline. **Retry Now** is always offered. If authentication would need input, automatic attempts stop and the pane offers **Reconnect…**, which opens the console. |
+| FR-RW08 | Resume without duplicated output. | Output produced during an outage appears once after reconnect when it still fits the remote replay buffer (4 MiB per session). `seq 1 1000000` across a 10 s outage shows no repeated line. Otherwise the pane is reset and gets the most recent 4 MiB, as in FR-R03. Full-screen programs redraw. |
+| FR-RW09 | Re-attach remote sessions after relaunch. | Restored remote panes re-attach by session UUID once their host is connected. A session that ended meanwhile shows its replay and "Session ended while disconnected (exit N)". Running sessions on the host that no pane claims get **Stop Them** / **Leave Running**, once per host. |
+| FR-RW10 | Open remote project files with the same trust rules. | Project detection (FR-WF02) works from a remote pane's authenticated directory. The review sheet (FR-WF03) names the host. Trust is recorded per host, remote machine ID, canonical remote path and SHA-256 digest: the same file on two hosts asks twice, and one changed byte asks again. A `.trellis` that is a symlink, or a file not owned by the remote user, is refused. Opening creates a window bound to the host. Trellis never writes remote files in this version: Save Window as Project and Edit Project File are unavailable for remote windows. |
+| FR-RW11 | Run tasks in remote panes. | The Tasks menu (FR-TK02) appears in remote panes with authenticated integration, listing the remote `launch.json` and detected tasks (FR-TK03), with the same trust, run, stop and status behavior. **Add to launch.json** is unavailable for remote panes. |
+| FR-RW12 | Keep the remote side minimal and private. | No TCP listener is added on the remote (`ss -ltn` unchanged). Files under `~/.trellis/` are owner-only (directories 0700, files 0600, executables 0700); the socket is 0600 in a 0700 directory. No secret, nonce, typed input or terminal output is written to the remote disk, and neither side logs input or output. The broker reads only allow-listed project and task files (FR-RW10, FR-RW11), owned by the user, without following symlinks, at most 256 KB each. |
+| FR-RW13 | Keep each Mac's sessions separate. | Each Trellis state directory has a random client ID; the remote broker is per client ID. Two Macs on the same host see only their own sessions. After a network drop, the same Mac takes over its stale connection instead of failing with `BROKER_BUSY`. |
+| FR-RW14 | Upgrade without losing sessions. | After a Trellis update, a running older remote broker that speaks a supported protocol version keeps its sessions and is used until it exits. Otherwise Trellis says so and offers to stop it. Unused helper versions are removed (`gc`), never one with a running broker. |
+| FR-RW15 | Automation sees remote sessions. | `session.get` adds `remote: {hostId, link}`. Input, signals and `session.execute` into a remote session need host access for that host (as `host.connect` does); while the link is down they fail with `REMOTE_DISCONNECTED`. Automation can't create remote workspace windows in this version. |
+| FR-RW16 | Accessible link state. | Link states are words plus symbols, never color alone. VoiceOver reads, for example, "Reconnecting to build-box, attempt 3". Moving focus to the console when ssh asks for input is announced. |
+| FR-RW17 | Install and manage the helper from the saved host. | Each host in the host library has **Install Trellis Helper…**, **Update Helper…**, **Check Helper Status** and **Remove Helper…**, and a status line: "Not installed", "Installed 1.2.0 (Linux aarch64)", "Update available" or "Unknown (never checked)". The status is only ever recorded from an actual probe, with the time it was checked. Each action uses the same link, console, confirmation, digest check and atomic write as FR-RW02. Remove deletes only Trellis's directories under `~/.trellis/` and is refused while the broker has running sessions unless you confirm stopping them. The host editor has **Install helper automatically when opening a remote workspace**, off by default; when off, opening a workspace on a host without the helper shows the install sheet. Cancelling at any prompt leaves the remote unchanged. |
+
+## Remote files
+
+```text
+~/.trellis/                         0700
+  remote/<digest-16>/               0700, one per helper version
+    trellis-broker                  0700
+    integration/                    zsh, bash and fish scripts
+  run/<client-id>/broker.json       0600, socket path and protocol version
+/tmp/trellis-broker-<hex>/s         socket 0600 in a 0700 directory
+```
+
+On the Mac, `remote-client.json` (client ID) and `remote-hosts.json` (last probed helper status per host) live in the state directory, owner-only. Neither holds a secret.
+
+## Session and link state
+
+The link has its own state, kept only while Trellis runs: **Connecting**, **Needs input**, **Connected**, **Reconnecting**, **Offline** and **Failed**. It is not a session state. A remote session is `running` while its remote process is alive, whether or not the link is up, and the [session lifecycle](../architecture/sessions.md) is unchanged. Restored remote panes start `stopped`, as FR-R01 requires, and become `running` only by re-attaching to a session the remote broker still has (FR-RW09). Typed input is never replayed or queued.
+
+## Limits
+
+- Remote sessions survive what the remote machine survives. A reboot, a logout policy that kills user processes (systemd `KillUserProcesses=yes`) or a broker crash ends them. Trellis warns when it detects such a policy and never enables lingering for you.
+- Shells started before a reconnect keep the old `SSH_AUTH_SOCK`, so agent forwarding inside them stops working after a reconnect, as with tmux.
+- A session that ended while disconnected keeps its exit status and replay on the host for one day; after that, with nothing else running, the remote broker exits and the pane shows only that its session is gone.
+- Only one Mac can attach a given set of sessions; taking over another Mac's sessions isn't supported.
+- Opening remote file links, editing remote project files and general file transfer are not included.
+- Automatic reconnect needs non-interactive authentication (keys or an agent). Saved passwords are used for interactive reconnects only.
+
+## Implementation notes and verification
+
+The remote helper is the same `trellis-broker` as the local [session broker](../architecture/sessions.md#session-broker), with two subcommands: `bridge` (run by ssh) and `remote-broker` (started by the bridge, per client ID). It builds for Linux from the same sources; on Linux the package manifest declares only the helper and its tests.
+
+| Check | Result |
+| --- | --- |
+| Language | Kept in Swift. The size gate (rewrite in C++ if the static binary were clearly over about 10 MB) was not met. |
+| Static Linux build | Swift 6.4.1 with the static Linux SDK 0.1.0 (musl), in Docker: builds for aarch64 and x86_64. Stripped, `-Osize`, `--gc-sections`: 10.9 MB (aarch64) and 11.9 MB (x86_64), 4.1 MB and 4.4 MB gzipped. FoundationEssentials only, no ICU. |
+| Runs on stock distributions | The static aarch64 binary starts on Alpine 3, Debian stable and Ubuntu 20.04 containers. x86_64 binaries and real hosts: **pending**. |
+| Linux tests | `scripts/test-linux.sh` (and the CI job `linux-broker`): the broker suite, including the bridge end-to-end tests with real PTYs, passes on Linux aarch64 (glibc, Swift 6.4.1). |
+| Resume, takeover, client isolation, file allow-list | Covered by `BrokerBridgeTests` and `BrokerRemoteTests` on macOS and Linux. |
+| `ssh -T` keystroke latency, bootstrap portability across login shells, logind `KillUserProcesses=yes` on a real systemd host | **Pending.** Detection of the logind setting is unit-tested only. |
+

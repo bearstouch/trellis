@@ -52,7 +52,7 @@ The Touch ID requirement is enforced by Trellis through LocalAuthentication, not
 
 ## Session state for SSH
 
-A live SSH client is `running`. That means the `ssh` process is alive, **not** that authentication succeeded; Trellis doesn't guess from screen text. When the connection fails, the pane stays open with its exit status. Reconnecting is an explicit action. Network reconnect, remote process preservation, SFTP and automatic tmux attachment are outside the MVP.
+A live SSH client is `running`. That means the `ssh` process is alive, **not** that authentication succeeded; Trellis doesn't guess from screen text. When the connection fails, the pane stays open with its exit status. Reconnecting is an explicit action. To keep remote processes running across disconnects and reconnect automatically, open the host as a [remote workspace](remote-workspaces.md) instead (FR-RW01–FR-RW17); its helper can also be installed, checked and removed from the host library (FR-RW17). SFTP and automatic tmux attachment are outside the MVP.
 
 ## Alias discovery
 

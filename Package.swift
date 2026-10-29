@@ -54,3 +54,11 @@ let package = Package(
     ],
     swiftLanguageModes: [.v6]
 )
+
+#if os(Linux)
+// Linux builds only the remote helper (FR-RW02) and its tests (`scripts/test-linux.sh`).
+let linuxTargets: Set<String> = ["TrellisPOSIX", "TrellisBroker", "TrellisBrokerMain", "TrellisBrokerTests"]
+package.products = [.executable(name: "trellis-broker", targets: ["TrellisBrokerMain"])]
+package.dependencies = []
+package.targets = package.targets.filter { linuxTargets.contains($0.name) }
+#endif

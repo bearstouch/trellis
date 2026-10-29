@@ -1,24 +1,47 @@
-import Darwin
-import Foundation
+#if canImport(Darwin)
+    import Darwin
+#elseif canImport(Glibc)
+    import Glibc
+#elseif canImport(Musl)
+    import Musl
+#endif
+import Dispatch
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
 import TrellisPOSIX
 
 /// The resident `trellis-broker` (FR-R03): owns the PTYs of sessions that outlive the app, keeps a bounded
 /// replay of their output and serves one authenticated app at a time over an owner-only AF_UNIX socket.
-/// All state is confined to `queue`; nothing here logs terminal output, input or environment values.
+/// In remote mode (FR-RW06) it runs on a remote host, one per Mac client ID, and its client is a `bridge`
+/// started over ssh. All state is confined to `queue`; nothing here logs terminal output, input or environment values.
 public final class BrokerServer: @unchecked Sendable {
+    public enum Mode: Equatable, Sendable {
+        case local
+        /// Serves one Mac's client ID. A peer must run a `trellis-broker` installed under `installRoot` (any version,
+        /// so an updated bridge keeps an older broker's sessions); a newer connection takes over a stale one (FR-RW13).
+        case remote(clientID: String, installRoot: String)
+    }
+
     public struct Configuration: Sendable {
         public var socketPath: String
-        /// The only executable allowed to connect (the app), symlink-resolved.
+        /// The only executable allowed to connect (the app), symlink-resolved. Unused in remote mode.
         public var clientPath: String
         public var idleExit: TimeInterval
-        public init(socketPath: String, clientPath: String, idleExit: TimeInterval) {
-            self.socketPath = socketPath; self.clientPath = clientPath; self.idleExit = idleExit
+        public var mode: Mode
+        /// Remote mode: a client silent this long is dropped.
+        public var clientTimeout: TimeInterval
+        public init(socketPath: String, clientPath: String, idleExit: TimeInterval, mode: Mode = .local, clientTimeout: TimeInterval = BrokerProtocol.remoteClientTimeout) {
+            self.socketPath = socketPath; self.clientPath = clientPath; self.idleExit = idleExit; self.mode = mode; self.clientTimeout = clientTimeout
         }
     }
 
     /// Reads pause while this much output waits for a slow client, and resume below a quarter of it.
     static let backpressureLimit = 1_048_576
     static let inputLimit = 1_048_576
+    static let endedRetention: TimeInterval = 86_400
 
     private final class Session: @unchecked Sendable {
         let id: UUID
@@ -27,9 +50,12 @@ public final class BrokerServer: @unchecked Sendable {
         let descriptor: Int32
         let nonce: String?
         var io: DispatchIO?
-        var exitSource: DispatchSourceProcess?
+        #if canImport(Darwin)
+            var exitSource: DispatchSourceProcess?
+        #endif
         var drainTimer: DispatchWorkItem?
         var waitStatus: Int32?
+        var endedAt: Date?
         var readEnded = false
         var readArmed = false
         var finished = false
@@ -49,9 +75,11 @@ public final class BrokerServer: @unchecked Sendable {
         var decoder = BrokerFrameDecoder()
         var greeted = false
         var features: Set<String> = []
+        var version = 0
         var pending = 0
         var closing = false
-        init(io: DispatchIO) { self.io = io }
+        var lastActivity: Date
+        init(io: DispatchIO, now: Date) { self.io = io; lastActivity = now }
     }
 
     private let configuration: Configuration
@@ -68,21 +96,36 @@ public final class BrokerServer: @unchecked Sendable {
     private var stopping = false
     private var timers: [DispatchSourceTimer] = []
     private var signalSources: [DispatchSourceSignal] = []
+    /// Remote mode only: the account and the environment login shells start from (control keys removed).
+    private var account: BrokerHost.Account?
+    private var hostInfo: BrokerHostInfo?
+    private var baseEnvironment: [String: String] = [:]
+    private var installRoot: String?
 
     public init(configuration: Configuration, now: @escaping @Sendable () -> Date = Date.init) {
         self.configuration = configuration
         self.now = now
         core = BrokerCore(idleExit: configuration.idleExit, now: now())
+        if case .remote(_, let root) = configuration.mode {
+            let account = BrokerHost.account()
+            self.account = account
+            hostInfo = BrokerHost.info(account: account)
+            baseEnvironment = ProcessInfo.processInfo.environment.filter { !BrokerCore.isControlKey($0.key) }
+            installRoot = BrokerFiles.realPath(root)
+        }
     }
+
+    private var isRemote: Bool { if case .remote = configuration.mode { true } else { false } }
 
     /// Binds the socket inside its owner-only directory and starts serving.
     public func start() throws {
         let path = configuration.socketPath
-        guard BrokerFiles.isOwnerOnlyDirectory((path as NSString).deletingLastPathComponent), var address = BrokerFiles.address(path) else { throw POSIXError(.EACCES) }
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw POSIXError(.EIO) }
+        guard BrokerFiles.isOwnerOnlyDirectory(BrokerFiles.parent(path)), var address = BrokerFiles.address(path) else { throw BrokerServerError.socketDirectory }
+        if isRemote, installRoot == nil { throw BrokerServerError.installRoot }
+        let fd = trellis_unix_socket()
+        guard fd >= 0 else { throw BrokerServerError.socket }
         let bound = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
-        guard bound == 0, chmod(path, 0o600) == 0, listen(fd, 4) == 0 else { close(fd); throw POSIXError(.EADDRINUSE) }
+        guard bound == 0, chmod(path, 0o600) == 0, listen(fd, 4) == 0 else { close(fd); throw BrokerServerError.socket }
         BrokerFiles.configure(fd)
         listenFD = fd
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
@@ -115,24 +158,33 @@ public final class BrokerServer: @unchecked Sendable {
         let fd = accept(listenFD, nil, nil)
         guard fd >= 0 else { return }
         BrokerFiles.configure(fd)
-        guard BrokerFiles.peerRuns(fd, executable: configuration.clientPath) else { close(fd); return }
+        guard peerAllowed(fd) else { close(fd); return }
+        // A bridge whose ssh connection died silently may still hold the client slot; the newest one is the live one.
+        if isRemote, !stopping, client != nil { dropClient() }
         guard !stopping, core.acceptClient() else {
             let refusal = (try? BrokerFrame.control(BrokerEnvelope(requestID: nil, message: .refused(reason: "BROKER_BUSY"))))?.encoded ?? Data()
-            _ = refusal.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+            BrokerFiles.writeAll(fd, refusal)
             close(fd)
             return
         }
         let io = DispatchIO(type: .stream, fileDescriptor: fd, queue: queue) { _ in close(fd) }
         io.setLimit(lowWater: 1)
-        let connection = Client(io: io)
+        let connection = Client(io: io, now: now())
         client = connection
         readClient(connection)
+    }
+
+    private func peerAllowed(_ fd: Int32) -> Bool {
+        guard case .remote = configuration.mode else { return BrokerFiles.peerRuns(fd, executable: configuration.clientPath) }
+        guard let root = installRoot, let path = BrokerFiles.peerExecutable(fd) else { return false }
+        return path.hasPrefix(root + "/") && BrokerFiles.lastComponent(path) == BrokerProtocol.helperName
     }
 
     private func readClient(_ connection: Client) {
         connection.io.read(offset: 0, length: 65_536, queue: queue) { [weak self] done, data, error in
             guard let self, self.client === connection else { return }
             if let data, !data.isEmpty {
+                connection.lastActivity = self.now()
                 do {
                     for frame in try connection.decoder.append(Data(data)) {
                         self.handle(frame, from: connection)
@@ -187,11 +239,20 @@ public final class BrokerServer: @unchecked Sendable {
     private func handle(_ frame: BrokerFrame, from connection: Client) {
         if frame.kind == .stopAll { stopEverything(); return }
         guard connection.greeted else {
-            guard let envelope = frame.envelope, case .hello(let version, let features) = envelope.message else { dropClient(); return }
+            guard let envelope = frame.envelope, case .hello(let version, let features, let maximum, let clientID) = envelope.message else { dropClient(); return }
             connection.features = Set(features ?? [])
-            let answer = BrokerCore.hello(version, brokerPID: ownPID)
+            var answer = BrokerCore.hello(version, maximumVersion: maximum, brokerPID: ownPID, info: hostInfo)
+            if case .remote(let expected, _) = configuration.mode, case .welcome(let negotiated, _, _) = answer {
+                // A remote broker serves only v2 clients of the Mac it was started for.
+                if negotiated < 2 { answer = .refused(reason: "PROTOCOL_VERSION_MISMATCH") } else if clientID != expected { answer = .refused(reason: "CLIENT_MISMATCH") }
+            }
             reply(envelope.requestID, answer)
-            if case .welcome = answer { connection.greeted = true } else { connection.closing = true }
+            if case .welcome(let negotiated, _, _) = answer {
+                connection.greeted = true
+                connection.version = negotiated
+            } else {
+                connection.closing = true
+            }
             return
         }
         switch frame.kind {
@@ -207,19 +268,37 @@ public final class BrokerServer: @unchecked Sendable {
 
     private func respond(to envelope: BrokerEnvelope) {
         let id = envelope.requestID
+        let remote = isRemote && client?.version ?? 0 >= 2
         switch envelope.message {
         case .spawn(let request):
             reply(id, spawn(request))
+        case .spawnLogin(let request) where remote:
+            reply(id, spawnLogin(request))
+        case .ping(let value) where client?.version ?? 0 >= 2:
+            reply(id, .pong(value))
+        case .stat(let paths) where remote:
+            reply(id, BrokerRemoteFiles.describe(paths).map { .pathInfo($0) } ?? .failed(code: "INVALID_REQUEST", errno: EINVAL))
+        case .readFile(let path, let limit) where remote:
+            switch BrokerRemoteFiles.read(path, limit: limit) {
+            case .success(let data): reply(id, .fileData(data))
+            case .failure(let failure): reply(id, .failed(code: failure.rawValue, errno: 0))
+            }
         case .list:
             reply(id, .sessions(sessions.values.map(\.record).sorted { $0.sessionID.uuidString < $1.sessionID.uuidString }))
-        case .attach(let sessionID, let columns, let rows):
+        case .attach(let sessionID, let columns, let rows, let since):
             guard let session = sessions[sessionID] else { reply(id, .failed(code: "NOT_FOUND", errno: 0)); return }
             resize(session, columns: columns, rows: rows)
             let ring = rings[sessionID] ?? OutputRing()
-            let replay = ring.replay
+            let v2 = client?.version ?? 0 >= 2
+            let (replay, resumed) = ring.replay(since: v2 ? since : nil)
             if !replay.isEmpty { enqueue(BrokerFrame.stream(.replay, sessionID: sessionID, bytes: replay)) }
             session.attached = true
-            reply(id, .attached(BrokerAttachment(record: session.record, nonce: session.nonce, passwordPrompt: session.promptActive, truncated: ring.truncated)))
+            reply(
+                id,
+                .attached(
+                    BrokerAttachment(
+                        record: session.record, nonce: session.nonce, passwordPrompt: session.promptActive, truncated: ring.truncated,
+                        offset: v2 ? ring.appendedTotal : nil, resumed: v2 ? resumed : nil)))
             // Full-screen programs redraw for the newly attached view.
             if session.waitStatus == nil, !session.readEnded {
                 let group = tcgetpgrp(session.descriptor)
@@ -287,15 +366,44 @@ public final class BrokerServer: @unchecked Sendable {
         io.setLimit(lowWater: 1)
         io.setLimit(highWater: BrokerProtocol.chunkLimit)
         session.io = io
-        let exit = DispatchSource.makeProcessSource(identifier: result.pid, eventMask: .exit, queue: queue)
-        exit.setEventHandler { [weak self, weak session] in self?.reap(session) }
-        session.exitSource = exit
-        exit.resume()
+        #if canImport(Darwin)
+            let exit = DispatchSource.makeProcessSource(identifier: result.pid, eventMask: .exit, queue: queue)
+            exit.setEventHandler { [weak self, weak session] in self?.reap(session) }
+            session.exitSource = exit
+            exit.resume()
+        #endif
         sessions[session.id] = session
         rings[session.id] = OutputRing()
         readPTY(session)
         reap(session)
         return .spawned(sessionID: session.id, processID: session.pid)
+    }
+
+    /// v2: a login shell planned here (FR-RW04, FR-RW05). Unusable shells and directories fall back to the account's;
+    /// an integration rewrite applies only to the shell it was planned for and only when its script is readable.
+    private func spawnLogin(_ request: BrokerLoginRequest) -> BrokerMessage {
+        guard let account else { return .failed(code: "UNSUPPORTED", errno: 0) }
+        func valid(_ pair: (key: String, value: String)) -> Bool { !pair.key.isEmpty && !pair.key.contains("=") && !pair.key.contains("\0") && !pair.value.contains("\0") }
+        guard request.environment.allSatisfy({ valid($0) && !BrokerCore.isControlKey($0.key) }) else { return .failed(code: "INVALID_REQUEST", errno: EINVAL) }
+        let shell = request.shell.flatMap { BrokerHost.isExecutableFile($0) ? $0 : nil } ?? account.shell
+        let directory = request.directory.flatMap { BrokerHost.isUsableDirectory($0) ? $0 : nil } ?? (BrokerHost.isUsableDirectory(account.home) ? account.home : "/")
+        var environment = baseEnvironment
+        environment["HOME"] = account.home
+        environment["USER"] = account.user
+        environment["LOGNAME"] = account.user
+        environment["SHELL"] = shell
+        environment.merge(request.environment) { _, requested in requested }
+        var arguments = [shell, "-l"]
+        if let integration = request.integration, integration.shell == shell, BrokerHost.isReadableFile(integration.scriptPath),
+            integration.arguments.allSatisfy({ !$0.contains("\0") }), integration.environment.allSatisfy(valid)
+        {
+            environment.merge(integration.environment) { _, injected in injected }
+            arguments = [shell] + integration.arguments
+        }
+        return spawn(
+            BrokerSpawnRequest(
+                sessionID: request.sessionID, executable: shell, arguments: arguments, environment: environment.keys.sorted().map { "\($0)=\(environment[$0]!)" },
+                directory: directory, columns: request.columns, rows: request.rows))
     }
 
     private func readPTY(_ session: Session) {
@@ -342,8 +450,7 @@ public final class BrokerServer: @unchecked Sendable {
 
     private func resize(_ session: Session, columns: UInt16, rows: UInt16) {
         guard columns > 0, rows > 0, !session.readEnded else { return }
-        var size = winsize(ws_row: rows, ws_col: columns, ws_xpixel: 0, ws_ypixel: 0)
-        _ = ioctl(session.descriptor, TIOCSWINSZ, &size)
+        _ = trellis_set_window_size(session.descriptor, columns, rows)
     }
 
     /// Echo off with canonical input on is a readpassphrase-style prompt, as in `PTYProcess`; coalesced to 100 ms.
@@ -371,8 +478,10 @@ public final class BrokerServer: @unchecked Sendable {
         repeat { result = waitpid(session.pid, &status, WNOHANG) } while result < 0 && errno == EINTR
         guard result == session.pid else { return }
         session.waitStatus = status
-        session.exitSource?.cancel()
-        session.exitSource = nil
+        #if canImport(Darwin)
+            session.exitSource?.cancel()
+            session.exitSource = nil
+        #endif
         // A detached descendant can hold the PTY open; drain briefly, then let go.
         if !session.readEnded {
             let drain = DispatchWorkItem { [weak self] in self?.endReading(session) }
@@ -393,6 +502,7 @@ public final class BrokerServer: @unchecked Sendable {
     private func finishIfReady(_ session: Session) {
         guard !session.finished, session.readEnded, let status = session.waitStatus else { return }
         session.finished = true
+        session.endedAt = now()
         session.drainTimer?.cancel()
         session.drainTimer = nil
         if session.attached, client?.greeted == true { reply(nil, .exited(sessionID: session.id, waitStatus: status)) }
@@ -401,7 +511,10 @@ public final class BrokerServer: @unchecked Sendable {
     // MARK: Lifetime
 
     private func checkIdle() {
-        core.update(runningSessions: sessions.values.filter { $0.waitStatus == nil }.count, now: now())
+        if isRemote, let connection = client, now().timeIntervalSince(connection.lastActivity) > configuration.clientTimeout { dropClient() }
+        // A remote session that ended while the Mac was away is kept until its exit is collected (FR-RW09), for at most a day.
+        let retained = isRemote ? sessions.values.filter { $0.endedAt.map { now().timeIntervalSince($0) < Self.endedRetention } ?? false }.count : 0
+        core.update(runningSessions: sessions.values.filter { $0.waitStatus == nil }.count + retained, now: now())
         if core.shouldExit(now: now()) { exitNow() }
     }
 
@@ -419,25 +532,37 @@ public final class BrokerServer: @unchecked Sendable {
         let path = configuration.socketPath
         if BrokerFiles.isOwnedSocket(path) {
             unlink(path)
-            rmdir((path as NSString).deletingLastPathComponent)
+            rmdir(BrokerFiles.parent(path))
         }
         exit(0)
     }
 
-    /// `trellis-broker --socket <path> --client <app> [--idle-exit <seconds>]`.
+    /// `trellis-broker --socket <path> --client <app> [--idle-exit <seconds>]` (the app's local broker), or a
+    /// subcommand: `remote-broker` and `bridge` (FR-RW03, FR-RW06).
     public static func main(arguments: [String]) -> Int32 {
-        var limit = rlimit(rlim_cur: 0, rlim_max: 0)
-        setrlimit(RLIMIT_CORE, &limit)
+        trellis_disable_core_dumps()
         signal(SIGPIPE, SIG_IGN)
         signal(SIGHUP, SIG_IGN)
         func value(_ name: String) -> String? {
             guard let index = arguments.firstIndex(of: name), arguments.indices.contains(index + 1) else { return nil }
             return arguments[index + 1]
         }
-        guard let socket = value("--socket"), let client = value("--client").flatMap(BrokerFiles.realPath) else { return 64 }
         let idle = value("--idle-exit").flatMap(TimeInterval.init).map { min(max($0, 1), 3600) } ?? 30
-        let server = BrokerServer(configuration: Configuration(socketPath: socket, clientPath: client, idleExit: idle))
+        let configuration: Configuration
+        switch arguments.dropFirst().first {
+        case "bridge": return BrokerBridge.main(arguments: arguments)
+        case "remote-broker":
+            guard let socket = value("--socket"), let clientID = value("--client-id"), BrokerBridge.isValidClientID(clientID), let root = value("--install-root") else { return 64 }
+            let timeout = value("--client-timeout").flatMap(TimeInterval.init).map { min(max($0, 1), 3600) } ?? BrokerProtocol.remoteClientTimeout
+            configuration = Configuration(socketPath: socket, clientPath: "", idleExit: idle, mode: .remote(clientID: clientID, installRoot: root), clientTimeout: timeout)
+        default:
+            guard let socket = value("--socket"), let client = value("--client").flatMap(BrokerFiles.realPath) else { return 64 }
+            configuration = Configuration(socketPath: socket, clientPath: client, idleExit: idle)
+        }
+        let server = BrokerServer(configuration: configuration)
         do { try server.start() } catch { return 70 }
         withExtendedLifetime(server) { dispatchMain() }
     }
 }
+
+public enum BrokerServerError: Error, Equatable, Sendable { case socketDirectory, socket, installRoot }
