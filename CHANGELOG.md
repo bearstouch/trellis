@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-29
+
+The first stable release of Trellis. This release adds in-app software updates with Sparkle and a cap on workspace disk writes, brightens selections in the dark themes, and fixes the collapsed sidebar's tabs card.
+
 ### Added
 
 - **Software updates:** **Trellis → Check for Updates…** and **Settings → Updates** download, verify and install new versions in place with Sparkle 2. Automatic daily checks are off until you turn them on, and **Include beta versions** chooses whether pre-releases are offered (on by default in pre-release builds). A check downloads only the update list and sends no system profile. Installing quits through the usual confirmation, so sessions kept after quit keep running (MAC-14).
@@ -361,7 +365,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...v1.0.0
 [1.0.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/bearstouch/trellis/compare/v0.12.0...v1.0.0-beta.1
 [0.12.0]: https://github.com/bearstouch/trellis/compare/v0.11.1...v0.12.0
