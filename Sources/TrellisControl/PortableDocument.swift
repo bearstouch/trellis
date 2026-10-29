@@ -57,8 +57,10 @@ public enum PortableDocument {
             case .host(let id)? where references[id] != nil: return .object(["kind": .string("host"), "hostId": .string(references[id]!.uuidString)])
             case .shell(let directory?)?: return .object(["kind": .string("shell"), "directory": .string(directory)])
             case .process(_, let arguments, let directory?)? where arguments == ["-l"]: return .object(["kind": .string("shell"), "directory": .string(directory)])
+            // A remote workspace's pane is a shell in a path on its host; the window carries the host (FR-R02).
+            case .remoteShell(let host, let directory)? where references[host] != nil:
+                return .object(directory.map { ["kind": .string("shell"), "directory": .string($0)] } ?? ["kind": .string("shell")])
             case .process?, .remoteShell?:
-                // Remote workspace panes export as local shells for now; carrying the host binding is pending (FR-R02).
                 converted += 1
                 return .object(["kind": .string("shell")])
             default: return .object(["kind": .string("shell")])
@@ -78,10 +80,12 @@ public enum PortableDocument {
             "version": .number(1),
             "windows": .array(
                 snapshot.windows.map { window in
-                    .object([
+                    var object: [String: JSONValue] = [
                         "key": key("w"), "name": .string(window.name),
                         "tabs": .array(window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in .object(["key": key("t"), "title": .string(tab.title), "root": node(tab.root)]) })
-                    ])
+                    ]
+                    if let host = window.remoteHostID.flatMap({ references[$0] }) { object["remoteHostId"] = .string(host.uuidString) }
+                    return .object(object)
                 })
         ])
         let hostList: JSONValue = .array(
@@ -131,7 +135,7 @@ public enum PortableDocument {
         } else if root["hosts"] != nil {
             return failure("hosts must be an array.")
         }
-        switch LayoutJSON.parse(root["layout"] ?? .object(["version": .number(1), "windows": .array([])])) {
+        switch LayoutJSON.parse(root["layout"] ?? .object(["version": .number(1), "windows": .array([])]), allowRemoteHosts: true) {
         case .success(let layout): return .success(Parsed(layout: layout, hosts: hosts))
         case .failure(let error): return .failure(error)
         }
@@ -142,26 +146,30 @@ public enum PortableDocument {
         var preview = Preview()
         preview.windows = parsed.layout.windows.count
         preview.hosts = parsed.hosts.count
-        func walk(_ node: LayoutNode) {
+        func reference(_ reference: UUID, _ what: String) {
+            let name = parsed.hosts.first { $0.reference == reference }?.draft.name ?? "Missing host \(reference.uuidString)"
+            if !preview.hostReferences.contains(name) { preview.hostReferences.append(name) }
+            if !parsed.hosts.contains(where: { $0.reference == reference }) {
+                preview.errors.append(LayoutIssue(key: nil, "A \(what) refers to a host that is not in this export."))
+            }
+        }
+        // A remote workspace's folders are paths on its host, not on this Mac, so they aren't listed as local folders.
+        func walk(_ node: LayoutNode, remote: Bool) {
             switch node {
             case .pane(_, _, let launch):
                 preview.panes += 1
                 switch launch {
-                case .shell(let directory?): if !preview.directories.contains(directory) { preview.directories.append(directory) }
-                case .shell(nil): break
-                case .host(let reference):
-                    let name = parsed.hosts.first { $0.reference == reference }?.draft.name ?? "Missing host \(reference.uuidString)"
-                    if !preview.hostReferences.contains(name) { preview.hostReferences.append(name) }
-                    if !parsed.hosts.contains(where: { $0.reference == reference }) {
-                        preview.errors.append(LayoutIssue(key: nil, "A pane refers to a host that is not in this export."))
-                    }
+                case .shell(let directory?) where !remote: if !preview.directories.contains(directory) { preview.directories.append(directory) }
+                case .shell: break
+                case .host(let host): reference(host, "pane")
                 }
-            case .split(_, _, _, let children): children.forEach(walk)
+            case .split(_, _, _, let children): children.forEach { walk($0, remote: remote) }
             }
         }
         for window in parsed.layout.windows {
             preview.tabs += window.tabs.count
-            window.tabs.forEach { walk($0.root) }
+            if let host = window.remoteHostID { reference(host, "remote workspace window") }
+            window.tabs.forEach { walk($0.root, remote: window.remoteHostID != nil) }
         }
         for (index, host) in parsed.hosts.enumerated() {
             let destination = host.draft.destination.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -125,6 +125,8 @@ public final class PortableTransfer {
         var layout = parsed.layout
         for window in layout.windows.indices {
             for tab in layout.windows[window].tabs.indices { layout.windows[window].tabs[tab].root = remap(layout.windows[window].tabs[tab].root) }
+            // FR-R02: a remote workspace stays bound to its host, imported or matched like the panes' hosts.
+            if let reference = layout.windows[window].remoteHostID { layout.windows[window].remoteHostID = mapping[reference] ?? reference }
         }
         let known = Set(existing.map(\.id)).union(mapping.values)
         let plan = plan(layout, hostExists: known.contains)

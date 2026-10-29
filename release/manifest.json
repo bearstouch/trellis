@@ -15,6 +15,9 @@
     {"name": "Cascadia Mono NF", "version": "2407.24", "revision": "56bcca3f2c1e4cb19458954f0e2bb4635960df91", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/CascadiaMono-OFL.txt"},
     {"name": "IBM Plex Mono", "version": "2.005", "revision": "2f9ba1b25957d958db71a849e85d72e3ecfb845a", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/IBMPlexMono-OFL.txt"},
     {"name": "Iosevka Fixed (terminal subset)", "version": "34.9.0", "revision": "2487637bb71f41b2a66134afd9faa6c316e5a438", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/IosevkaFixed-OFL.txt"},
-    {"name": "Atkinson Hyperlegible Mono", "version": "2.001", "revision": "154d50362016cc3e873eb21d242cd0772384c8f9", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/AtkinsonHyperlegibleMono-OFL.txt"}
+    {"name": "Atkinson Hyperlegible Mono", "version": "2.001", "revision": "154d50362016cc3e873eb21d242cd0772384c8f9", "license": "OFL-1.1", "licenseFile": "Sources/TrellisCore/Resources/Fonts/AtkinsonHyperlegibleMono-OFL.txt"},
+    {"name": "musl libc (static Linux remote helpers)", "version": "1.2.5", "revision": "0784374d561435f7c787a555aeab8ede699ed298", "license": "MIT", "licenseFile": "ThirdParty/RemoteHelpers/musl-COPYRIGHT.txt"},
+    {"name": "mimalloc (static Linux remote helpers)", "version": "2.2.4", "revision": "fbd8b99c2b828428947d70fdc046bb55609be93e", "license": "MIT", "licenseFile": "ThirdParty/RemoteHelpers/mimalloc-LICENSE.txt"},
+    {"name": "musl-fts (static Linux remote helpers)", "version": "1.2.7", "revision": "0bde52df588e8969879a2cae51c3a4774ec62472", "license": "BSD-3-Clause", "licenseFile": "ThirdParty/RemoteHelpers/musl-fts-COPYING.txt"}
   ]
 }

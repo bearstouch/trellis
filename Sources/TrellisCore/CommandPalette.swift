@@ -71,6 +71,8 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     case tab(windowID: UUID, tabID: UUID)
     case pane(UUID)
     case host(UUID)
+    /// Opens the saved host as a remote workspace (FR-RW01).
+    case remoteWorkspace(UUID)
     case task(name: String, detected: Bool)
     case theme(String)
 
@@ -83,6 +85,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .tab(_, let id): "tab:" + id.uuidString
         case .pane(let id): "pane:" + id.uuidString
         case .host(let id): "host:" + id.uuidString
+        case .remoteWorkspace(let id): "remote-workspace:" + id.uuidString
         case .task(let name, let detected): (detected ? "task:detected:" : "task:file:") + name
         case .theme(let id): "theme:" + id
         }

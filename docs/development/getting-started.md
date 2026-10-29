@@ -80,7 +80,7 @@ See [CLI](../api/cli.md) for every command.
 
 ```sh
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"  # launcher regression, no windows
-python3 scripts/qualify.py [--quick] [--renderer metal|coregraphics]  # release qualification, about 5 min; opens isolated app windows
+python3 scripts/qualify.py [--quick] [--renderer metal|coregraphics] [--remote|--remote-only]  # release qualification, about 5 min; opens isolated app windows; --remote adds a Docker sshd section
 python3 scripts/bench-renderer.py [--quick] [--only NAMES]  # Metal vs CoreGraphics benchmarks, about 25 min; keep its windows visible
 scripts/test-linux.sh                         # trellis-broker build and tests on Linux, in Docker
 scripts/build-remote-helpers.sh [OUT]         # static Linux remote helpers (Docker); default OUT is the debug bin path's remote/

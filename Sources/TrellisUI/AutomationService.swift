@@ -907,7 +907,10 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         case .remoteShell(let hostID, let directory):
             // FR-RW15: a remote workspace session; its directory is a path on the host.
             object["launchKind"] = .string("remoteShell")
-            if access.allows(.hostRead), access.hostAccess(hosts.hosts.first { $0.id == hostID }) == .allowed { object["hostId"] = .string(hostID.uuidString) }
+            if access.allows(.hostRead), access.hostAccess(hosts.hosts.first { $0.id == hostID }) == .allowed {
+                object["hostId"] = .string(hostID.uuidString)
+                object["remoteLink"] = .string(Self.linkName(model.remoteLinks[hostID]))
+            }
             if access.allows(.sessionExecute), let directory { object["directory"] = .string(directory) }
         case .process(let executable, let arguments, let directory):
             // Login shells are recorded as resolved processes; report them as shells.
@@ -919,6 +922,18 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             }
         }
         return .object(object)
+    }
+
+    /// FR-RW15: the host link as automation sees it; `needsInput` is when only a person can reconnect.
+    static func linkName(_ link: RemoteLinkDisplay?) -> String {
+        switch link {
+        case .connected?: "connected"
+        case .connecting?: "connecting"
+        case .reconnecting?: "reconnecting"
+        case .offline?: "offline"
+        case .needsInput?: "needsInput"
+        case .disconnected?, nil: "disconnected"
+        }
     }
 
     @MainActor private func hostsVisible(_ access: GrantAccess, query: String?) -> [SavedHost] {

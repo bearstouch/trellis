@@ -178,6 +178,7 @@ struct CommandPaletteView: View {
             switch selected.item.target {
             case .scope: hints.append("↩ Open")
             case .host: hints += ["↩ Connect", "⌘↩ New Window", "⌥↩ Split"]
+            case .remoteWorkspace: hints.append("↩ Open")
             default: hints.append("↩ Run")
             }
         }
@@ -202,6 +203,7 @@ struct CommandPaletteView: View {
         case .tab: "Go to Tab"
         case .pane: "Go to Pane"
         case .host: "Connect"
+        case .remoteWorkspace: "Open Remote Workspace"
         case .task: "Run Task"
         case .theme: "Use Theme"
         }
@@ -216,6 +218,7 @@ struct CommandPaletteView: View {
         case .tab: "menubar.rectangle"
         case .pane: "rectangle.split.2x1"
         case .host: "server.rack"
+        case .remoteWorkspace: "rectangle.connected.to.line.below"
         case .task: "play"
         case .theme: "paintpalette"
         }

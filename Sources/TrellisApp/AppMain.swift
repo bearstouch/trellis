@@ -164,10 +164,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }?.path
     }
 
+    /// Data, not code: it lives in Resources, because codesign refuses unsigned files under Contents/Helpers.
     static func helperDirectory(_ name: String) -> URL? {
         let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let candidates = [
-            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/\(name)"), executable.deletingLastPathComponent().appendingPathComponent(name)
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/\(name)"), executable.deletingLastPathComponent().appendingPathComponent(name)
         ]
         return candidates.first { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
     }
@@ -493,7 +494,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 try data.write(to: url, options: .atomic)
                 // Exports hold no secrets, but stay owner-only like other Trellis files.
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-                if converted > 0 { model.errorMessage = "\(converted) custom command pane(s) were exported as plain shells; their commands are never exported." }
+                if converted > 0 {
+                    model.errorMessage =
+                        "\(converted) pane(s) were exported as plain local shells: custom commands are never exported, and a remote workspace pane whose saved host is gone loses its host."
+                }
             } catch { model.errorMessage = "The export could not be written. Check the location and try again." }
         }
     }
@@ -691,7 +695,7 @@ struct TrellisMain {
                 model.sessionBroker = BrokerSessionClient(stateDirectory: directory, helperPath: helper, clientPath: client)
             }
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
-            // FR-RW17: the Linux helpers ship in Helpers/remote (scripts/build-remote-helpers.sh); macOS hosts get the bundled broker.
+            // FR-RW17: the Linux helpers ship in Resources/remote (scripts/build-remote-helpers.sh); macOS hosts get the bundled broker.
             hosts.remote = RemoteHostsModel(
                 settings: RemoteHostSettings(stateDirectory: directory),
                 catalog: RemoteArtifactCatalog.load(

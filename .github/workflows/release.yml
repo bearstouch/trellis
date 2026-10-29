@@ -28,12 +28,36 @@ defaults:
     shell: bash
 
 jobs:
+  remote-helpers:
+    # FR-RW02: the static Linux helpers bundled for remote workspaces; the macOS runners have no Docker.
+    name: Build Linux remote helpers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: swift:6.4.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Build
+        run: scripts/build-remote-helpers.sh .build/remote-helpers
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: remote-helpers
+          path: .build/remote-helpers
+          if-no-files-found: error
+
   release:
     name: Package and publish
+    needs: remote-helpers
     runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: remote-helpers
+          path: .build/remote-helpers
 
       - name: Select Xcode 26
         run: |

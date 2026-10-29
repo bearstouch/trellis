@@ -150,6 +150,9 @@ extension AppWorkspaceModel {
                 case .option: .split(.x)
                 }
             await connect(host: host, placement: placement)
+        case .remoteWorkspace(let id):
+            guard let host = commandPaletteHosts().first(where: { $0.id == id }) else { return }
+            await openRemoteWorkspace(host: host)
         case .task(let name, let detected):
             guard let catalog = taskCatalog else { return }
             let task = detected ? catalog.detected.first { $0.task.name == name }?.task : catalog.tasks.first { $0.name == name }
@@ -224,9 +227,17 @@ extension AppWorkspaceModel {
                 }
             }
         }
-        let hostItems = commandPaletteHosts().map { host in
+        let hostItems = commandPaletteHosts().flatMap { host in
             let destination = (host.user.map { "\($0)@" } ?? "") + host.destination + (host.port.map { " · port \($0)" } ?? "")
-            return CommandPaletteItem(target: .host(host.id), kind: .host, title: host.name, subtitle: destination, keywords: host.tags + ["ssh"])
+            let connect = CommandPaletteItem(target: .host(host.id), kind: .host, title: host.name, subtitle: destination, keywords: host.tags + ["ssh"])
+            // FR-RW01: each host can also open as a remote workspace whose sessions keep running there.
+            guard remoteHosts != nil else { return [connect] }
+            return [
+                connect,
+                CommandPaletteItem(
+                    target: .remoteWorkspace(host.id), kind: .host, title: "Open Remote Workspace: " + host.name, subtitle: destination,
+                    keywords: host.tags + ["ssh", "remote", "workspace"])
+            ]
         }
         var taskItems: [CommandPaletteItem] = []
         if let catalog = taskCatalog, catalog.paneID == presentation.activePane?.id, taskAvailability(paneID: catalog.paneID).reason == nil {
@@ -245,7 +256,7 @@ extension AppWorkspaceModel {
             .windows: (windowItems.count, Self.count(windowItems.count, "window")),
             .tabs: (tabItems.count, Self.count(tabItems.count, "tab") + " in " + Self.count(windows.count, "window")),
             .panes: (paneItems.count, Self.count(paneItems.count, "pane")),
-            .hosts: (hostItems.count, Self.count(hostItems.count, "saved host")),
+            .hosts: (hostItems.count, Self.count(commandPaletteHosts().count, "saved host")),
             .tasks: (taskItems.count, Self.count(taskItems.count, "task") + " in " + (taskCatalog?.name ?? "this project")),
             .themes: (themeItems.count, Self.count(themeItems.count, "theme"))
         ]

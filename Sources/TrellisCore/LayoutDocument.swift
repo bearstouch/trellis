@@ -9,7 +9,11 @@ public struct LayoutDocument: Equatable, Sendable {
 
 public struct LayoutWindow: Equatable, Sendable {
     public var key: String, name: String, tabs: [LayoutTab]
-    public init(key: String, name: String, tabs: [LayoutTab]) { self.key = key; self.name = name; self.tabs = tabs }
+    /// A remote workspace's saved host (FR-R02, FR-RW01); only exports carry it, never API layouts.
+    public var remoteHostID: UUID?
+    public init(key: String, name: String, tabs: [LayoutTab], remoteHostID: UUID? = nil) {
+        self.key = key; self.name = name; self.tabs = tabs; self.remoteHostID = remoteHostID
+    }
 }
 
 public struct LayoutTab: Equatable, Sendable {
@@ -162,9 +166,9 @@ public enum LayoutPlanner {
             return binding.id
         }
         // A remote project file opens on its host (FR-RW10): every shell is that host's, in a path there.
-        func launch(_ value: LayoutLaunch) -> SessionLaunch {
+        func launch(_ value: LayoutLaunch, on host: UUID?) -> SessionLaunch {
             switch value {
-            case .shell(let directory) where remoteHostID != nil: .remoteShell(hostID: remoteHostID!, directory: directory.flatMap { expand($0, home: home) })
+            case .shell(let directory) where host != nil: .remoteShell(hostID: host!, directory: directory.flatMap { expand($0, home: home) })
             case .shell(let directory): .shell(directory: directory.flatMap { expand($0, home: home) })
             case .host(let id): .host(id)
             }
@@ -182,6 +186,8 @@ public enum LayoutPlanner {
                 plan.creates.append((.window, declared.key))
             }
             bindings[declared.key] = LayoutBinding(kind: .window, id: windowID)
+            // An existing window keeps its own binding; a new one takes the document's, or the plan's.
+            let windowHost = next.windows.first { $0.id == windowID }.map(\.remoteHostID) ?? declared.remoteHostID ?? remoteHostID
             for tab in declared.tabs {
                 let tabID: UUID
                 let existingTab = bound(tab.key, .tab).flatMap { next.tabs[$0] }
@@ -195,7 +201,7 @@ public enum LayoutPlanner {
                 func build(_ node: LayoutNode) -> PaneLayout? {
                     switch node {
                     case .pane(let key, let title, let desired):
-                        let desiredLaunch = launch(desired)
+                        let desiredLaunch = launch(desired, on: windowHost)
                         if let id = bound(key, .pane), let pane = next.panes[id] {
                             guard pane.tabID == tabID else {
                                 plan.conflicts.append(LayoutIssue(key: key, "Panes cannot move between tabs; close and recreate it instead."))
@@ -277,7 +283,7 @@ public enum LayoutPlanner {
                 window.name = declared.name
                 next.windows[index] = window
             } else if let first = managedTabs.first {
-                next.windows.append(ManagedWindow(id: windowID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: remoteHostID))
+                next.windows.append(ManagedWindow(id: windowID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: windowHost))
             }
             managedWindows.append(windowID)
         }

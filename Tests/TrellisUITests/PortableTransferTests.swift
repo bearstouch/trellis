@@ -9,7 +9,7 @@ final class PortableTransferTests: XCTestCase {
     /// Every key a portable export may contain.
     static let allowedKeys: Set<String> = [
         "format", "version", "layout", "hosts", "windows", "key", "name", "tabs", "title", "root", "type", "axis", "ratio", "children", "launch",
-        "kind", "directory", "hostId", "id", "destination", "user", "port", "identityFile", "tags"
+        "kind", "directory", "hostId", "id", "destination", "user", "port", "identityFile", "tags", "remoteHostId"
     ]
 
     private func keys(_ value: Any) -> Set<String> {
@@ -70,6 +70,62 @@ final class PortableTransferTests: XCTestCase {
         guard case .success(let (_, preview)) = await PortableTransfer(model: h.model, hosts: h.hosts).preview(data) else { return XCTFail("Export does not parse") }
         XCTAssertEqual(preview.errors, [])
         XCTAssertEqual([preview.windows, preview.panes, preview.hosts], [1, 2, 1])
+    }
+
+    /// FR-R02 with FR-RW01: a remote workspace exports bound to its host and imports bound to the imported (or kept) host,
+    /// its panes in their paths on that host. API layouts can't bind a window to a host (FR-RW15).
+    @MainActor
+    func testARemoteWorkspaceRoundTripsWithItsHost() async throws {
+        let source = try Harness()
+        defer { source.discardPreferences() }
+        guard case .success(let host) = await source.hosts.save(HostDraft(name: "build-box", destination: "build-box"), editing: nil) else { return XCTFail("No host") }
+        let created = try await source.model.service.execute(.createRemoteWindow(name: "Remote", hostID: host.id))
+        let pane = try XCTUnwrap(created.snapshot.windows.first.flatMap { created.snapshot.tabs[$0.activeTabID]?.activePaneID })
+        source.model.publish(try await source.model.service.execute(.configureStoppedSession(paneID: pane, launch: .remoteShell(hostID: host.id, directory: "/srv/app"))).snapshot)
+        let (data, converted) = await PortableTransfer(model: source.model, hosts: source.hosts).exportData()
+        XCTAssertEqual(converted, 0, "Nothing turned into a local shell")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let window = try XCTUnwrap(((json["layout"] as? [String: Any])?["windows"] as? [[String: Any]])?.first)
+        let reference = try XCTUnwrap(window["remoteHostId"] as? String)
+        XCTAssertEqual((json["hosts"] as? [[String: Any]])?.first?["id"] as? String, reference, "Bound by the export's own host reference, never this Mac's ID")
+        XCTAssertNotEqual(reference, host.id.uuidString)
+
+        let target = try Harness()
+        defer { target.model.terminals.values.forEach { $0.adapter.detach() }; target.discardPreferences() }
+        let transfer = PortableTransfer(model: target.model, hosts: target.hosts)
+        guard case .success(let (parsed, preview)) = await transfer.preview(data) else { return XCTFail("Preview failed") }
+        XCTAssertEqual(preview.hostReferences, ["build-box"])
+        XCTAssertEqual(preview.directories, [], "A host's folders aren't listed as this Mac's")
+        guard case .success = await transfer.commit(parsed, policy: nil) else { return XCTFail("Import failed") }
+        let imported = await target.hosts.library.hosts
+        let importedHost = try XCTUnwrap(imported.first)
+        let window2 = try XCTUnwrap(target.model.snapshot.windows.first { $0.name == "Remote" })
+        XCTAssertEqual(window2.remoteHostID, importedHost.id)
+        let session = try XCTUnwrap(target.model.snapshot.tabs[window2.activeTabID].flatMap { target.model.snapshot.panes[$0.activePaneID] }.flatMap { target.model.snapshot.sessions[$0.sessionID] })
+        XCTAssertEqual(session.launch, .remoteShell(hostID: importedHost.id, directory: "/srv/app"))
+        XCTAssertEqual(session.state, .stopped, "Importing never starts anything")
+
+        // Imported again, the host collides: the window binds to the host the user chose, and existing windows keep theirs.
+        guard case .success(let (again, againPreview)) = await transfer.preview(data), !againPreview.collisions.isEmpty else { return XCTFail("No collision") }
+        guard case .success = await transfer.commit(again, policy: .useExisting) else { return XCTFail("Import failed") }
+        XCTAssertEqual(target.model.snapshot.windows.filter { $0.name == "Remote" }.map(\.remoteHostID), [importedHost.id, importedHost.id])
+        guard case .success = await transfer.commit(again, policy: .keepBoth) else { return XCTFail("Import failed") }
+        let all = await target.hosts.library.hosts
+        let copy = try XCTUnwrap(all.first { $0.id != importedHost.id })
+        XCTAssertEqual(target.model.snapshot.windows.filter { $0.name == "Remote" }.map(\.remoteHostID), [importedHost.id, importedHost.id, copy.id])
+        // A window bound to a host the file doesn't carry is refused, never bound to one of this Mac's hosts.
+        var orphan = json
+        orphan["hosts"] = [[String: Any]]()
+        guard case .success(let (orphanParsed, orphanPreview)) = await transfer.preview(try JSONSerialization.data(withJSONObject: orphan)) else { return XCTFail("Preview failed") }
+        XCTAssertFalse(orphanPreview.errors.isEmpty)
+        guard case .failure(.invalid) = await transfer.commit(orphanParsed, policy: .useExisting) else { return XCTFail("Bound a window to a missing host") }
+        try target.model.snapshot.validate()
+
+        let api: JSONValue = .object([
+            "version": .number(1),
+            "windows": .array([.object(["key": .string("w"), "name": .string("W"), "remoteHostId": .string(UUID().uuidString), "tabs": .array([])])])
+        ])
+        guard case .failure = LayoutJSON.parse(api) else { return XCTFail("An API layout bound a window to a host") }
     }
 
     @MainActor

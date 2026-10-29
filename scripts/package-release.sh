@@ -56,9 +56,10 @@ cp "$bin/trellis-cli" "$app/Contents/Helpers/trellis"
 cp "$bin/trellis-askpass" "$app/Contents/Helpers/trellis-askpass"
 cp "$bin/trellis-broker" "$app/Contents/Helpers/trellis-broker"
 # Linux remote helpers (FR-RW02): built with Docker by scripts/build-remote-helpers.sh into TRELLIS_REMOTE_HELPERS.
+# They are data, so they go in Resources: codesign refuses unsigned files under Contents/Helpers.
 remote_helpers="${TRELLIS_REMOTE_HELPERS:-.build/remote-helpers}"
 if [ -f "$remote_helpers/remote-helpers.json" ]; then
-    cp -R "$remote_helpers" "$app/Contents/Helpers/remote"
+    cp -R "$remote_helpers" "$app/Contents/Resources/remote"
 else
     echo "package-release: no Linux remote helpers in $remote_helpers; this build supports only macOS remote hosts" >&2
 fi

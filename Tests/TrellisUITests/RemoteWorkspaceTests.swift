@@ -136,6 +136,24 @@ final class RemoteWorkspaceTests: XCTestCase {
         try await until("both panes came back") { relaunched.terminals[split]?.remoteTransport != nil && relaunched.terminals[split]?.sessionState == .running }
     }
 
+    /// FR-RW01: the command palette opens a saved host as a remote workspace, next to its Connect item.
+    func testThePaletteOpensARemoteWorkspace() async throws {
+        let model = try makeModel()
+        _ = await model.loadWorkspace()
+        let items = model.commandPaletteItems.filter { $0.kind == .host }
+        XCTAssertEqual(items.map(\.target), [.host(host.id), .remoteWorkspace(host.id)])
+        XCTAssertEqual(items.last?.title, "Open Remote Workspace: build-box")
+        await model.performCommandPaletteTarget(.remoteWorkspace(host.id), modifier: .none)
+        XCTAssertEqual(model.snapshot.windows.last?.remoteHostID, host.id)
+        let pane = try XCTUnwrap(model.presentation.activePane)
+        let terminal = try XCTUnwrap(model.terminals[pane.id])
+        try await until("the remote shell runs") { terminal.sessionState == .running }
+        let remote = model.remoteHosts
+        model.remoteHosts = nil
+        XCTAssertEqual(model.commandPaletteItems.filter { $0.kind == .host }.map(\.target), [.host(host.id)], "Only when remote workspaces exist")
+        model.remoteHosts = remote  // so tearDown can stop the host's sessions
+    }
+
     func testALostLinkRefusesInputThenResumesExactlyAndHangsUpWhatWasClosed() async throws {
         let model = try makeModel()
         _ = await model.loadWorkspace()
@@ -260,11 +278,15 @@ final class RemoteWorkspaceAutomationReviewTests: XCTestCase {
         defer { h.discardPreferences() }
         try await h.grant("full")
         guard case .success(let host) = await h.hosts.save(HostDraft(name: "build-box", destination: "build-box"), editing: nil) else { return XCTFail("No host") }
-        let result = try await h.model.service.execute(.createRemoteWindow(name: "Remote", hostID: host.id))
-        h.model.publish(result.snapshot)
-        let window = try XCTUnwrap(result.snapshot.windows.first { $0.id == result.createdWindowID })
-        let pane = try XCTUnwrap(result.snapshot.tabs[window.activeTabID].flatMap { result.snapshot.panes[$0.activePaneID] })
+        let created = try await h.model.service.execute(.createRemoteWindow(name: "Remote", hostID: host.id))
+        h.model.publish(created.snapshot)
+        let window = try XCTUnwrap(created.snapshot.windows.first { $0.id == created.createdWindowID })
+        let pane = try XCTUnwrap(created.snapshot.tabs[window.activeTabID].flatMap { created.snapshot.panes[$0.activePaneID] })
         h.model.remoteLinks[host.id] = .reconnecting(attempt: 2, at: Date())
+        let session = try result(try await h.call("session.get", ["id": pane.sessionID.uuidString]))
+        XCTAssertEqual(session["launchKind"] as? String, "remoteShell")
+        XCTAssertEqual(session["hostId"] as? String, host.id.uuidString)
+        XCTAssertEqual(session["remoteLink"] as? String, "reconnecting")
         let stopped = try await h.code("session.sendInput", ["id": pane.sessionID.uuidString, "text": "id\n"])
         XCTAssertNotEqual(stopped, "REMOTE_DISCONNECTED", "A session that isn't running fails as not running, not as retryable")
         // Running on the host while its link is down.
