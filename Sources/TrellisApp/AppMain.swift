@@ -100,6 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let library = hosts.library, gate = LocalAuthenticationGate()
             hosts.userPresence = gate
             model.savedPassword = { id, revision in await library.password(hostID: id, connectionRevision: revision, gate: gate) }
+            hosts.remote?.askpass = model.askpass
+            hosts.remote?.savedPassword = model.savedPassword
         }
         hosts.onConnect = { [weak self] host, placement in
             guard let self else { return }
@@ -153,6 +155,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             executable.deletingLastPathComponent().appendingPathComponent(name)
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }?.path
+    }
+
+    static func helperDirectory(_ name: String) -> URL? {
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let candidates = [
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/\(name)"), executable.deletingLastPathComponent().appendingPathComponent(name)
+        ]
+        return candidates.first { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
     }
 
     @objc private func activateExistingInstance() {
@@ -672,6 +682,12 @@ struct TrellisMain {
                 model.sessionBroker = BrokerSessionClient(stateDirectory: directory, helperPath: helper, clientPath: client)
             }
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
+            // FR-RW17: the Linux helpers ship in Helpers/remote (scripts/build-remote-helpers.sh); macOS hosts get the bundled broker.
+            hosts.remote = RemoteHostsModel(
+                settings: RemoteHostSettings(stateDirectory: directory),
+                catalog: RemoteArtifactCatalog.load(
+                    remoteDirectory: AppDelegate.helperDirectory("remote"), macHelper: AppDelegate.helperPath(BrokerSessionClient.helperName)),
+                clientID: try? RemoteClientIdentity.load(stateDirectory: directory))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
             let events = EventHub(instanceID: instanceID, grants: grantStore)

@@ -55,6 +55,13 @@ cp "$bin/Trellis" "$app/Contents/MacOS/Trellis"
 cp "$bin/trellis-cli" "$app/Contents/Helpers/trellis"
 cp "$bin/trellis-askpass" "$app/Contents/Helpers/trellis-askpass"
 cp "$bin/trellis-broker" "$app/Contents/Helpers/trellis-broker"
+# Linux remote helpers (FR-RW02): built with Docker by scripts/build-remote-helpers.sh into TRELLIS_REMOTE_HELPERS.
+remote_helpers="${TRELLIS_REMOTE_HELPERS:-.build/remote-helpers}"
+if [ -f "$remote_helpers/remote-helpers.json" ]; then
+    cp -R "$remote_helpers" "$app/Contents/Helpers/remote"
+else
+    echo "package-release: no Linux remote helpers in $remote_helpers; this build supports only macOS remote hosts" >&2
+fi
 cp -R "$bin/SwiftTerm_SwiftTerm.bundle" "$bin/Trellis_TrellisCore.bundle" "$app/Contents/Resources/"
 /usr/bin/ditto "$bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
 rm -rf "$bin"

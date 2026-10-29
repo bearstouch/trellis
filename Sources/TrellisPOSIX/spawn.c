@@ -223,6 +223,76 @@ int trellis_spawn_detached(const char *executable, char *const argv[], char *con
     return failure;
 }
 
+struct trellis_link_result trellis_spawn_link(const char *executable, char *const argv[], char *const envp[]) {
+    struct trellis_link_result result = { .pid = -1, .data_fd = -1, .console_fd = -1, .error_code = 0 };
+    int data[2], errors[2], master = -1, slave = -1;
+    struct winsize size;
+    memset(&size, 0, sizeof(size));
+    size.ws_col = 100; size.ws_row = 24;
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, data) < 0) { result.error_code = errno; return result; }
+    if (openpty(&master, &slave, NULL, NULL, &size) < 0) { result.error_code = errno; close(data[0]); close(data[1]); return result; }
+    if (pipe(errors) < 0) { result.error_code = errno; close(data[0]); close(data[1]); close(master); close(slave); return result; }
+    // Every descriptor above stdio; the child's dup2 targets are 0, 1 and 2.
+    int *all[] = { &data[0], &data[1], &master, &slave, &errors[0], &errors[1] };
+    for (int i = 0; i < 6; i++) {
+        int replacement = fcntl(*all[i], F_DUPFD_CLOEXEC, 3);
+        if (replacement < 0) {
+            result.error_code = errno;
+            for (int j = 0; j < 6; j++) close(*all[j]);
+            return result;
+        }
+        close(*all[i]);
+        *all[i] = replacement;
+    }
+    int descriptor_limit = getdtablesize();
+    pid_t child = fork();
+    if (child < 0) {
+        result.error_code = errno;
+        for (int j = 0; j < 6; j++) close(*all[j]);
+        return result;
+    }
+    if (child == 0) {
+        close(errors[0]);
+        if (setsid() < 0) report_child_error(errors[1], errno);
+        if (ioctl(slave, TIOCSCTTY, 0) < 0) report_child_error(errors[1], errno);
+        if (dup2(data[1], 0) < 0 || dup2(data[1], 1) < 0 || dup2(slave, 2) < 0) report_child_error(errors[1], errno);
+        for (int number = 1; number < NSIG; number++) {
+            int failure = number != SIGKILL && number != SIGSTOP ? reset_signal(number) : 0;
+            if (failure) report_child_error(errors[1], failure);
+        }
+        sigset_t unblocked;
+        sigemptyset(&unblocked);
+        if (sigprocmask(SIG_SETMASK, &unblocked, NULL) < 0) report_child_error(errors[1], errno);
+        // The controlling terminal stays reachable through /dev/tty; nothing else is inherited.
+        close_descriptors(errors[1], descriptor_limit);
+        execve(executable, argv, envp);
+        report_child_error(errors[1], errno);
+    }
+    close(errors[1]); close(data[1]); close(slave);
+    int failure = 0;
+    size_t count = 0;
+    while (count < sizeof(failure)) {
+        ssize_t n = read(errors[0], (char *)&failure + count, sizeof(failure) - count);
+        if (n > 0) count += (size_t)n;
+        else if (n == 0) break;
+        else if (errno == EINTR) continue;
+        else { failure = errno; break; }
+    }
+    close(errors[0]);
+    if (count > 0 && count != sizeof(failure)) failure = EIO;
+    if (failure) {
+        close(data[0]); close(master);
+        kill(child, SIGKILL);
+        while (waitpid(child, NULL, 0) < 0 && errno == EINTR) {}
+        result.error_code = failure;
+        return result;
+    }
+    result.pid = child;
+    result.data_fd = data[0];
+    result.console_fd = master;
+    return result;
+}
+
 int trellis_peer_credentials(int fd, uid_t *uid, pid_t *pid) {
 #if defined(__APPLE__)
     gid_t group = 0;

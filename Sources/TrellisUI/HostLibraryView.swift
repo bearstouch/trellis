@@ -124,6 +124,9 @@ public struct HostLibraryView: View {
             Text("Trellis never stores key contents. Changes apply to future connections only.")
                 .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
             if let message { Text(message).font(.caption).accessibilityIdentifier("hosts.result") }
+            if let host = editing, let remote = model.remote {
+                RemoteHelperSection(host: host, remote: remote, workspace: workspace, disabled: hasUnsavedChanges(host))
+            }
             if let host = editing {
                 HStack {
                     Button("Connect in New Tab") { model.onConnect?(host, .newTab) }
@@ -343,5 +346,93 @@ public struct HostLibraryView: View {
         panel.message = "Choose a private key file. Trellis stores only its path."
         // Only the path is recorded; the key file is never opened by Trellis.
         if panel.runModal() == .OK, let url = panel.url { draft.identityFile = url.path }
+    }
+}
+
+/// FR-RW17: the helper's last observed status on this host, its actions, and the auto-install choice.
+private struct RemoteHelperSection: View {
+    let host: SavedHost
+    @ObservedObject var remote: RemoteHostsModel
+    @ObservedObject var workspace: AppWorkspaceModel
+    let disabled: Bool
+
+    var body: some View {
+        let preferences = remote.preferences(host)
+        let busy = remote.activity[host.id]
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Remote helper").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
+            HStack(spacing: 6) {
+                Image(systemName: symbol(preferences.helper?.state)).accessibilityHidden(true)
+                Text(preferences.helper?.summary ?? "Unknown (never checked)").accessibilityIdentifier("hosts.helperStatus")
+                if let checked = preferences.helper?.checkedAt {
+                    Text("· checked \(checked.formatted(.relative(presentation: .named)))").foregroundStyle(workspace.themeColor(.mutedForeground))
+                }
+            }
+            .font(.callout)
+            .accessibilityElement(children: .combine)
+            HStack {
+                Group {
+                    Button("Check Helper Status") { Task { await remote.check(host) } }.accessibilityHint("Connects to \(host.name) and reports the helper's status")
+                    Button(preferences.helper?.state == .outdated ? "Update Helper…" : "Install Trellis Helper…") { Task { await remote.install(host) } }
+                        .disabled(preferences.helper?.state == .current || preferences.helper?.state == .unsupported)
+                    Button("Remove Helper…", role: .destructive) { Task { await remote.remove(host) } }
+                        .disabled(!(preferences.helper?.state == .current || preferences.helper?.state == .outdated))
+                }
+                .disabled(disabled || !remote.isAvailable || busy != nil)
+                // Outside the disabled group: a running action must stay cancellable.
+                if busy != nil {
+                    ProgressView().controlSize(.small).accessibilityLabel(label(busy))
+                    Button("Cancel") { remote.cancel(host) }
+                }
+            }
+            Toggle(
+                "Install helper automatically when opening a remote workspace",
+                isOn: Binding(get: { preferences.autoInstall }, set: { value in Task { await remote.setAutoInstall(host, value) } })
+            ).accessibilityIdentifier("hosts.autoInstallHelper")
+            if let message = remote.messages[host.id] { Text(message).font(.caption).accessibilityIdentifier("hosts.helperResult") }
+            Text("The helper keeps sessions running on the host. It lives in ~/.trellis there and needs no administrator rights.")
+                .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
+        }
+        .sheet(item: $remote.console) { console in RemoteConsoleSheet(console: console, close: { remote.console = nil }) }
+    }
+
+    private func symbol(_ state: RemoteHelperRecord.State?) -> String {
+        switch state {
+        case .current: "checkmark.circle"
+        case .outdated: "arrow.up.circle"
+        case .missing: "minus.circle"
+        case .unsupported: "exclamationmark.triangle"
+        case nil: "questionmark.circle"
+        }
+    }
+
+    private func label(_ activity: RemoteHostsModel.Activity?) -> String {
+        switch activity {
+        case .checking: "Checking the helper"
+        case .installing: "Installing the helper"
+        case .removing: "Removing the helper"
+        case nil: ""
+        }
+    }
+}
+
+/// ssh's own terminal for a host: host-key questions, passwords and one-time codes are answered here (FR-H04).
+private struct RemoteConsoleSheet: View {
+    let console: RemoteHostsModel.Console
+    let close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Connecting to \(console.hostName)").font(.headline)
+            Text("This is ssh’s own terminal. Answer its questions here; Trellis never answers them for you.")
+                .font(.caption).fixedSize(horizontal: false, vertical: true)
+            NativeTerminalSurface(terminal: console.terminal).frame(minWidth: 560, minHeight: 240)
+                .accessibilityLabel("ssh connection console for \(console.hostName)")
+            HStack {
+                Spacer()
+                Button("Close", action: close).keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(16)
     }
 }

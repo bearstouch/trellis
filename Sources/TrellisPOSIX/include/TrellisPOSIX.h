@@ -13,6 +13,10 @@ struct trellis_spawn_result trellis_spawn_pty(const char *executable, char *cons
 /// Starts `executable` as a daemon: double fork, new session, stdio on /dev/null, default signals,
 /// no inherited descriptors. The intermediate child is reaped here. Returns 0 or the exec errno.
 int trellis_spawn_detached(const char *executable, char *const argv[], char *const envp[]);
+/// A remote workspace link (FR-RW03): `executable` (ssh) gets one end of a socket pair as stdin and stdout, and a new
+/// PTY as its controlling terminal and stderr, so authentication prompts reach a console while the protocol stays binary.
+struct trellis_link_result { pid_t pid; int data_fd; int console_fd; int error_code; };
+struct trellis_link_result trellis_spawn_link(const char *executable, char *const argv[], char *const envp[]);
 
 // Portable wrappers for calls Swift can't make the same way on Darwin and Linux (variadic ioctl,
 // enum-typed constants, platform-specific peer credentials).
