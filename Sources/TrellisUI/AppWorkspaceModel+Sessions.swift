@@ -10,6 +10,13 @@ extension AppWorkspaceModel {
         scheduleWorkspaceSave()
     }
 
+    /// Settings showed the note about the new default (FR-R07).
+    public func dismissSessionDefaultNotice() {
+        guard sessionDefaultNoticePending else { return }
+        sessionDefaultNoticePending = false
+        scheduleWorkspaceSave()
+    }
+
     /// Turning it off deletes every saved file at once.
     public func setRestoreScrollback(_ enabled: Bool) {
         guard enabled != restoreScrollback else { return }
@@ -93,14 +100,16 @@ extension AppWorkspaceModel {
         await scrollbackStore.replaceAll(texts)
     }
 
-    /// ⌘Q. With broker sessions running and the setting on, offers Keep Running; otherwise the usual confirmation.
+    /// ⌘Q. With the setting on (the default) and every running session in the broker, quits without asking: nothing
+    /// stops. With some sessions outside the broker, offers Keep Running; with the setting off, the usual confirmation.
     public func confirmQuit() -> QuitChoice {
         guard !shuttingDown, !closureInProgress else { return .cancel }
         let running = runningTerminals
         let kept = running.filter(\.survivesQuit).count
-        guard keepSessionsRunning, kept > 0 else { return confirmAllSessionClosure() ? .stopSessions : .cancel }
+        guard keepsSessionsAtQuit, kept > 0 else { return confirmAllSessionClosure() ? .stopSessions : .cancel }
         cancelPaste()
         shuttingDown = true
+        if kept == running.count { return .keepRunning }
         let choice = confirmKeepRunning(kept, running.count - kept)
         if choice == .cancel { shuttingDown = false }
         return choice

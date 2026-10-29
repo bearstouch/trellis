@@ -125,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             window.setFrame(NSRectFromString(frame), display: true)
             constrainWindow()
         }
+        // Scripted, isolated runs (qualification, benchmarks) must not leave sessions behind when they quit the app.
+        model.endSessionsAtQuitForThisLaunch = CommandLine.arguments.contains("--fixture")
         startupTask = Task {
             // Saved-host panes resolve their host when started, so load hosts first.
             await hosts.load()
@@ -557,6 +559,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard !closingWindow, !terminationPending else { return false }
+        // MAC-04: sessions are kept by default, so closing the window just hides it; the Dock icon reopens it.
+        if model.windowCloseAction == .hide { sender.orderOut(nil); return false }
         guard confirmSessionClosure() else { return false }
         closingWindow = true
         startupTask?.cancel()

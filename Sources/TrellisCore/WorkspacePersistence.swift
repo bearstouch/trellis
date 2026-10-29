@@ -7,8 +7,11 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public var windowFrame: String?
     public var appearance: AppearanceSettings
     public var remoteControl: RemoteControlSettings
-    /// FR-R03: quitting can leave sessions running in `trellis-broker`. Off by default, per state directory.
+    /// FR-R03, FR-R07: sessions stay in `trellis-broker` when Trellis quits. On by default, per state directory; saved as
+    /// its inverse, `stopSessionsOnQuit`, so files from the opt-in era (`keepSessionsRunning`) adopt the new default.
     public var keepSessionsRunning: Bool
+    /// An older file had the opt-in setting off; Settings explains the new default once.
+    public var sessionDefaultNoticePending: Bool
     /// FR-R04: quitting saves each pane's redacted plain text for the next launch. Off by default.
     public var restoreScrollback: Bool
     /// FR-R06: the hourly write budget of the workspace file and its backup, in MB (one of `WorkspaceWriteBudget.choices`).
@@ -16,17 +19,19 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public init(
         shell: String = LocalLaunchConfiguration.loginShell().executable,
         directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
-        appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init(), keepSessionsRunning: Bool = false, restoreScrollback: Bool = false,
+        appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init(), keepSessionsRunning: Bool = true, restoreScrollback: Bool = false,
         saveBudgetMegabytesPerHour: Int = WorkspaceWriteBudget.defaultMegabytesPerHour
     ) {
         self.shell = shell; self.directory = directory; self.windowFrame = windowFrame
         self.appearance = appearance; self.remoteControl = remoteControl
         self.keepSessionsRunning = keepSessionsRunning; self.restoreScrollback = restoreScrollback
+        sessionDefaultNoticePending = false
         self.saveBudgetMegabytesPerHour = WorkspaceWriteBudget(megabytesPerHour: saveBudgetMegabytesPerHour).megabytesPerHour
     }
     private enum CodingKeys: String, CodingKey {
-        case shell, directory, windowFrame, appearance, remoteControl, keepSessionsRunning, restoreScrollback, saveBudgetMegabytesPerHour
+        case shell, directory, windowFrame, appearance, remoteControl, stopSessionsOnQuit, sessionDefaultNoticePending, restoreScrollback, saveBudgetMegabytesPerHour
     }
+    private enum LegacyKeys: String, CodingKey { case keepSessionsRunning }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         shell = try values.decode(String.self, forKey: .shell)
@@ -40,11 +45,32 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
         // An unusable value turns the server off instead of failing the whole workspace.
         let remote = try? values.decodeIfPresent(RemoteControlSettings.self, forKey: .remoteControl)
         remoteControl = remote.flatMap { $0 }.flatMap { $0.isValid ? $0 : nil } ?? .init()
-        keepSessionsRunning = (try? values.decodeIfPresent(Bool.self, forKey: .keepSessionsRunning)) ?? false
+        if let stop = (try? values.decodeIfPresent(Bool.self, forKey: .stopSessionsOnQuit)) ?? nil {
+            keepSessionsRunning = !stop
+            sessionDefaultNoticePending = (try? values.decodeIfPresent(Bool.self, forKey: .sessionDefaultNoticePending)) ?? false
+        } else {
+            // The opt-in setting is replaced by the new default; only those for whom quitting used to stop sessions are told.
+            keepSessionsRunning = true
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+            sessionDefaultNoticePending = legacy.contains(.keepSessionsRunning) && (try? legacy.decode(Bool.self, forKey: .keepSessionsRunning)) != true
+        }
         restoreScrollback = (try? values.decodeIfPresent(Bool.self, forKey: .restoreScrollback)) ?? false
         // An unknown budget falls back to the default instead of failing the workspace.
         let budget = (try? values.decodeIfPresent(Int.self, forKey: .saveBudgetMegabytesPerHour)) ?? nil
         saveBudgetMegabytesPerHour = WorkspaceWriteBudget(megabytesPerHour: budget ?? WorkspaceWriteBudget.defaultMegabytesPerHour).megabytesPerHour
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(shell, forKey: .shell)
+        try values.encode(directory, forKey: .directory)
+        try values.encodeIfPresent(windowFrame, forKey: .windowFrame)
+        try values.encode(appearance, forKey: .appearance)
+        try values.encode(remoteControl, forKey: .remoteControl)
+        try values.encode(!keepSessionsRunning, forKey: .stopSessionsOnQuit)
+        if sessionDefaultNoticePending { try values.encode(true, forKey: .sessionDefaultNoticePending) }
+        try values.encode(restoreScrollback, forKey: .restoreScrollback)
+        try values.encode(saveBudgetMegabytesPerHour, forKey: .saveBudgetMegabytesPerHour)
     }
 }
 

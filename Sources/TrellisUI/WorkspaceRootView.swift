@@ -1080,10 +1080,18 @@ public struct LaunchSettingsView: View {
             ).accessibilityIdentifier("settings.shellIntegration")
             caption("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions.")
             Toggle(
-                "Keep sessions running after quit",
-                isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) })
-            ).accessibilityIdentifier("settings.keepSessionsRunning")
-            caption("New sessions can keep running when you quit and reconnect next time. Closing the window or logging out ends them.")
+                "Stop sessions when Trellis quits",
+                isOn: Binding(get: { !model.keepSessionsRunning }, set: { model.setKeepSessionsRunning(!$0) })
+            ).accessibilityIdentifier("settings.stopSessionsOnQuit")
+            caption(
+                model.keepSessionsRunning
+                    ? "Sessions run in a background helper: they keep running when you quit, close the window or Trellis stops unexpectedly, and reconnect next time. Logging out or restarting ends them."
+                    : "Quitting or closing the window stops every session. Sessions still survive if Trellis stops unexpectedly.")
+            if model.sessionDefaultNoticePending {
+                caption("New: sessions now keep running after quit by default. Turn this on to stop them when Trellis quits.")
+                    .accessibilityIdentifier("settings.sessionDefaultNotice")
+                    .onDisappear { model.dismissSessionDefaultNotice() }
+            }
             Toggle(
                 "Restore scrollback after quit",
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })

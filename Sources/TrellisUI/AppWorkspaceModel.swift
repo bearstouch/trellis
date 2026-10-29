@@ -8,6 +8,9 @@ public enum TabRenameAction: Sendable { case commit, cancel }
 /// What ⌘Q does with sessions the broker holds (FR-R03).
 public enum QuitChoice: Sendable, Equatable { case keepRunning, stopSessions, cancel }
 
+/// What closing the native window does (MAC-04): hide it while sessions keep running, or end them first.
+public enum WindowCloseAction: Sendable, Equatable { case hide, endSessions }
+
 public struct WindowActivity: Equatable, Sendable {
     public var hasOutput = false
     public var hasExit = false
@@ -458,10 +461,18 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Reads a host's Keychain password for one answer, given the connection revision the session started with.
     public var savedPassword: (@Sendable (UUID, UInt64) async -> Data?)?
     private var askpassRegistrations: [UUID: AskpassBroker.Registration] = [:]
-    /// Holds sessions that survive quit (FR-R03); nil (tests, no helper) keeps every session a local PTY.
+    /// Owns every session's PTY (FR-R07), so sessions survive quit and crashes; nil (tests, no helper) keeps every
+    /// session a local PTY.
     public var sessionBroker: (any SessionBrokerClient)?
-    /// FR-R03, saved per state directory; applies to sessions started after a change.
-    @Published public internal(set) var keepSessionsRunning = false
+    /// FR-R03: on by default; off means quitting and closing the window stop sessions. Saved per state directory.
+    @Published public internal(set) var keepSessionsRunning = true
+    /// This launch only (`--fixture`, never saved): quitting and closing the window end sessions whatever the setting, so
+    /// scripted runs leave nothing behind. Sessions still run in the broker.
+    public var endSessionsAtQuitForThisLaunch = false
+    /// What quitting and closing the window do for this launch.
+    public var keepsSessionsAtQuit: Bool { keepSessionsRunning && !endSessionsAtQuitForThisLaunch }
+    /// The saved setting predates the new default; Settings explains the change once.
+    @Published public internal(set) var sessionDefaultNoticePending = false
     /// FR-R04, saved per state directory.
     @Published public internal(set) var restoreScrollback = false
     /// FR-R06, saved per state directory. True while the hour's budget is spent and saves are batched.
@@ -549,6 +560,7 @@ public final class AppWorkspaceModel: ObservableObject {
         appearance = restored.settings.appearance
         remoteControl = restored.settings.remoteControl
         keepSessionsRunning = restored.settings.keepSessionsRunning
+        sessionDefaultNoticePending = restored.settings.sessionDefaultNoticePending
         restoreScrollback = restored.settings.restoreScrollback
         saveBudgetMegabytesPerHour = restored.settings.saveBudgetMegabytesPerHour
         writeBudget.megabytesPerHour = saveBudgetMegabytesPerHour
@@ -656,10 +668,11 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func saveWorkspaceNow() async -> Bool {
         guard let persistence, !isRestoring, recoveryMessage == nil, !persistenceReadOnly else { return true }
-        let settings = WorkspaceSettings(
+        var settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
             windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl,
             keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback, saveBudgetMegabytesPerHour: saveBudgetMegabytesPerHour)
+        settings.sessionDefaultNoticePending = sessionDefaultNoticePending
         do {
             let written = try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration)
             writeBudget.record(written, at: activityNow())
@@ -822,7 +835,8 @@ public final class AppWorkspaceModel: ObservableObject {
                     configuration = LocalLaunchConfiguration(
                         executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
-                if keepSessionsRunning, let sessionBroker {
+                // FR-R07: whatever the quit setting, so a crash or force quit never ends a session.
+                if let sessionBroker {
                     let ready = await sessionBroker.prepare()
                     guard terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
                         if let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
@@ -1758,7 +1772,10 @@ public final class AppWorkspaceModel: ObservableObject {
         return closed
     }
 
-    /// Closing the native window (MAC-04) ends every session but keeps windows, tabs and splits as stopped panes,
+    /// MAC-04: with sessions kept (the default), closing the window only hides it; the app and its sessions go on.
+    public var windowCloseAction: WindowCloseAction { keepsSessionsAtQuit ? .hide : .endSessions }
+
+    /// Closing the native window with Stop sessions when Trellis quits on (MAC-04) ends every session but keeps windows, tabs and splits as stopped panes,
     /// so a later Quit saves the layout instead of an empty workspace.
     @discardableResult
     public func endSessionsForWindowClose() async -> Bool {

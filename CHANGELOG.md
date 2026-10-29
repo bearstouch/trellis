@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Sessions keep running by default:** every session now runs in the `trellis-broker` helper, so quitting, closing the window, a crash or a force quit no longer ends it; the next launch reconnects it with its recent output, and full-screen programs redraw. ⌘Q asks only when a session would stop. **Settings → Sessions → Stop sessions when Trellis quits** brings back the previous behavior, and replaces **Keep sessions running after quit** (FR-R03, FR-R07, MAC-04).
 - **Selection:** the dark built-in themes and the default palette use a brighter selection background, so selected text stands out from the pane. One Dark, Solarized Dark and Gruvbox Dark also brighten the selected text to keep it readable.
 - **Underlines:** links and dotted or dashed underlines (`4:4`, `4:5`) are drawn as a solid line (FR-TX02).
 - **Privacy:** the update check is the one network request Trellis makes by itself, and only when you check or turn on automatic checks (MAC-14).

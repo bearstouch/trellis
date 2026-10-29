@@ -6,7 +6,7 @@ All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `keepSessionsRunning`, `restoreScrollback`, `saveBudgetMegabytesPerHour`) | Last-known-good copy in `workspace.backup.json` |
+| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `stopSessionsOnQuit` (the older `keepSessionsRunning` key is read only to show the FR-R03 change notice), `restoreScrollback`, `saveBudgetMegabytesPerHour`) | Last-known-good copy in `workspace.backup.json` |
 | `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
 | `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each project's [project file](../features/project-files.md) window (namespace `workspace-file:<folder>`) | An unreadable file is preserved |
@@ -58,7 +58,7 @@ Loading returns `.missing`, `.loaded` or `.recovery(reason, backup?)`.
 
 - **Corrupt file:** the user chooses **Recover backup** or **Start empty**. Before anything is written, the original is preserved as `workspace.corrupt.<UUID>.json`.
 - **Unsupported version:** persistence stays read-only for the rest of the session.
-- **After a crash:** the app says that sessions stopped. It never implies that processes continued, and it never replays input. The one exception is a session kept by the broker (FR-R03), which is reported as running only because the broker answered for it.
+- **After a crash:** sessions in the broker (FR-R07, the default) keep running and are reported as running only because the broker answered for them; any other session is reported as stopped. The app never implies that processes continued without that answer, and it never replays input.
 
 ## Restoring stopped sessions
 
