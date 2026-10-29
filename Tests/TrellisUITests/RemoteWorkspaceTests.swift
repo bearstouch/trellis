@@ -254,4 +254,24 @@ final class RemoteWorkspaceAutomationReviewTests: XCTestCase {
         XCTAssertEqual(execute, "PERMISSION_DENIED")
         XCTAssertEqual(h.model.snapshot.sessions[pane.sessionID]?.state, .stopped, "Nothing started")
     }
+
+    func testInputToAHostThatIsNotConnectedFailsAsRemoteDisconnected() async throws {
+        let h = try Harness()
+        defer { h.discardPreferences() }
+        try await h.grant("full")
+        guard case .success(let host) = await h.hosts.save(HostDraft(name: "build-box", destination: "build-box"), editing: nil) else { return XCTFail("No host") }
+        let result = try await h.model.service.execute(.createRemoteWindow(name: "Remote", hostID: host.id))
+        h.model.publish(result.snapshot)
+        let window = try XCTUnwrap(result.snapshot.windows.first { $0.id == result.createdWindowID })
+        let pane = try XCTUnwrap(result.snapshot.tabs[window.activeTabID].flatMap { result.snapshot.panes[$0.activePaneID] })
+        h.model.remoteLinks[host.id] = .reconnecting(attempt: 2, at: Date())
+        let stopped = try await h.code("session.sendInput", ["id": pane.sessionID.uuidString, "text": "id\n"])
+        XCTAssertNotEqual(stopped, "REMOTE_DISCONNECTED", "A session that isn't running fails as not running, not as retryable")
+        // Running on the host while its link is down.
+        h.model.publish(try await h.model.service.execute(.adoptRunningSession(sessionID: pane.sessionID, processID: 4242)).snapshot)
+        let input = try await h.code("session.sendInput", ["id": pane.sessionID.uuidString, "text": "id\n"])
+        XCTAssertEqual(input, "REMOTE_DISCONNECTED", "Never queued for later (FR-RW15)")
+        let execute = try await h.code("session.execute", ["id": pane.sessionID.uuidString, "command": "id", "submit": true])
+        XCTAssertEqual(execute, "REMOTE_DISCONNECTED")
+    }
 }

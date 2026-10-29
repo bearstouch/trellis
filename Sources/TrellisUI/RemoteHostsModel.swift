@@ -115,7 +115,7 @@ public final class RemoteHostsModel: ObservableObject {
         if let link = workspaceLinks[host.id], link.state == .connected { return .success(link) }
         if let pending = connecting[host.id] { return await pending.value }
         guard isAvailable else { return .failure(.cancelled) }
-        let task = Task { () -> Result<RemoteHostLink, RemoteHostLink.Failure> in
+        let task = Task { [self] () -> Result<RemoteHostLink, RemoteHostLink.Failure> in
             let link = self.makeLink(host, batch: !interactive)
             let policy: RemoteHostLink.InstallPolicy = self.preferences(host).autoInstall ? .always : (interactive ? .ask : .never)
             let result = await self.run(link, host, .bridge, install: policy)
@@ -137,11 +137,16 @@ public final class RemoteHostsModel: ObservableObject {
 
     public func workspaceLinkState(_ hostID: UUID) -> RemoteHostLink.State? { workspaceLinks[hostID]?.state }
 
+    /// After wake or a network change: every connected link pings now (FR-RW07).
+    public func checkWorkspaceLinks() { workspaceLinks.values.forEach { $0.checkNow() } }
+
     /// Quit or window close: every workspace link ends; nothing is sent to the hosts' sessions (FR-RW06).
     public func closeWorkspaceLinks() {
         let open = workspaceLinks.values
         workspaceLinks = [:]
         for link in open { link.onStateChanged = nil; link.close() }
+        // A link still connecting (an automatic attempt) ends too, so none is left open after quit.
+        for host in connecting.keys { links[host]?.close() }
     }
 
     private func record(_ host: SavedHost, _ link: RemoteHostLink, _ purpose: RemoteHostLink.Purpose, _ result: Result<RemoteProbe, RemoteHostLink.Failure>) async {
@@ -182,12 +187,14 @@ public final class RemoteHostsModel: ObservableObject {
             await self?.confirmInstall(host, probe, artifact, !probe.installed.isEmpty) ?? false
         }
         link.onConsoleOutput = { [weak self, weak link] in
-            guard let self, let link, self.console?.terminal !== link.console else { return }
+            // An automatic attempt's message reaches the sidebar; it never takes over the console another host may be using.
+            guard let self, let link, !link.request.batch, self.console?.terminal !== link.console else { return }
             self.console = Console(id: host.id, hostName: host.name, terminal: link.console)
         }
         // A saved password answers ssh's password prompt once, through askpass (FR-H08); nothing else is answered.
         var registration: AskpassBroker.Registration?
-        if host.savedPassword != nil, let askpass, let savedPassword {
+        // Never for an automatic attempt: a saved password is not retried on its own (INT-05).
+        if host.savedPassword != nil, !link.request.batch, let askpass, let savedPassword {
             let id = host.id, revision = host.connectionRevision
             registration = askpass.register(parent: { [weak link] in await MainActor.run { link?.processID } }, answer: { await savedPassword(id, revision) })
         }
@@ -219,6 +226,8 @@ public final class RemoteHostsModel: ObservableObject {
         case .incompatible: "The helper on the host speaks another protocol version. Update it."
         case .cancelled: "Cancelled."
         case .lost: "The connection was lost."
+        case .unreachable(let reason): reason.isEmpty ? "The host can’t be reached." : "The host can’t be reached (\(reason))."
+        case .needsInput(let reason): "Reconnecting needs you: \(reason)"
         }
     }
 

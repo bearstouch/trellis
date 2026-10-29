@@ -135,6 +135,7 @@ extension AppWorkspaceModel {
         await saveScrollback()
         guard await flushWorkspaceSave() else { return cancel() }
         await sessionBroker?.detach()
+        remoteReconnector.cancelAll()
         remoteHosts?.closeWorkspaceLinks()
         return true
     }

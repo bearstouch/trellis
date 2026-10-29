@@ -416,6 +416,12 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
     }
 
     @MainActor private func send(_ sessionID: UUID, _ data: Data, paste: Bool) throws {
+        // FR-RW15: input is never queued for a host that isn't connected; the session keeps running there.
+        // A stopped or ended session isn't "keeps running there"; it fails as any other session that isn't running.
+        if let session = model.snapshot.sessions[sessionID], session.state == .running, let host = session.launch.remoteHostID, model.remoteLinks[host] != .connected {
+            throw ControlError.application(
+                "REMOTE_DISCONNECTED", "The session's host is not connected. The session keeps running there; retry after it reconnects.", retryable: true)
+        }
         do {
             try model.automationSendInput(sessionID: sessionID, data: data, paste: paste)
         } catch .notFound {

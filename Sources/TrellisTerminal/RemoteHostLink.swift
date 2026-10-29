@@ -42,6 +42,10 @@ public final class RemoteHostLink {
         case cancelled
         /// The connection went quiet or closed after it was established.
         case lost
+        /// An automatic attempt couldn't reach the host; a later one may (FR-RW07).
+        case unreachable(String)
+        /// An automatic attempt needs the person: a password, a passphrase or a host-key decision. Never retried alone.
+        case needsInput(String)
     }
 
     public enum State: Equatable, Sendable { case idle, connecting, installing, connected, closed, failed(Failure) }
@@ -86,7 +90,15 @@ public final class RemoteHostLink {
         guard state == .idle else { return .failure(.cancelled) }
         state = .connecting
         var result = await establish(purpose, policy: policy)
-        // close() during the last await: never report (or stay) connected after the caller closed the link.
+        // An automatic attempt that ssh itself ended is sorted by what ssh wrote to its terminal.
+        if request.batch, case .failure(.exited(let code)) = result {
+            try? await Task.sleep(for: .milliseconds(200))
+            switch RemoteSSHDiagnosis.classify(exitCode: code, output: console.screenText) {
+            case .unreachable(let reason): result = .failure(.unreachable(reason))
+            case .needsInput(let reason): result = .failure(.needsInput(reason))
+            }
+        }
+        // close() during an await above: never report (or stay) connected, or retryable, after the caller closed the link.
         if state == .closed { result = .failure(.cancelled) }
         switch result {
         case .success where purpose == .bridge: state = .connected
@@ -188,6 +200,17 @@ public final class RemoteHostLink {
     }
 
     /// A ping every interval; one unanswered within 10 s ends the link (FR-RW07 detects the loss).
+    /// Pings at once, after wake or a network change, instead of waiting for the next heartbeat (FR-RW07).
+    public func checkNow(timeout: Duration = .seconds(5)) {
+        guard state == .connected, let connection else { return }
+        Task { [weak self] in
+            guard case .pong? = try? await connection.request(.ping(0), timeout: timeout) else {
+                self?.finish(.failed(.lost))
+                return
+            }
+        }
+    }
+
     private func startHeartbeat() {
         heartbeat = Task { [weak self] in
             var sequence: UInt64 = 0

@@ -479,6 +479,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:]
     /// Remote sessions closed while their host was unreachable, hung up once it is reachable again.
     var pendingRemoteHangups: [UUID: Set<UUID>] = [:]
+    /// Automatic reconnects (FR-RW07); its clock, sleep and randomness are injectable for tests.
+    public private(set) lazy var remoteReconnector: RemoteReconnector = {
+        let reconnector = RemoteReconnector()
+        reconnector.model = self
+        return reconnector
+    }()
     /// Unclaimed remote sessions already offered Stop Them / Leave Running in this run.
     var remoteOrphansAsked: Set<UUID> = []
     /// Hosts whose panes are being re-attached now.
@@ -887,7 +893,7 @@ public final class AppWorkspaceModel: ObservableObject {
             guard let self, !self.automationInputSessionIDs.contains(sessionID) else { return }
             if let remote = terminal?.remoteTransport, remote.linkLost {
                 // Never queued, so nothing is typed later by surprise (FR-RW07).
-                self.errorMessage = "Not sent: the connection to \(self.remoteHostName(remote.hostID)) is down. Reconnect it from the sidebar."
+                self.errorMessage = "Not sent: reconnecting to \(self.remoteHostName(remote.hostID)). Nothing you type is kept for later."
                 return
             }
             self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
@@ -1812,6 +1818,7 @@ public final class AppWorkspaceModel: ObservableObject {
             shuttingDown = false
             if !endingRemoteSessions { remote.forEach { terminals[$0]?.prepareForKeepRunning(false) } }
         } else if !endingRemoteSessions {
+            remoteReconnector.cancelAll()
             remoteHosts?.closeWorkspaceLinks()
             // Closed without a state callback: the sidebar must not keep saying Connected, and Reconnect must stay possible.
             for host in remoteLinks.keys { remoteLinks[host] = .disconnected(nil) }

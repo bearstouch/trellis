@@ -145,3 +145,29 @@ final class RemoteLinkTests: XCTestCase {
         XCTAssertEqual(unreadable, [:], "An unreadable file reads as empty")
     }
 }
+
+/// FR-RW07: which automatic failures are retried, and how long between attempts.
+final class RemoteReconnectPolicyTests: XCTestCase {
+    func testOnlyNetworkFailuresAreRetriedOnTheirOwn() {
+        let refused = RemoteSSHDiagnosis.classify(exitCode: 255, output: "ssh: connect to host build-box port 22: Connection refused\r\n")
+        XCTAssertEqual(refused, .unreachable("ssh: connect to host build-box port 22: Connection refused"))
+        for output in ["ssh: Could not resolve hostname build-box: nodename nor servname provided", "ssh: connect to host 10.0.0.2 port 22: Operation timed out"] {
+            guard case .unreachable = RemoteSSHDiagnosis.classify(exitCode: 255, output: output) else { return XCTFail(output) }
+        }
+        for output in [
+            "dev@build-box: Permission denied (publickey,password).", "Host key verification failed.",
+            "@@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@@\r\nHost key verification failed.",
+            "Received disconnect: Too many authentication failures\r\nConnection closed by 10.0.0.2 port 22"
+        ] {
+            guard case .needsInput = RemoteSSHDiagnosis.classify(exitCode: 255, output: output) else { return XCTFail("Retried a credential: \(output)") }
+        }
+        guard case .needsInput = RemoteSSHDiagnosis.classify(exitCode: 255, output: "") else { return XCTFail("An unexplained ssh failure must ask, not loop") }
+    }
+
+    func testBackoffGrowsToAMinuteWithJitter() {
+        XCTAssertEqual((1...8).map { RemoteBackoff.delay(attempt: $0, random: 0.5) }, [1, 2, 4, 8, 16, 32, 60, 60])
+        XCTAssertEqual(RemoteBackoff.delay(attempt: 1, random: 0), 0.8, accuracy: 0.0001)
+        XCTAssertEqual(RemoteBackoff.delay(attempt: 3, random: 1), 4.8, accuracy: 0.0001)
+        XCTAssertEqual(RemoteBackoff.delay(attempt: 30, random: 1), 60, "Never above a minute")
+    }
+}

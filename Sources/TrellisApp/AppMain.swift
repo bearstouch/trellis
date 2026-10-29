@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             hosts.remote?.savedPassword = model.savedPassword
         }
         model.remoteHosts = hosts.remote
+        model.remoteReconnector.startSystemMonitoring()
         hosts.onOpenRemoteWorkspace = { [weak self] host in
             guard let self else { return }
             window?.makeKeyAndOrderFront(nil)

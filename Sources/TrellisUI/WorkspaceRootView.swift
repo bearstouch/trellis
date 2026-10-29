@@ -252,8 +252,7 @@ public struct WorkspaceRootView: View {
     }
 
     private func linkHelp(_ link: RemoteLinkDisplay) -> String {
-        if case .disconnected(let reason?) = link { return reason + " Choose Reconnect from the window’s menu." }
-        return link == .connecting ? "Connecting to the host…" : "Not connected. Choose Reconnect from the window’s menu."
+        [link.label, link.detail, link.isUp ? nil : "The window’s menu has Retry Now and Reconnect…."].compactMap { $0 }.joined(separator: " ")
     }
 
     private func windowDrag(_ window: ManagedWindow) -> DragReorder {
@@ -803,13 +802,14 @@ private struct WindowItemActions: ViewModifier {
     /// FR-RW16: VoiceOver hears the host and its link, for example "build-box, Disconnected".
     private var value: String {
         guard let host = window.remoteHostID else { return descriptor?.value ?? "" }
-        let link = "\(model.remoteHostName(host)), \((model.remoteLinks[host] ?? .disconnected(nil)).label)"
+        let state = model.remoteLinks[host] ?? .disconnected(nil)
+        let link = ["\(model.remoteHostName(host)), \(state.label)", state.detail].compactMap { $0 }.joined(separator: ". ")
         return [descriptor?.value, link].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     private var canReconnect: Bool {
         guard let host = window.remoteHostID else { return false }
-        return model.remoteLinks[host] != .connected && model.remoteLinks[host] != .connecting
+        return !(model.remoteLinks[host] ?? .disconnected(nil)).isUp
     }
 
     func body(content: Content) -> some View {
@@ -817,13 +817,16 @@ private struct WindowItemActions: ViewModifier {
             .accessibilityLabel(descriptor?.label ?? window.name)
             .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected] : [])
+            .accessibilityAction(named: "Retry Now") { if canReconnect, let host = window.remoteHostID { model.remoteReconnector.retryNow(host) } }
             .accessibilityAction(named: "Reconnect") { if canReconnect, let host = window.remoteHostID { Task { await model.reconnectRemote(hostID: host) } } }
             .accessibilityAction(named: "Rename") { rename(window) }
             .accessibilityAction(named: "Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
             .accessibilityAction(named: "Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
             .contextMenu {
                 if let host = window.remoteHostID {
-                    Button("Reconnect to \(model.remoteHostName(host))") { Task { await model.reconnectRemote(hostID: host) } }.disabled(!canReconnect)
+                    // Retry Now never prompts; Reconnect… lets ssh ask for a password or a host-key decision (FR-RW07).
+                    Button("Retry Now") { model.remoteReconnector.retryNow(host) }.disabled(!canReconnect)
+                    Button("Reconnect to \(model.remoteHostName(host))…") { Task { await model.reconnectRemote(hostID: host) } }.disabled(!canReconnect)
                     Divider().overlay(model.separatorOverlay)
                 }
                 Button("Rename…") { rename(window) }

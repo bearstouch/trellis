@@ -7,23 +7,44 @@ import TrellisTerminal
 /// A remote workspace host's link as the sidebar and pane headers show it (FR-RW07, FR-RW16): words and a symbol.
 public enum RemoteLinkDisplay: Equatable, Sendable {
     case connecting, connected
-    /// With why, when known.
+    /// An automatic attempt is due at `at` (FR-RW07).
+    case reconnecting(attempt: Int, at: Date)
+    /// Automatic attempts wait for the network.
+    case offline
+    /// Automatic attempts stopped: ssh needs a password, a passphrase or a host-key decision.
+    case needsInput(String)
+    /// With why, when known; nothing is retried on its own.
     case disconnected(String?)
 
     public var label: String {
         switch self {
         case .connecting: "Connecting…"
         case .connected: "Connected"
+        case .reconnecting(let attempt, _): "Reconnecting (attempt \(attempt))…"
+        case .offline: "Offline, waiting for the network"
+        case .needsInput: "Reconnect needs you"
         case .disconnected: "Disconnected"
         }
     }
     public var symbol: String {
         switch self {
-        case .connecting: "arrow.triangle.2.circlepath"
+        case .connecting, .reconnecting: "arrow.triangle.2.circlepath"
         case .connected: "checkmark.circle"
+        case .offline: "wifi.slash"
+        case .needsInput: "person.crop.circle.badge.exclamationmark"
         case .disconnected: "bolt.horizontal.circle"
         }
     }
+    /// Why, for the help text and VoiceOver.
+    public var detail: String? {
+        switch self {
+        case .needsInput(let reason): reason
+        case .disconnected(let reason): reason
+        case .reconnecting(_, let at): "Next attempt \(at.formatted(.relative(presentation: .named)))."
+        default: nil
+        }
+    }
+    var isUp: Bool { self == .connected || self == .connecting }
 }
 
 /// Remote workspaces (FR-RW01–FR-RW09): windows bound to a saved host whose sessions the host's helper owns.
@@ -118,6 +139,8 @@ extension AppWorkspaceModel {
         switch state {
         case .connected: remoteLinks[host] = .connected
         case .connecting, .installing: remoteLinks[host] = .connecting
+        // A link that was up and went quiet or closed is retried on its own (FR-RW07).
+        case .failed(.lost): remoteReconnector.lost(host)
         case .failed(let failure): remoteLinks[host] = .disconnected(RemoteHostsModel.message(for: failure))
         case .closed, .idle: if remoteLinks[host] == .connected { remoteLinks[host] = .disconnected(nil) }
         }
@@ -126,23 +149,36 @@ extension AppWorkspaceModel {
     /// At launch: every host with a remote workspace is tried without prompting, and its panes re-attach (FR-RW09).
     func reattachRemoteSessions() async {
         for host in Set(snapshot.windows.compactMap(\.remoteHostID)) where !shuttingDown {
-            await reconnectRemote(hostID: host, interactive: false)
+            await remoteReconnector.attempt(host, interactive: false)
         }
     }
 
-    /// Connects to `hostID` again: live panes resume where they stopped, restored panes adopt their sessions, and
-    /// sessions closed while it was unreachable are hung up. `interactive` lets ssh ask for a password in the console.
+    public func hasRemoteWorkspace(_ hostID: UUID) -> Bool { snapshot.windows.contains { $0.remoteHostID == hostID } }
+
+    /// **Reconnect…** (`interactive`: ssh may ask in the console) or **Retry Now**, through the reconnector, which
+    /// schedules the next automatic attempt if this one fails for a reason a retry can fix (FR-RW07).
     public func reconnectRemote(hostID: UUID, interactive: Bool = true) async {
+        await remoteReconnector.attempt(hostID, interactive: interactive)
+    }
+
+    /// Connects to `hostID` again: live panes resume where they stopped, restored panes adopt their sessions, and
+    /// sessions closed while it was unreachable are hung up. Returns why it failed, or nil.
+    func connectRemote(hostID: UUID, interactive: Bool) async -> RemoteHostLink.Failure? {
         // One at a time per host: two passes would attach the same sessions twice.
-        guard let remoteHosts, !shuttingDown, remoteReconnecting.insert(hostID).inserted else { return }
+        guard let remoteHosts, !shuttingDown, remoteReconnecting.insert(hostID).inserted else { return .cancelled }
         defer { remoteReconnecting.remove(hostID) }
-        guard let host = await resolveHost?(hostID) else { remoteLinks[hostID] = .disconnected("This saved host no longer exists."); return }
+        guard let host = await resolveHost?(hostID) else {
+            remoteLinks[hostID] = .disconnected("This saved host no longer exists.")
+            return .cancelled
+        }
+        // Quit while the host was being resolved: no link is opened after the others were closed.
+        guard !shuttingDown else { return .cancelled }
         remoteLinks[hostID] = .connecting
         let linked = await remoteHosts.workspaceLink(host, interactive: interactive)
         guard case .success(let link) = linked, let connection = link.connection else {
-            let message = linked.failure.map(RemoteHostsModel.message(for:)) ?? "The connection failed."
-            remoteLinks[hostID] = .disconnected(interactive ? message : "Not connected. Choose Reconnect to sign in.")
-            return
+            let failure = linked.failure ?? .lost
+            remoteLinks[hostID] = .disconnected(RemoteHostsModel.message(for: failure))
+            return failure
         }
         remoteLinks[hostID] = .connected
         let hungUp = pendingRemoteHangups.removeValue(forKey: hostID) ?? []
@@ -153,6 +189,7 @@ extension AppWorkspaceModel {
         }
         // A session just hung up can still be listed as running; it is never offered as an orphan.
         await adoptRemoteSessions(hostID: hostID, connection: connection, ignoring: hungUp)
+        return nil
     }
 
     private func terminalSize(_ terminal: NativeTerminal) -> TerminalSize? {
