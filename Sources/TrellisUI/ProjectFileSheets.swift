@@ -40,31 +40,128 @@ struct ProjectFileReviewView: View {
     }
 }
 
-/// The window as a project file, with an editable command per pane (FR-WF06).
+/// The window's project file as editable JSON, with Validate and Save; replacing a file asks first (FR-WF06).
 struct ProjectFileSaveView: View {
     @ObservedObject var model: AppWorkspaceModel
     @State var draft: ProjectFileDraft
+    @State private var check: ProjectFileCheck?
+    /// Set when Save needs a confirmation: replacing a file that exists now, or saving with warnings.
+    @State private var confirmation: (replacing: Bool, warnings: [String])?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Save Project").font(.headline)
-            Text("Saves this window's tabs, splits, titles, labels and folders. Commands are typed into each new shell when the file is opened.")
+            Text("This window's tabs, splits, titles, labels and folders as a project file. Edit it before saving; commands are typed into each new shell when the file is opened.")
                 .fixedSize(horizontal: false, vertical: true)
             Text(draft.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).foregroundStyle(model.themeColor(.mutedForeground))
-            ScrollView {
-                ProjectFileOutline(file: draft.file, muted: model.themeColor(.mutedForeground)) { entry, index in
-                    TextField("Command (optional)", text: $draft.commands[index]).font(.system(size: 12, design: .monospaced))
-                        .accessibilityLabel("Command for \(entry.pane.title ?? "pane \(index + 1)")")
-                }.padding(10)
-            }.frame(height: 260).background(model.themeColor(.background))
+            ProjectJSONEditor(model: model, text: $draft.text, check: check, validate: validate, save: save)
             ForEach(draft.warnings, id: \.self) { Text($0).font(.caption).fixedSize(horizontal: false, vertical: true) }
-            if draft.replacesExisting { Text("This replaces the existing file.").font(.caption) }
             HStack {
                 Spacer()
                 Button("Cancel") { model.cancelProjectSave() }.keyboardShortcut(.cancelAction)
-                Button(draft.replacesExisting ? "Replace" : "Save") { _ = model.writeProjectFile(draft) }.keyboardShortcut(.defaultAction)
+                Button("Validate", action: validate).help("Check the file without saving it (⌥⌘V)")
+                Button("Save", action: save).help("Save the file (⌥⌘S)")
             }
-        }.padding(24).frame(width: 600)
+        }
+        .padding(24).frame(width: 640)
+        .onChange(of: draft.text) {
+            check = nil; model.errorMessage = nil
+        }
+        .alert(
+            confirmation?.replacing == true ? "Replace project.json?" : "Save project.json?",
+            isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } })
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button(confirmation?.replacing == true ? "Replace" : "Save", role: confirmation?.replacing == true ? .destructive : nil) { _ = model.writeProjectFile(draft) }
+        } message: {
+            Text(((confirmation?.replacing == true ? ["\(draft.path) already exists. Saving replaces it with this file."] : []) + (confirmation?.warnings ?? [])).joined(separator: "\n\n"))
+        }
+    }
+
+    private func validate() { model.errorMessage = nil; check = model.checkProjectFile(draft) }
+
+    /// Saves only text that checks out, and asks before replacing a file that exists now or saving with a warning,
+    /// which would otherwise close the sheet before it is seen.
+    private func save() {
+        validate()
+        guard let check, check.isValid else { return }
+        let replacing = model.projectFileExists(draft)
+        if replacing || !check.warnings.isEmpty { confirmation = (replacing, check.warnings) } else { _ = model.writeProjectFile(draft) }
+    }
+}
+
+/// A project file opened from a pane's header for editing as JSON (FR-WF08).
+struct ProjectFileEditView: View {
+    @ObservedObject var model: AppWorkspaceModel
+    @State var edit: ProjectFileEdit
+    @State private var check: ProjectFileCheck?
+    @State private var confirmingReplace = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Edit Project File").font(.headline)
+            Text("Changes apply the next time the project is opened. Commands you add run only after the file is trusted.")
+                .fixedSize(horizontal: false, vertical: true)
+            Text(edit.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).foregroundStyle(model.themeColor(.mutedForeground))
+            ProjectJSONEditor(model: model, text: $edit.text, check: check, validate: validate, save: save)
+            HStack {
+                Spacer()
+                Button("Cancel") { model.cancelProjectEdit() }.keyboardShortcut(.cancelAction)
+                Button("Validate", action: validate).help("Check the file without saving it (⌥⌘V)")
+                Button("Save", action: save).help("Save the file (⌥⌘S)")
+            }
+        }
+        .padding(24).frame(width: 640)
+        .onChange(of: edit.text) {
+            check = nil; model.errorMessage = nil
+        }
+        .alert("Replace the changed file?", isPresented: $confirmingReplace) {
+            Button("Cancel", role: .cancel) {}
+            Button("Replace", role: .destructive) { _ = model.writeProjectFileEdit(edit) }
+        } message: {
+            Text("\(edit.path) changed on disk after you opened it. Saving replaces that change with this text.")
+        }
+    }
+
+    private func validate() { model.errorMessage = nil; check = model.checkProjectFileEdit(edit) }
+
+    /// Saves only text that checks out, and asks before replacing a change made elsewhere since the editor opened.
+    private func save() {
+        validate()
+        guard check?.isValid == true else { return }
+        if model.projectFileEditChangedOnDisk(edit) { confirmingReplace = true } else { _ = model.writeProjectFileEdit(edit) }
+    }
+}
+
+/// The JSON editor both project file sheets use, in the terminal's font and colors, with the last check's result.
+private struct ProjectJSONEditor: View {
+    @ObservedObject var model: AppWorkspaceModel
+    @Binding var text: String
+    let check: ProjectFileCheck?
+    let validate: () -> Void
+    let save: () -> Void
+
+    var body: some View {
+        ScratchpadEditor(
+            text: $text, language: .json, font: font, palette: model.effectiveTheme.terminal, issueLines: [], focusRequest: 0,
+            commands: ScratchpadEditorCommands(validate: validate, save: save), accessibilityName: "Project file editor", contentNoun: "project file",
+            maximumBytes: ProjectFile.maximumBytes
+        ).frame(height: 320)
+        // A failed write (the window changed, a linked or unwritable folder) is shown here, not behind the sheet.
+        if let error = model.errorMessage {
+            Label(error, systemImage: "xmark.octagon").font(.callout).fixedSize(horizontal: false, vertical: true).accessibilityLabel("Error: \(error)")
+        }
+        if let check {
+            VStack(alignment: .leading, spacing: 4) {
+                if check.isValid { Label("The project file is valid.", systemImage: "checkmark.circle").font(.callout) }
+                ForEach(check.errors, id: \.self) { Label($0, systemImage: "xmark.octagon").font(.callout).fixedSize(horizontal: false, vertical: true) }
+                ForEach(check.warnings, id: \.self) { Label($0, systemImage: "exclamationmark.triangle").font(.caption).fixedSize(horizontal: false, vertical: true) }
+            }.accessibilityElement(children: .combine)
+        }
+    }
+
+    private var font: NSFont {
+        NSFont(name: model.appearance.fontName, size: CGFloat(model.appearance.fontSize)) ?? .monospacedSystemFont(ofSize: CGFloat(model.appearance.fontSize), weight: .regular)
     }
 }
 

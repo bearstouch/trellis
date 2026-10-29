@@ -78,6 +78,14 @@ final class ProjectFileTests: XCTestCase {
     @MainActor
     private func panes(_ model: AppWorkspaceModel, _ window: ManagedWindow) -> [UUID] { window.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] } }
 
+    /// Moves the selected tab's shell into the project, so the window has a pane to save.
+    @MainActor
+    private func enterProject(_ model: AppWorkspaceModel) async throws {
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        try await waitFor { model.terminals[pane]?.sessionState == .running }
+        try prompt(model, pane, project)
+    }
+
     @MainActor
     private func prompt(_ model: AppWorkspaceModel, _ pane: UUID, _ directory: String?) throws {
         try XCTUnwrap(model.terminals[pane]).onShellIntegrationEvent?(.promptStart(directory: directory))
@@ -152,6 +160,63 @@ final class ProjectFileTests: XCTestCase {
         XCTAssertNil(model.pendingProjectCommands[try XCTUnwrap(model.snapshot.panes[pane]).sessionID])
         await model.loadProjectFile(root: project)
         XCTAssertNotNil(model.pendingProjectReview, "Opening without commands trusts nothing")
+    }
+
+    @MainActor
+    func testSavingAfterOpenWithoutCommandsNeverTrustsTheDeclinedCommands() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        try writeFile(layout(command: "echo WF-MARKER"))
+        await model.loadProjectFile(root: project)
+        await model.resolveProjectReview(try XCTUnwrap(model.pendingProjectReview).id, .openWithoutCommands)
+        let opened = try window(model, named: "Demo")
+        XCTAssertTrue(model.projectFileCommands.isEmpty, "Declined commands aren't carried over as the user's own")
+        model.chooseProjectFolder = { _, _ in self.project }
+
+        model.beginSaveProjectFile(windowID: opened.id)
+        let draft = try XCTUnwrap(model.pendingProjectSave)
+        XCTAssertEqual(draft.commands.first, "echo WF-MARKER", "The file's commands still carry over")
+        XCTAssertEqual(draft.unreviewedCommands, ["echo WF-MARKER"])
+        XCTAssertTrue(draft.warnings.contains { $0.contains("never trusted") }, "\(draft.warnings)")
+        XCTAssertTrue(model.writeProjectFile(draft), model.errorMessage ?? "")
+        XCTAssertTrue(model.projectFileCommands.isEmpty)
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview, "A saved file that keeps a declined command still asks first")
+        await model.resolveProjectReview(review.id, .cancel)
+
+        // Removing the unreviewed command leaves only what the user wrote, which is trusted.
+        model.beginSaveProjectFile(windowID: opened.id)
+        var edited = try XCTUnwrap(model.pendingProjectSave)
+        edited.commands[0] = "make watch"
+        XCTAssertTrue(model.writeProjectFile(edited), model.errorMessage ?? "")
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview)
+    }
+
+    @MainActor
+    func testEditingTheFileChangesWhatALaterSavePrefills() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        try writeFile(layout(command: "make dev"))
+        await model.loadProjectFile(root: project)
+        await model.resolveProjectReview(try XCTUnwrap(model.pendingProjectReview).id, .trustAndOpen)
+        let opened = try window(model, named: "Demo")
+        await model.createWindow(name: "Pane")
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        try await enterProject(model)
+        try await waitFor { model.projectFileOffers[pane] != nil }
+        model.beginEditProjectFile(paneID: pane)
+        var edit = try XCTUnwrap(model.pendingProjectEdit)
+        edit.text = layout(command: "make test")
+        XCTAssertTrue(model.writeProjectFileEdit(edit), model.errorMessage ?? "")
+        XCTAssertEqual(try model.projectFileDraft(windowID: opened.id, root: project).commands.first, "make test", "The edit is what a save carries over")
+
+        // Removing the command in the editor removes it from the next save too.
+        model.beginEditProjectFile(paneID: pane)
+        var removed = try XCTUnwrap(model.pendingProjectEdit)
+        removed.text = layout()
+        XCTAssertTrue(model.writeProjectFileEdit(removed), model.errorMessage ?? "")
+        XCTAssertEqual(try model.projectFileDraft(windowID: opened.id, root: project).commands.first, "")
     }
 
     @MainActor
@@ -370,6 +435,7 @@ final class ProjectFileTests: XCTestCase {
         defer { cleanUp(model) }
         let created = await model.createWindow(name: "Linked")
         let windowID = try XCTUnwrap(created)
+        try await enterProject(model)
         let draft = try model.projectFileDraft(windowID: windowID, root: project)
         XCTAssertFalse(model.writeProjectFile(draft))
         XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true)
@@ -395,11 +461,189 @@ final class ProjectFileTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveWritesTheEditedJSONAfterItChecksOut() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Edited")
+        let windowID = try XCTUnwrap(created)
+        try await enterProject(model)
+        var draft = try model.projectFileDraft(windowID: windowID, root: project)
+        XCTAssertEqual(model.checkProjectFile(draft), ProjectFileCheck(errors: [], warnings: []), "The window's own file checks out")
+        XCTAssertFalse(model.projectFileExists(draft))
+
+        // Text that doesn't parse, or breaks a rule, is reported and never written.
+        draft.text = "{"
+        XCTAssertEqual(model.checkProjectFile(draft).errors, ["The project file is not valid JSON."])
+        XCTAssertFalse(model.writeProjectFile(draft))
+        XCTAssertTrue(model.errorMessage?.contains("not valid JSON") == true)
+        model.errorMessage = nil
+        draft.text = #"{"version": 1, "name": "Edited", "tabs": [{"title": "A", "root": {"type": "pane", "directory": "/etc"}}]}"#
+        XCTAssertFalse(model.checkProjectFile(draft).isValid)
+        XCTAssertFalse(model.writeProjectFile(draft))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: draft.path))
+        model.errorMessage = nil
+
+        // An edit that keeps the window's shape is written byte for byte, trusted, and binds the window.
+        draft.text = #"{"version": 1, "name": "Edited", "tabs": [{"title": "Renamed", "root": {"type": "pane", "command": "make"}}]}"#
+        XCTAssertEqual(model.checkProjectFile(draft), ProjectFileCheck(errors: [], warnings: []))
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        XCTAssertNil(model.projectFileOffers[pane])
+        XCTAssertTrue(model.writeProjectFile(draft), model.errorMessage ?? "")
+        XCTAssertEqual(try String(contentsOfFile: draft.path, encoding: .utf8), draft.text)
+        // The pane finds the new file without leaving its folder, so its header offers to edit it.
+        try await waitFor { model.projectFileOffers[pane]?.path == draft.path }
+        XCTAssertTrue(model.projectFileExists(draft))
+        let windows = model.snapshot.windows.count
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview, "The saved bytes are trusted")
+        XCTAssertEqual(model.snapshot.activeWindowID, windowID)
+        XCTAssertEqual(model.snapshot.windows.count, windows)
+
+        // An edit that reshapes the layout still saves, with a warning, and unbinds the window.
+        var reshaped = try model.projectFileDraft(windowID: windowID, root: project)
+        reshaped.text = #"{"version": 1, "name": "Edited", "tabs": [{"title": "One", "root": {"type": "pane"}}, {"title": "Two", "root": {"type": "pane"}}]}"#
+        let check = model.checkProjectFile(reshaped)
+        XCTAssertTrue(check.isValid)
+        XCTAssertEqual(check.warnings.count, 1)
+        XCTAssertTrue(check.warnings[0].contains("creates a new window"))
+        XCTAssertTrue(model.writeProjectFile(reshaped), model.errorMessage ?? "")
+        XCTAssertTrue(reshaped.paneIDs.allSatisfy { model.projectFileCommands[$0] == nil }, "The unbound panes drop the old file's commands")
+        XCTAssertFalse(try model.projectFileDraft(windowID: windowID, root: project).text.contains("make"), "A later save doesn't prefill them")
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.snapshot.windows.count, windows + 1)
+        XCTAssertNotEqual(model.snapshot.activeWindowID, windowID)
+    }
+
+    @MainActor
+    func testEditOpensTheDetectedFileAndKeepsTrustOnlyForReviewedFiles() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        try writeFile(layout(command: "make dev"))
+        let created = await model.createWindow(name: "Pane")
+        _ = try XCTUnwrap(created)
+        let pane = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        model.beginEditProjectFile(paneID: pane)
+        XCTAssertNil(model.pendingProjectEdit, "No button, and nothing to edit, before a file is detected")
+        try await enterProject(model)
+        try await waitFor { model.projectFileOffers[pane] != nil }
+        model.beginEditProjectFile(paneID: pane)
+        var edit = try XCTUnwrap(model.pendingProjectEdit)
+        XCTAssertEqual(edit.text, layout(command: "make dev"))
+        XCTAssertEqual(model.checkProjectFileEdit(edit), ProjectFileCheck(errors: [], warnings: []))
+
+        // Invalid text is reported and never written.
+        edit.text = #"{"version": 1}"#
+        XCTAssertFalse(model.checkProjectFileEdit(edit).isValid)
+        XCTAssertFalse(model.writeProjectFileEdit(edit))
+        XCTAssertEqual(try String(contentsOfFile: edit.path, encoding: .utf8), layout(command: "make dev"))
+        model.errorMessage = nil
+
+        // A file whose commands were never reviewed stays unreviewed after an edit: opening it still asks.
+        edit.text = layout(command: "make dev", title: "Renamed")
+        XCTAssertFalse(model.projectFileEditChangedOnDisk(edit))
+        XCTAssertTrue(model.writeProjectFileEdit(edit), model.errorMessage ?? "")
+        XCTAssertNil(model.pendingProjectEdit)
+        XCTAssertEqual(try String(contentsOfFile: edit.path, encoding: .utf8), edit.text, "Written byte for byte")
+        await model.loadProjectFile(root: project)
+        let review = try XCTUnwrap(model.pendingProjectReview)
+        await model.resolveProjectReview(review.id, .trustAndOpen)
+
+        // Once trusted, an edit stays trusted, and opening it again needs no review.
+        model.beginEditProjectFile(paneID: pane)
+        var trusted = try XCTUnwrap(model.pendingProjectEdit)
+        trusted.text = layout(command: "make test", title: "Renamed")
+        XCTAssertTrue(model.writeProjectFileEdit(trusted), model.errorMessage ?? "")
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.pendingProjectReview)
+        XCTAssertNil(model.errorMessage)
+
+        // A change made elsewhere after opening is noticed before saving over it.
+        model.beginEditProjectFile(paneID: pane)
+        let stale = try XCTUnwrap(model.pendingProjectEdit)
+        try writeFile(layout(command: "make other", title: "Renamed"))
+        XCTAssertTrue(model.projectFileEditChangedOnDisk(stale))
+        // A link in its place, even to the same bytes, is never read through and counts as changed.
+        let elsewhere = scratch.appendingPathComponent("linked.json").path
+        try FileManager.default.moveItem(atPath: stale.path, toPath: elsewhere)
+        try FileManager.default.createSymbolicLink(atPath: stale.path, withDestinationPath: elsewhere)
+        let linked = ProjectFileEdit(root: stale.root, path: stale.path, original: try Data(contentsOf: URL(fileURLWithPath: elsewhere)), text: stale.text)
+        XCTAssertTrue(model.projectFileEditChangedOnDisk(linked))
+        XCTAssertFalse(model.writeProjectFileEdit(linked), "Never written through the link")
+        // The failure stays in the open sheet, which shows it, instead of an alert behind it.
+        XCTAssertNotNil(model.pendingProjectEdit)
+        XCTAssertTrue(model.showsProjectSheet)
+        XCTAssertTrue(model.errorMessage?.contains("symbolic link") == true)
+        model.cancelProjectEdit()
+        XCTAssertNil(model.errorMessage, "Cancelling clears the sheet's error")
+        XCTAssertFalse(model.showsProjectSheet)
+    }
+
+    @MainActor
+    func testSaveLeavesOutTabsOutsideTheProject() async throws {
+        let outside = scratch.appendingPathComponent("outside").path
+        try FileManager.default.createDirectory(atPath: outside, withIntermediateDirectories: true)
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let created = await model.createWindow(name: "Mixed")
+        let windowID = try XCTUnwrap(created)
+        let tabID = try XCTUnwrap(model.presentation.selectedTab).id
+        let inside = try XCTUnwrap(model.presentation.selectedTab).activePaneID
+        let split = await model.splitPane(inside, axis: .x)
+        let beside = try XCTUnwrap(split)
+        let newTab = await model.createTab(windowID: windowID)
+        let otherTab = try XCTUnwrap(newTab)
+        let away = try XCTUnwrap(model.snapshot.tabs[otherTab]).activePaneID
+        try await waitFor { [inside, beside, away].allSatisfy { model.terminals[$0]?.sessionState == .running } }
+        try prompt(model, inside, project)
+        try prompt(model, beside, outside)
+        try prompt(model, away, outside)
+        let draft = try model.projectFileDraft(windowID: windowID, root: project)
+        XCTAssertEqual(draft.paneIDs, [inside])
+        XCTAssertEqual(draft.warnings.count, 2)
+        XCTAssertTrue(draft.warnings.allSatisfy { $0.hasSuffix("so it won't be saved.") })
+        XCTAssertTrue(model.writeProjectFile(draft), model.errorMessage ?? "")
+        let url = URL(fileURLWithPath: project + "/.trellis/project.json")
+        let data = try Data(contentsOf: url)
+        let file = try ProjectFileJSON.parse(data).get()
+        XCTAssertEqual(file.tabs.count, 1)
+        XCTAssertEqual(file.entries.count, 1)
+        XCTAssertEqual(model.snapshot.windows.first { $0.id == windowID }?.tabIDs.count, 2, "The window keeps the tab left out")
+
+        // Reopening reconciles the trimmed tab in place: the omitted panes stay, nothing is added.
+        let paneCount = model.snapshot.panes.count, layout = model.snapshot.tabs[tabID]?.root
+        await model.loadProjectFile(root: project)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.snapshot.activeWindowID, windowID)
+        XCTAssertEqual(model.snapshot.panes.count, paneCount)
+        XCTAssertEqual(model.snapshot.tabs[tabID]?.root, layout)
+        XCTAssertEqual(model.snapshot.windows.first { $0.id == windowID }?.tabIDs.count, 2)
+        // Saving again writes the same file, so save and reopen never pile up tabs.
+        XCTAssertTrue(model.writeProjectFile(try model.projectFileDraft(windowID: windowID, root: project)), model.errorMessage ?? "")
+        XCTAssertEqual(try Data(contentsOf: url), data)
+
+        // A pane that leaves the project while the sheet is open makes the save stop.
+        try prompt(model, beside, project)
+        let stale = try model.projectFileDraft(windowID: windowID, root: project)
+        try prompt(model, beside, outside)
+        XCTAssertFalse(model.writeProjectFile(stale))
+        XCTAssertTrue(model.errorMessage?.contains("changed while saving") == true)
+        model.errorMessage = nil
+
+        // With every pane outside, there is nothing to save.
+        try prompt(model, inside, outside)
+        XCTAssertThrowsError(try model.projectFileDraft(windowID: windowID, root: project)) {
+            XCTAssertTrue($0.localizedDescription.contains("nothing to save"))
+        }
+    }
+
+    @MainActor
     func testSaveFailureAndCorruptTrustLeaveEverythingAsItWas() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
         let created = await model.createWindow(name: "Mine")
         let windowID = try XCTUnwrap(created)
+        try await enterProject(model)
         // `.trellis` is a file, so the project file can't be written.
         try Data("x".utf8).write(to: URL(fileURLWithPath: project + "/.trellis"))
         var draft = try model.projectFileDraft(windowID: windowID, root: project)
@@ -510,5 +754,16 @@ final class ProjectFileTests: XCTestCase {
         XCTAssertEqual(ProjectFilePanels.projectRoot(forSelection: project + "/.trellis/workspace.json"), project)
         XCTAssertEqual(ProjectFilePanels.projectRoot(forSelection: project + "/.trellis"), project)
         XCTAssertEqual(ProjectFilePanels.projectRoot(forSelection: project), project)
+    }
+}
+
+/// Commands read from and written into the draft's JSON, as a user editing it would.
+extension ProjectFileDraft {
+    fileprivate var commands: [String] {
+        get { ((try? ProjectFileJSON.parse(Data(text.utf8)).get())?.entries ?? []).map { $0.pane.command ?? "" } }
+        set {
+            guard let file = try? ProjectFileJSON.parse(Data(text.utf8)).get() else { return }
+            text = String(decoding: ProjectFileJSON.encode(file.settingCommands(newValue)), as: UTF8.self)
+        }
     }
 }

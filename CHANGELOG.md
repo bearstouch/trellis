@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-29
+
+The first stable release of Trellis. This release adds in-app software updates with Sparkle and a cap on workspace disk writes, brightens selections in the dark themes, and fixes the collapsed sidebar's tabs card.
+
+### Added
+
+- **Software updates:** **Trellis → Check for Updates…** and **Settings → Updates** download, verify and install new versions in place with Sparkle 2. Automatic daily checks are off until you turn them on, and **Include beta versions** chooses whether pre-releases are offered (on by default in pre-release builds). A check downloads only the update list and sends no system profile. Installing quits through the usual confirmation, so sessions kept after quit keep running (MAC-14).
+- **Workspace disk writes:** **Settings → Sessions → Workspace disk writes** caps how much the workspace file and its backup may write per hour (50 MB by default). Past it, changes are saved together every 5 minutes; ⌘S and Quit still save at once (FR-R06).
+
+### Changed
+
+- **Selection:** the dark built-in themes and the default palette use a brighter selection background, so selected text stands out from the pane. One Dark, Solarized Dark and Gruvbox Dark also brighten the selected text to keep it readable.
+- **Underlines:** links and dotted or dashed underlines (`4:4`, `4:5`) are drawn as a solid line (FR-TX02).
+- **Privacy:** the update check is the one network request Trellis makes by itself, and only when you check or turn on automatic checks (MAC-14).
+- **Build:** works around a Swift 6.4 compiler crash in the session broker client.
+
+### Fixed
+
+- **Collapsed sidebar:** clicking a tab, **Settings** or **Hosts** while a window's tabs card was open only closed the card; the click now reaches its target (FR-W06).
+- **Disk writes:** an unchanged workspace is no longer rewritten. A long session could write gigabytes to `workspace.json` and its backup (FR-R06).
+
+## [1.0.0-beta.2] - 2026-10-24
+
+The second 1.0 beta. This release adds Edit Project File, reworks Save as Project around a JSON editor, and fixes sessions kept after quit, saved scrollback redaction and the MCP server.
+
+### Added
+
+- **Edit Project File:** a `{}` button in a local pane's header, after the scratchpad button, opens the project file found for the pane's folder in a JSON editor with **Validate** and **Save**. Saving asks first if the file changed on disk, and keeps the file trusted only if the version you opened was trusted or ran no commands (FR-WF08).
+
+### Changed
+
+- **Save as Project** shows the project file as JSON in an editor with **Validate** and **Save**, instead of a command field per pane. Save checks the file first and asks before replacing an existing `project.json`; an edit that reshapes the layout saves with a warning that opening it creates a new window (FR-WF06).
+- **Save as Project** leaves out panes outside the project folder and warns that they won't be saved, instead of saving them to open in the project folder. A split keeps its other side, a tab with nothing inside is left out, and a window with nothing inside isn't saved. Opening the file again leaves the panes and tabs that were left out where they are (FR-WF04, FR-WF06).
+
+### Fixed
+
+- **Project files:** after **Open Without Commands**, **Save as Project** no longer trusts the declined commands; a saved file that keeps one still shows the review sheet on the next open. Commands changed in **Edit Project File** are what a later **Save as Project** carries over (FR-WF03, FR-WF06, FR-WF08).
+- **Sessions kept after quit:** a command that exits at once no longer leaves its pane running forever; a paste over 1 MiB into a program that isn't reading is reported instead of losing chunks silently; and moving the app no longer starts a second broker that orphans the first one's sessions (FR-R03).
+- **Saved scrollback** redacts quoted secrets whole, such as `PASSWORD="correct horse battery"` or a JSON value with spaces (FR-R05).
+- **Find in pane** acts on the pane it is shown for after switching between tabs of the same layout.
+- A launch interrupted by a quit or close that you then cancel leaves the pane Failed with **Restart**, instead of a **Start** that can't work.
+- **MCP server:** a flood of blank lines or tiny pipelined requests no longer ties up a CPU core before authentication; `events.subscribe` with `afterSequence` replays only the subscribed topics.
+- **Development:** `--state-directory` launches no longer hand off to a dev instance open on another workspace, and `--fixture` always runs in its own empty workspace.
+
 ## [1.0.0-beta.1] - 2026-10-23
 
 The first 1.0 beta. This release adds the command palette and the command scratchpad, and fixes project files, tasks and the upgrade from `dev.trellis`.
@@ -321,7 +365,9 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...v1.0.0
+[1.0.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/bearstouch/trellis/compare/v0.12.0...v1.0.0-beta.1
 [0.12.0]: https://github.com/bearstouch/trellis/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bearstouch/trellis/compare/v0.11.0...v0.11.1

@@ -20,6 +20,8 @@ public struct ScratchpadLanguage: Hashable, Identifiable, Sendable {
         id: "javascript", displayName: "JavaScript", fileExtension: "js", interpreter: "node", checkArguments: ["--check"], grammar: .javascript)
     public static let markdown = ScratchpadLanguage(id: "markdown", displayName: "Markdown", fileExtension: "md", interpreter: nil, checkArguments: [], grammar: .markdown)
     public static let all: [ScratchpadLanguage] = [.sh, .bash, .javascript, .markdown]
+    /// Project files (FR-WF06), highlighted like JavaScript; not offered in the scratchpad's selector.
+    public static let json = ScratchpadLanguage(id: "json", displayName: "JSON", fileExtension: "json", interpreter: nil, checkArguments: [], grammar: .javascript)
 
     /// Can be checked, run and saved as a task.
     public var isRunnable: Bool { interpreter != nil }

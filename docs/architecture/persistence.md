@@ -6,12 +6,13 @@ All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `keepSessionsRunning`, `restoreScrollback`) | Last-known-good copy in `workspace.backup.json` |
+| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `keepSessionsRunning`, `restoreScrollback`, `saveBudgetMegabytesPerHour`) | Last-known-good copy in `workspace.backup.json` |
 | `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
 | `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each project's [project file](../features/project-files.md) window (namespace `workspace-file:<folder>`) | An unreadable file is preserved |
 | `workspace-trust.json` | Trusted project files as (canonical project folder, SHA-256 digest) pairs, and folders never to offer (FR-WF03); never the commands | `0600`. An unreadable file trusts nothing and is never overwritten. |
 | `control.json` | Discovery for the running control socket | Rewritten on every launch |
+| `instance.lock` | The running app's PID, under an exclusive `flock` held while it runs, so one app writes each folder however its path is given (a link, or the default folder passed as `--state-directory`); a second launch activates the first instead | `0600`; released on exit or crash |
 | `Themes/<id>.theme.json` | Custom themes | File names come only from validated IDs |
 | `Scrollback/<session-uuid>.txt` | Only with **Restore scrollback after quit** (FR-R04): a pane's redacted plain text | `0600` in a `0700` folder; see [below](#opt-in-scrollback-file) |
 | `broker.json` | Only after a session was kept running (FR-R03): `{protocolVersion, socketPath}` of this folder's `trellis-broker` | `0600`, read without following symlinks; no token or PID |
@@ -40,6 +41,8 @@ Every write follows the same steps (`WorkspacePersistence`):
 Reads use `O_NOFOLLOW`, require a regular file, and are capped at 4 MiB and 128 levels of JSON nesting.
 
 Only one writer runs at a time, and writes are sequence-gated, so an older save can't overwrite a newer one. Ordinary UI changes are debounced by **300 ms**. ⌘S and Quit flush immediately, and if the save fails, Quit is cancelled.
+
+A save whose encoded workspace equals the bytes now in `workspace.json` writes nothing, backup included (FR-R06). Each real save writes the new file and the backup, and those bytes count against the hourly budget in `saveBudgetMegabytesPerHour` (default 50 MB). While the last hour's writes exceed it, ordinary changes wait for one batched save every **5 minutes**; ⌘S and Quit are never batched.
 
 Interrupting a save at any point must still leave a readable current file or backup.
 

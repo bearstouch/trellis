@@ -105,16 +105,9 @@ public struct WorkspaceRootView: View {
                 }
             }.padding(24).frame(width: 540)
         }
-        .sheet(item: Binding(get: { model.pendingProjectReview }, set: { if $0 == nil, let id = model.pendingProjectReview?.id { Task { await model.resolveProjectReview(id, .cancel) } } })) {
-            ProjectFileReviewView(model: model, review: $0)
-        }
-        .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
-            TaskReviewView(model: model, review: $0)
-        }
-        .sheet(item: Binding(get: { model.pendingProjectSave }, set: { if $0 == nil { model.cancelProjectSave() } })) {
-            ProjectFileSaveView(model: model, draft: $0)
-        }
-        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+        .modifier(ProjectSheets(model: model))
+        // A project file sheet shows its own errors; an alert behind it could go unseen (FR-WF06, FR-WF08).
+        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil && !model.showsProjectSheet }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
@@ -559,6 +552,27 @@ extension TabColor {
 /// the side it comes from, where an accent bar marks it. The payload is the item's UUID and the drop reads it back, so
 /// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a window never moves
 /// anything. Off while renaming, so a drag in the name field selects text.
+/// Project file and task sheets (FR-WF03, FR-WF06, FR-WF08, FR-TK06), apart so the root's modifier chain type-checks.
+private struct ProjectSheets: ViewModifier {
+    @ObservedObject var model: AppWorkspaceModel
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: Binding(get: { model.pendingProjectReview }, set: { if $0 == nil, let id = model.pendingProjectReview?.id { Task { await model.resolveProjectReview(id, .cancel) } } })) {
+                ProjectFileReviewView(model: model, review: $0)
+            }
+            .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
+                TaskReviewView(model: model, review: $0)
+            }
+            .sheet(item: Binding(get: { model.pendingProjectSave }, set: { if $0 == nil { model.cancelProjectSave() } })) {
+                ProjectFileSaveView(model: model, draft: $0)
+            }
+            .sheet(item: Binding(get: { model.pendingProjectEdit }, set: { if $0 == nil { model.cancelProjectEdit() } })) {
+                ProjectFileEditView(model: model, edit: $0)
+            }
+    }
+}
+
 private struct DragReorder: ViewModifier {
     let id: UUID
     let order: [UUID]
@@ -802,21 +816,25 @@ private struct WindowHoverPreview: ViewModifier {
                 overTile = $0; schedule()
             }
             .accessibilityAction(named: "Show Tabs") { presented = true }
-            .popover(isPresented: $presented, arrowEdge: .trailing) {
-                WindowTabsPreviewCard(window: window, model: model) { tabID in
-                    close()
-                    Task { await model.selectWindowTab(windowID: window.id, tabID: tabID) }
-                }
-                .onHover {
-                    overCard = $0; schedule()
-                }
-            }
+            // Not `.popover`: a transient popover swallows the click that dismisses it, so tabs, Settings and Hosts
+            // ignored the first click while a card was up.
+            .background(PassThroughPopoverAnchor(presented: $presented, edge: .maxX, content: AnyView(card)))
             // A card dismissed by an outside click may never report the pointer leaving it.
             .onChange(of: presented) { _, shown in if !shown { overCard = false } }
             .onChange(of: model.sidebarCollapsed) { _, _ in close() }
             // Dragging a window (FR-W07) closes the card and drops a pending open, so it never pops up mid-drag.
             .onChange(of: dragStarts) { _, _ in close() }
             .onDisappear { close() }
+    }
+
+    private var card: some View {
+        WindowTabsPreviewCard(window: window, model: model) { tabID in
+            close()
+            Task { await model.selectWindowTab(windowID: window.id, tabID: tabID) }
+        }
+        .onHover {
+            overCard = $0; schedule()
+        }
     }
 
     private func schedule() {
@@ -1071,6 +1089,17 @@ public struct LaunchSettingsView: View {
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
             ).accessibilityIdentifier("settings.restoreScrollback")
             caption("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis.")
+            Picker(
+                "Workspace disk writes",
+                selection: Binding(get: { model.saveBudgetMegabytesPerHour }, set: { model.setSaveBudget(megabytesPerHour: $0) })
+            ) {
+                ForEach(WorkspaceWriteBudget.choices, id: \.self) { Text("Up to \($0) MB per hour").tag($0) }
+            }.accessibilityIdentifier("settings.saveBudget")
+            caption(
+                model.savesThrottled
+                    ? "Limit reached: changes are now saved together every 5 minutes. Quit and ⌘S still save at once."
+                    : "Past this, changes to windows, tabs and settings are saved together every 5 minutes instead of right away."
+            ).accessibilityIdentifier("settings.saveBudgetNote")
             Toggle("Desktop notifications", isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
             caption("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane.")
             Picker("Notify when a command finishes", selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {

@@ -8,8 +8,8 @@
     "foreground": "#93A1A1",
     "cursor": "#3BA9A0",
     "cursorText": "#002B36",
-    "selectionBackground": "#104D53",
-    "selectionForeground": "#ABB6B6",
+    "selectionBackground": "#0B6D76",
+    "selectionForeground": "#EEE8D5",
     "ansi": [
       "#00252F",
       "#DC322F",

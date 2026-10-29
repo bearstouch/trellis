@@ -54,6 +54,19 @@ final class EventHubTests: XCTestCase {
         XCTAssertEqual(error.appCode, "INVALID_CURSOR")
     }
 
+    func testReplayKeepsToTheSubscribedTopics() async throws {
+        let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
+        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
+        let log = DeliveryLog()
+        await hub.setDelivery { _, data in log.deliver(data) }
+        let window = UUID()
+        await hub.publish([event(window), event(window, "selection.changed"), event(window, "session.state"), event(window, "selection.changed")])
+        _ = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["selection"], resourceIDs: [], afterSequence: 0)
+        let replayed = log.messages.compactMap { ($0["params"] as? [String: Any])?["sequence"] as? Int }
+        XCTAssertEqual(replayed, [2, 4], "Only selection events replay, as they would have been delivered live")
+    }
+
     func testSlowOrRevokedSubscriberStops() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
         let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead, .sessionOutputRead], windowScope: .all, hostScope: .all, lifetime: 3600)

@@ -139,6 +139,31 @@ final class TerminalMetalRendererTests: XCTestCase {
     }
 
     @MainActor
+    func testMetalDrawsDottedAndDashedUnderlinesAsOneSolidLine() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        native.adapter.receive(Data("\u{1b}[?25l\u{1b}[4:4mabcd\u{1b}[24m\r\n\u{1b}[4:5mabcd\u{1b}[24m".utf8))
+        let cell = view.cellMetrics.size
+        for row in 0...1 {
+            let underline = try XCTUnwrap(view.metalRenderedRowForTesting(row)).decorations
+            XCTAssertEqual(underline.count, 1, "row \(row): one continuous stroke, not dots or dashes")
+            XCTAssertEqual(underline.first?.width ?? 0, 4 * cell.width, accuracy: 0.01, "row \(row)")
+        }
+        XCTAssertEqual(view.getTerminal().buffer.getChar(at: Position(col: 0, row: 0)).attribute.underlineStyle, .dotted, "the buffer keeps the requested style")
+    }
+
+    @MainActor
+    func testMetalUnderlinesLinksWithOneSolidLine() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        view.linkHighlightMode = .always
+        native.adapter.receive(Data("\u{1b}[?25l\u{1b}]8;;https://example.com\u{1b}\\link\u{1b}]8;;\u{1b}\\".utf8))
+        let underline = try XCTUnwrap(view.metalRenderedRowForTesting(0)).decorations
+        XCTAssertEqual(underline.count, 1, "one continuous stroke, not dashes")
+        XCTAssertEqual(underline.first?.width ?? 0, 4 * view.cellMetrics.size.width, accuracy: 0.01)
+    }
+
+    @MainActor
     func testMetalCursorHidesConcealedTextAndDrawsTheWholeCharacter() throws {
         let (native, view) = try hostedTerminal()
         defer { native.adapter.detach() }

@@ -105,6 +105,60 @@ final class BrokerEndToEndTests: XCTestCase {
         XCTAssertTrue(after.isEmpty)
     }
 
+    func testInputOverTheLimitIsReportedNotDroppedSilently() async throws {
+        let launcher = try launcher()
+        let (_, connection) = try await start(launcher)
+        let sink = Sink()
+        // A program that never reads: input piles up in the broker.
+        let id = try await spawn(connection, "printf 'ready\\n'; exec sleep 600", sink: sink)
+        try await waitFor { sink.text.contains("ready") }
+        let chunk = Data(repeating: UInt8(ascii: "x"), count: 512 * 1024)
+        for _ in 0..<4 { try connection.sendInput(chunk, sessionID: id) }
+        try await waitFor { sink.rejected > 0 }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(sink.rejected, 1, "One report per overflow, not one per chunk")
+    }
+
+    func testAClientThatDidNotAskIsNeverSentInputRejected() async throws {
+        let launcher = try launcher()
+        let socket = try launcher.spawn()
+        launcher.publish(socketPath: socket)
+        // An older app: its hello lists no features, and it would drop the connection on an event it can't decode.
+        var connection: BrokerConnection?
+        let deadline = Date().addingTimeInterval(3)
+        while connection == nil, Date() < deadline {
+            if let candidate = try? BrokerConnection.connect(socketPath: socket, brokerExecutable: launcher.helperPath),
+                case .welcome? = try? await candidate.request(.hello(protocolVersion: BrokerProtocol.version))
+            {
+                connection = candidate
+            } else {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        let old = try XCTUnwrap(connection)
+        connections.append(old)
+        let sink = Sink()
+        let id = try await spawn(old, "printf 'ready\\n'; exec sleep 600", sink: sink)
+        try await waitFor { sink.text.contains("ready") }
+        for _ in 0..<4 { try old.sendInput(Data(repeating: UInt8(ascii: "x"), count: 512 * 1024), sessionID: id) }
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(sink.rejected, 0)
+        XCTAssertTrue(old.isOpen, "The connection stays up")
+        XCTAssertFalse(sink.disconnected)
+    }
+
+    func testAnInputTooLargeForTheOutboxSendsNothing() async throws {
+        let launcher = try launcher()
+        let (_, connection) = try await start(launcher)
+        let sink = Sink()
+        let id = try await spawn(connection, "exec sleep 600", sink: sink)
+        XCTAssertThrowsError(try connection.sendInput(Data(count: BrokerConnection.outboxLimit + 1), sessionID: id)) {
+            XCTAssertEqual($0 as? BrokerClientError, .queueFull)
+        }
+        // Nothing was queued, so a normal input still fits whole.
+        XCTAssertNoThrow(try connection.sendInput(Data(count: BrokerConnection.outboxLimit / 2), sessionID: id))
+    }
+
     func testExitStatusIsReportedAndRefusedSignalsAreNotSent() async throws {
         let launcher = try launcher()
         let (_, connection) = try await start(launcher)
@@ -173,11 +227,12 @@ final class BrokerEndToEndTests: XCTestCase {
 
 @MainActor
 private final class Sink: BrokerSessionSink {
-    var output = Data(), replay = Data(), exit: Int32?, disconnected = false
+    var output = Data(), replay = Data(), exit: Int32?, disconnected = false, rejected = 0
     var text: String { String(decoding: output, as: UTF8.self) }
     func brokerOutput(_ data: Data) { output.append(data) }
     func brokerReplay(_ data: Data) { replay.append(data) }
     func brokerExited(waitStatus: Int32) { exit = waitStatus }
     func brokerPrompt(_ active: Bool) {}
     func brokerDisconnected() { disconnected = true }
+    func brokerInputRejected() { rejected += 1 }
 }

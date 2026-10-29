@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var appearanceObserver: NSKeyValueObservation?
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
+    private var updater: SparkleUpdater?
+    private var updates: UpdateSettingsModel?
 
     private let identity: AppInstanceIdentity
 
@@ -64,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         syncAccessibilityDisplayOptions()
+        // MAC-14: only builds with a feed get an updater; fixture launches stay offline.
+        if !CommandLine.arguments.contains("--fixture"), let updater = SparkleUpdater() {
+            self.updater = updater; updates = UpdateSettingsModel(updater: updater)
+        }
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -177,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let app = NSMenuItem(); app.submenu = NSMenu(title: "Trellis")
         let about = app.submenu?.addItem(withTitle: "About Trellis", action: #selector(aboutAction), keyEquivalent: "")
         about?.target = self
+        if updater != nil { app.submenu?.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesAction), keyEquivalent: "").target = self }
         app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
         app.submenu?.addItem(.separator())
@@ -363,6 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return validateShortcut(action)
         }
         if menuItem.action == #selector(saveProjectFile) { return model.snapshot.activeWindowID != nil }
+        if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
@@ -411,6 +419,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func settingsAction() { showSettings() }
+    @objc private func checkForUpdatesAction() { updates?.checkNow() }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {
         let exporter = DiagnosticsExporter(model: model, hosts: hosts, grants: grants) { [control] in control.isRunning }
@@ -492,9 +501,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320), styleMask: [.titled], backing: .buffered, defer: false)
                 sheet.isReleasedWhenClosed = false
                 sheet.contentView = NSHostingView(
-                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak self, weak sheet] in
+                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak window, weak sheet] in
                         guard let sheet else { return }
-                        self?.window.endSheet(sheet)
+                        window?.endSheet(sheet)
                     })
                 window.beginSheet(sheet, completionHandler: nil)
             }
@@ -518,7 +527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.title = "Settings"
             panel.contentMinSize = NSSize(width: 860, height: 620)
             panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(rootView: AppSettingsView(model: model, grants: grants, hosts: hosts))
+            panel.contentView = NSHostingView(rootView: AppSettingsView(model: model, grants: grants, hosts: hosts, updates: updates))
             settingsCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.model.cancelThemePreview() }
             }
@@ -605,7 +614,9 @@ struct TrellisMain {
         app.setActivationPolicy(.regular)
         NativeTerminalFont.registerBundledFonts()
         do {
-            let identity = AppInstanceIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
+            let stateDirectory = LaunchStateDirectory.resolve(arguments: CommandLine.arguments, temporaryDirectory: FileManager.default.temporaryDirectory)
+            // Keyed by the state directory too: a launch for another workspace must not just activate this one.
+            let identity = AppInstanceIdentity(bundleIdentifier: Bundle.main.bundleIdentifier, stateDirectory: stateDirectory)
             let lockURL = identity.lockURL(in: FileManager.default.temporaryDirectory)
             let instanceLock: ApplicationInstanceLock
             switch try ApplicationInstanceLock.acquire(at: lockURL) {
@@ -623,13 +634,22 @@ struct TrellisMain {
                     into: .standard, legacy: UserDefaults.standard.persistentDomain(forName: AppInstanceIdentity.legacyProduction))
             }
             let directory: URL
-            if let index = CommandLine.arguments.firstIndex(of: "--state-directory"), CommandLine.arguments.indices.contains(index + 1) {
-                directory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
+            if let stateDirectory {
+                directory = stateDirectory
             } else {
                 directory = try ApplicationSupportLocation.prepare(
                     root: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
                     bundleIdentifier: identity.identifier, isRunning: { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty })
             }
+            // A single writer per workspace folder, whatever path or lock key led here.
+            let workspaceLock: ApplicationInstanceLock
+            switch try ApplicationInstanceLock.acquire(stateDirectory: directory) {
+            case .acquired(let lock): workspaceLock = lock
+            case .alreadyRunning(let pid):
+                if let pid { NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows]) }
+                return
+            }
+            defer { withExtendedLifetime(workspaceLock) {} }
             let model = AppWorkspaceModel(
                 store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory),
                 themeLibrary: ThemeLibrary(directory: directory.appendingPathComponent("Themes", isDirectory: true)))

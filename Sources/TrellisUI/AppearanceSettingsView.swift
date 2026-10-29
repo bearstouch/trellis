@@ -25,8 +25,9 @@ public struct AppSettingsView: View {
     @State private var selection: SettingsSection = .appearance
     private let grants: GrantListModel?
     private let hosts: HostListModel?
-    public init(model: AppWorkspaceModel, grants: GrantListModel? = nil, hosts: HostListModel? = nil) {
-        self.model = model; self.grants = grants; self.hosts = hosts
+    private let updates: UpdateSettingsModel?
+    public init(model: AppWorkspaceModel, grants: GrantListModel? = nil, hosts: HostListModel? = nil, updates: UpdateSettingsModel? = nil) {
+        self.model = model; self.grants = grants; self.hosts = hosts; self.updates = updates
     }
     public var body: some View {
         HStack(spacing: 0) {
@@ -35,7 +36,7 @@ public struct AppSettingsView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(model.themeColor(.mutedForeground))
                     .padding(.horizontal, 12).padding(.top, 24).padding(.bottom, 12)
-                ForEach(SettingsSection.allCases.filter { $0 != .automation || (grants != nil && hosts != nil) }) { section in
+                ForEach(SettingsSection.allCases.filter { ($0 != .automation || (grants != nil && hosts != nil)) && ($0 != .updates || updates != nil) }) { section in
                     Button {
                         if selection == .themes { model.cancelThemePreview() }
                         selection = section
@@ -83,6 +84,8 @@ public struct AppSettingsView: View {
                         ScrollView {
                             RemoteControlSettingsView(model: model, showAutomation: grants != nil && hosts != nil ? { selection = .automation } : nil)
                         }
+                    case .updates:
+                        if let updates { ScrollView { UpdateSettingsView(updates: updates) } }
                     }
                 }
                 .padding(.vertical, 12).padding(.leading, 12).padding(.trailing, 28)
@@ -100,7 +103,7 @@ public struct AppSettingsView: View {
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case appearance = "Appearance", sessions = "Sessions", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
-    case remoteControl = "Remote Control"
+    case remoteControl = "Remote Control", updates = "Updates"
     var id: Self { self }
     var symbol: String {
         switch self {
@@ -110,6 +113,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .themes: "swatchpalette"
         case .automation: "bolt"
         case .remoteControl: "antenna.radiowaves.left.and.right"
+        case .updates: "arrow.down.circle"
         }
     }
     var detail: String {
@@ -120,6 +124,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .themes: "Browse, preview, and manage your color themes."
         case .automation: "Manage access for scripts and agents."
         case .remoteControl: "Let agents connect over the Model Context Protocol (MCP)."
+        case .updates: "Check for new versions of Trellis and install them."
         }
     }
 }

@@ -101,9 +101,11 @@ public enum LayoutPlanner {
 
     /// Validates the document and reconciles it with `snapshot` under the
     /// namespace `bindings`. Never mutates; the target is applied atomically.
+    /// `keepOmittedPanes` leaves a bound tab's live panes the document omits where they are (project files, FR-WF04).
     public static func plan(
         _ document: LayoutDocument, bindings existing: [String: LayoutBinding], snapshot: WorkspaceSnapshot, home: String,
-        hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, keepLiveLaunches: Bool = false, makeID: () -> UUID = { UUID() }
+        hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, keepLiveLaunches: Bool = false, keepOmittedPanes: Bool = false,
+        makeID: () -> UUID = { UUID() }
     ) -> LayoutPlan {
         var plan = LayoutPlan(baseRevision: snapshot.revision)
         // Structural validation first; nothing is reconciled on errors.
@@ -236,13 +238,16 @@ public enum LayoutPlanner {
                         return .split(id: id, axis: axis, ratio: ratio, children: built)
                     }
                 }
-                guard let root = build(tab.root) else { continue }
+                guard var root = build(tab.root) else { continue }
                 if let existingTab {
-                    // Managed tabs are fully declared; unmanaged panes cannot be placed.
+                    // Managed tabs are fully declared, unless omitted panes may stay where they are.
                     let leftovers = existingTab.root.paneIDs.filter { !used.contains($0) }
                     if !leftovers.isEmpty {
-                        plan.conflicts.append(LayoutIssue(key: tab.key, "This tab has panes the document omits; include them or close them first."))
-                        continue
+                        guard keepOmittedPanes, let merged = merging(root, into: existingTab.root) else {
+                            plan.conflicts.append(LayoutIssue(key: tab.key, "This tab has panes the document omits; include them or close them first."))
+                            continue
+                        }
+                        root = merged
                     }
                     var updated = existingTab
                     let changed = updated.title != tab.title || updated.root != root || (tab.color != nil && updated.color != tab.color)
@@ -315,6 +320,33 @@ public enum LayoutPlanner {
         case (.process(_, let arguments, let directory), .shell(let wanted)): return arguments == ["-l"] && (wanted == nil || directory == wanted)
         default: return false
         }
+    }
+
+    /// `live` with `declared` in place of the live panes it names, keeping the other live panes in their
+    /// splits. Nil when `declared` doesn't fit around them (it regroups panes the live splits keep apart).
+    static func merging(_ declared: PaneLayout, into live: PaneLayout) -> PaneLayout? {
+        let livePanes = Set(live.paneIDs)
+        func merge(_ live: PaneLayout, _ declared: PaneLayout) -> PaneLayout? {
+            let named = Set(declared.paneIDs)
+            // A live subtree the document names whole takes its declared subtree, which may add new panes around it.
+            if named.intersection(livePanes) == Set(live.paneIDs) { return declared }
+            guard case .split(let id, let axis, let ratio, let children) = live, children.count == 2 else { return nil }
+            switch (named.isDisjoint(with: children[0].paneIDs), named.isDisjoint(with: children[1].paneIDs)) {
+            case (true, false): return merge(children[1], declared).map { .split(id: id, axis: axis, ratio: ratio, children: [children[0], $0]) }
+            case (false, true): return merge(children[0], declared).map { .split(id: id, axis: axis, ratio: ratio, children: [$0, children[1]]) }
+            case (false, false):
+                guard case .split(let declaredID, let declaredAxis, let declaredRatio, let parts) = declared, parts.count == 2,
+                    let first = merge(children[0], parts[0]), let second = merge(children[1], parts[1])
+                else { return nil }
+                return .split(id: declaredID, axis: declaredAxis, ratio: declaredRatio, children: [first, second])
+            case (true, true): return nil
+            }
+        }
+        guard let merged = merge(live, declared) else { return nil }
+        let panes = merged.paneIDs, branches = branchIDs(merged)
+        // Every pane once, and a reused split ID never doubles up with one kept around an omitted pane.
+        guard Set(panes).count == panes.count, Set(panes) == livePanes.union(declared.paneIDs), Set(branches).count == branches.count else { return nil }
+        return merged
     }
 
     static func branchIDs(_ layout: PaneLayout) -> [UUID] {

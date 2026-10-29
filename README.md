@@ -18,7 +18,8 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
 - **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
 - **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.
-- **Privacy:** no telemetry; terminal output and typed input are never logged.
+- **Updates:** **Trellis → Check for Updates…** installs signed updates in place. Automatic checks and beta versions are opt-in.
+- **Privacy:** no telemetry; terminal output and typed input are never logged. The only network request Trellis makes by itself is the update check you start or turn on.
 
 See the [feature docs](docs/features/workspace.md) for the full behavior.
 

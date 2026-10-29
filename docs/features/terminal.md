@@ -21,7 +21,7 @@ These requirements are P1. They refine FR-S02 for text. The settings are describ
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-TX01 | Draw font ligatures on the cell grid, controlled by a **Ligatures** setting that is on by default. | With JetBrains Mono (the bundled font with programming ligatures), `->`, `!=` and `<=>` show joined glyphs, and text after them keeps its columns. Turning the setting off shows the separate characters, because it disables the `calt`, `liga` and `dlig` font features. It doesn't resize the grid or reset the session. Each part of a ligature keeps its own cell's colour, so colour changes and selections don't break it; a change of face (bold or italic) does. The character under a visible cursor is always drawn on its own, so the cursor never covers half a joined glyph. |
-| FR-TX02 | Render SGR text styles. | Bold (1), dim (2), italic (3), underline (4, and the styles `4:0`–`4:5`: none, single, double, curly, dotted, dashed), double underline (21), underline colour (58, reset with 59), blink (5 and 6), inverse (7), concealed (8, reset with 28), strikethrough (9) and overline (53, reset with 55) all show. Underline, strikethrough and overline cover the full width of wide characters and ligatures. Concealed text hides glyphs and decorations but keeps its background; copy, search and accessibility still read the text, because it is in the buffer. |
+| FR-TX02 | Render SGR text styles. | Bold (1), dim (2), italic (3), underline (4, and the styles `4:0`–`4:5`: none, single, double, curly, dotted, dashed), double underline (21), underline colour (58, reset with 59), blink (5 and 6), inverse (7), concealed (8, reset with 28), strikethrough (9) and overline (53, reset with 55) all show. Dotted and dashed underlines are drawn as a solid line, like links. Underline, strikethrough and overline cover the full width of wide characters and ligatures. Concealed text hides glyphs and decorations but keeps its background; copy, search and accessibility still read the text, because it is in the buffer. |
 | FR-TX03 | Let users choose how text styles are drawn. | **Bold as bright colors** draws bold text in ANSI colours 0–7 with the bright colours 8–15; explicit bright colours (SGR 90–97) stay bright with it off. **Use bold fonts** and **Use italic fonts** off draw that text with the regular face. **Allow blinking text** off draws blinking text steadily; blinking also stops while Reduce Motion is on or the app is inactive. All four are on by default and apply live. |
 | FR-TX04 | Give emoji and other Unicode text stable cell widths. | Each of these takes a fixed number of cells and moves the cursor by the same amount: ZWJ sequences (`👨‍👩‍👧`, 2), emoji presentation with VS16 (`❤️`, 2) and text presentation with VS15 (`☺︎`, 1), flags (`🇵🇹`, 2), skin tones (`👍🏽`, 2), combining marks (`é` written as `e` + U+0301, 1) and CJK and Hangul (`漢`, `한`, 2 each). Each is one cluster for selection, copy and search. Colour emoji fit within their two cells. |
 
@@ -61,7 +61,7 @@ The UI paste review is mandatory. API input (`session.sendInput`) doesn't show i
 
 ## Links
 
-Hold ⌘ and hover to underline a link; ⌘-click opens it. Links come from OSC 8 hyperlinks (`ls --hyperlink`, compilers, `rg`) or are detected in plain text.
+Hold ⌘ and hover to underline a link with a solid line; ⌘-click opens it. Links come from OSC 8 hyperlinks (`ls --hyperlink`, compilers, `rg`) or are detected in plain text.
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |

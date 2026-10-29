@@ -117,19 +117,24 @@ public struct HTTPRequestParser: Sendable {
     public mutating func append(_ bytes: Data) throws(HTTPParseError) -> [HTTPRequest] {
         buffer.append(bytes)
         var requests: [HTTPRequest] = []
-        while let request = try next() { requests.append(request) }
+        // Requests are consumed by offset and the buffer compacted once, so many small requests or blank lines in
+        // one read cost linear time, not a copy of the rest of the buffer each.
+        var start = buffer.startIndex
+        defer { if start > buffer.startIndex { buffer = Data(buffer[start...]) } }
+        while let request = try next(from: &start) { requests.append(request) }
         return requests
     }
 
-    private mutating func next() throws(HTTPParseError) -> HTTPRequest? {
+    private func next(from start: inout Data.Index) throws(HTTPParseError) -> HTTPRequest? {
         // Tolerate blank lines between requests (RFC 9112 §2.2).
-        while buffer.starts(with: [0x0D, 0x0A]) { buffer = Data(buffer.dropFirst(2)) }
-        guard let end = buffer.firstRange(of: Data([0x0D, 0x0A, 0x0D, 0x0A])) else {
-            if buffer.count > Self.maximumHeaderBytes { throw .headersTooLarge }
+        while buffer.endIndex - start >= 2, buffer[start] == 0x0D, buffer[start + 1] == 0x0A { start += 2 }
+        let pending = buffer[start...]
+        guard let end = pending.firstRange(of: Data([0x0D, 0x0A, 0x0D, 0x0A])) else {
+            if pending.count > Self.maximumHeaderBytes { throw .headersTooLarge }
             return nil
         }
-        guard end.lowerBound <= Self.maximumHeaderBytes else { throw .headersTooLarge }
-        guard let head = String(data: buffer[buffer.startIndex..<end.lowerBound], encoding: .utf8) else { throw .malformed }
+        guard end.lowerBound - start <= Self.maximumHeaderBytes else { throw .headersTooLarge }
+        guard let head = String(data: buffer[start..<end.lowerBound], encoding: .utf8) else { throw .malformed }
         let lines = head.components(separatedBy: "\r\n")
         guard lines.count - 1 <= Self.maximumHeaderCount else { throw .headersTooLarge }
         let parts = lines[0].split(separator: " ", omittingEmptySubsequences: false)
@@ -162,7 +167,7 @@ public struct HTTPRequestParser: Sendable {
         let bodyStart = end.upperBound
         guard buffer.distance(from: bodyStart, to: buffer.endIndex) >= length else { return nil }
         let body = Data(buffer[bodyStart..<buffer.index(bodyStart, offsetBy: length)])
-        buffer = Data(buffer[buffer.index(bodyStart, offsetBy: length)...])
+        start = buffer.index(bodyStart, offsetBy: length)
         let target = String(parts[1])
         let path = target.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? target
         return HTTPRequest(method: String(parts[0]), path: path, version: version, headers: headers, body: body)

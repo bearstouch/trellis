@@ -136,6 +136,18 @@ final class BrokerCoreTests: XCTestCase {
         XCTAssertEqual(BrokerCore.hello(BrokerProtocol.version + 1, brokerPID: 42), .refused(reason: "PROTOCOL_VERSION_MISMATCH"))
     }
 
+    func testHelloFeaturesStayCompatibleBothWays() throws {
+        // An older app's hello has no features: it decodes, and gets no event it can't read.
+        let old = try JSONDecoder().decode(BrokerEnvelope.self, from: Data(#"{"requestID":1,"message":{"hello":{"protocolVersion":1}}}"#.utf8))
+        XCTAssertEqual(old.message, .hello(protocolVersion: 1, features: nil))
+        // An older broker ignores keys it doesn't know, as this decoder does with a future one.
+        let newer = try JSONDecoder().decode(
+            BrokerEnvelope.self, from: Data(#"{"requestID":1,"message":{"hello":{"protocolVersion":1,"features":["inputRejected"],"later":true}}}"#.utf8))
+        XCTAssertEqual(newer.message, .hello(protocolVersion: 1, features: ["inputRejected"]))
+        let encoded = String(decoding: try JSONEncoder().encode(BrokerEnvelope(requestID: 1, message: .hello(protocolVersion: 1))), as: UTF8.self)
+        XCTAssertFalse(encoded.contains("features"), encoded)
+    }
+
     func testSignalsNeedOurOwnUnreapedGroupLeader() {
         let identity = BrokerProcessIdentity(pid: 50, parentPID: 10, groupID: 50, startedSeconds: 1, startedMicroseconds: 2)
         XCTAssertTrue(identity.permitsSignal(current: identity, ownerPID: 10))

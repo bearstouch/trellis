@@ -22,7 +22,7 @@
 
 Trellis runs one app instance per signed-in user. Opening it again brings the existing window forward, including when it's launched directly or with a different state directory. Quitting or a crash releases the instance lock automatically.
 
-The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, [state directory](../architecture/persistence.md#what-is-saved-and-where) and control socket, so an installed Trellis and a development instance can run at the same time. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
+The installed app (`com.bearstouch.trellis`) and development builds are separate identities. Development builds are `swift run`, an unbundled release binary, and the `Trellis Dev` bundle from `scripts/run-feasibility.sh`, all `com.bearstouch.trellis.dev`. Each identity has its own instance lock, activation notification, [state directory](../architecture/persistence.md#what-is-saved-and-where) and control socket, so an installed Trellis and a development instance can run at the same time. A launch with `--state-directory` is its own instance as well: it runs beside one using another workspace, and only a second launch for the same folder activates the running one instead. The `trellis` CLI targets the installed app unless you pass `--state-directory`.
 
 ## Files, credentials and permissions
 
@@ -34,8 +34,18 @@ The installed app (`com.bearstouch.trellis`) and development builds are separate
 ## Installation, upgrades and removal
 
 - **MAC-10:** the app ships as a signed DMG with the `trellis` executable in `Contents/Helpers`. Installing a user-local CLI link is an explicit step the user runs. Trellis never silently edits shell startup files or writes to system directories.
-- **MAC-11:** upgrades are manual and signed for the MVP; automatic updates are P1. Persisted state is versioned and migrated safely, a last-known-good backup is kept, and newer formats are rejected without being overwritten. Downgrading has known limits.
+- **MAC-11:** upgrades are signed, either from a downloaded DMG or in place through **Check for Updates…** (MAC-14). Persisted state is versioned and migrated safely, a last-known-good backup is kept, and newer formats are rejected without being overwritten. Downgrading has known limits.
 - **MAC-12:** uninstalling removes the app and the optional CLI link. First quit Trellis with **Stop Sessions**, so no kept session or `trellis-broker` keeps running (`trellis cli uninstall-plan` says so in its `first` field). `trellis cli uninstall-plan` lists the app-owned files, which include saved scrollback and `broker.json`, and both Keychain services. It never touches SSH keys, SSH configuration, known-hosts files or shell history. Deleting a host deletes its metadata and its saved password, if any.
+- **MAC-14 (P1): software updates.** Distributed builds check for and install updates with [Sparkle 2](https://sparkle-project.org). It's the only network request Trellis makes on its own, and it stays under the user's control:
+    - **Trellis → Check for Updates…** and **Settings → Updates → Check Now** check once, on that gesture.
+    - Automatic daily checks are **off** by default. **Settings → Updates → Automatically check for updates** turns them on. Trellis never asks at launch.
+    - A check is one HTTPS `GET` of the appcast (`SUFeedURL`, `https://raw.githubusercontent.com/bearstouch/trellis/appcast/appcast.xml`). System profiling is off (`SUEnableSystemProfiling` = false), and no identifier, workspace data or usage data is sent.
+    - An update installs only when its EdDSA signature matches the bundled `SUPublicEDKey` and its Developer ID signature verifies. The appcast lists only notarized Universal 2 DMGs, so a single-architecture install updates to Universal 2.
+    - **Install and Relaunch** quits through the normal path. Running sessions ask for confirmation, and **Keep Running** leaves broker sessions alive (FR-R03). Cancelling the quit postpones the install.
+    - The stable channel is the default. Pre-releases are published on the `beta` channel, and **Include beta versions** opts in. It is on by default when the running build is itself a pre-release.
+    - Builds without a feed (`swift run`, `scripts/run-feasibility.sh`, ad-hoc `package-release.sh` builds without a key) and `--fixture` launches have no updater. They show no menu item or Updates section, and never contact the network.
+
+    Acceptance: a manual check of an older build offers the newer version, installs it and relaunches into it. A tampered DMG is rejected. With automatic checks off, launching and using the app makes no network request. A pre-release appears only with **Include beta versions** on.
 
 The step-by-step procedures are in the [release guide](../release/README.md).
 

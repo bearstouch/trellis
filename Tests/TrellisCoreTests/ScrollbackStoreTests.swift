@@ -131,6 +131,20 @@ final class ScrollbackRedactorTests: XCTestCase {
         assertRedacted("deploy@prod's password for vault: leaked", hiding: "leaked")
     }
 
+    func testQuotedAndDelimitedValuesAreRedactedWhole() {
+        for (input, rest) in [
+            (#"export DB_PASSWORD="correct horse battery""#, "horse battery"),
+            (#"{"password": "my secret pass", "user": "bob"}"#, "secret pass"),
+            ("API_TOKEN='abc def ghi'", "def ghi"),
+            ("PASSWORD=abc,def;ghi", "def;ghi"),
+            (#"secret: "a, b; c""#, "b; c"),
+            (#"{"password": "ab\"cd efg"}"#, "cd efg")
+        ] {
+            assertRedacted(input, hiding: rest)
+        }
+        XCTAssertEqual(ScrollbackRedactor.redact(#"{"password": "a b", "user": "bob"}"#), #"{"password": "[redacted]", "user": "bob"}"#, "Only the quoted value goes")
+    }
+
     func testOrdinaryOutputSurvives() {
         for text in [
             "The token is valid.", "tokenizer finished in 2s", "password reset complete", "Password:", "https://example.com/path?q=1",

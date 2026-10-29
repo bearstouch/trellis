@@ -10,6 +10,8 @@ public protocol BrokerSessionSink: AnyObject {
     func brokerExited(waitStatus: Int32)
     func brokerPrompt(_ active: Bool)
     func brokerDisconnected()
+    /// The broker refused input over its per-session limit.
+    func brokerInputRejected()
 }
 
 public enum BrokerClientError: Error, Equatable, Sendable {
@@ -50,7 +52,8 @@ public final class BrokerConnection {
         return BrokerConnection(fd: fd)
     }
 
-    private init(fd: Int32) {
+    /// Internal so tests can drive a connection over a socket pair.
+    init(fd: Int32) {
         io = DispatchIO(type: .stream, fileDescriptor: fd, queue: readQueue) { @Sendable _ in Darwin.close(fd) }
         io.setLimit(lowWater: 1)
         readNext(DecoderBox())
@@ -58,7 +61,7 @@ public final class BrokerConnection {
 
     /// Fails with `incompatible` when the broker speaks another protocol version.
     public func hello() async throws {
-        switch try await request(.hello(protocolVersion: BrokerProtocol.version)) {
+        switch try await request(.hello(protocolVersion: BrokerProtocol.version, features: [BrokerProtocol.inputRejectedFeature])) {
         case .welcome(_, let pid): brokerPID = pid
         case .refused: close(); throw BrokerClientError.incompatible
         default: close(); throw BrokerClientError.incompatible
@@ -86,7 +89,11 @@ public final class BrokerConnection {
     }
 
     public func sendInput(_ data: Data, sessionID: UUID) throws {
-        for frame in BrokerFrame.stream(.input, sessionID: sessionID, bytes: data) { try send(frame) }
+        let frames = BrokerFrame.stream(.input, sessionID: sessionID, bytes: data)
+        // All or nothing: a send that can't fit whole never delivers its first chunks.
+        guard isOpen else { throw BrokerClientError.closed }
+        guard outbox + frames.reduce(0, { $0 + $1.encoded.count }) <= Self.outboxLimit else { throw BrokerClientError.queueFull }
+        for frame in frames { try send(frame) }
     }
 
     /// Ends every session of a broker this app can't otherwise talk to, whatever its protocol version.
@@ -145,6 +152,7 @@ public final class BrokerConnection {
                 switch envelope.message {
                 case .exited(let id, let status): sinks[id]?.sink?.brokerExited(waitStatus: status)
                 case .prompt(let id, let active): sinks[id]?.sink?.brokerPrompt(active)
+                case .inputRejected(let id): sinks[id]?.sink?.brokerInputRejected()
                 case .refused: close()
                 default: break
                 }

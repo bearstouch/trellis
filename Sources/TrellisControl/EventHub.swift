@@ -105,7 +105,7 @@ public actor EventHub {
                     subscription, method: "events.gap",
                     params: ["subscriptionId": .string(subscription.id.uuidString), "instanceId": .string(instanceID.uuidString), "oldestSequence": .number(Double(oldest)), "action": .string("resnapshot")])
             } else {
-                for event in ring where event.sequence > after { deliverEvent(event, to: subscription, grant: grant) }
+                for event in ring where event.sequence > after && topics.contains(event.event.topic) { deliverEvent(event, to: subscription, grant: grant) }
             }
         }
         return .success((subscription.id, sequence))

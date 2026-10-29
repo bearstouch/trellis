@@ -13,6 +13,8 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
     public let packageFormat: String
     public let artifacts: [String]
     public let dependencies: [Dependency]
+    /// MAC-14: the base64 Ed25519 key Sparkle checks updates against. Without it, packaged builds have no updater.
+    public let sparklePublicKey: String?
 
     /// Facts read from the built product, compared with the manifest.
     public struct BuiltProduct: Equatable, Sendable {
@@ -38,6 +40,9 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
         for artifact in artifacts where !product.files.contains(artifact) { problems.append("Missing artifact \(artifact).") }
         for dependency in dependencies where dependency.license.isEmpty || dependency.licenseFile.isEmpty {
             problems.append("Dependency \(dependency.name) has no recorded license.")
+        }
+        if let sparklePublicKey, Data(base64Encoded: sparklePublicKey)?.count != 32 {
+            problems.append("sparklePublicKey is not a base64 Ed25519 public key.")
         }
         return problems
     }

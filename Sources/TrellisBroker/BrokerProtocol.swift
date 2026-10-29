@@ -11,6 +11,9 @@ public enum BrokerProtocol {
     public static let discoveryName = "broker.json"
     /// The variable carrying a shell-integration nonce; the broker keeps it in memory to return on attach.
     public static let nonceVariable = "TRELLIS_SHELL_INTEGRATION_NONCE"
+    /// Optional events a client announces in `hello`; a broker sends one only to a client that listed it, so an
+    /// older app (which can't decode it and would drop the connection) never receives it. No version bump needed.
+    public static let inputRejectedFeature = "inputRejected"
 }
 
 public enum BrokerFrameKind: UInt8, Sendable {
@@ -126,7 +129,8 @@ public struct BrokerAttachment: Codable, Equatable, Sendable {
 }
 
 public enum BrokerMessage: Codable, Equatable, Sendable {
-    case hello(protocolVersion: Int)
+    /// `features`: optional events this client can decode; an older peer ignores the extra key.
+    case hello(protocolVersion: Int, features: [String]? = nil)
     case welcome(protocolVersion: Int, brokerPID: Int32)
     case refused(reason: String)
     case spawn(BrokerSpawnRequest)
@@ -147,6 +151,10 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     case ok
     case exited(sessionID: UUID, waitStatus: Int32)
     case prompt(sessionID: UUID, active: Bool)
+    /// Input was refused because the session already holds `inputLimit` unwritten bytes; nothing more is taken
+    /// until that drains, so a paste is cut short rather than written with holes. Sent only to a client that
+    /// announced `inputRejectedFeature`; older brokers never send it.
+    case inputRejected(sessionID: UUID)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {
