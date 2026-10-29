@@ -687,8 +687,8 @@ private struct TabContextMenu: View, Equatable {
         Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
         if let offer {
             Divider().overlay(separator)
-            Button("Load Project “\(offer.name)”") { Task { await model.loadProjectFile(root: offer.root) } }
-            Button("Don’t Offer for This Folder") { model.stopOfferingProjectFile(root: offer.root) }
+            Button("Load Project “\(offer.name)”") { Task { await model.loadProjectFile(offer: offer) } }
+            Button("Don’t Offer for This Folder") { model.stopOfferingProjectFile(offer) }
         }
         Divider().overlay(separator)
         Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
@@ -1190,7 +1190,7 @@ private struct ProjectOfferButton: View {
 
     var body: some View {
         Button {
-            Task { await model.loadProjectFile(root: offer.root) }
+            Task { await model.loadProjectFile(offer: offer) }
         } label: {
             Group {
                 if expanded { Label("Load Project", systemImage: "square.grid.2x2").labelStyle(.titleAndIcon) } else { Image(systemName: "square.grid.2x2") }
@@ -1216,7 +1216,7 @@ private struct TabProjectOffer: ViewModifier {
                 if inside { hoveredTabID = tabID } else if hoveredTabID == tabID { hoveredTabID = nil }
             }
             .accessibilityActions {
-                if let offer { Button("Load Project") { Task { await model.loadProjectFile(root: offer.root) } } }
+                if let offer { Button("Load Project") { Task { await model.loadProjectFile(offer: offer) } } }
             }
     }
 }

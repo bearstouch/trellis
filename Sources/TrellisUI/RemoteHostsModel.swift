@@ -137,6 +137,11 @@ public final class RemoteHostsModel: ObservableObject {
 
     public func workspaceLinkState(_ hostID: UUID) -> RemoteHostLink.State? { workspaceLinks[hostID]?.state }
 
+    /// The connected link's protocol connection to `hostID`, without connecting.
+    public func workspaceConnection(_ hostID: UUID) -> BrokerConnection? {
+        workspaceLinks[hostID].flatMap { $0.state == .connected ? $0.connection : nil }
+    }
+
     /// After wake or a network change: every connected link pings now (FR-RW07).
     public func checkWorkspaceLinks() { workspaceLinks.values.forEach { $0.checkNow() } }
 

@@ -11,6 +11,10 @@ struct ProjectFileReviewView: View {
             Text("Review Project File").font(.headline)
             Text("“\(review.file.name)” opens \(review.file.tabs.count) tab(s) and types the commands below into new shells.")
             Text(review.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).foregroundStyle(model.themeColor(.mutedForeground))
+            // FR-RW10: a remote project names its host, and its commands run there.
+            if let host = review.hostName {
+                Label("On \(host). Its commands run on that host.", systemImage: "server.rack").font(.callout).accessibilityIdentifier("project.review.host")
+            }
             if review.changedSinceTrusted {
                 Label("This file changed since you last trusted it.", systemImage: "exclamationmark.triangle").font(.callout)
             }

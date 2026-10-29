@@ -105,7 +105,7 @@ public enum LayoutPlanner {
     public static func plan(
         _ document: LayoutDocument, bindings existing: [String: LayoutBinding], snapshot: WorkspaceSnapshot, home: String,
         hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, keepLiveLaunches: Bool = false, keepOmittedPanes: Bool = false,
-        makeID: () -> UUID = { UUID() }
+        remoteHostID: UUID? = nil, makeID: () -> UUID = { UUID() }
     ) -> LayoutPlan {
         var plan = LayoutPlan(baseRevision: snapshot.revision)
         // Structural validation first; nothing is reconciled on errors.
@@ -161,8 +161,10 @@ public enum LayoutPlanner {
             }
             return binding.id
         }
+        // A remote project file opens on its host (FR-RW10): every shell is that host's, in a path there.
         func launch(_ value: LayoutLaunch) -> SessionLaunch {
             switch value {
+            case .shell(let directory) where remoteHostID != nil: .remoteShell(hostID: remoteHostID!, directory: directory.flatMap { expand($0, home: home) })
             case .shell(let directory): .shell(directory: directory.flatMap { expand($0, home: home) })
             case .host(let id): .host(id)
             }
@@ -275,7 +277,7 @@ public enum LayoutPlanner {
                 window.name = declared.name
                 next.windows[index] = window
             } else if let first = managedTabs.first {
-                next.windows.append(ManagedWindow(id: windowID, name: declared.name, tabIDs: managedTabs, activeTabID: first))
+                next.windows.append(ManagedWindow(id: windowID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: remoteHostID))
             }
             managedWindows.append(windowID)
         }

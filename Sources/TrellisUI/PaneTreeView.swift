@@ -81,6 +81,9 @@ struct PaneTreeView: View {
                         scratchpadButton(id, pressed: model.scratchpadVisible && focused)
                         if let offer = model.projectFileOffers[id] { projectFileButton(id, offer: offer) }
                         TaskDropdownButton(model: model, paneID: id)
+                    } else if model.isRemoteWorkspace(paneID: id) {
+                        // FR-RW11: the host's tasks; the scratchpad and project file editing stay local.
+                        TaskDropdownButton(model: model, paneID: id)
                     }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {

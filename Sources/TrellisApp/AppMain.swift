@@ -388,7 +388,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if action == .toggleScratchpad { menuItem.title = model.scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad" }
             return validateShortcut(action)
         }
-        if menuItem.action == #selector(saveProjectFile) { return model.snapshot.activeWindowID != nil }
+        if menuItem.action == #selector(saveProjectFile) {
+            return model.snapshot.windows.contains { $0.id == model.snapshot.activeWindowID && $0.remoteHostID == nil }
+        }
         if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil

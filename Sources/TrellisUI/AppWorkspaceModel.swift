@@ -1164,7 +1164,13 @@ public final class AppWorkspaceModel: ObservableObject {
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
-        if let directory = currentDirectory(paneID: paneID) { detectProjectFile(paneID: paneID, directory: directory) }
+        if let directory = currentDirectory(paneID: paneID) {
+            detectProjectFile(paneID: paneID, directory: directory)
+        } else if let directory = remoteWorkingDirectory(paneID: paneID), let pane = snapshot.panes[paneID],
+            let hostID = snapshot.sessions[pane.sessionID]?.launch.remoteHostID
+        {
+            detectRemoteProjectFile(paneID: paneID, hostID: hostID, directory: directory)
+        }
         refreshTerminalAccessibility()
     }
 

@@ -46,7 +46,7 @@ All requirements here are P1.
 | `command` | One line of at most 4,096 characters, typed into the pane's login shell followed by Return. NUL, CR, LF, other control characters, line and paragraph separators, and invisible characters (bidi overrides, zero-width characters, fillers, variation selectors and other default-ignorable code points) are rejected, so the review shows exactly what runs. The text is parsed by the shell, deliberately. |
 | Keys | Optional. Missing keys are derived from position (`t1`, `t1-0`, `t1-12`). They match the pattern and limits of [layout keys](../api/layouts.md#document-rules), and `trellis-window` is reserved. Add keys to tabs and panes if reordering them should keep matching the same open panes. |
 
-Titles and the name also reject control characters, line separators and invisible formatting characters. Layout limits are the same as for API layouts: at most 100 panes and 16 levels of nesting. Saved hosts and custom processes can't be referenced, since their IDs belong to one Mac.
+Titles and the name also reject control characters, line separators and invisible formatting characters. Layout limits are the same as for API layouts: at most 100 panes and 16 levels of nesting. Saved hosts and custom processes can't be referenced, since their IDs belong to one Mac. A project file that lives on a [remote workspace](remote-workspaces.md)'s host is offered from that host's shells and opens on that host, after the same review, trusted per host (FR-RW10).
 
 ## Requirements
 

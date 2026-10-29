@@ -10,6 +10,17 @@ public struct ProjectFileOffer: Equatable, Sendable {
     public let name: String
     /// The file that was found: `project.json`, or the legacy `workspace.json` (FR-WF07).
     public let path: String
+    /// Set for a project on a remote workspace's host (FR-RW10); `root` and `path` are paths there.
+    public let hostID: UUID?
+    /// What trust and "don't offer" are recorded under: the folder, or for a host its ID, machine and folder.
+    public let trustKey: String
+
+    public init(root: String, name: String, path: String, hostID: UUID? = nil, trustKey: String? = nil) {
+        self.root = root; self.name = name; self.path = path; self.hostID = hostID; self.trustKey = trustKey ?? root
+    }
+
+    /// Where the layout bindings of this project's window live.
+    var namespace: String { hostID == nil ? AppWorkspaceModel.projectNamespace(root) : "remote-project:" + trustKey }
 }
 
 /// A parsed file waiting for the user to review its commands (FR-WF03). Opening uses exactly these bytes'
@@ -24,6 +35,20 @@ public struct ProjectFileReview: Identifiable, Equatable, Sendable {
     public let warnings: [String]
     /// The file these bytes were read from.
     public let path: String
+    /// A remote project's host (FR-RW10): the review names it, and the window opens on it.
+    public let hostID: UUID?
+    public let hostName: String?
+    public let trustKey: String
+
+    public init(
+        root: String, file: ProjectFile, digest: String, changedSinceTrusted: Bool, warnings: [String], path: String, hostID: UUID? = nil,
+        hostName: String? = nil, trustKey: String? = nil
+    ) {
+        self.root = root; self.file = file; self.digest = digest; self.changedSinceTrusted = changedSinceTrusted; self.warnings = warnings
+        self.path = path; self.hostID = hostID; self.hostName = hostName; self.trustKey = trustKey ?? root
+    }
+
+    var namespace: String { hostID == nil ? AppWorkspaceModel.projectNamespace(root) : "remote-project:" + trustKey }
 }
 
 /// The window as a project file, edited as JSON before it is written (FR-WF06).
@@ -95,7 +120,7 @@ public enum ProjectFilePanels {
 extension AppWorkspaceModel {
     /// API namespaces match the layout key pattern, which has no `:`, so these never collide with them. The prefix
     /// predates the rename to project files and is persisted with the bindings, so it stays.
-    static func projectNamespace(_ root: String) -> String { "workspace-file:" + root }
+    nonisolated static func projectNamespace(_ root: String) -> String { "workspace-file:" + root }
     nonisolated static func canonical(_ path: String) -> String { URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path }
 
     /// The file a project is read from. Existence doesn't follow symbolic links, so a linked `project.json` is
@@ -133,7 +158,14 @@ extension AppWorkspaceModel {
     func redetectProjectFiles() {
         let lookups = projectFileLookups
         projectFileLookups = [:]
-        for (paneID, directory) in lookups { detectProjectFile(paneID: paneID, directory: directory) }
+        for (paneID, directory) in lookups {
+            // A remote pane's directory is a path on its host, never looked up here (FR-RW10).
+            if let pane = snapshot.panes[paneID], let hostID = snapshot.sessions[pane.sessionID]?.launch.remoteHostID {
+                detectRemoteProjectFile(paneID: paneID, hostID: hostID, directory: directory)
+            } else {
+                detectProjectFile(paneID: paneID, directory: directory)
+            }
+        }
     }
 
     /// The offer a tab shows: its active pane's, else any pane's. Never for the project's own window or a
@@ -142,15 +174,18 @@ extension AppWorkspaceModel {
         guard let tab = snapshot.tabs[tabID] else { return nil }
         let candidates = [tab.activePaneID] + tab.root.paneIDs.filter { $0 != tab.activePaneID }
         guard let offer = candidates.lazy.compactMap({ self.projectFileOffers[$0] }).first else { return nil }
-        if (try? projectTrustList())?.isIgnored(offer.root) == true { return nil }
-        if (try? layoutBindings(Self.projectNamespace(offer.root)))?[ProjectFile.windowKey]?.id == tab.windowID { return nil }
+        if (try? projectTrustList())?.isIgnored(offer.trustKey) == true { return nil }
+        if (try? layoutBindings(offer.namespace))?[ProjectFile.windowKey]?.id == tab.windowID { return nil }
         return offer
     }
 
-    public func stopOfferingProjectFile(root: String) {
+    public func stopOfferingProjectFile(root: String) { stopOfferingProjectFile(key: root) }
+    public func stopOfferingProjectFile(_ offer: ProjectFileOffer) { stopOfferingProjectFile(key: offer.trustKey) }
+
+    private func stopOfferingProjectFile(key: String) {
         do {
             var list = try projectTrustList()
-            list.setIgnored(root, true)
+            list.setIgnored(key, true)
             try saveProjectTrust(list)
             objectWillChange.send()
         } catch { errorMessage = error.localizedDescription }
@@ -219,7 +254,7 @@ extension AppWorkspaceModel {
             return
         }
         let plan: LayoutPlan
-        do { plan = try planProjectFile(file, root: root) } catch {
+        do { plan = try await planProjectFile(file, root: root, hostID: nil) } catch {
             errorMessage = error.localizedDescription
             return
         }
@@ -238,7 +273,7 @@ extension AppWorkspaceModel {
     public enum ProjectReviewDecision: Sendable { case cancel, openWithoutCommands, trustAndOpen }
 
     /// A project opens only into a usable workspace: not while it is restoring or showing recovery.
-    private func projectFileCanOpen() -> Bool {
+    func projectFileCanOpen() -> Bool {
         guard isRestoring || recoveryMessage != nil || shuttingDown else { return true }
         errorMessage = "The workspace isn't available yet, so the project wasn't opened. Try again once it has loaded."
         return false
@@ -255,7 +290,7 @@ extension AppWorkspaceModel {
             guard projectFileCanOpen() else { return }
             do {
                 var list = try projectTrustList()
-                list.trust(root: review.root, digest: review.digest)
+                list.trust(root: review.trustKey, digest: review.digest)
                 try saveProjectTrust(list)
             } catch {
                 errorMessage = error.localizedDescription
@@ -265,17 +300,31 @@ extension AppWorkspaceModel {
         }
     }
 
-    private func planProjectFile(_ file: ProjectFile, root: String) throws -> LayoutPlan {
+    /// A remote project (FR-RW10) is planned against its host's folders and opens in a window bound to the host.
+    func planProjectFile(_ file: ProjectFile, root: String, hostID: UUID?, namespace: String? = nil) async throws -> LayoutPlan {
         let bindings: [String: LayoutBinding]
-        do { bindings = try layoutBindings(Self.projectNamespace(root)) } catch {
+        do { bindings = try layoutBindings(namespace ?? Self.projectNamespace(root)) } catch {
             throw ProjectFileFailure("Saved layout bindings could not be read, so the project file can't be opened.")
         }
-        let plan = LayoutPlanner.plan(
-            file.resolve(projectRoot: root).layout, bindings: bindings, snapshot: snapshot, home: FileManager.default.homeDirectoryForCurrentUser.path,
-            hostExists: { _ in false },
-            directoryExists: { path in
-                var isDirectory: ObjCBool = false; return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
-            }, keepLiveLaunches: true, keepOmittedPanes: true)
+        let layout = file.resolve(projectRoot: root).layout, snapshot = snapshot
+        let plan: LayoutPlan
+        if let hostID {
+            guard let connection = remoteHosts?.workspaceConnection(hostID), let home = connection.hostInfo?.home else {
+                throw ProjectFileFailure("\(remoteHostName(hostID)) isn't connected, so its project file can't be opened. Reconnect, then try again.")
+            }
+            plan = await RemoteFacts(connection: connection).evaluate { lookup in
+                LayoutPlanner.plan(
+                    layout, bindings: bindings, snapshot: snapshot, home: home, hostExists: { _ in false }, directoryExists: lookup.isDirectory,
+                    keepLiveLaunches: true, keepOmittedPanes: true, remoteHostID: hostID)
+            }
+        } else {
+            plan = LayoutPlanner.plan(
+                layout, bindings: bindings, snapshot: snapshot, home: FileManager.default.homeDirectoryForCurrentUser.path,
+                hostExists: { _ in false },
+                directoryExists: { path in
+                    var isDirectory: ObjCBool = false; return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+                }, keepLiveLaunches: true, keepOmittedPanes: true)
+        }
         guard plan.canApply else {
             throw ProjectFileFailure(
                 "The project file can't be opened: " + (plan.errors + plan.conflicts).map(\.text).joined(separator: " "))
@@ -287,10 +336,10 @@ extension AppWorkspaceModel {
     /// commands when allowed. Reopening never restarts a pane or runs a command again.
     @discardableResult
     func openReviewedProjectFile(_ review: ProjectFileReview, runCommands: Bool) async -> UUID? {
-        let namespace = Self.projectNamespace(review.root)
+        let namespace = review.namespace
         let resolved = review.file.resolve(projectRoot: review.root)
         let plan: LayoutPlan
-        do { plan = try planProjectFile(review.file, root: review.root) } catch {
+        do { plan = try await planProjectFile(review.file, root: review.root, hostID: review.hostID, namespace: namespace) } catch {
             errorMessage = error.localizedDescription
             return nil
         }
@@ -315,7 +364,7 @@ extension AppWorkspaceModel {
             // manual start never types it (FR-WF05).
             if let sessionID, ![.starting, .running].contains(snapshot.sessions[sessionID]?.state) { pendingProjectCommands.removeValue(forKey: sessionID) }
             // Without integration there is no prompt mark to wait for; the PTY holds the command until the shell reads it.
-            if !shellGetsIntegration { submitProjectCommand(paneID: paneID) }
+            if !(review.hostID.map(remoteShellGetsIntegration) ?? shellGetsIntegration) { submitProjectCommand(paneID: paneID) }
         }
         return windowID
     }
@@ -351,6 +400,8 @@ extension AppWorkspaceModel {
     /// Asks for the project folder and prepares the window's file for review in `pendingProjectSave`.
     public func beginSaveProjectFile(windowID: UUID) {
         guard let window = snapshot.windows.first(where: { $0.id == windowID }) else { return }
+        // Its panes are shells on a host, and Trellis never writes a host's files in this version (FR-RW10).
+        guard window.remoteHostID == nil else { errorMessage = "A remote workspace can't be saved as a project in this version."; return }
         let active = snapshot.tabs[window.activeTabID].flatMap { paneDirectory($0.activePaneID) }
         let suggestion = active.map { directory in
             ProjectFileLocator.projectRoot(containing: directory, home: FileManager.default.homeDirectoryForCurrentUser.path) {
@@ -388,6 +439,10 @@ extension AppWorkspaceModel {
 
     /// A shell's directory for comparing with a task's folder under a canonical root, by the same rule.
     func taskCurrentDirectory(paneID: UUID, directory: String) -> String? {
+        // A remote pane's directory is a path on its host, compared as given: there is no local file to resolve (FR-RW11).
+        if isRemoteWorkspace(paneID: paneID) {
+            return remoteWorkingDirectory(paneID: paneID).map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+        }
         guard let path = currentDirectory(paneID: paneID) else { return nil }
         let logical = URL(fileURLWithPath: path).standardizedFileURL.path
         return logical == URL(fileURLWithPath: directory).standardizedFileURL.path ? logical : Self.canonical(path)
@@ -474,6 +529,8 @@ extension AppWorkspaceModel {
     /// Opens the project file found for the pane's directory in the JSON editor.
     public func beginEditProjectFile(paneID: UUID) {
         guard let offer = projectFileOffers[paneID] else { return }
+        // Trellis never writes a host's files in this version (FR-RW10).
+        guard offer.hostID == nil else { errorMessage = "Project files on a remote host are read-only in Trellis. Edit it on the host."; return }
         let url = URL(fileURLWithPath: offer.path)
         guard let data = try? OwnerOnlyFile.read(url, limit: ProjectFile.maximumBytes) else {
             errorMessage = "\(offer.path) could not be read. It must be a regular file you own, at most 256 KB."
@@ -528,7 +585,7 @@ extension AppWorkspaceModel {
                 for entry in file.entries { if let command = entry.pane.command, let id = bindings[entry.key]?.id { projectFileCommands[id] = command } }
             }
         }
-        for (paneID, offer) in projectFileOffers where offer.path == edit.path {
+        for (paneID, offer) in projectFileOffers where offer.hostID == nil && offer.path == edit.path {
             projectFileOffers[paneID] = ProjectFileOffer(root: offer.root, name: file.name, path: offer.path)
         }
         pendingProjectEdit = nil

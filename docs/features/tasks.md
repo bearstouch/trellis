@@ -1,6 +1,6 @@
 # Tasks
 
-Tasks are a project's named build, test and run commands, checked into its repository as `.trellis/launch.json`, next to the [project file](project-files.md). Each local pane's header has a **Tasks** menu, next to **Local**, that lists them for the pane's project. **Run** types a task into that pane's shell, the menu shows that it is running and how it ended, and **Stop** interrupts it.
+Tasks are a project's named build, test and run commands, checked into its repository as `.trellis/launch.json`, next to the [project file](project-files.md). Each local pane's header, and each [remote workspace](remote-workspaces.md) pane's (FR-RW11), has a **Tasks** menu, next to **Local**, that lists them for the pane's project. **Run** types a task into that pane's shell, the menu shows that it is running and how it ended, and **Stop** interrupts it.
 
 To write a multi-line script and save it as a task, use the [command scratchpad](scratchpad.md).
 
