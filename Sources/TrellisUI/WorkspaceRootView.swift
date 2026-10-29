@@ -220,8 +220,18 @@ public struct WorkspaceRootView: View {
             Task { await model.selectWindow(window.id) }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
-                Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
+                Image(systemName: window.remoteHostID == nil ? "macwindow" : "server.rack").foregroundStyle(model.themeColor(.mutedForeground))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
+                    // FR-RW16: the link in words and a symbol, never color alone.
+                    if let host = window.remoteHostID {
+                        let link = model.remoteLinks[host] ?? .disconnected(nil)
+                        Label("\(model.remoteHostName(host)) · \(link.label)", systemImage: link.symbol)
+                            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
+                            .help(link == .connected ? "Connected to \(model.remoteHostName(host))" : linkHelp(link))
+                    }
+                }
                 Spacer()
                 if model.windowsNeedingInput.contains(window.id) {
                     Image(systemName: "keyboard").font(.system(size: 10)).help("Waiting for input")
@@ -239,6 +249,11 @@ public struct WorkspaceRootView: View {
         .buttonStyle(.plain)
         .modifier(windowDrag(window))
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+    }
+
+    private func linkHelp(_ link: RemoteLinkDisplay) -> String {
+        if case .disconnected(let reason?) = link { return reason + " Choose Reconnect from the window’s menu." }
+        return link == .connecting ? "Connecting to the host…" : "Not connected. Choose Reconnect from the window’s menu."
     }
 
     private func windowDrag(_ window: ManagedWindow) -> DragReorder {
@@ -265,6 +280,13 @@ public struct WorkspaceRootView: View {
                     if model.windowsNeedingInput.contains(window.id) {
                         Image(systemName: "keyboard.fill").font(.system(size: 8)).foregroundStyle(model.themeColor(.accent))
                             .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: 4, y: 4).help("Waiting for input")
+                    }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    if let host = window.remoteHostID {
+                        Image(systemName: (model.remoteLinks[host] ?? .disconnected(nil)).symbol).font(.system(size: 8))
+                            .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: -4, y: 4)
+                            .help("\(model.remoteHostName(host)) · \((model.remoteLinks[host] ?? .disconnected(nil)).label)")
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -778,21 +800,39 @@ private struct WindowItemActions: ViewModifier {
     @ObservedObject var model: AppWorkspaceModel
     let rename: (ManagedWindow) -> Void
 
+    /// FR-RW16: VoiceOver hears the host and its link, for example "build-box, Disconnected".
+    private var value: String {
+        guard let host = window.remoteHostID else { return descriptor?.value ?? "" }
+        let link = "\(model.remoteHostName(host)), \((model.remoteLinks[host] ?? .disconnected(nil)).label)"
+        return [descriptor?.value, link].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    private var canReconnect: Bool {
+        guard let host = window.remoteHostID else { return false }
+        return model.remoteLinks[host] != .connected && model.remoteLinks[host] != .connecting
+    }
+
     func body(content: Content) -> some View {
         content
             .accessibilityLabel(descriptor?.label ?? window.name)
-            .accessibilityValue(descriptor?.value ?? "")
+            .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected] : [])
+            .accessibilityAction(named: "Reconnect") { if canReconnect, let host = window.remoteHostID { Task { await model.reconnectRemote(hostID: host) } } }
             .accessibilityAction(named: "Rename") { rename(window) }
             .accessibilityAction(named: "Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
             .accessibilityAction(named: "Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
             .contextMenu {
+                if let host = window.remoteHostID {
+                    Button("Reconnect to \(model.remoteHostName(host))") { Task { await model.reconnectRemote(hostID: host) } }.disabled(!canReconnect)
+                    Divider().overlay(model.separatorOverlay)
+                }
                 Button("Rename…") { rename(window) }
                 Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
                     .disabled(model.snapshot.windows.first?.id == window.id)
                 Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
                     .disabled(model.snapshot.windows.last?.id == window.id)
-                Button("Save as Project…") { model.beginSaveProjectFile(windowID: window.id) }
+                // Remote project files are read-only in this version (FR-RW10).
+                Button("Save as Project…") { model.beginSaveProjectFile(windowID: window.id) }.disabled(window.remoteHostID != nil)
                 Divider().overlay(model.separatorOverlay)
                 Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
             }

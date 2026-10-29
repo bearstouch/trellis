@@ -19,6 +19,8 @@ public enum WorkspaceEffect: Equatable, Sendable {
 /// Both UI and automation use this command boundary. No command performs I/O.
 public enum WorkspaceCommand: Sendable {
     case createWindow(name: String)
+    /// A window bound to a saved host (FR-RW01); its panes run that host's login shell.
+    case createRemoteWindow(name: String, hostID: UUID)
     case renameWindow(id: UUID, name: String)
     case closeAllWindows
     case selectWindow(id: UUID)
@@ -117,14 +119,16 @@ public actor WorkspaceStore {
         var createdTabID: UUID?
         var createdPaneID: UUID?
         switch command {
-        case .createWindow(let rawName):
+        case .createWindow(let rawName), .createRemoteWindow(let rawName, _):
             let name = try validatedName(rawName)
             let windowID = makeID(), tabID = makeID(), paneID = makeID(), sessionID = makeID()
-            let window = ManagedWindow(id: windowID, name: name, tabIDs: [tabID], activeTabID: tabID, revision: next.revision)
+            var remoteHostID: UUID?
+            if case .createRemoteWindow(_, let hostID) = command { remoteHostID = hostID }
+            let window = ManagedWindow(id: windowID, name: name, tabIDs: [tabID], activeTabID: tabID, revision: next.revision, remoteHostID: remoteHostID)
             next.windows.append(window)
             next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
-            next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
+            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: window.defaultLaunch, createdAt: now())
             next.activeWindowID = windowID
             createdWindowID = windowID
         case .closeAllWindows:
@@ -212,7 +216,8 @@ public actor WorkspaceStore {
             tab.revision = next.revision
             next.tabs[tab.id] = tab
             next.panes[newPaneID] = WorkspacePane(id: newPaneID, tabID: tab.id, sessionID: sessionID, profileID: pane.profileID)
-            next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
+            let launch = next.windows.first { $0.id == tab.windowID }?.defaultLaunch ?? .shell(directory: nil)
+            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: launch, createdAt: now())
             createdPaneID = newPaneID
         case .resizeSplit(let tabID, let splitID, let ratio, let canvas):
             guard var tab = next.tabs[tabID] else { throw WorkspaceError.notFound }
@@ -253,7 +258,7 @@ public actor WorkspaceStore {
             let tabID = makeID(), paneID = makeID(), sessionID = makeID()
             next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
-            next.sessions[sessionID] = WorkspaceSession(id: sessionID, createdAt: now())
+            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: next.windows[index].defaultLaunch, createdAt: now())
             next.windows[index].tabIDs.append(tabID)
             next.windows[index].activeTabID = tabID
             next.windows[index].revision = next.revision
@@ -368,7 +373,22 @@ public actor WorkspaceStore {
             }
             for (id, tab) in target.tabs { if let current = next.tabs[id], current.windowID != tab.windowID { throw WorkspaceError.invalidTransition } }
             guard target.activeWindowID == nil || target.windows.contains(where: { $0.id == target.activeWindowID }) else { throw WorkspaceError.invalidTransition }
+            for window in target.windows {
+                if let current = next.windows.first(where: { $0.id == window.id }), current.remoteHostID != window.remoteHostID {
+                    throw WorkspaceError.invalidState("A window's remote host never changes")
+                }
+            }
             var applied = target
+            // A layout written for local panes runs on the host when it lands in a remote workspace (FR-RW10).
+            for window in applied.windows {
+                guard let host = window.remoteHostID else { continue }
+                for paneID in window.tabIDs.flatMap({ applied.tabs[$0]?.root.paneIDs ?? [] }) {
+                    guard let sessionID = applied.panes[paneID]?.sessionID, next.sessions[sessionID] == nil,
+                        case .shell(let directory)? = applied.sessions[sessionID]?.launch
+                    else { continue }
+                    applied.sessions[sessionID]?.launch = .remoteShell(hostID: host, directory: directory)
+                }
+            }
             applied.revision = next.revision
             for index in applied.windows.indices where next.windows.first(where: { $0.id == applied.windows[index].id }).map({ $0 != applied.windows[index] }) ?? true {
                 applied.windows[index].revision = next.revision

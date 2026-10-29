@@ -103,6 +103,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             hosts.remote?.askpass = model.askpass
             hosts.remote?.savedPassword = model.savedPassword
         }
+        model.remoteHosts = hosts.remote
+        hosts.onOpenRemoteWorkspace = { [weak self] host in
+            guard let self else { return }
+            window?.makeKeyAndOrderFront(nil)
+            Task { await self.model.openRemoteWorkspace(host: host) }
+        }
         hosts.onConnect = { [weak self] host, placement in
             guard let self else { return }
             window?.makeKeyAndOrderFront(nil)

@@ -75,7 +75,8 @@ extension AppWorkspaceModel {
         guard let scrollbackStore else { return }
         guard restoreScrollback else { await scrollbackStore.deleteAll(); return }
         var kept = Set<UUID>()
-        for pane in snapshot.panes.values where !panes.contains(pane.id) {
+        // Remote workspace panes get their host helper's replay instead (FR-RW09), so their saved text would show twice.
+        for pane in snapshot.panes.values where !panes.contains(pane.id) && snapshot.sessions[pane.sessionID]?.launch.remoteHostID == nil {
             guard let terminal = terminals[pane.id], terminal.sessionID == pane.sessionID, terminal.sessionState == .stopped,
                 let saved = await scrollbackStore.load(sessionID: pane.sessionID)
             else { continue }
@@ -134,6 +135,7 @@ extension AppWorkspaceModel {
         await saveScrollback()
         guard await flushWorkspaceSave() else { return cancel() }
         await sessionBroker?.detach()
+        remoteHosts?.closeWorkspaceLinks()
         return true
     }
 

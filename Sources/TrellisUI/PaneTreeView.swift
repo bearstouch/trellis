@@ -177,10 +177,12 @@ struct PaneTreeView: View {
     private func sessionContext(_ id: UUID) -> (directory: String?, kind: String) {
         let launch = model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
         let directory: String
+        // A remote workspace pane: its authenticated directory on the host, named after the host (FR-RW05).
+        if case .remoteShell(let hostID, let path)? = launch { return (model.remoteWorkingDirectory(paneID: id) ?? path, model.remoteHostName(hostID)) }
         // A remote shell's own report, unverified and display-only (FR-SI09).
         if let launch, AppWorkspaceModel.isRemote(launch) { return (model.remoteDirectory(paneID: id), "SSH") }
         switch launch {
-        case .host: return (nil, "SSH")
+        case .host, .remoteShell: return (nil, "SSH")
         // Shell integration reports the live directory; otherwise show where the session started (INT-01).
         case .shell(let path), .process(_, _, let path): directory = model.currentDirectory(paneID: id) ?? path ?? model.defaultDirectory
         case nil: directory = model.defaultDirectory

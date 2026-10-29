@@ -471,6 +471,18 @@ public final class AppWorkspaceModel: ObservableObject {
     public var endSessionsAtQuitForThisLaunch = false
     /// What quitting and closing the window do for this launch.
     public var keepsSessionsAtQuit: Bool { keepSessionsRunning && !endSessionsAtQuitForThisLaunch }
+    /// Remote workspaces (FR-RW01): the helper and the shared link of each saved host; nil disables them.
+    public var remoteHosts: RemoteHostsModel? {
+        didSet { remoteHosts?.onWorkspaceLinkChanged = { [weak self] host, state in self?.remoteLinkChanged(host, state) } }
+    }
+    /// Each remote workspace host's link, for the sidebar and pane headers (FR-RW07, FR-RW16).
+    @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:]
+    /// Remote sessions closed while their host was unreachable, hung up once it is reachable again.
+    var pendingRemoteHangups: [UUID: Set<UUID>] = [:]
+    /// Unclaimed remote sessions already offered Stop Them / Leave Running in this run.
+    var remoteOrphansAsked: Set<UUID> = []
+    /// Hosts whose panes are being re-attached now.
+    var remoteReconnecting: Set<UUID> = []
     /// The saved setting predates the new default; Settings explains the change once.
     @Published public internal(set) var sessionDefaultNoticePending = false
     /// FR-R04, saved per state directory.
@@ -540,6 +552,8 @@ public final class AppWorkspaceModel: ObservableObject {
             // A kept session's broker replay replaces its saved text, so adopt first.
             let replayed = await reattachBrokerSessions()
             await restoreScrollbackText(skipping: replayed)
+            // Remote hosts can be slow or need a password; their panes re-attach as each answers (FR-RW09).
+            Task { await reattachRemoteSessions() }
             return true
         case .recovery(let reason, let backup):
             recoveryReason = reason; recoveryBackup = backup; backupAvailable = backup != nil
@@ -767,7 +781,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     resolvedLaunch = .process(executable: defaultShell, arguments: ["-l"], directory: directory ?? defaultDirectory)
                 case .process(let executable, let arguments, let directory):
                     resolvedLaunch = .process(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
-                case .host: resolvedLaunch = nil
+                case .host, .remoteShell: resolvedLaunch = nil
                 }
             } else {
                 resolvedLaunch = nil
@@ -787,6 +801,10 @@ public final class AppWorkspaceModel: ObservableObject {
                 return
             }
             installLifecycle(terminal, paneID: paneID, sessionID: request.sessionID, attemptID: request.attemptID)
+            if case .remoteShell(let hostID, let directory) = request.launch {
+                await startRemote(paneID: paneID, terminal: terminal, request: request, hostID: hostID, directory: directory)
+                return
+            }
             if fixture {
                 await terminal.startFixture()
             } else {
@@ -801,6 +819,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     // `.shell` is frozen to `.process(shell, ["-l"])` before launch. Any frozen login shell qualifies, so
                     // panes started before the default shell changed keep integration on restart and restore.
                     if arguments == ["-l"] { configuration.shellIntegration = shellIntegration(for: configuration) }
+                case .remoteShell: return
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
                     // `.host(id)` so persistence and explicit reconnects re-read it.
@@ -864,8 +883,13 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Feeds a session's state changes and exit back to the store. `attemptID` is nil for a session
     /// adopted from the broker, which is already running (FR-R03).
     func installLifecycle(_ terminal: NativeTerminal, paneID: UUID, sessionID: UUID, attemptID: UUID?) {
-        terminal.onInputError = { [weak self] _ in
+        terminal.onInputError = { [weak self, weak terminal] _ in
             guard let self, !self.automationInputSessionIDs.contains(sessionID) else { return }
+            if let remote = terminal?.remoteTransport, remote.linkLost {
+                // Never queued, so nothing is typed later by surprise (FR-RW07).
+                self.errorMessage = "Not sent: the connection to \(self.remoteHostName(remote.hostID)) is down. Reconnect it from the sidebar."
+                return
+            }
             self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
         }
         var launchCompleted = attemptID == nil
@@ -921,7 +945,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// The local shell's authenticated directory; nil without integration (INT-01) and for remote marks (FR-SI09),
     /// so file links, new splits and tabs, saved launches and `session.get` never use a remote path.
     public func currentDirectory(paneID: UUID) -> String? {
-        guard let state = shellStates[paneID], state.origin == .authenticated else { return nil }
+        guard let state = shellStates[paneID], state.origin == .authenticated, !isRemoteWorkspace(paneID: paneID) else { return nil }
         return state.currentDirectory
     }
 
@@ -934,7 +958,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// A saved SSH host, or a pane started straight into `ssh`, `mosh` or `autossh`: its paths name remote files.
     public static func isRemote(_ launch: SessionLaunch) -> Bool {
         switch launch {
-        case .host: true
+        case .host, .remoteShell: true
         case .process(let executable, _, _): ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent)
         case .shell: false
         }
@@ -1106,7 +1130,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let name = state.commandName { return name }
         guard let directory = state.currentDirectory else { return nil }
         // A remote path is never this Mac's home, even when it is spelled the same.
-        if state.origin == .authenticated, directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
+        if state.origin == .authenticated, !isRemoteWorkspace(paneID: paneID), directory == FileManager.default.homeDirectoryForCurrentUser.path { return "~" }
         let name = (directory as NSString).lastPathComponent
         return name.isEmpty ? directory : name
     }
@@ -1159,6 +1183,15 @@ public final class AppWorkspaceModel: ObservableObject {
 
     /// New panes start in the source pane's reported directory when it is still accessible.
     private func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
+        // A remote workspace pane starts where the source pane's shell is on the host; the helper falls back to home
+        // when the directory is gone, so nothing is checked here (FR-RW04).
+        if let pane = snapshot.panes[paneID], case .remoteShell(let host, nil)? = snapshot.sessions[pane.sessionID]?.launch {
+            guard let directory = sourcePaneID.flatMap(remoteWorkingDirectory(paneID:)),
+                let result = try? await service.execute(.configureStoppedSession(paneID: paneID, launch: .remoteShell(hostID: host, directory: directory)))
+            else { return }
+            publish(result.snapshot)
+            return
+        }
         guard let directory = sourcePaneID.flatMap(currentDirectory(paneID:)), SystemLaunchFileAccess().isAccessibleDirectory(directory),
             let pane = snapshot.panes[paneID], case .shell(nil)? = snapshot.sessions[pane.sessionID]?.launch
         else { return }
@@ -1708,10 +1741,11 @@ public final class AppWorkspaceModel: ObservableObject {
         } catch { return false }
     }
 
+    /// Remote workspace sessions are left running on their hosts (FR-RW06); `shutdown(endingRemoteSessions:)` decides.
     public func stopAll() {
         cancelPaste()
         shuttingDown = true
-        runningTerminals.forEach { $0.stop() }
+        runningTerminals.filter { $0.remoteTransport == nil }.forEach { $0.stop() }
     }
 
     private var currentPasteTarget: TerminalPasteTarget? {
@@ -1730,7 +1764,7 @@ public final class AppWorkspaceModel: ObservableObject {
         switch session.launch {
         case .shell: shell = defaultShell
         case .process(let executable, _, _): shell = executable
-        case .host: shell = nil
+        case .host, .remoteShell: shell = nil
         }
         let plan = TerminalPastePlan(input: input, shell: shell)
         let paneNumber = (presentation.selectedTab?.root.paneIDs.firstIndex(of: paneID) ?? 0) + 1
@@ -1763,12 +1797,25 @@ public final class AppWorkspaceModel: ObservableObject {
     public func cancelPaste() { pasteFocusEpoch &+= 1; pasteReview.cancel(); pendingPaste = nil }
 
     @discardableResult
-    public func shutdown() async -> Bool {
+    /// Quitting and closing the window detach remote workspace sessions without a signal (FR-RW06); closing the
+    /// workspaces themselves ends them.
+    public func shutdown(endingRemoteSessions: Bool = false) async -> Bool {
         cancelPaste()
-        prepareCloseSummary(Set(terminals.keys))
+        let remote = Set(terminals.filter { $0.value.remoteTransport != nil }.keys)
+        let ending = endingRemoteSessions ? Set(terminals.keys) : Set(terminals.keys).subtracting(remote)
+        if !endingRemoteSessions { remote.forEach { terminals[$0]?.prepareForKeepRunning() } }
+        prepareCloseSummary(ending)
         stopAll()
-        let closed = await finishClosure(Set(terminals.keys))
-        if !closed { shuttingDown = false }
+        if endingRemoteSessions { remote.forEach { terminals[$0]?.stop() } }
+        let closed = await finishClosure(ending)
+        if !closed {
+            shuttingDown = false
+            if !endingRemoteSessions { remote.forEach { terminals[$0]?.prepareForKeepRunning(false) } }
+        } else if !endingRemoteSessions {
+            remoteHosts?.closeWorkspaceLinks()
+            // Closed without a state callback: the sidebar must not keep saying Connected, and Reconnect must stay possible.
+            for host in remoteLinks.keys { remoteLinks[host] = .disconnected(nil) }
+        }
         return closed
     }
 
@@ -1781,12 +1828,14 @@ public final class AppWorkspaceModel: ObservableObject {
     public func endSessionsForWindowClose() async -> Bool {
         guard await shutdown() else { return false }
         shuttingDown = false
+        // The app goes on: detached remote sessions can be reconnected and closed again, so they are signalled normally.
+        terminals.values.filter { $0.remoteTransport != nil }.forEach { $0.prepareForKeepRunning(false) }
         return await flushWorkspaceSave()
     }
 
     @discardableResult
     public func closeAllWorkspaces() async -> Bool {
-        guard await shutdown() else { return false }
+        guard await shutdown(endingRemoteSessions: true) else { return false }
         do {
             publish(try await service.execute(.closeAllWindows).snapshot)
             terminals.removeAll()

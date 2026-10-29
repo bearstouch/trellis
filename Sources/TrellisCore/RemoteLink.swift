@@ -10,13 +10,23 @@ public struct RemoteArtifact: Codable, Equatable, Sendable {
     public var fileDigest: String
     public var fileSize: Int
     public var compressed: Bool
-    public init(platform: String, path: String, digest: String, fileDigest: String, fileSize: Int, compressed: Bool) {
+    /// The install directory under `~/.trellis/remote`: 16 hex characters naming this helper together with the shell
+    /// integration scripts installed beside it, so a change to either installs a new directory.
+    public var directory: String
+    public init(platform: String, path: String, digest: String, fileDigest: String, fileSize: Int, compressed: Bool, directory: String? = nil) {
         self.platform = platform; self.path = path; self.digest = digest; self.fileDigest = fileDigest; self.fileSize = fileSize; self.compressed = compressed
+        self.directory = directory ?? String(digest.prefix(16))
     }
-    /// The install directory under `~/.trellis/remote`, one per helper build.
-    public var directory: String { String(digest.prefix(16)) }
 
     public static func isDigest(_ value: String) -> Bool { value.utf8.count == 64 && value.utf8.allSatisfy(RemoteBootstrap.isLowerHex) }
+}
+
+/// One shell integration script installed beside the helper (FR-RW05), at `integration/<path>` in its directory.
+public struct RemoteIntegrationFile: Equatable, Sendable {
+    public var path: String
+    public var data: Data
+    public var digest: String
+    public init(path: String, data: Data, digest: String) { self.path = path; self.data = data; self.digest = digest }
 }
 
 public enum RemotePlatform {
@@ -52,8 +62,10 @@ public struct RemoteProbe: Equatable, Sendable {
 }
 
 /// The POSIX `sh` script that runs first on a host (FR-RW02, FR-RW03): it reports the platform, then answers one
-/// command per line on stdin: `install <digest> <bytes> gz|raw` followed by exactly that many bytes, `bridge <digest>`,
-/// `remove` or `quit`. Every reply line starts with `TRELLIS-<nonce> `, so login-script output can't forge one.
+/// command per line on stdin, each upload followed by exactly its bytes: `file <dir> <digest> <bytes> <path>` (a shell
+/// integration script), `install <dir> <digest> <bytes> gz|raw` (the helper, sent last so an installed directory is
+/// complete), `bridge <dir>`, `remove` or `quit`. Every reply starts with `TRELLIS-<nonce> `, so login-script output
+/// can't forge one.
 public enum RemoteBootstrap {
     public static let replyPrefix = "TRELLIS-"
     /// Login scripts may print this much before the probe; more is a failure.
@@ -80,25 +92,40 @@ public enum RemoteBootstrap {
             dirs=
             for f in "$R"/*/trellis-broker; do [ -x "$f" ] && dirs="$dirs $(basename "$(dirname "$f")")"; done
             say PROBE 1 "$(uname -s)" "$(uname -m)" "$tool"$dirs
-            while read -r cmd a b c; do
-              d=$(printf '%.16s' "$a")
+            hex16() { case "$1" in *[!0-9a-f]*|'') return 1 ;; esac; [ "${#1}" -eq 16 ]; }
+            hex64() { case "$1" in *[!0-9a-f]*|'') return 1 ;; esac; [ "${#1}" -eq 64 ]; }
+            count() { case "$1" in *[!0-9]*|'') return 1 ;; esac; }
+            # receive <target> <digest> <bytes> gz|raw: exactly <bytes> from stdin, kept only if its SHA-256 matches.
+            receive() {
+              t="$1.upload.$$"
+              rm -f "$t"
+              if [ "$4" = gz ]; then head -c "$3" | gzip -dc > "$t"; else head -c "$3" > "$t"; fi
+              if [ "$(sum "$t")" = "$2" ] && mv -f "$t" "$1"; then return 0; fi
+              rm -f "$t"
+              return 1
+            }
+            while read -r cmd a b c e; do
               case "$cmd" in
+              file)
+                hex16 "$a" && hex64 "$b" && count "$c" && [ "$tool" != none ] || { say ERROR INVALID; exit 1; }
+                case "$e" in ''|/*|*..*|*[!A-Za-z0-9._/-]*) say ERROR INVALID; exit 1 ;; esac
+                f="$R/$a/integration/$e"
+                mkdir -p "$(dirname "$f")" || { say ERROR MKDIR; exit 1; }
+                receive "$f" "$b" "$c" raw || { say ERROR DIGEST; exit 1; }
+                say STORED "$e"
+                ;;
               install)
-                case "$a" in *[!0-9a-f]*|'') say ERROR INVALID; exit 1 ;; esac
-                case "$b" in *[!0-9]*|'') say ERROR INVALID; exit 1 ;; esac
-                case "$c" in gz|raw) ;; *) say ERROR INVALID; exit 1 ;; esac
-                [ "${#a}" -eq 64 ] && [ "$tool" != none ] || { say ERROR INVALID; exit 1; }
-                [ "$c" = raw ] || command -v gzip >/dev/null 2>&1 || { say ERROR GZIP; exit 1; }
-                mkdir -p "$R/$d" || { say ERROR MKDIR; exit 1; }
-                t="$R/$d/.upload.$$"
-                rm -f "$t"
-                if [ "$c" = gz ]; then head -c "$b" | gzip -dc > "$t"; else head -c "$b" > "$t"; fi
-                if [ "$(sum "$t")" = "$a" ] && chmod 700 "$t" && mv -f "$t" "$R/$d/trellis-broker"; then say INSTALLED "$a"; else rm -f "$t"; say ERROR DIGEST; exit 1; fi
+                hex16 "$a" && hex64 "$b" && count "$c" && [ "$tool" != none ] || { say ERROR INVALID; exit 1; }
+                case "$e" in gz|raw) ;; *) say ERROR INVALID; exit 1 ;; esac
+                [ "$e" = raw ] || command -v gzip >/dev/null 2>&1 || { say ERROR GZIP; exit 1; }
+                mkdir -p "$R/$a" || { say ERROR MKDIR; exit 1; }
+                receive "$R/$a/trellis-broker.new" "$b" "$c" "$e" && chmod 700 "$R/$a/trellis-broker.new" && mv -f "$R/$a/trellis-broker.new" "$R/$a/trellis-broker" || { say ERROR DIGEST; exit 1; }
+                say INSTALLED "$a"
                 ;;
               bridge)
-                case "$a" in *[!0-9a-f]*|'') say ERROR INVALID; exit 1 ;; esac
-                [ -x "$R/$d/trellis-broker" ] || { say ERROR MISSING; exit 1; }
-                exec "$R/$d/trellis-broker" bridge --client-id "$C" --sync "$N"
+                hex16 "$a" || { say ERROR INVALID; exit 1; }
+                [ -x "$R/$a/trellis-broker" ] || { say ERROR MISSING; exit 1; }
+                exec "$R/$a/trellis-broker" bridge --client-id "$C" --sync "$N"
                 ;;
               remove)
                 rm -rf "$R" "$HOME/.trellis/run"
@@ -119,14 +146,17 @@ public enum RemoteBootstrap {
     }
 
     public static func installLine(_ artifact: RemoteArtifact) -> String {
-        "install \(artifact.digest) \(artifact.fileSize) \(artifact.compressed ? "gz" : "raw")\n"
+        "install \(artifact.directory) \(artifact.digest) \(artifact.fileSize) \(artifact.compressed ? "gz" : "raw")\n"
     }
-    public static func bridgeLine(digest: String) -> String { "bridge \(digest)\n" }
+    public static func fileLine(_ file: RemoteIntegrationFile, directory: String) -> String {
+        "file \(directory) \(file.digest) \(file.data.count) \(file.path)\n"
+    }
+    public static func bridgeLine(directory: String) -> String { "bridge \(directory)\n" }
     public static let removeLine = "remove\n"
     public static let quitLine = "quit\n"
 
     public enum Reply: Equatable, Sendable {
-        case probe(RemoteProbe), installed(String), removed, error(String)
+        case probe(RemoteProbe), installed(String), stored(String), removed, error(String)
     }
 
     /// A reply addressed to this connection, or nil for anything else (login-script output).
@@ -139,6 +169,7 @@ public enum RemoteBootstrap {
             let installed = Set(fields.dropFirst(6).filter { $0.utf8.count == 16 && $0.utf8.allSatisfy(isLowerHex) })
             return .probe(RemoteProbe(system: fields[3], machine: fields[4], checksumTool: fields[5] == "none" ? nil : fields[5], installed: installed))
         case "INSTALLED": return fields.count == 3 ? .installed(fields[2]) : nil
+        case "STORED": return fields.count == 3 ? .stored(fields[2]) : nil
         case "REMOVED": return .removed
         case "ERROR": return .error(fields.count >= 3 ? fields[2] : "UNKNOWN")
         default: return nil

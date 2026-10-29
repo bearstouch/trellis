@@ -37,6 +37,11 @@ public final class RemoteHostsModel: ObservableObject {
     /// Running sessions would lose their helper; production asks to stop them.
     public var confirmStopSessions: (SavedHost, Int) -> Bool = { _, _ in false }
     private var links: [UUID: RemoteHostLink] = [:]
+    /// The connected link each host's remote workspaces share (FR-RW03).
+    private var workspaceLinks: [UUID: RemoteHostLink] = [:]
+    private var connecting: [UUID: Task<Result<RemoteHostLink, RemoteHostLink.Failure>, Never>] = [:]
+    /// A workspace link's state changed; the sidebar shows it (FR-RW07, FR-RW16).
+    public var onWorkspaceLinkChanged: ((UUID, RemoteHostLink.State) -> Void)?
 
     public init(settings: RemoteHostSettings, catalog: RemoteArtifactCatalog, clientID: String?) {
         self.settings = settings; self.catalog = catalog; self.clientID = clientID
@@ -103,15 +108,54 @@ public final class RemoteHostsModel: ObservableObject {
     }
 
     /// Runs one link for `purpose`, records what its probe saw, and returns the message to show (nil on plain success).
+    /// The link remote workspace sessions on `host` share: reused while connected, otherwise opened, once at a time.
+    /// `interactive` lets ssh ask in the console; an automatic attempt never prompts (`BatchMode`). The helper is
+    /// installed without asking only when the host's auto-install is on; otherwise interactively after confirmation.
+    public func workspaceLink(_ host: SavedHost, interactive: Bool) async -> Result<RemoteHostLink, RemoteHostLink.Failure> {
+        if let link = workspaceLinks[host.id], link.state == .connected { return .success(link) }
+        if let pending = connecting[host.id] { return await pending.value }
+        guard isAvailable else { return .failure(.cancelled) }
+        let task = Task { () -> Result<RemoteHostLink, RemoteHostLink.Failure> in
+            let link = self.makeLink(host, batch: !interactive)
+            let policy: RemoteHostLink.InstallPolicy = self.preferences(host).autoInstall ? .always : (interactive ? .ask : .never)
+            let result = await self.run(link, host, .bridge, install: policy)
+            await self.record(host, link, .bridge, result)
+            guard case .success = result else { return .failure(result.failure ?? .lost) }
+            self.workspaceLinks[host.id] = link
+            link.onStateChanged = { [weak self, weak link] state in
+                guard let self, let link, self.workspaceLinks[host.id] === link else { return }
+                if state != .connected { self.workspaceLinks[host.id] = nil }
+                self.onWorkspaceLinkChanged?(host.id, state)
+            }
+            self.onWorkspaceLinkChanged?(host.id, .connected)
+            return .success(link)
+        }
+        connecting[host.id] = task
+        defer { connecting[host.id] = nil }
+        return await task.value
+    }
+
+    public func workspaceLinkState(_ hostID: UUID) -> RemoteHostLink.State? { workspaceLinks[hostID]?.state }
+
+    /// Quit or window close: every workspace link ends; nothing is sent to the hosts' sessions (FR-RW06).
+    public func closeWorkspaceLinks() {
+        let open = workspaceLinks.values
+        workspaceLinks = [:]
+        for link in open { link.onStateChanged = nil; link.close() }
+    }
+
+    private func record(_ host: SavedHost, _ link: RemoteHostLink, _ purpose: RemoteHostLink.Purpose, _ result: Result<RemoteProbe, RemoteHostLink.Failure>) async {
+        guard let probe = link.probe else { return }
+        var record = RemoteHelperRecord(probe: probe, catalog: catalog, checkedAt: now())
+        if purpose == .remove, case .success = result { record.state = .missing }
+        let observed = record
+        preferences[host.id] = await settings.update(host.id) { $0.helper = observed }
+    }
+
     private func connect(_ host: SavedHost, _ purpose: RemoteHostLink.Purpose, install: RemoteHostLink.InstallPolicy) async -> String? {
         let link = makeLink(host)
         let result = await run(link, host, purpose, install: install)
-        if let probe = link.probe {
-            var record = RemoteHelperRecord(probe: probe, catalog: catalog, checkedAt: now())
-            if purpose == .remove, case .success = result { record.state = .missing }
-            let observed = record
-            preferences[host.id] = await settings.update(host.id) { $0.helper = observed }
-        }
+        await record(host, link, purpose, result)
         switch result {
         case .success:
             return switch purpose {
@@ -123,9 +167,10 @@ public final class RemoteHostsModel: ObservableObject {
         }
     }
 
-    private func makeLink(_ host: SavedHost) -> RemoteHostLink {
+    private func makeLink(_ host: SavedHost, batch: Bool = false) -> RemoteHostLink {
         let request = RemoteHostLink.Request(
-            sshExecutable: sshExecutable, options: host.sshOptions, destination: host.destination, environment: environment(), clientID: clientID ?? "")
+            sshExecutable: sshExecutable, options: host.sshOptions, destination: host.destination, environment: environment(), clientID: clientID ?? "",
+            batch: batch)
         return RemoteHostLink(request: request, catalog: catalog)
     }
 
@@ -205,4 +250,8 @@ public final class RemoteHostsModel: ObservableObject {
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
     }
+}
+
+extension Result {
+    var failure: Failure? { if case .failure(let failure) = self { failure } else { nil } }
 }

@@ -6,7 +6,18 @@ import Foundation
 public struct RemoteArtifactCatalog: Equatable, Sendable {
     public static let manifestName = "remote-helpers.json"
     public var artifacts: [String: RemoteArtifact]
-    public init(artifacts: [String: RemoteArtifact]) { self.artifacts = artifacts }
+    /// The shell integration scripts every install carries; empty means plain shells only (INT-01).
+    public var integration: [RemoteIntegrationFile]
+    public init(artifacts: [String: RemoteArtifact], integration: [RemoteIntegrationFile] = []) {
+        self.integration = integration
+        // Each install directory names the helper and the scripts together.
+        let scripts = integration.map { "\($0.path)\u{0}\($0.digest)" }.joined(separator: "\u{0}")
+        self.artifacts = artifacts.mapValues { artifact in
+            var named = artifact
+            named.directory = String(Self.hex(SHA256.hash(data: Data((artifact.digest + "\u{0}" + scripts).utf8))).prefix(16))
+            return named
+        }
+    }
 
     private struct Manifest: Codable {
         struct Entry: Codable { var platform: String; var file: String; var digest: String; var fileDigest: String; var fileSize: Int; var compressed: Bool }
@@ -14,7 +25,7 @@ public struct RemoteArtifactCatalog: Equatable, Sendable {
     }
 
     /// Entries naming a file outside `remoteDirectory`, or with malformed digests, are ignored.
-    public static func load(remoteDirectory: URL?, macHelper: String?) -> RemoteArtifactCatalog {
+    public static func load(remoteDirectory: URL?, macHelper: String?, integrationDirectory: String? = BundledShellIntegration.directory()) -> RemoteArtifactCatalog {
         var artifacts: [String: RemoteArtifact] = [:]
         if let remoteDirectory, let data = try? Data(contentsOf: remoteDirectory.appendingPathComponent(manifestName)),
             let manifest = try? JSONDecoder().decode(Manifest.self, from: data)
@@ -29,7 +40,23 @@ public struct RemoteArtifactCatalog: Equatable, Sendable {
         if let macHelper, let digest = sha256(file: macHelper), let size = (try? FileManager.default.attributesOfItem(atPath: macHelper)[.size]) as? Int {
             artifacts["darwin"] = RemoteArtifact(platform: "darwin", path: macHelper, digest: digest, fileDigest: digest, fileSize: size, compressed: false)
         }
-        return RemoteArtifactCatalog(artifacts: artifacts)
+        return RemoteArtifactCatalog(artifacts: artifacts, integration: integrationDirectory.map(integrationFiles) ?? [])
+    }
+
+    /// Every regular file under the bundled shell integration folder, by relative path.
+    static func integrationFiles(_ root: String) -> [RemoteIntegrationFile] {
+        guard let walker = FileManager.default.enumerator(atPath: root) else { return [] }
+        var files: [RemoteIntegrationFile] = []
+        while let relative = walker.nextObject() as? String {
+            let path = root + "/" + relative
+            var directory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &directory), !directory.boolValue,
+                relative.utf8.allSatisfy({ $0 == 0x2e || $0 == 0x2f || $0 == 0x2d || $0 == 0x5f || (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }),
+                !relative.contains(".."), let data = FileManager.default.contents(atPath: path)
+            else { continue }
+            files.append(RemoteIntegrationFile(path: relative, data: data, digest: hex(SHA256.hash(data: data))))
+        }
+        return files.sorted { $0.path < $1.path }
     }
 
     public func artifact(for probe: RemoteProbe) -> RemoteArtifact? { probe.platform.flatMap { artifacts[$0] } }

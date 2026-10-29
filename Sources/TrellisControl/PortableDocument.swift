@@ -57,7 +57,8 @@ public enum PortableDocument {
             case .host(let id)? where references[id] != nil: return .object(["kind": .string("host"), "hostId": .string(references[id]!.uuidString)])
             case .shell(let directory?)?: return .object(["kind": .string("shell"), "directory": .string(directory)])
             case .process(_, let arguments, let directory?)? where arguments == ["-l"]: return .object(["kind": .string("shell"), "directory": .string(directory)])
-            case .process?:
+            case .process?, .remoteShell?:
+                // Remote workspace panes export as local shells for now; carrying the host binding is pending (FR-R02).
                 converted += 1
                 return .object(["kind": .string("shell")])
             default: return .object(["kind": .string("shell")])

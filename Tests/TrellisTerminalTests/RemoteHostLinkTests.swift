@@ -87,6 +87,11 @@ final class RemoteHostLinkTests: XCTestCase {
         XCTAssertEqual(BrokerFiles.entry(installed).map { $0.mode & 0o777 }, 0o700)
         XCTAssertEqual(BrokerFiles.entry(home + "/.trellis").map { $0.mode & 0o777 }, 0o700)
         XCTAssertEqual(RemoteArtifactCatalog.sha256(file: installed), artifact.digest)
+        // FR-RW05: the shell integration scripts are installed beside the helper, each checked on the host.
+        XCTAssertFalse(catalog.integration.isEmpty)
+        for file in catalog.integration {
+            XCTAssertEqual(FileManager.default.contents(atPath: installRoot + "/" + artifact.directory + "/integration/" + file.path), file.data, file.path)
+        }
         let connection = try XCTUnwrap(link.connection)
         XCTAssertEqual(connection.protocolVersion, 2)
         XCTAssertEqual(connection.hostInfo?.home, home)

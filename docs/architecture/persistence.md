@@ -52,6 +52,7 @@ Interrupting a save at any point must still leave a readable current file or bac
 
 - `WorkspaceSnapshotCodec.currentVersion` is `1`, and `HostLibraryCodec.currentVersion` is `1`. Version 0 workspaces are migrated in memory when loaded.
 - When you change the on-disk format, bump the version, add a migration, and add a test that loads the old format. A failed migration must leave the original file untouched.
+- Schema version 2 adds [remote workspaces](../features/remote-workspaces.md): a window's `remoteHostID` and `remoteShell` pane launches (host and remote directory). A workspace without a remote window is still written as version 1, so older builds keep reading it; one with a remote window is version 2, which an older build opens read-only instead of treating it as corrupt.
 - A **newer, unknown** version opens in read-only recovery and is never overwritten. Downgrading isn't supported, so keep a copy of the folder before you try.
 
 ## Recovery

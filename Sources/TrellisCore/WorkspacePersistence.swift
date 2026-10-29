@@ -88,11 +88,13 @@ private enum SavedLaunch: Codable {
     case shell(executable: String, directory: String?)
     case host(UUID)
     case customProcess(directory: String?)
+    case remoteShell(hostID: UUID, directory: String?)
 
     init(_ launch: SessionLaunch, settings: WorkspaceSettings) {
         switch launch {
         case .shell(let directory): self = .shell(executable: settings.shell, directory: directory)
         case .host(let id): self = .host(id)
+        case .remoteShell(let host, let directory): self = .remoteShell(hostID: host, directory: directory)
         case .process(let executable, let arguments, let directory):
             // Never serialize arbitrary command arguments, which can contain
             // typed commands or credentials. Login shells are safe references.
@@ -104,6 +106,7 @@ private enum SavedLaunch: Codable {
         case .shell(let executable, let directory): .process(executable: executable, arguments: ["-l"], directory: directory)
         case .host(let id): .host(id)
         case .customProcess(let directory): .process(executable: "", arguments: [], directory: directory)
+        case .remoteShell(let host, let directory): .remoteShell(hostID: host, directory: directory)
         }
     }
     var needsConfiguration: Bool { if case .customProcess = self { return true }; return false }
@@ -123,7 +126,9 @@ private struct SavedWorkspace: Codable {
 }
 
 public enum WorkspaceSnapshotCodec {
-    public static let currentVersion = 1
+    /// 2 adds remote workspaces (FR-RW01). A workspace without one is still written as 1, so an older build keeps
+    /// reading it; one with a remote workspace is read-only there (unsupported version), never mistaken for corrupt.
+    public static let currentVersion = 2
     private struct Header: Decodable { var schemaVersion: Int }
     private struct Document: Codable {
         var schemaVersion: Int
@@ -141,7 +146,8 @@ public enum WorkspaceSnapshotCodec {
             revision: snapshot.revision, windows: snapshot.windows, activeWindowID: snapshot.activeWindowID,
             tabs: snapshot.tabs.values.sorted { $0.id.uuidString < $1.id.uuidString }, panes: panes)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(Document(schemaVersion: currentVersion, workspace: saved, settings: settings))
+        let version = snapshot.windows.contains { $0.remoteHostID != nil } ? 2 : 1
+        let data = try encoder.encode(Document(schemaVersion: version, workspace: saved, settings: settings))
         guard data.count <= 4_194_304 else { throw WorkspacePersistenceError.corrupt }
         return data
     }

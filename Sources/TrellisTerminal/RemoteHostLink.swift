@@ -133,13 +133,18 @@ public final class RemoteHostLink {
             }
             state = .installing
             // Nothing more is sent until the host acknowledges, so the upload can never swallow a later command.
+            // The scripts first, the helper last: the host lists a directory only once its helper is in place.
+            for file in catalog.integration {
+                await channel.send(RemoteBootstrap.fileLine(file, directory: artifact.directory), file.data)
+                guard case .stored(file.path) = await channel.reply() else { return .failure(failure(ended: false)) }
+            }
             await channel.send(RemoteBootstrap.installLine(artifact), payload)
-            guard case .installed(artifact.digest) = await channel.reply() else { return .failure(failure(ended: false)) }
+            guard case .installed(artifact.directory) = await channel.reply() else { return .failure(failure(ended: false)) }
             self.probe?.installed.insert(artifact.directory)
             state = .connecting
         }
         guard purpose == .bridge else { await channel.send(RemoteBootstrap.quitLine); return .success(self.probe ?? probe) }
-        await channel.send(RemoteBootstrap.bridgeLine(digest: artifact.digest))
+        await channel.send(RemoteBootstrap.bridgeLine(directory: artifact.directory))
         guard await channel.awaitSync() else { return .failure(failure(ended: false)) }
         let fd = channel.takeDescriptor()
         guard fd >= 0 else { return .failure(failure(ended: true)) }

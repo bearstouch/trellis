@@ -79,15 +79,17 @@ final class RemoteLinkTests: XCTestCase {
         let artifact = RemoteArtifact(
             platform: "linux-aarch64", path: "/x", digest: String(repeating: "d", count: 64), fileDigest: String(repeating: "e", count: 64), fileSize: 1, compressed: true)
         let catalog = RemoteArtifactCatalog(artifacts: ["linux-aarch64": artifact])
+        // The catalog names each install directory after the helper and the scripts together.
+        let named = try! XCTUnwrap(catalog.artifacts["linux-aarch64"])
         func state(_ installed: Set<String>, tool: String? = "sha256sum", machine: String = "aarch64") -> RemoteHelperRecord.State {
             RemoteHelperRecord(probe: RemoteProbe(system: "Linux", machine: machine, checksumTool: tool, installed: installed), catalog: catalog, checkedAt: Date()).state
         }
         XCTAssertEqual(state([]), .missing)
-        XCTAssertEqual(state([artifact.directory]), .current)
+        XCTAssertEqual(state([named.directory]), .current)
         XCTAssertEqual(state(["0000000000000000"]), .outdated)
         XCTAssertEqual(state([], tool: nil), .unsupported, "No way to verify an upload there")
         XCTAssertEqual(state([], machine: "x86_64"), .unsupported, "No helper in this build")
-        XCTAssertEqual(RemoteBootstrap.installLine(artifact), "install \(artifact.digest) 1 gz\n")
+        XCTAssertEqual(RemoteBootstrap.installLine(named), "install \(named.directory) \(named.digest) 1 gz\n")
     }
 
     func testCatalogIgnoresEntriesOutsideItsFolder() throws {
