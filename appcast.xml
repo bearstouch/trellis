@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <title>Trellis</title>
+    <link>https://github.com/bearstouch/trellis</link>
+    <description>Trellis updates</description>
+    <language>en</language>
+    <item>
+      <title>Trellis 1.0.0</title>
+      <pubDate>Thu, 29 Oct 2026 19:05:08 GMT</pubDate>
+      <sparkle:version>1.0.0.100</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/bearstouch/trellis/releases/tag/v1.0.0</sparkle:fullReleaseNotesLink>
+      <enclosure url="https://github.com/bearstouch/trellis/releases/download/v1.0.0/Trellis-1.0.0.dmg" length="24229465" type="application/octet-stream" sparkle:edSignature="txIiv3AzDjxLwnuCzPBC+yB1yv8LbhFTU/n6VUaeMJJquDIiYW6PcaFxPCeeejk4iWidDJKFAeo45dmN/u6XCw==" />
+    </item>
+  </channel>
+</rss>
