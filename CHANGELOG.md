@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The first stable release of Trellis. This release adds in-app software updates with Sparkle and a cap on workspace disk writes, brightens selections in the dark themes, and fixes the collapsed sidebar's tabs card.
 
+Earlier versions have no updater, so install 1.0.0 from the DMG; from here on, **Check for Updates…** installs new versions in place.
+
 ### Added
 
 - **Software updates:** **Trellis → Check for Updates…** and **Settings → Updates** download, verify and install new versions in place with Sparkle 2. Automatic daily checks are off until you turn them on, and **Include beta versions** chooses whether pre-releases are offered (on by default in pre-release builds). A check downloads only the update list and sends no system profile. Installing quits through the usual confirmation, so sessions kept after quit keep running (MAC-14).
