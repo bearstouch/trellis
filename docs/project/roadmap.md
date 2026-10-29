@@ -2,7 +2,7 @@
 
 ## Next: finishing the MVP qualification
 
-Everything in [Status](../overview/status.md) under *Release blockers* and *Pending verification*:
+Everything in [Status](../overview/status.md) under *Distribution checks* and *Pending verification*:
 
 - measure UI frame latency (typing and tab switching currently meet their targets through API proxies)
 - Developer ID signing and notarization
