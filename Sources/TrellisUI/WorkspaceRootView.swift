@@ -166,6 +166,12 @@ public struct WorkspaceRootView: View {
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
             Button {
+                model.openProjects?()
+            } label: {
+                Label("Projects", systemImage: "folder.badge.gearshape")
+            }
+            .buttonStyle(.plain).help(model.keyboard.shortcuts[.showProjects].map { "Project library (\($0))" as String } ?? "Project library").padding(.horizontal, 10).padding(.top, 6)
+            Button {
                 model.openHosts?()
             } label: {
                 Label("Hosts", systemImage: "server.rack")
@@ -196,6 +202,12 @@ public struct WorkspaceRootView: View {
             }.scrollIndicators(.hidden)
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
+            Button {
+                model.openProjects?()
+            } label: {
+                Image(systemName: "folder.badge.gearshape")
+            }
+            .buttonStyle(.plain).help("Project library").accessibilityLabel("Projects")
             Button {
                 model.openHosts?()
             } label: {

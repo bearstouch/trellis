@@ -435,6 +435,8 @@ public final class AppWorkspaceModel: ObservableObject {
     private var saveGeneration: UInt64 = 0
     public var openSettings: (() -> Void)?
     public var openHosts: (() -> Void)?
+    /// Shows the project library (FR-PL01); set by the app.
+    public var openProjects: (() -> Void)?
     /// Metadata events derived from each published snapshot, in order.
     public var onWorkspaceEvents: (([WorkspaceEvent]) -> Void)?
     /// Raw output appended to the journal: session, pane, bytes, next offset.

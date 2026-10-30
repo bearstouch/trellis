@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Project library (in progress):** **Projects** at the bottom of the sidebar, **File → Projects…** (⌘O) and the command palette open a library of projects kept in Trellis (`projects.json`), not in a repository. Each project has tabs with colors, splits, pane titles, folders, commands and git repositories at the project, tab or pane level, edited in a form or as JSON, made from an open window (**New from Window…**) or imported from JSON (FR-PL01–FR-PL05). Launching on this Mac or a host, setup and git status follow (FR-PL06–FR-PL09).
+
 ### Removed
 
 - **Repository project files:** `.trellis/project.json` (and the older `workspace.json`) is no longer read. **Load Project**, **Open Project…**, **Save as Project…** and **Edit Project File** are gone; projects now live in Trellis's **Projects** library (FR-PL01–FR-PL09). ⌘O, or a shortcut you set for **Open Project…**, opens the library instead. Tasks in `.trellis/launch.json` are unchanged, and the remote helper no longer reads `project.json` on hosts.

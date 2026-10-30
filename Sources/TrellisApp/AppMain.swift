@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let model: AppWorkspaceModel
     private let hosts: HostListModel
     private var hostsWindow: NSWindow?
+    private let projects: ProjectListModel
+    private var projectsWindow: NSWindow?
     private let control: ControlServer
     private let mcp: MCPServer
     private let grants: GrantListModel
@@ -29,8 +31,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private let identity: AppInstanceIdentity
 
-    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, mcp: MCPServer, grants: GrantListModel, identity: AppInstanceIdentity) {
-        self.model = model; self.hosts = hosts; self.control = control; self.mcp = mcp; self.grants = grants; self.identity = identity
+    init(
+        model: AppWorkspaceModel, hosts: HostListModel, projects: ProjectListModel, control: ControlServer, mcp: MCPServer, grants: GrantListModel,
+        identity: AppInstanceIdentity
+    ) {
+        self.model = model; self.hosts = hosts; self.projects = projects; self.control = control; self.mcp = mcp; self.grants = grants; self.identity = identity
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -90,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         model.openHosts = { [weak self] in self?.showHosts() }
+        model.openProjects = { [weak self] in self?.showProjects() }
+        projects.hostName = { [hosts] id in hosts.hosts.first { $0.id == id }?.name }
         // FR-CP03, FR-CP07: palette actions are the menu's, validated and run the same way.
         model.canPerformShortcutAction = { [weak self] in self?.validateShortcut($0) ?? false }
         model.performShortcutAction = { [weak self] in self?.perform($0) }
@@ -299,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
-        case .showProjects: break
+        case .showProjects: showProjects()
         case .findInPane: if !performTextFinderAction(.showFindInterface) { model.activeTerminal?.showSearch() }
         case .findNext: if !performTextFinderAction(.nextMatch) { model.activeTerminal?.findInPane() }
         case .findPrevious: if !performTextFinderAction(.previousMatch) { model.activeTerminal?.findInPane(forward: false) }
@@ -345,8 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
         if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if action == .showProjects { return false }
-        if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if [.newWindow, .saveWorkspace, .showHosts, .showProjects, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
@@ -531,6 +537,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         hostsWindow?.makeKeyAndOrderFront(nil)
     }
+    /// The project library (FR-PL01). Closing it with unsaved changes asks first.
+    private func showProjects() {
+        if projectsWindow == nil {
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 700), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            panel.title = "Projects"
+            panel.contentMinSize = NSSize(width: 900, height: 600)
+            panel.isReleasedWhenClosed = false
+            panel.delegate = self
+            panel.contentView = NSHostingView(rootView: ProjectLibraryView(model: projects, workspace: model))
+            panel.center()
+            projectsWindow = panel
+        }
+        projectsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     private func showSettings() {
         if settingsWindow == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -557,8 +578,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             })
         window.setFrame(NSRect(x: clamped.x, y: clamped.y, width: clamped.width, height: clamped.height), display: true)
     }
-    func windowDidMove(_ notification: Notification) { saveGeometry() }
-    func windowDidResize(_ notification: Notification) { saveGeometry() }
+    // The projects window shares this delegate; only the workspace window's frame is saved.
+    func windowDidMove(_ notification: Notification) { if notification.object as? NSWindow === window { saveGeometry() } }
+    func windowDidResize(_ notification: Notification) { if notification.object as? NSWindow === window { saveGeometry() } }
     private func saveGeometry() { if let window { model.updateWindowFrame(NSStringFromRect(window.frame)) } }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window?.deminiaturize(nil)
@@ -566,6 +588,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return true
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if sender === projectsWindow {
+            guard projects.editorDirty else { return true }
+            let alert = NSAlert()
+            alert.messageText = "Save changes to the project?"
+            alert.informativeText = "Your changes to the project aren't saved."
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Discard Changes")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn: projects.requestSave { [weak sender] in sender?.close() }; return false
+            case .alertThirdButtonReturn: projects.discardEditor(); return true
+            default: return false
+            }
+        }
         guard !closingWindow, !terminationPending else { return false }
         // MAC-04: sessions are kept by default, so closing the window just hides it; the Dock icon reopens it.
         if model.windowCloseAction == .hide { sender.orderOut(nil); return false }
@@ -727,7 +763,9 @@ struct TrellisMain {
                     }
                 }
             }
-            let delegate = AppDelegate(model: model, hosts: hosts, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
+            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
+            let delegate = AppDelegate(
+                model: model, hosts: hosts, projects: projects, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}
