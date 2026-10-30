@@ -255,4 +255,44 @@ final class PortableTransferTests: XCTestCase {
         guard case .success(let (_, relativePreview)) = await transfer.preview(relative) else { return XCTFail("Preview failed") }
         XCTAssertEqual(relativePreview.errors.count, 1)
     }
+
+    /// FR-PL05: projects travel with windows and hosts, in the library's JSON form, without launch history, and are
+    /// added under new identities.
+    @MainActor
+    func testProjectsRoundTripWithoutLaunchHistory() async throws {
+        func library() -> ProjectListModel {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-pt-\(UUID().uuidString)")
+            addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+            return ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
+        }
+        let source = try Harness(), sourceProjects = library()
+        defer { source.discardPreferences() }
+        await sourceProjects.load()
+        let project = ProjectDefinition(
+            name: "Shop", tabs: [ProjectTab(title: "API", directory: "api", repository: ProjectRepository(url: "git@github.com:acme/api.git"), root: .pane(ProjectPane(command: "make dev")))])
+        guard case .success(let saved) = await sourceProjects.save(project) else { return XCTFail("Not saved") }
+        await sourceProjects.recordLaunch(saved.id, target: .local, folder: "/Users/me/secret-place")
+        let (data, _) = await PortableTransfer(model: source.model, hosts: source.hosts, projects: sourceProjects).exportData()
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(text.contains("secret-place"), "Launch history stays on this Mac")
+        XCTAssertFalse(text.contains(saved.id.uuidString), "The project's identity stays on this Mac")
+
+        let target = try Harness(), targetProjects = library()
+        defer { target.discardPreferences() }
+        await targetProjects.load()
+        let transfer = PortableTransfer(model: target.model, hosts: target.hosts, projects: targetProjects)
+        guard case .success(let (parsed, preview)) = await transfer.preview(data) else { return XCTFail("Preview failed") }
+        XCTAssertEqual(preview.projects, 1)
+        guard case .success(let summary) = await transfer.commit(parsed, policy: nil) else { return XCTFail("Import failed") }
+        XCTAssertEqual(summary.projectsCreated, 1)
+        let imported = try XCTUnwrap(targetProjects.projects.first)
+        XCTAssertNotEqual(imported.id, saved.id)
+        XCTAssertEqual(imported.lastFolders, [:])
+        XCTAssertEqual(imported.tabs, saved.tabs)
+
+        // A project the library would refuse makes the whole file unreadable before anything is imported.
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["projects"] = [["name": "Bad", "tabs": [["title": "T", "root": ["type": "pane", "repository": ["url": "ext::sh -c x"]]]]]]
+        guard case .failure = await transfer.preview(try JSONSerialization.data(withJSONObject: object)) else { return XCTFail("An unsafe project was accepted") }
+    }
 }

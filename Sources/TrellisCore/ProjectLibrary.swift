@@ -94,6 +94,19 @@ public actor ProjectLibrary {
         return created
     }
 
+    /// Adds several projects in one write, each under a new identity (FR-PL05 import); all or none.
+    public func createAll(_ added: [ProjectDefinition]) throws(ProjectLibraryError) -> [ProjectDefinition] {
+        var created: [ProjectDefinition] = []
+        for project in added {
+            var next = try validated(project)
+            next.id = makeID(); next.revision = revision + 1; next.lastFolders = [:]
+            created.append(next)
+        }
+        guard !created.isEmpty else { return [] }
+        try commit(projects + created)
+        return created
+    }
+
     /// Saves the editor's project; `project.revision` must be the stored one. Launch history is kept as stored.
     public func update(_ project: ProjectDefinition) throws(ProjectLibraryError) -> ProjectDefinition {
         guard let index = projects.firstIndex(where: { $0.id == project.id }) else { throw .notFound }

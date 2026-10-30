@@ -496,7 +496,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.nameFieldStringValue = "Trellis Windows & Hosts.trellis.json"
         panel.message = "Exports windows, tabs, splits, and saved hosts. No output, passwords, keys, or tokens are included."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let transfer = PortableTransfer(model: model, hosts: hosts)
+        let transfer = PortableTransfer(model: model, hosts: hosts, projects: projects)
         Task {
             let (data, converted) = await transfer.exportData()
             do {
@@ -516,7 +516,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.allowedContentTypes = [.json]
         panel.message = "Choose a Trellis export to review before importing."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let transfer = PortableTransfer(model: model, hosts: hosts)
+        let transfer = PortableTransfer(model: model, hosts: hosts, projects: projects)
         let parent: NSWindow? = window
         Task { [weak parent] in
             guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { model.errorMessage = "The file could not be read."; return }
