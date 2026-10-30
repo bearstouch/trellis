@@ -80,8 +80,9 @@ public final class RemoteHostLink {
     }
 
     /// The ssh argv: options precede `--`, so the destination is never parsed as one; no host-trust bypass is added.
+    /// Forwards from the user's ssh config are cleared: they belong to their own sessions and would collide with them.
     public var arguments: [String] {
-        [request.sshExecutable, "-T", "-e", "none"] + (request.batch ? ["-o", "BatchMode=yes"] : []) + request.options
+        [request.sshExecutable, "-T", "-e", "none", "-o", "ClearAllForwardings=yes"] + (request.batch ? ["-o", "BatchMode=yes"] : []) + request.options
             + ["--", request.destination, RemoteBootstrap.command(nonce: nonce, clientID: request.clientID)]
     }
 

@@ -430,7 +430,7 @@ private struct RemoteConsoleSheet: View {
             Text("Connecting to \(console.hostName)").font(.headline)
             Text("This is ssh’s own terminal. Answer its questions here; Trellis never answers them for you.")
                 .font(.caption).fixedSize(horizontal: false, vertical: true)
-            NativeTerminalSurface(terminal: console.terminal).frame(minWidth: 560, minHeight: 240)
+            NativeTerminalSurface(terminal: console.terminal).frame(width: 600, height: 260)
                 .accessibilityLabel("ssh connection console for \(console.hostName)")
             HStack {
                 Spacer()

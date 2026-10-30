@@ -171,7 +171,7 @@ final class RemoteHostLinkTests: XCTestCase {
     func testTheArgumentsKeepOptionsBeforeTheDestination() {
         let link = makeLink()
         let arguments = link.arguments
-        XCTAssertEqual(Array(arguments.prefix(6)), [fakeSSH, "-T", "-e", "none", "-p", "2222"])
+        XCTAssertEqual(Array(arguments.prefix(8)), [fakeSSH, "-T", "-e", "none", "-o", "ClearAllForwardings=yes", "-p", "2222"])
         XCTAssertEqual(arguments[arguments.count - 3], "--")
         XCTAssertEqual(arguments[arguments.count - 2], "test-host")
         XCTAssertFalse(arguments.contains { $0.contains("StrictHostKeyChecking") }, "No host-trust bypass")
