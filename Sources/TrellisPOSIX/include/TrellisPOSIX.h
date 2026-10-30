@@ -35,6 +35,9 @@ int trellis_prevent_sigpipe(int fd);
 void trellis_disable_core_dumps(void);
 /// A stable per-machine identifier (Darwin host UUID, Linux machine-id), NUL-terminated. Returns its length or -1.
 long trellis_machine_id(char *buffer, size_t size);
+/// Runs a program with its output captured and a time limit (git status, FR-PL09).
+int trellis_run_capture(const char *executable, char *const argv[], char *const envp[], const char *directory, char *buffer, size_t size,
+                        size_t *length, int timeout_ms);
 /// `uname` system name and machine, NUL-terminated. Returns 0 or an errno.
 int trellis_uname(char *system, size_t system_size, char *machine, size_t machine_size);
 #endif

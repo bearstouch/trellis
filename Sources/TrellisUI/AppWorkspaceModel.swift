@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import TrellisBroker
 import TrellisCore
 import TrellisTerminal
 
@@ -372,6 +373,14 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var projectLaunch: ProjectLaunchSession?
     /// Remembers where a project was launched (FR-PL06); set by the app.
     public var onProjectLaunched: ((UUID, ProjectTarget, String) -> Void)?
+    /// Each pane's git branch and counts (FR-PL09); runtime only, never persisted.
+    @Published public internal(set) var gitStatuses: [UUID: BrokerGitStatus] = [:]
+    var gitStatusInFlight: Set<UUID> = []
+    var gitStatusAgain: Set<UUID> = []
+    /// Turned on by the app; off by default so tests that don't look at it run no git behind them.
+    public var gitStatusEnabled = false
+    /// Runs `git status` in a local folder; injected by tests.
+    public var gitStatusRunner: @Sendable (String) -> BrokerGitStatus? = { BrokerGit.status(directory: $0, environment: ProcessInfo.processInfo.environment) }
     /// The library's projects for the command palette (FR-PL08); set by the app.
     public var commandPaletteProjects: () -> [ProjectDefinition] = { [] }
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
@@ -1139,6 +1148,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
+        // After a cd or a command the work tree may have changed (FR-PL09); looked at once the prompt's directory is applied.
+        defer { if case .promptStart = event { refreshGitStatus(paneID: paneID) } }
         switch event {
         case .commandFinished, .promptStart: settleOutput(paneID: paneID)
         case .commandInputStart, .commandStart, .reportedDirectory, .reportedHost: break

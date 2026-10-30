@@ -29,6 +29,7 @@ extension AppWorkspaceModel {
         let panes = snapshot.panes, sessions = snapshot.sessions
         if pendingProjectCommands.keys.contains(where: { sessions[$0] == nil }) { pendingProjectCommands = pendingProjectCommands.filter { sessions[$0.key] != nil } }
         if taskRuns.keys.contains(where: { panes[$0] == nil }) { taskRuns = taskRuns.filter { panes[$0.key] != nil } }
+        if gitStatuses.keys.contains(where: { panes[$0] == nil }) { gitStatuses = gitStatuses.filter { panes[$0.key] != nil } }
     }
 
     /// Whether a new local shell pane gets integration, and so reports its first prompt (FR-SI01).

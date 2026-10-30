@@ -3,6 +3,8 @@
 #endif
 #include "TrellisPOSIX.h"
 #include <errno.h>
+#include <poll.h>
+#include <time.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -400,4 +402,75 @@ int trellis_uname(char *system, size_t system_size, char *machine, size_t machin
     snprintf(system, system_size, "%s", names.sysname);
     snprintf(machine, machine_size, "%s", names.machine);
     return 0;
+}
+
+/// Runs `executable` in `directory` with stdin and stderr on /dev/null and stdout into `buffer` (at most `size` bytes; the
+/// rest is read and dropped), killing its process group when it hasn't exited within `timeout_ms`. Returns the wait status, -2 after a
+/// timeout, or -1 with errno set. Only async-signal-safe calls run between fork and exec.
+int trellis_run_capture(const char *executable, char *const argv[], char *const envp[], const char *directory, char *buffer, size_t size,
+                        size_t *length, int timeout_ms) {
+    *length = 0;
+    int out[2];
+    if (pipe(out) < 0) return -1;
+    // Close-on-exec, so a process another thread forks meanwhile can't hold the write end open and delay EOF.
+    fcntl(out[0], F_SETFD, FD_CLOEXEC); fcntl(out[1], F_SETFD, FD_CLOEXEC);
+    int null = open("/dev/null", O_RDWR | O_CLOEXEC);
+    if (null < 0) { int failure = errno; close(out[0]); close(out[1]); errno = failure; return -1; }
+    long limit = sysconf(_SC_OPEN_MAX);
+    int descriptor_limit = limit > 0 && limit < 65536 ? (int)limit : 65536;
+    pid_t child = fork();
+    if (child < 0) { int failure = errno; close(out[0]); close(out[1]); close(null); errno = failure; return -1; }
+    if (child == 0) {
+        setpgid(0, 0);
+        if (chdir(directory) < 0) _exit(126);
+        if (dup2(null, 0) < 0 || dup2(out[1], 1) < 0 || dup2(null, 2) < 0) _exit(126);
+        for (int number = 1; number < NSIG; number++) if (number != SIGKILL && number != SIGSTOP) reset_signal(number);
+        sigset_t unblocked;
+        sigemptyset(&unblocked);
+        sigprocmask(SIG_SETMASK, &unblocked, NULL);
+        close_descriptors(3, descriptor_limit);
+        close(3);
+        execve(executable, argv, envp);
+        _exit(127);
+    }
+    setpgid(child, child); // Also here, so the group exists whichever process runs first.
+    close(out[1]); close(null);
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    int timed_out = 0;
+    char discard[4096];
+    for (;;) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long elapsed = (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;
+        if (elapsed >= timeout_ms) { timed_out = 1; break; }
+        struct pollfd ready = {out[0], POLLIN, 0};
+        int polled = poll(&ready, 1, (int)(timeout_ms - elapsed));
+        if (polled < 0) { if (errno == EINTR) continue; break; }
+        if (polled == 0) { timed_out = 1; break; }
+        int into_buffer = *length < size;
+        ssize_t n = into_buffer ? read(out[0], buffer + *length, size - *length) : read(out[0], discard, sizeof(discard));
+        if (n > 0) { if (into_buffer) *length += (size_t)n; continue; }
+        if (n < 0 && errno == EINTR) continue;
+        break;
+    }
+    close(out[0]);
+    // EOF (or a read error) doesn't mean the child has exited: wait for it within the same limit, never unbounded.
+    int status = 0;
+    pid_t reaped = 0;
+    while (!timed_out) {
+        reaped = waitpid(child, &status, WNOHANG);
+        if (reaped == child || (reaped < 0 && errno != EINTR)) break;
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if ((now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L >= timeout_ms) { timed_out = 1; break; }
+        struct timespec pause = {0, 5000000};
+        nanosleep(&pause, NULL);
+    }
+    if (timed_out) {
+        if (kill(-child, SIGKILL) < 0) kill(child, SIGKILL);
+        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+        return -2;
+    }
+    return reaped == child ? status : -1;
 }

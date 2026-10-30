@@ -283,6 +283,14 @@ public final class BrokerServer: @unchecked Sendable {
             case .success(let data): reply(id, .fileData(data))
             case .failure(let failure): reply(id, .failed(code: failure.rawValue, errno: 0))
             }
+        case .gitStatus(let path) where remote && client?.version ?? 0 >= 3:
+            // Off the server queue: git may take up to its limit, and sessions keep flowing meanwhile.
+            let environment = baseEnvironment
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let status = BrokerGit.status(directory: path, environment: environment)
+                guard let server = self else { return }
+                server.queue.async { server.reply(id, .gitState(status)) }
+            }
         case .list:
             reply(id, .sessions(sessions.values.map(\.record).sorted { $0.sessionID.uuidString < $1.sessionID.uuidString }))
         case .attach(let sessionID, let columns, let rows, let since):

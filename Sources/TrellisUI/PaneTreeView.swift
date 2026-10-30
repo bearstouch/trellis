@@ -1,4 +1,5 @@
 import SwiftUI
+import TrellisBroker
 import TrellisCore
 
 struct PaneTreeView: View {
@@ -83,6 +84,11 @@ struct PaneTreeView: View {
                     } else if model.isRemoteWorkspace(paneID: id) {
                         // FR-RW11: the host's tasks; the scratchpad stays local.
                         TaskDropdownButton(model: model, paneID: id)
+                    }
+                    if let git = model.gitStatuses[id] {
+                        // Words and symbols, never color alone (FR-PL09).
+                        Label(AppWorkspaceModel.gitStatusText(git), systemImage: "arrow.triangle.branch").lineLimit(1).monospacedDigit()
+                            .help(AppWorkspaceModel.gitStatusSpoken(git)).accessibilityLabel(AppWorkspaceModel.gitStatusSpoken(git))
                     }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {

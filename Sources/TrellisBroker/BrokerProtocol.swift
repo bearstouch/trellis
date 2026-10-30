@@ -261,6 +261,10 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     /// An allow-listed task file or manifest (FR-RW11, FR-RW12); answered by `fileData` or `failed`.
     case readFile(path: String, limit: Int)
     case fileData(Data)
+    // v3.
+    /// `git status` in an absolute folder (FR-PL09); answered by `gitState`, nil outside a work tree or on failure.
+    case gitStatus(path: String)
+    case gitState(BrokerGitStatus?)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {

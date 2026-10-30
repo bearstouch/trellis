@@ -92,11 +92,14 @@ final class BrokerBridgeTests: XCTestCase {
         let refused = try v2.request(
             .spawnLogin(BrokerLoginRequest(sessionID: UUID(), shell: "/bin/sh", directory: home, environment: [:], integration: nil, columns: 80, rows: 24, command: "true")))
         XCTAssertEqual(refused, .failed(code: "INVALID_REQUEST", errno: EINVAL), "A v2 client never gets a command run in place of a shell")
+        XCTAssertEqual(try v2.request(.gitStatus(path: home)), .failed(code: "UNSUPPORTED", errno: 0), "Git status is a v3 request")
         v2.close()
 
         let v3 = try link()
         guard case .welcome(let version, _, _) = try v3.hello(clientID: clientID, maximumVersion: 3) else { return XCTFail("No welcome") }
         XCTAssertEqual(version, 3)
+        // FR-PL09: git status by the helper; a folder outside a work tree has none.
+        XCTAssertEqual(try v3.request(.gitStatus(path: home)), .gitState(nil))
         let id = UUID()
         let spawned = try v3.request(
             .spawnLogin(

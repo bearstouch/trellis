@@ -103,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             model.beginProjectLaunch(project)
         }
         model.commandPaletteProjects = { [projects] in projects.projects }
+        model.gitStatusEnabled = true  // FR-PL09
         Task { [projects] in await projects.load() }
         model.onProjectLaunched = { [projects] id, target, folder in Task { await projects.recordLaunch(id, target: target, folder: folder) } }
         // FR-CP03, FR-CP07: palette actions are the menu's, validated and run the same way.
