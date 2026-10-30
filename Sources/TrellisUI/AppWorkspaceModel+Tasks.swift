@@ -113,12 +113,12 @@ extension AppWorkspaceModel {
 
     nonisolated static func loadTaskCatalog(directory: String, home: String, paneID: UUID) -> TaskCatalog? {
         let manager = FileManager.default
-        guard let found = ProjectFileLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
+        guard let found = ProjectLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
         let root = canonical(found)
         let state: TaskCatalog.FileState
         var data: Data?
         do {
-            // Only a regular file the user owns, like a project file: a shared folder could hold anyone's.
+            // Only a regular file the user owns: a shared folder could hold anyone's.
             data = try OwnerOnlyFile.read(LaunchFile.url(projectRoot: root), limit: LaunchFile.maximumBytes)
             switch data.map(LaunchFileJSON.parse) {
             case nil: state = .missing
@@ -362,8 +362,7 @@ extension AppWorkspaceModel {
 
     private var launchTrustURL: URL? { persistence?.directory.appendingPathComponent("launch-trust.json") }
 
-    /// Separate from project file trust, which holds one digest per folder. An unreadable list fails closed:
-    /// nothing is trusted and it is never overwritten.
+    /// One trusted digest per folder. An unreadable list fails closed: nothing is trusted and it is never overwritten.
     func launchTrustList() throws -> ProjectTrustList {
         if let launchTrust { return launchTrust }
         let list = try Self.readTrustList(launchTrustURL, failure: "Trusted launch.json files could not be read, so launch.json tasks can't run.")

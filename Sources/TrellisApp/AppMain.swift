@@ -211,14 +211,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         app.submenu?.addItem(withTitle: "Quit Trellis", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(app)
         menu.addItem(
-            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showHosts, .saveWorkspace]))
+            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showProjects, .showHosts, .saveWorkspace]))
         if let file = menu.items.last?.submenu {
             file.addItem(.separator())
             file.addItem(withTitle: "Export Windows & Hosts…", action: #selector(exportWindowsAndHosts), keyEquivalent: "")
             file.addItem(withTitle: "Import Windows & Hosts…", action: #selector(importWindowsAndHosts), keyEquivalent: "")
-            file.addItem(.separator())
-            file.addItem(item(.openProjectFile))
-            file.addItem(withTitle: "Save Window as Project…", action: #selector(saveProjectFile), keyEquivalent: "")
         }
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
@@ -302,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
-        case .openProjectFile: openProjectFile()
+        case .showProjects: break
         case .findInPane: if !performTextFinderAction(.showFindInterface) { model.activeTerminal?.showSearch() }
         case .findNext: if !performTextFinderAction(.nextMatch) { model.activeTerminal?.findInPane() }
         case .findPrevious: if !performTextFinderAction(.previousMatch) { model.activeTerminal?.findInPane(forward: false) }
@@ -348,7 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
         if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if action == .openProjectFile { return !model.isRestoring && model.recoveryMessage == nil }
+        if action == .showProjects { return false }
         if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
@@ -388,9 +385,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
             if action == .toggleScratchpad { menuItem.title = model.scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad" }
             return validateShortcut(action)
-        }
-        if menuItem.action == #selector(saveProjectFile) {
-            return model.snapshot.windows.contains { $0.id == model.snapshot.activeWindowID && $0.remoteHostID == nil }
         }
         if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
@@ -502,23 +496,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    /// A project's `.trellis/project.json` (FR-WF04); commands wait for review unless that exact file is trusted.
-    @objc private func openProjectFile() {
-        Task { await model.beginOpenProjectFile() }
-    }
-
-    @objc private func saveProjectFile() {
-        guard let id = model.snapshot.activeWindowID else { return }
-        model.beginSaveProjectFile(windowID: id)
-    }
-
     @objc private func importWindowsAndHosts() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.message = "Choose a Trellis export to review before importing."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let transfer = PortableTransfer(model: model, hosts: hosts)
-        Task {
+        let parent: NSWindow? = window
+        Task { [weak parent] in
             guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { model.errorMessage = "The file could not be read."; return }
             switch await transfer.preview(data) {
             case .failure(let error): model.errorMessage = error.message
@@ -526,11 +511,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320), styleMask: [.titled], backing: .buffered, defer: false)
                 sheet.isReleasedWhenClosed = false
                 sheet.contentView = NSHostingView(
-                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak window, weak sheet] in
+                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak parent, weak sheet] in
                         guard let sheet else { return }
-                        window?.endSheet(sheet)
+                        parent?.endSheet(sheet)
                     })
-                window.beginSheet(sheet, completionHandler: nil)
+                parent?.beginSheet(sheet, completionHandler: nil)
             }
         }
     }

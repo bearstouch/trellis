@@ -251,7 +251,7 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     /// At most `statLimit` absolute paths; answered by `pathInfo` in the same order.
     case stat(paths: [String])
     case pathInfo([BrokerPathInfo])
-    /// An allow-listed project or task file (FR-RW10–FR-RW12); answered by `fileData` or `failed`.
+    /// An allow-listed task file or manifest (FR-RW11, FR-RW12); answered by `fileData` or `failed`.
     case readFile(path: String, limit: Int)
     case fileData(Data)
 }

@@ -78,7 +78,7 @@ public enum TaskDetector {
     /// A name typed as one shell word: bare when it has only safe characters, single-quoted otherwise. Quotes and
     /// backslashes quote differently in fish and POSIX shells, and a leading `-` reads as an option, so those are skipped.
     static func plainWord(_ name: String) -> String? {
-        guard !name.isEmpty, name.count <= 100, ProjectFile.commandProblem(name) == nil, !name.contains("'"), !name.contains("\\"), !name.hasPrefix("-")
+        guard !name.isEmpty, name.count <= 100, ProjectText.commandProblem(name) == nil, !name.contains("'"), !name.contains("\\"), !name.hasPrefix("-")
         else { return nil }
         let safe = name.unicodeScalars.allSatisfy { $0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0) || "_-.:/@+=,".unicodeScalars.contains($0)) }
         return safe ? name : "'\(name)'"

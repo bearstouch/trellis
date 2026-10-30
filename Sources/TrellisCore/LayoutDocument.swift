@@ -105,7 +105,7 @@ public enum LayoutPlanner {
 
     /// Validates the document and reconciles it with `snapshot` under the
     /// namespace `bindings`. Never mutates; the target is applied atomically.
-    /// `keepOmittedPanes` leaves a bound tab's live panes the document omits where they are (project files, FR-WF04).
+    /// `keepOmittedPanes` leaves a bound tab's live panes the document omits where they are (project launches, FR-PL08).
     public static func plan(
         _ document: LayoutDocument, bindings existing: [String: LayoutBinding], snapshot: WorkspaceSnapshot, home: String,
         hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, keepLiveLaunches: Bool = false, keepOmittedPanes: Bool = false,
@@ -165,7 +165,7 @@ public enum LayoutPlanner {
             }
             return binding.id
         }
-        // A remote project file opens on its host (FR-RW10): every shell is that host's, in a path there.
+        // A remote window's layout opens on its host (FR-RW10): every shell is that host's, in a path there.
         func launch(_ value: LayoutLaunch, on host: UUID?) -> SessionLaunch {
             switch value {
             case .shell(let directory) where host != nil: .remoteShell(hostID: host!, directory: directory.flatMap { expand($0, home: home) })
@@ -212,8 +212,8 @@ public enum LayoutPlanner {
                             updated.title = title
                             var changed = pane.title != title
                             if var session = next.sessions[pane.sessionID], !sameLaunch(session.launch, desiredLaunch) {
-                                // Live sessions keep their launch; inactive ones may be reconfigured. Project files
-                                // (FR-WF04) leave live panes running where they are instead of conflicting.
+                                // Live sessions keep their launch; inactive ones may be reconfigured. Project launches
+                                // (FR-PL08) leave live panes running where they are instead of conflicting.
                                 if [.stopped, .exited, .failed].contains(session.state) {
                                     session.launch = desiredLaunch
                                     next.sessions[session.id] = session

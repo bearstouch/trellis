@@ -15,8 +15,8 @@ remaining qualification work is tracked in `docs/overview/status.md`.
   Requirement IDs (`FR-`, `API-`, `INT-`, `MAC-`) are stable. Backlog: `docs/project/roadmap.md`.
 - Contract fixtures read by tests:
   `docs/api/example-layout.json`, `docs/themes/*.json` (must match bundled theme copies),
-  `.trellis/project.json` and `.trellis/launch.json` (this repo's own project and tasks files; must
-  re-encode to identical bytes) and the examples in `docs/features/project-files.md` and `docs/features/tasks.md`.
+  `.trellis/launch.json` (this repo's own tasks file; must re-encode to identical bytes) and the examples in
+  `docs/features/tasks.md`.
 
 ## Toolchain and commands
 

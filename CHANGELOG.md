@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Removed
+
+- **Repository project files:** `.trellis/project.json` (and the older `workspace.json`) is no longer read. **Load Project**, **Open Project…**, **Save as Project…** and **Edit Project File** are gone; projects now live in Trellis's **Projects** library (FR-PL01–FR-PL09). ⌘O, or a shortcut you set for **Open Project…**, opens the library instead. Tasks in `.trellis/launch.json` are unchanged, and the remote helper no longer reads `project.json` on hosts.
+
 ## [1.0.0] - 2026-10-29
 
 The first stable release of Trellis. This release adds in-app software updates with Sparkle and a cap on workspace disk writes, brightens selections in the dark themes, and fixes the collapsed sidebar's tabs card.

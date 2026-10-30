@@ -79,10 +79,9 @@ struct PaneTreeView: View {
                     }
                     if context.kind == "Local" {
                         scratchpadButton(id, pressed: model.scratchpadVisible && focused)
-                        if let offer = model.projectFileOffers[id] { projectFileButton(id, offer: offer) }
                         TaskDropdownButton(model: model, paneID: id)
                     } else if model.isRemoteWorkspace(paneID: id) {
-                        // FR-RW11: the host's tasks; the scratchpad and project file editing stay local.
+                        // FR-RW11: the host's tasks; the scratchpad stays local.
                         TaskDropdownButton(model: model, paneID: id)
                     }
                     Text(context.kind).lineLimit(1)
@@ -164,17 +163,6 @@ struct PaneTreeView: View {
         }
         .help(model.keyboard.shortcuts[.toggleScratchpad].map { "\(title) (\($0))" } ?? title)
         .accessibilityLabel("Scratchpad").accessibilityAddTraits(pressed ? [.isSelected] : [])
-    }
-
-    /// Opens the project file found for this pane's directory in the JSON editor (FR-WF08).
-    private func projectFileButton(_ id: UUID, offer: ProjectFileOffer) -> some View {
-        let file = URL(fileURLWithPath: offer.path).lastPathComponent
-        return Button {
-            model.beginEditProjectFile(paneID: id)
-        } label: {
-            Image(systemName: "curlybraces.square").frame(width: 20, height: 18).foregroundStyle(model.themeColor(.mutedForeground)).contentShape(Rectangle())
-        }
-        .help("Edit Project File (\(file))").accessibilityLabel("Edit Project File").accessibilityValue(offer.name)
     }
 
     private func sessionContext(_ id: UUID) -> (directory: String?, kind: String) {

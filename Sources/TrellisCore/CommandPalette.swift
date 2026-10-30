@@ -259,7 +259,7 @@ extension ShortcutAction {
         case .clearPane: ["reset screen", "cls"]
         case .closePane: ["kill"]
         case .showHosts: ["ssh servers"]
-        case .openProjectFile: ["folder"]
+        case .showProjects: ["folder", "workspace", "library"]
         case .saveWorkspace: ["layout"]
         case .toggleSidebar: ["windows list"]
         case .toggleScratchpad: ["script editor"]

@@ -366,17 +366,8 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Declarative layout key bindings per namespace; loaded on first use.
     var layoutNamespaces: [String: [String: LayoutBinding]]?
     var layoutApplyInFlight = false
-    /// Project files found above each pane's directory (FR-WF02); runtime only.
-    @Published public internal(set) var projectFileOffers: [UUID: ProjectFileOffer] = [:]
-    @Published public internal(set) var pendingProjectReview: ProjectFileReview?
-    @Published public internal(set) var pendingProjectSave: ProjectFileDraft?
-    @Published public internal(set) var pendingProjectEdit: ProjectFileEdit?
-    /// Trusted commands waiting for their new shell's first prompt, by session (FR-WF05); never persisted or logged.
+    /// Project commands waiting for their new shell's first prompt, by session; never persisted or logged.
     var pendingProjectCommands: [UUID: String] = [:]
-    /// The command each pane was opened with, so saving its window keeps it (FR-WF06); runtime only.
-    var projectFileCommands: [UUID: String] = [:]
-    var projectFileLookups: [UUID: String] = [:]
-    var projectTrust: ProjectTrustList?
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
     @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
     /// The Tasks menu's project, read when the menu opens (FR-TK02); nil when the active pane has none.
@@ -418,8 +409,6 @@ public final class AppWorkspaceModel: ObservableObject {
     public var scratchpadProcessRunner: ScratchpadProcessRunner = ScratchpadValidator.runProcess
     /// Opens launch.json in the user's editor; injected by tests.
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
-    /// Returns the chosen project folder; injected by tests.
-    public var chooseProjectFolder: (_ message: String, _ directory: String?) -> String? = { ProjectFilePanels.chooseFolder(message: $0, directory: $1) }
     /// The command palette (FR-CP01–FR-CP08): runtime only; the query is never persisted or logged.
     @Published public internal(set) var commandPaletteVisible = false
     @Published public internal(set) var commandPaletteQuery = ""
@@ -1150,7 +1139,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if case .promptStart = event {
             if inputWaits[paneID] != nil { inputWaits.removeValue(forKey: paneID) }
             clearProgress(paneID: paneID)
-            // The shell is reading input now, so a project file’s command can be typed (FR-WF05).
+            // The shell is reading input now, so a project's command can be typed.
             submitProjectCommand(paneID: paneID)
         }
         updateTaskRun(paneID: paneID, event: event)
@@ -1164,13 +1153,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
-        if let directory = currentDirectory(paneID: paneID) {
-            detectProjectFile(paneID: paneID, directory: directory)
-        } else if let directory = remoteWorkingDirectory(paneID: paneID), let pane = snapshot.panes[paneID],
-            let hostID = snapshot.sessions[pane.sessionID]?.launch.remoteHostID
-        {
-            detectRemoteProjectFile(paneID: paneID, hostID: hostID, directory: directory)
-        }
+        pruneProjectState()
         refreshTerminalAccessibility()
     }
 

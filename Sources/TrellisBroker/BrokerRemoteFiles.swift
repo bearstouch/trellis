@@ -11,10 +11,10 @@
     import Foundation
 #endif
 
-/// The only files a remote broker reads for the app (FR-RW10–FR-RW12): project and task files, and the
+/// The only files a remote broker reads for the app (FR-RW11, FR-RW12): the task file, and the
 /// manifests task detection reads. Never a symlink, never another user's file, never more than `remoteFileLimit`.
 public enum BrokerRemoteFiles {
-    public static let projectFiles: Set<String> = ["project.json", "workspace.json", "launch.json"]
+    public static let taskFiles: Set<String> = ["launch.json"]
     public static let manifests: Set<String> = ["package.json", "GNUmakefile", "makefile", "Makefile", "CMakeLists.txt", "pyproject.toml", "setup.cfg", "tox.ini", "Cargo.toml"]
 
     public enum Failure: String, Error, Sendable { case notAllowed = "NOT_ALLOWED", notFound = "NOT_FOUND", tooLarge = "TOO_LARGE", unreadable = "UNREADABLE" }
@@ -25,7 +25,7 @@ public enum BrokerRemoteFiles {
         let components = path.split(separator: "/", omittingEmptySubsequences: false).dropFirst()
         guard components.count >= 2, components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { return false }
         let name = String(components.last!), folder = components[components.endIndex - 2]
-        return folder == ".trellis" ? projectFiles.contains(name) : manifests.contains(name)
+        return folder == ".trellis" ? taskFiles.contains(name) : manifests.contains(name)
     }
 
     public static func read(_ path: String, limit: Int, uid: uid_t = geteuid()) -> Result<Data, Failure> {

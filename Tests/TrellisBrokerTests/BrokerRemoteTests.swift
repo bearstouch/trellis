@@ -49,7 +49,7 @@ final class BrokerRemoteTests: XCTestCase {
                     sessionID: id, shell: "/bin/zsh", directory: "/srv", environment: ["TERM": "xterm-256color"],
                     integration: BrokerIntegration(shell: "/bin/zsh", arguments: ["-l"], environment: ["ZDOTDIR": "/x"], scriptPath: "/x/.zshenv"), columns: 80, rows: 24)),
             .attach(sessionID: id, columns: 80, rows: 24, since: 12), .ping(5), .pong(5), .stat(paths: ["/a"]),
-            .pathInfo([BrokerPathInfo(path: "/a", kind: .directory, owned: true, size: 0, realPath: "/a")]), .readFile(path: "/a/.trellis/project.json", limit: 10),
+            .pathInfo([BrokerPathInfo(path: "/a", kind: .directory, owned: true, size: 0, realPath: "/a")]), .readFile(path: "/a/.trellis/launch.json", limit: 10),
             .fileData(Data([0, 1, 2]))
         ]
         for message in messages {
@@ -79,11 +79,12 @@ final class BrokerRemoteTests: XCTestCase {
     }
 
     func testOnlyAllowListedProjectAndTaskFilesAreReadable() {
-        for path in ["/srv/app/.trellis/project.json", "/srv/app/.trellis/launch.json", "/srv/app/.trellis/workspace.json", "/srv/app/package.json", "/srv/app/Makefile", "/srv/app/Cargo.toml"] {
+        for path in ["/srv/app/.trellis/launch.json", "/srv/app/package.json", "/srv/app/Makefile", "/srv/app/Cargo.toml"] {
             XCTAssertTrue(BrokerRemoteFiles.isAllowed(path), path)
         }
         for path in [
-            "/home/u/.ssh/id_ed25519", "/srv/app/.trellis/secret.json", "/srv/app/project.json", "relative/.trellis/project.json", "/srv/../etc/.trellis/project.json",
+            "/home/u/.ssh/id_ed25519", "/srv/app/.trellis/secret.json", "/srv/app/.trellis/project.json", "/srv/app/.trellis/workspace.json", "/srv/app/launch.json", "relative/.trellis/launch.json",
+            "/srv/../etc/.trellis/launch.json",
             "/srv/./app/package.json", "/srv//app/package.json", "/package.json", "/srv/app/.env"
         ] {
             XCTAssertFalse(BrokerRemoteFiles.isAllowed(path), path)
@@ -94,19 +95,19 @@ final class BrokerRemoteTests: XCTestCase {
         let root = try temporaryDirectory()
         let project = root + "/app"
         try FileManager.default.createDirectory(atPath: project + "/.trellis", withIntermediateDirectories: true)
-        try Data(#"{"version":1}"#.utf8).write(to: URL(fileURLWithPath: project + "/.trellis/project.json"))
-        XCTAssertEqual(try BrokerRemoteFiles.read(project + "/.trellis/project.json", limit: 1000).get(), Data(#"{"version":1}"#.utf8))
-        XCTAssertEqual(failure(BrokerRemoteFiles.read(project + "/.trellis/project.json", limit: 3)), .tooLarge)
-        XCTAssertEqual(failure(BrokerRemoteFiles.read(project + "/.trellis/launch.json", limit: 1000)), .notFound)
-        XCTAssertEqual(failure(BrokerRemoteFiles.read(project + "/.trellis/project.json", limit: 1000, uid: geteuid() + 1)), .notAllowed, "Another user's file")
+        try Data(#"{"version":1}"#.utf8).write(to: URL(fileURLWithPath: project + "/.trellis/launch.json"))
+        XCTAssertEqual(try BrokerRemoteFiles.read(project + "/.trellis/launch.json", limit: 1000).get(), Data(#"{"version":1}"#.utf8))
+        XCTAssertEqual(failure(BrokerRemoteFiles.read(project + "/.trellis/launch.json", limit: 3)), .tooLarge)
+        XCTAssertEqual(failure(BrokerRemoteFiles.read(project + "/Makefile", limit: 1000)), .notFound)
+        XCTAssertEqual(failure(BrokerRemoteFiles.read(project + "/.trellis/launch.json", limit: 1000, uid: geteuid() + 1)), .notAllowed, "Another user's file")
 
         // A symlinked file, and a symlinked .trellis folder, are refused even when they point at an allowed file.
-        try FileManager.default.createSymbolicLink(atPath: project + "/package.json", withDestinationPath: project + "/.trellis/project.json")
+        try FileManager.default.createSymbolicLink(atPath: project + "/package.json", withDestinationPath: project + "/.trellis/launch.json")
         XCTAssertEqual(failure(BrokerRemoteFiles.read(project + "/package.json", limit: 1000)), .notAllowed)
         let other = root + "/other"
         try FileManager.default.createDirectory(atPath: other, withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(atPath: other + "/.trellis", withDestinationPath: project + "/.trellis")
-        XCTAssertEqual(failure(BrokerRemoteFiles.read(other + "/.trellis/project.json", limit: 1000)), .notAllowed)
+        XCTAssertEqual(failure(BrokerRemoteFiles.read(other + "/.trellis/launch.json", limit: 1000)), .notAllowed)
         XCTAssertEqual(failure(BrokerRemoteFiles.read(root + "/.ssh/config", limit: 1000)), .notAllowed)
     }
 

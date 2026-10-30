@@ -68,7 +68,7 @@ Data lives in `~/Library/Application Support/com.bearstouch.trellis/`:
 | `hosts.json` | Saved hosts | Last-known-good copy in `hosts.backup.json` |
 | `grants.json` | Automation grant metadata (hashes only) | Unreadable files are preserved |
 | `layout-bindings.json` | Layout namespace bindings | Unreadable files are preserved |
-| `workspace-trust.json` | Trusted project file digests | Unreadable files trust nothing and are preserved |
+| `projects.json` | The project library (FR-PL05) | Unreadable or newer files open the library read-only and are preserved |
 | `Themes/` | Custom themes | — |
 
 All files are owner-only and written atomically.

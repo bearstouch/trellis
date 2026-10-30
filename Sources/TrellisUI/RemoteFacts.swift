@@ -2,7 +2,7 @@ import Foundation
 import TrellisBroker
 import TrellisCore
 
-/// A host's files as Trellis's project and task logic sees them (FR-RW10, FR-RW11). That logic asks synchronous
+/// A host's files as Trellis's task logic sees them (FR-RW11). That logic asks synchronous
 /// questions (does this exist, read that file); `evaluate` runs it with what is known, fetches what it asked for in one
 /// round trip, and runs it again until it asks nothing new. Reads go through the helper's allow-list, which refuses
 /// symlinks and other users' files, exactly as local reads do (FR-RW12).

@@ -7,11 +7,11 @@ import XCTest
 
 @testable import TrellisUI
 
-/// Project files and tasks on a remote workspace's host (FR-RW10, FR-RW11) through a fake `ssh` that runs the real
-/// bootstrap, helper and broker under a temporary `HOME`: offered from the remote shell's directory, read through the
-/// helper's allow-list, trusted per host and machine, opened on the host, and tasks run in the remote shell.
+/// Tasks on a remote workspace's host (FR-RW11) through a fake `ssh` that runs the real bootstrap, helper and broker
+/// under a temporary `HOME`: found from the remote shell's directory, read through the helper's allow-list, trusted per
+/// host and machine, and run in the remote shell.
 @MainActor
-final class RemoteProjectTests: XCTestCase {
+final class RemoteTasksTests: XCTestCase {
     private var root = ""
     private var home = ""
     private var host: SavedHost!
@@ -26,9 +26,6 @@ final class RemoteProjectTests: XCTestCase {
         root = try XCTUnwrap(BrokerFiles.realPath(NSTemporaryDirectory())) + "/trellis-rp-\(UUID().uuidString.prefix(8))"
         home = root + "/home"
         try FileManager.default.createDirectory(atPath: home + "/app/.trellis", withIntermediateDirectories: true)
-        try """
-        {"version": 1, "name": "Remote App", "tabs": [{"title": "Build", "root": {"type": "pane", "command": "echo from-project-$((3*3))"}}]}
-        """.write(toFile: home + "/app/.trellis/project.json", atomically: true, encoding: .utf8)
         try """
         {"version": 1, "tasks": [{"name": "hello", "command": "echo task-$((6*7))"}]}
         """.write(toFile: home + "/app/.trellis/launch.json", atomically: true, encoding: .utf8)
@@ -100,62 +97,12 @@ final class RemoteProjectTests: XCTestCase {
         return (pane.id, terminal)
     }
 
-    func testARemoteProjectIsOfferedReviewedOnItsHostAndTrustedPerHost() async throws {
-        let (pane, _) = try await remotePane(on: host, in: home + "/app")
-        let tab = try XCTUnwrap(model.snapshot.panes[pane]?.tabID)
-        try await until("the project is offered") { model.projectFileOffer(tabID: tab) != nil }
-        let offer = try XCTUnwrap(model.projectFileOffer(tabID: tab))
-        XCTAssertEqual(offer.hostID, host.id)
-        XCTAssertEqual(offer.root, home + "/app")
-        XCTAssertEqual(offer.name, "Remote App")
-        XCTAssertTrue(offer.trustKey.hasPrefix("remote:\(host.id.uuidString):"), offer.trustKey)
-        // Looking again after a local project write asks the host, never this Mac (the fake host's path exists here too).
-        model.redetectProjectFiles()
-        try await until("looked up again") { model.projectFileLookups[pane] != nil && model.projectFileOffers[pane] != nil }
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(model.projectFileOffers[pane]?.hostID, host.id)
-
-        // FR-WF03 on a host: a file with commands waits for review, which names the host.
-        await model.loadProjectFile(offer: offer)
-        let review = try XCTUnwrap(model.pendingProjectReview)
-        XCTAssertEqual(review.hostName, "build-box")
-        await model.resolveProjectReview(review.id, .trustAndOpen)
-        let window = try XCTUnwrap(model.snapshot.windows.first { $0.name == "Remote App" })
-        XCTAssertEqual(window.remoteHostID, host.id, "The project opens on its host")
-        let projectPane = try XCTUnwrap(model.snapshot.tabs[window.activeTabID]?.activePaneID)
-        let projectTerminal = try XCTUnwrap(model.terminals[projectPane])
-        try await until("the command ran on the host, once") { projectTerminal.screenText.contains("from-project-9") }
-        XCTAssertNotNil(projectTerminal.remoteTransport)
-        guard case .remoteShell(host.id, home + "/app")? = model.snapshot.panes[projectPane].flatMap({ model.snapshot.sessions[$0.sessionID]?.launch }) else {
-            return XCTFail("Not a shell on the host in the project folder")
-        }
-
-        // The same file reached through another saved host asks again: trust is per host and machine.
-        let (twinPane, _) = try await remotePane(on: otherHost, in: home + "/app")
-        let twinTab = try XCTUnwrap(model.snapshot.panes[twinPane]?.tabID)
-        try await until("offered on the other host") { model.projectFileOffer(tabID: twinTab) != nil }
-        let twinOffer = try XCTUnwrap(model.projectFileOffer(tabID: twinTab))
-        XCTAssertNotEqual(twinOffer.trustKey, offer.trustKey)
-        await model.loadProjectFile(offer: twinOffer)
-        XCTAssertEqual(model.pendingProjectReview?.hostName, "twin-box", "Not trusted on this host yet")
-    }
-
-    func testASymlinkedTrellisFolderIsNeverOffered() async throws {
-        try FileManager.default.createDirectory(atPath: home + "/linked", withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(atPath: home + "/linked/.trellis", withDestinationPath: home + "/app/.trellis")
-        let (pane, terminal) = try await remotePane(on: host, in: home + "/app")
-        let tab = try XCTUnwrap(model.snapshot.panes[pane]?.tabID)
-        try await until("the real project is offered") { model.projectFileOffer(tabID: tab) != nil }
-        try terminal.adapter.send(Data("cd '\(home)/linked'\r".utf8))
-        try await until("the shell moved") { model.remoteWorkingDirectory(paneID: pane) == home + "/linked" }
-        try await until("no offer through a symlinked .trellis") { model.projectFileOffer(tabID: tab) == nil }
-    }
-
     func testTasksOfARemoteProjectAreListedTrustedAndRunOnTheHost() async throws {
         let (pane, terminal) = try await remotePane(on: host, in: home + "/app")
         await model.refreshTaskCatalog(paneID: pane)
         let catalog = try XCTUnwrap(model.taskCatalog)
         XCTAssertEqual(catalog.hostID, host.id)
+        XCTAssertTrue(catalog.trustKey.hasPrefix("remote:\(host.id.uuidString):"), catalog.trustKey)
         XCTAssertEqual(catalog.tasks.map(\.name), ["hello"])
         XCTAssertTrue(catalog.detected.contains { $0.task.command == "make build" }, "\(catalog.detected.map(\.task.command))")
         try await until("the shell is ready for a task") { model.taskAvailability(paneID: pane) == .ready }
@@ -171,5 +118,15 @@ final class RemoteProjectTests: XCTestCase {
         let added = await model.addDetectedTask(try XCTUnwrap(catalog.detected.first))
         XCTAssertFalse(added)
         XCTAssertEqual(try String(contentsOfFile: home + "/app/.trellis/launch.json", encoding: .utf8).contains("make build"), false)
+
+        // The same file reached through another saved host asks again: trust is per host and machine.
+        let (twinPane, _) = try await remotePane(on: otherHost, in: home + "/app")
+        await model.refreshTaskCatalog(paneID: twinPane)
+        let twin = try XCTUnwrap(model.taskCatalog)
+        XCTAssertEqual(twin.hostID, otherHost.id)
+        XCTAssertNotEqual(twin.trustKey, catalog.trustKey)
+        try await until("the other shell is ready for a task") { model.taskAvailability(paneID: twinPane) == .ready }
+        model.runTask(try XCTUnwrap(twin.tasks.first), fromFile: true)
+        XCTAssertEqual(model.pendingTaskReview?.hostName, "twin-box", "Not trusted on this host yet")
     }
 }

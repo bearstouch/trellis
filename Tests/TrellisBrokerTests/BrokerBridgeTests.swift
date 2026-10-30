@@ -108,10 +108,13 @@ final class BrokerBridgeTests: XCTestCase {
 
     func testProjectFilesAreReadThroughTheBridgeOnlyWhenAllowed() throws {
         try FileManager.default.createDirectory(atPath: home + "/app/.trellis", withIntermediateDirectories: true)
+        try Data(#"{"version":1}"#.utf8).write(to: URL(fileURLWithPath: home + "/app/.trellis/launch.json"))
         try Data(#"{"version":1}"#.utf8).write(to: URL(fileURLWithPath: home + "/app/.trellis/project.json"))
         let link = try link()
         _ = try link.hello(clientID: clientID)
-        XCTAssertEqual(try link.request(.readFile(path: home + "/app/.trellis/project.json", limit: 1000)), .fileData(Data(#"{"version":1}"#.utf8)))
+        XCTAssertEqual(try link.request(.readFile(path: home + "/app/.trellis/launch.json", limit: 1000)), .fileData(Data(#"{"version":1}"#.utf8)))
+        // Repository project files were removed (FR-PL01), so the helper no longer reads them.
+        XCTAssertEqual(try link.request(.readFile(path: home + "/app/.trellis/project.json", limit: 1000)), .failed(code: "NOT_ALLOWED", errno: 0))
         XCTAssertEqual(try link.request(.readFile(path: home + "/.trellis/run/\(clientID)/broker.json", limit: 1000)), .failed(code: "NOT_ALLOWED", errno: 0))
         guard case .pathInfo(let infos) = try link.request(.stat(paths: [home + "/app/.trellis", home + "/nope"])) else { return XCTFail("No stat") }
         XCTAssertEqual(infos.map(\.kind), [.directory, .missing])
