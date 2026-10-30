@@ -81,6 +81,15 @@ public final class ProjectListModel: ObservableObject {
     /// A project read from JSON text, or its problems (FR-PL04).
     public func importJSON(_ data: Data) -> Result<ProjectDefinition, ProjectJSONError> { ProjectJSON.parse(data) }
 
+    /// A project as a file for Import JSON… elsewhere: no identity and no folders it was launched in.
+    public func exportJSON(_ project: ProjectDefinition) -> Data { ProjectJSON.encode(project) }
+
+    /// "My Shop.json", with characters a file name can't hold replaced.
+    public static func exportFileName(_ project: ProjectDefinition) -> String {
+        let name = project.name.map { "/:\\".contains($0) || $0.isNewline ? "-" : String($0) }.joined().trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        return (name.isEmpty ? "project" : name) + ".json"
+    }
+
     /// "3 tabs · 2 repositories".
     public func summary(_ project: ProjectDefinition) -> String {
         let tabs = project.tabs.count, repositories = project.checkouts.count

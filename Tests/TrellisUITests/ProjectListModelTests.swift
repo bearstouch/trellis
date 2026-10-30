@@ -41,6 +41,17 @@ final class ProjectListModelTests: XCTestCase {
         XCTAssertTrue(model.projects.isEmpty)
     }
 
+    func testAnExportedProjectImportsBackWithoutItsHistory() throws {
+        let model = try model()
+        let project = ProjectDefinition(
+            name: "My/Shop", tabs: [ProjectTab(title: "API", directory: "api", repository: ProjectRepository(url: "git@github.com:acme/api.git"))],
+            lastFolders: ["local": "/Users/me/private"])
+        let data = model.exportJSON(project)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("private"), "Where it was launched stays on this Mac")
+        XCTAssertEqual(try model.importJSON(data).get().tabs, project.tabs)
+        XCTAssertEqual(ProjectListModel.exportFileName(project), "My-Shop.json")
+    }
+
     func testImportReadsOnlyValidProjects() throws {
         let model = try model()
         XCTAssertNotNil(try? model.importJSON(Data(#"{"name":"P","tabs":[{"title":"T","root":{"type":"pane","command":"ls"}}]}"#.utf8)).get())

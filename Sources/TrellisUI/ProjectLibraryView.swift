@@ -116,6 +116,8 @@ public struct ProjectLibraryView: View {
             sidebarAction("New from Window…", symbol: "macwindow") { captureActiveWindow() }
                 .disabled(workspace.snapshot.activeWindowID == nil).help("Make a project from the workspace's active window")
             sidebarAction("Import JSON…", symbol: "square.and.arrow.down") { importJSON() }
+            sidebarAction("Export JSON…", symbol: "square.and.arrow.up") { exportJSON() }
+                .disabled(stored == nil).help(stored == nil ? "Save the project first" : "Save the selected project as a JSON file")
         }
         .padding(.horizontal, 12).padding(.bottom, 12)
         .frame(width: 250)
@@ -492,6 +494,20 @@ public struct ProjectLibraryView: View {
         guard let id = workspace.snapshot.activeWindowID else { return }
         guard let capture = workspace.captureProject(windowID: id) else { message = "That window can't be captured."; return }
         model.pendingDraft = capture
+    }
+
+    /// The saved project, in the form Import JSON… reads; unsaved edits aren't included (FR-PL04).
+    private func exportJSON() {
+        guard let stored else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = ProjectListModel.exportFileName(stored)
+        panel.message = isDirty ? "Exports the saved project; your unsaved changes aren't included." : "Exports “\(stored.name)” for Import JSON… on another Mac."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try model.exportJSON(stored).write(to: url, options: .atomic)
+            message = "Exported to \(url.lastPathComponent)."
+        } catch { message = "The project could not be written there. Check the folder's permissions and try again." }
     }
 
     private func importJSON() {
