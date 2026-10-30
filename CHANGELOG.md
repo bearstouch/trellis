@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-29
+
+The first stable release of Trellis. This release adds in-app software updates with Sparkle and a cap on workspace disk writes, brightens selections in the dark themes, and fixes the collapsed sidebar's tabs card.
+
+Earlier versions have no updater, so install 1.0.0 from the DMG; from here on, **Check for Updates…** installs new versions in place.
+
 ### Added
 
 - **Remote workspaces (preview):** **Open Remote Workspace** in **File → Hosts…** opens a window whose tabs and splits run on that host, in the directory you're in there, and keep running when you quit, close the window or lose the connection. The sidebar shows the connection. A dropped connection reconnects on its own (1 s to 1 min apart, paused while offline, checked again after sleep) and each pane resumes where it left off; when ssh needs your password or a host-key decision it stops and the window's menu offers **Reconnect…**, and **Retry Now** skips the wait. Relaunching re-attaches the sessions. A project's `.trellis/project.json` on the host is offered as locally and opens on that host after the same review, trusted per host; its Tasks menu runs the host's tasks in the remote shell. Trellis never writes files on the host. The command palette has **Open Remote Workspace: <host>**, exports keep each remote window's host, and `session.get` reports the host's connection (FR-RW01–FR-RW15).
@@ -364,7 +370,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window (independent native windows are planned), and upgrades are manual, with no auto-update.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...v1.0.0
 [1.0.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/bearstouch/trellis/compare/v0.12.0...v1.0.0-beta.1
 [0.12.0]: https://github.com/bearstouch/trellis/compare/v0.11.1...v0.12.0
