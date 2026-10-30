@@ -2,7 +2,7 @@ import Foundation
 
 /// What a palette row is, in the order equal scores are listed (FR-CP04).
 public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
-    case action, tab, window, pane, host, task, theme
+    case action, tab, window, pane, host, project, task, theme
 
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -13,6 +13,7 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .window: "Windows"
         case .pane: "Panes"
         case .host: "Hosts"
+        case .project: "Projects"
         case .task: "Tasks"
         case .theme: "Themes"
         }
@@ -26,6 +27,7 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .window: "window"
         case .pane: "pane"
         case .host: "host"
+        case .project: "project"
         case .task: "task"
         case .theme: "theme"
         }
@@ -34,7 +36,7 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
 
 /// One kind listed alone (FR-CP06).
 public enum CommandPaletteScope: String, CaseIterable, Sendable {
-    case windows, tabs, panes, hosts, tasks, themes
+    case windows, tabs, panes, hosts, projects, tasks, themes
 
     public var kind: CommandPaletteKind {
         switch self {
@@ -42,6 +44,7 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .tabs: .tab
         case .panes: .pane
         case .hosts: .host
+        case .projects: .project
         case .tasks: .task
         case .themes: .theme
         }
@@ -53,6 +56,7 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .tabs: "Go to Tab…"
         case .panes: "Go to Pane…"
         case .hosts: "Connect to Host…"
+        case .projects: "Launch Project…"
         case .tasks: "Run Task…"
         case .themes: "Use Theme…"
         }
@@ -73,6 +77,8 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     case host(UUID)
     /// Opens the saved host as a remote workspace (FR-RW01).
     case remoteWorkspace(UUID)
+    /// Opens the launch sheet for a library project (FR-PL08).
+    case project(UUID)
     case task(name: String, detected: Bool)
     case theme(String)
 
@@ -86,6 +92,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .pane(let id): "pane:" + id.uuidString
         case .host(let id): "host:" + id.uuidString
         case .remoteWorkspace(let id): "remote-workspace:" + id.uuidString
+        case .project(let id): "project:" + id.uuidString
         case .task(let name, let detected): (detected ? "task:detected:" : "task:file:") + name
         case .theme(let id): "theme:" + id
         }

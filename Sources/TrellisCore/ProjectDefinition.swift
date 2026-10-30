@@ -193,9 +193,11 @@ public struct ProjectDefinition: Codable, Equatable, Identifiable, Sendable {
         if paneCount > Self.maximumPanes { issues.append(Issue(.project, .layout, "A project has at most \(Self.maximumPanes) panes.")) }
         var folders: [String: ProjectRepository] = [:]
         if let repository { folders[""] = repository }
-        func claim(_ folder: String, _ repository: ProjectRepository, at place: Place) {
+        // Folders compare without case: on a case-insensitive disk `API` and `api` are one checkout.
+        func claim(_ name: String, _ repository: ProjectRepository, at place: Place) {
+            let folder = name.lowercased()
             if let other = folders[folder], other != repository {
-                issues.append(Issue(place, .repositoryURL, "\(folder.isEmpty ? "The project folder" : folder) already has another repository or branch."))
+                issues.append(Issue(place, .repositoryURL, "\(name.isEmpty ? "The project folder" : name) already has another repository or branch."))
             }
             folders[folder] = folders[folder] ?? repository
         }

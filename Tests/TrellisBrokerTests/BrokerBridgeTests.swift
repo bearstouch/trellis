@@ -85,6 +85,38 @@ final class BrokerBridgeTests: XCTestCase {
         XCTAssertEqual(attachment.offset, shown + UInt64(replay.utf8.count))
     }
 
+    /// FR-RW18: a v3 login request runs a project's setup command in the login shell instead of an interactive shell.
+    func testAV3LoginRequestRunsItsCommandAndAV2ClientCantSendOne() throws {
+        let v2 = try link()
+        _ = try v2.hello(clientID: clientID)
+        let refused = try v2.request(
+            .spawnLogin(BrokerLoginRequest(sessionID: UUID(), shell: "/bin/sh", directory: home, environment: [:], integration: nil, columns: 80, rows: 24, command: "true")))
+        XCTAssertEqual(refused, .failed(code: "INVALID_REQUEST", errno: EINVAL), "A v2 client never gets a command run in place of a shell")
+        v2.close()
+
+        let v3 = try link()
+        guard case .welcome(let version, _, _) = try v3.hello(clientID: clientID, maximumVersion: 3) else { return XCTFail("No welcome") }
+        XCTAssertEqual(version, 3)
+        let id = UUID()
+        let spawned = try v3.request(
+            .spawnLogin(
+                BrokerLoginRequest(
+                    sessionID: id, shell: "/bin/sh", directory: home, environment: [:], integration: nil, columns: 80, rows: 24,
+                    command: "exec /bin/sh -c 'echo setup-$((2+2)) in \"$PWD\"'")))
+        guard case .spawned = spawned else { return XCTFail("\(spawned)") }
+        try v3.waitForOutput(id) { $0.contains("setup-4 in \(self.home)") }
+        // csh and tcsh take -l only alone, so their setup runs in a POSIX login shell: `$((…))` is no csh syntax.
+        for shell in ["/bin/csh", "/bin/tcsh"] where FileManager.default.isExecutableFile(atPath: shell) {
+            let csh = UUID()
+            let reply = try v3.request(
+                .spawnLogin(
+                    BrokerLoginRequest(
+                        sessionID: csh, shell: shell, directory: home, environment: [:], integration: nil, columns: 80, rows: 24, command: "echo posix-$((3+3))")))
+            guard case .spawned = reply else { return XCTFail("\(shell): \(reply)") }
+            try v3.waitForOutput(csh) { $0.contains("posix-6") }
+        }
+    }
+
     func testANewLinkTakesOverAStaleOne() throws {
         let stale = try link()
         _ = try stale.hello(clientID: clientID)
@@ -182,8 +214,8 @@ private final class TestLink {
         }
     }
 
-    func hello(clientID: String) throws -> BrokerMessage {
-        try request(.hello(protocolVersion: 2, features: [BrokerProtocol.inputRejectedFeature], maximumVersion: 2, clientID: clientID))
+    func hello(clientID: String, maximumVersion: Int = 2) throws -> BrokerMessage {
+        try request(.hello(protocolVersion: 2, features: [BrokerProtocol.inputRejectedFeature], maximumVersion: maximumVersion, clientID: clientID))
     }
 
     func request(_ message: BrokerMessage) throws -> BrokerMessage {

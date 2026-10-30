@@ -93,7 +93,7 @@ final class RemoteHostLinkTests: XCTestCase {
             XCTAssertEqual(FileManager.default.contents(atPath: installRoot + "/" + artifact.directory + "/integration/" + file.path), file.data, file.path)
         }
         let connection = try XCTUnwrap(link.connection)
-        XCTAssertEqual(connection.protocolVersion, 2)
+        XCTAssertEqual(connection.protocolVersion, BrokerProtocol.version)
         XCTAssertEqual(connection.hostInfo?.home, home)
         guard case .pong(4) = try await connection.request(.ping(4)) else { return XCTFail("No pong through the link") }
         XCTAssertFalse(link.console.screenText.contains("Welcome"), "Login-script output never reaches the protocol or the console")

@@ -97,6 +97,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.openHosts = { [weak self] in self?.showHosts() }
         model.openProjects = { [weak self] in self?.showProjects() }
         projects.hostName = { [hosts] id in hosts.hosts.first { $0.id == id }?.name }
+        projects.onLaunch = { [weak self] project in
+            guard let self else { return }
+            window?.makeKeyAndOrderFront(nil)
+            model.beginProjectLaunch(project)
+        }
+        model.commandPaletteProjects = { [projects] in projects.projects }
+        Task { [projects] in await projects.load() }
+        model.onProjectLaunched = { [projects] id, target, folder in Task { await projects.recordLaunch(id, target: target, folder: folder) } }
         // FR-CP03, FR-CP07: palette actions are the menu's, validated and run the same way.
         model.canPerformShortcutAction = { [weak self] in self?.validateShortcut($0) ?? false }
         model.performShortcutAction = { [weak self] in self?.perform($0) }

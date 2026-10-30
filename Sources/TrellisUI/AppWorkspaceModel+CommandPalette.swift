@@ -153,6 +153,9 @@ extension AppWorkspaceModel {
         case .remoteWorkspace(let id):
             guard let host = commandPaletteHosts().first(where: { $0.id == id }) else { return }
             await openRemoteWorkspace(host: host)
+        case .project(let id):
+            guard let project = commandPaletteProjects().first(where: { $0.id == id }) else { return }
+            beginProjectLaunch(project)
         case .task(let name, let detected):
             guard let catalog = taskCatalog else { return }
             let task = detected ? catalog.detected.first { $0.task.name == name }?.task : catalog.tasks.first { $0.name == name }
@@ -239,6 +242,12 @@ extension AppWorkspaceModel {
                     keywords: host.tags + ["ssh", "remote", "workspace"])
             ]
         }
+        let projectItems = commandPaletteProjects().map { project in
+            CommandPaletteItem(
+                target: .project(project.id), kind: .project, title: "Launch Project: " + project.name,
+                subtitle: "\(project.tabs.count) tab\(project.tabs.count == 1 ? "" : "s")" + (project.notes.map { " · " + $0.prefix(80) } ?? ""),
+                keywords: ["project", "workspace", "launch"] + project.checkouts.map { GitRepository.shortName($0.repository.url) })
+        }
         var taskItems: [CommandPaletteItem] = []
         if let catalog = taskCatalog, catalog.paneID == presentation.activePane?.id, taskAvailability(paneID: catalog.paneID).reason == nil {
             taskItems += catalog.tasks.map { CommandPaletteItem(target: .task(name: $0.name, detected: false), kind: .task, title: $0.name, subtitle: ".trellis/launch.json · " + $0.command) }
@@ -257,6 +266,7 @@ extension AppWorkspaceModel {
             .tabs: (tabItems.count, Self.count(tabItems.count, "tab") + " in " + Self.count(windows.count, "window")),
             .panes: (paneItems.count, Self.count(paneItems.count, "pane")),
             .hosts: (hostItems.count, Self.count(commandPaletteHosts().count, "saved host")),
+            .projects: (projectItems.count, Self.count(projectItems.count, "project")),
             .tasks: (taskItems.count, Self.count(taskItems.count, "task") + " in " + (taskCatalog?.name ?? "this project")),
             .themes: (themeItems.count, Self.count(themeItems.count, "theme"))
         ]
@@ -264,7 +274,7 @@ extension AppWorkspaceModel {
             guard let (count, text) = counts[scope], count > 0 else { return nil }
             return CommandPaletteItem(target: .scope(scope), kind: .action, title: scope.title, subtitle: text, keywords: ["go to jump switch"])
         }
-        return scopes + actions + tabItems + windowItems + paneItems + hostItems + taskItems + themeItems
+        return scopes + actions + tabItems + windowItems + paneItems + hostItems + projectItems + taskItems + themeItems
     }
 
     /// The menu's own title where it changes with state.

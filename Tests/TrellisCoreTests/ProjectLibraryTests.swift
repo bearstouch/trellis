@@ -71,6 +71,9 @@ final class ProjectLibraryTests: XCTestCase {
         var clash = sample()
         clash.tabs[1].directory = "api"
         XCTAssertTrue(clash.issues.contains { $0.field == .repositoryURL && $0.message.contains("already has another repository") }, "\(clash.issues)")
+        var cased = sample()
+        cased.tabs[1].directory = "API"
+        XCTAssertTrue(cased.issues.contains { $0.message.contains("already has another repository") }, "API and api are one folder on a case-insensitive disk")
         var same = sample()
         same.tabs[1].directory = "api"; same.tabs[1].repository = ProjectRepository(url: "https://github.com/acme/api.git", branch: "main")
         XCTAssertEqual(same.issues, [], "One folder, one repository, named twice")

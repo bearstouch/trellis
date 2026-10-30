@@ -394,7 +394,15 @@ public final class BrokerServer: @unchecked Sendable {
         environment["SHELL"] = shell
         environment.merge(request.environment) { _, requested in requested }
         var arguments = [shell, "-l"]
-        if let integration = request.integration, integration.shell == shell, BrokerHost.isReadableFile(integration.scriptPath),
+        var executable = shell
+        if let command = request.command {
+            // csh and tcsh take -l only as their sole flag, so their setup runs in a POSIX login shell.
+            guard client?.version ?? 0 >= 3, !command.contains("\0"), command.utf8.count <= BrokerProtocol.commandLimit else {
+                return .failed(code: "INVALID_REQUEST", errno: EINVAL)
+            }
+            if ["csh", "tcsh"].contains(shell.split(separator: "/").last.map(String.init) ?? "") { executable = "/bin/sh" }
+            arguments = [executable, "-l", "-c", command]
+        } else if let integration = request.integration, integration.shell == shell, BrokerHost.isReadableFile(integration.scriptPath),
             integration.arguments.allSatisfy({ !$0.contains("\0") }), integration.environment.allSatisfy(valid)
         {
             environment.merge(integration.environment) { _, injected in injected }
@@ -402,7 +410,7 @@ public final class BrokerServer: @unchecked Sendable {
         }
         return spawn(
             BrokerSpawnRequest(
-                sessionID: request.sessionID, executable: shell, arguments: arguments, environment: environment.keys.sorted().map { "\($0)=\(environment[$0]!)" },
+                sessionID: request.sessionID, executable: executable, arguments: arguments, environment: environment.keys.sorted().map { "\($0)=\(environment[$0]!)" },
                 directory: directory, columns: request.columns, rows: request.rows))
     }
 

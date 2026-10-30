@@ -576,7 +576,7 @@ extension TabColor {
 /// the side it comes from, where an accent bar marks it. The payload is the item's UUID and the drop reads it back, so
 /// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a window never moves
 /// anything. Off while renaming, so a drag in the name field selects text.
-/// The task review sheet (FR-TK06), apart so the root's modifier chain type-checks.
+/// The task review (FR-TK06) and project launch (FR-PL06) sheets, apart so the root's modifier chain type-checks.
 private struct TaskSheets: ViewModifier {
     @ObservedObject var model: AppWorkspaceModel
 
@@ -584,6 +584,9 @@ private struct TaskSheets: ViewModifier {
         content
             .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
                 TaskReviewView(model: model, review: $0)
+            }
+            .sheet(item: Binding(get: { model.projectLaunch }, set: { if $0 == nil, let session = model.projectLaunch { model.cancelProjectLaunch(session) } })) {
+                ProjectLaunchSheet(model: model, session: $0)
             }
     }
 }

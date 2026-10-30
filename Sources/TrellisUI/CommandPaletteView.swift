@@ -179,6 +179,7 @@ struct CommandPaletteView: View {
             case .scope: hints.append("↩ Open")
             case .host: hints += ["↩ Connect", "⌘↩ New Window", "⌥↩ Split"]
             case .remoteWorkspace: hints.append("↩ Open")
+            case .project: hints.append("↩ Launch")
             default: hints.append("↩ Run")
             }
         }
@@ -204,6 +205,7 @@ struct CommandPaletteView: View {
         case .pane: "Go to Pane"
         case .host: "Connect"
         case .remoteWorkspace: "Open Remote Workspace"
+        case .project: "Launch Project"
         case .task: "Run Task"
         case .theme: "Use Theme"
         }
@@ -219,6 +221,7 @@ struct CommandPaletteView: View {
         case .pane: "rectangle.split.2x1"
         case .host: "server.rack"
         case .remoteWorkspace: "rectangle.connected.to.line.below"
+        case .project: "folder.badge.gearshape"
         case .task: "play"
         case .theme: "paintpalette"
         }

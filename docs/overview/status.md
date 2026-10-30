@@ -81,7 +81,7 @@ Only these combinations have been run.
 
 ## Known limits
 
-- **Project library:** being built. The library window, form and JSON editors, capture from a window and import work (FR-PL01–FR-PL04, and the storage part of FR-PL05); **Launch…** stays disabled until launching, setup and git status land (FR-PL06–FR-PL09), and projects aren't in **Export/Import Windows & Hosts** yet.
+- **Project library:** launching, setup and opening work on this Mac and on hosts (FR-PL06–FR-PL08), verified with fake `git` and fake `ssh` end to end; git status in pane headers (FR-PL09) and projects in **Export/Import Windows & Hosts** aren't built yet. Setup on a host needs its helper at protocol 3 (this version); an older helper is asked to update. A repository already cloned is used whatever its `origin`.
 
 - **Signing:** current builds are ad-hoc signed. Gatekeeper rejects them on other Macs.
 - **Tasks:** Stop and Force Stop use the terminal's Ctrl-C and Ctrl-\\; a raw-mode program or one that ignores SIGINT and SIGQUIT needs Restart Pane. Run needs shell integration; detection reads only the project root (FR-TK08, FR-TK03).

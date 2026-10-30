@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **Project library (in progress):** **Projects** at the bottom of the sidebar, **File → Projects…** (⌘O) and the command palette open a library of projects kept in Trellis (`projects.json`), not in a repository. Each project has tabs with colors, splits, pane titles, folders, commands and git repositories at the project, tab or pane level, edited in a form or as JSON, made from an open window (**New from Window…**) or imported from JSON (FR-PL01–FR-PL05). Launching on this Mac or a host, setup and git status follow (FR-PL06–FR-PL09).
+- **Project library (in progress):** **Projects** at the bottom of the sidebar, **File → Projects…** (⌘O) and the command palette open a library of projects kept in Trellis (`projects.json`), not in a repository. Each project has tabs with colors, splits, pane titles, folders, commands and git repositories at the project, tab or pane level, edited in a form or as JSON, made from an open window (**New from Window…**) or imported from JSON (FR-PL01–FR-PL05). **Launch…** (or **Launch Project…** in the command palette) asks for this Mac or a saved host and the folder, shows what's there, creates the folder and clones missing repositories in a **Setting Up** terminal with that machine's own git and credentials, then opens the window, bound to the host when it runs there, and types each pane's command once. Launching again reconciles the same window (FR-PL06–FR-PL08). Git status in pane headers follows (FR-PL09).
 
 ### Removed
 

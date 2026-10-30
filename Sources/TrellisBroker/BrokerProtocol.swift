@@ -7,14 +7,17 @@
 /// The app ↔ `trellis-broker` wire format (FR-R03). Frames are `[u32 BE length][u8 kind][payload]`,
 /// where the length counts the kind byte and the payload.
 public enum BrokerProtocol {
-    /// The highest version this build speaks; v2 adds remote workspaces (FR-RW01–FR-RW17).
-    public static let version = 2
+    /// The highest version this build speaks; v2 adds remote workspaces (FR-RW01–FR-RW17), v3 a login request that runs a
+    /// project's setup command instead of an interactive shell (FR-RW18).
+    public static let version = 3
     /// The lowest version this build still speaks, so an updated app keeps a running older broker's sessions.
     public static let minimumVersion = 1
     public static let helperName = "trellis-broker"
     public static let frameLimit = 1_048_576
     /// Output, replay and input chunks never exceed this.
     public static let chunkLimit = 65_536
+    /// A setup command's limit (FR-RW18).
+    public static let commandLimit = 65_536
     public static let discoveryName = "broker.json"
     /// The variable carrying a shell-integration nonce; the broker keeps it in memory to return on attach.
     public static let nonceVariable = "TRELLIS_SHELL_INTEGRATION_NONCE"
@@ -128,11 +131,15 @@ public struct BrokerLoginRequest: Codable, Equatable, Sendable {
     public var integration: BrokerIntegration?
     public var columns: UInt16
     public var rows: UInt16
+    /// v3: run this with the login shell's `-c` instead of an interactive shell (FR-RW18). A v2 broker ignores the key,
+    /// so the app sends it only to a broker that welcomed version 3.
+    public var command: String?
     public init(
-        sessionID: UUID, shell: String?, directory: String?, environment: [String: String], integration: BrokerIntegration?, columns: UInt16, rows: UInt16
+        sessionID: UUID, shell: String?, directory: String?, environment: [String: String], integration: BrokerIntegration?, columns: UInt16, rows: UInt16,
+        command: String? = nil
     ) {
         self.sessionID = sessionID; self.shell = shell; self.directory = directory; self.environment = environment
-        self.integration = integration; self.columns = columns; self.rows = rows
+        self.integration = integration; self.columns = columns; self.rows = rows; self.command = command
     }
 }
 

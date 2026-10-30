@@ -368,6 +368,12 @@ public final class AppWorkspaceModel: ObservableObject {
     var layoutApplyInFlight = false
     /// Project commands waiting for their new shell's first prompt, by session; never persisted or logged.
     var pendingProjectCommands: [UUID: String] = [:]
+    /// The project being launched (FR-PL06, FR-PL07); its sheet shows while set.
+    @Published public internal(set) var projectLaunch: ProjectLaunchSession?
+    /// Remembers where a project was launched (FR-PL06); set by the app.
+    public var onProjectLaunched: ((UUID, ProjectTarget, String) -> Void)?
+    /// The library's projects for the command palette (FR-PL08); set by the app.
+    public var commandPaletteProjects: () -> [ProjectDefinition] = { [] }
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
     @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
     /// The Tasks menu's project, read when the menu opens (FR-TK02); nil when the active pane has none.
