@@ -49,6 +49,51 @@ final class BrokerGitTests: XCTestCase {
         XCTAssertEqual(BrokerGit.status(directory: repository, environment: environment), BrokerGitStatus(branch: "trunk", commit: nil, changes: 2, ahead: 0, behind: 0))
     }
 
+    func testARepositorysFilterDriversNeverRun() throws {
+        guard let git = BrokerGit.locate(ProcessInfo.processInfo.environment["PATH"]) else { throw XCTSkip("git isn't installed") }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-git-\(UUID().uuidString)").path
+        let repository = folder + "/repo"
+        try FileManager.default.createDirectory(atPath: repository, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: folder) }
+        let environment = ["PATH": "/usr/bin:/bin", "HOME": folder]
+        func run(_ words: String...) throws -> Int32 {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: git)
+            process.arguments = ["-C", repository, "-c", "user.name=t", "-c", "user.email=t@t"] + words
+            process.environment = environment
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus
+        }
+        guard try run("init", "-q", "-b", "trunk") == 0 else { throw XCTSkip("git couldn't create a repository here") }
+        try "a\n".write(toFile: repository + "/one.txt", atomically: true, encoding: .utf8)
+        XCTAssertEqual(try run("add", "one.txt"), 0)
+        XCTAssertEqual(try run("commit", "-q", "-m", "one"), 0)
+        // An untrusted archive's repository: every file goes through drivers that would leave a marker if they ran.
+        let marker = folder + "/ran"
+        try "* filter=evil filter=a.b\n".write(toFile: repository + "/.gitattributes", atomically: true, encoding: .utf8)
+        for (key, command) in [("filter.evil.clean", "touch \(marker); cat"), ("filter.evil.process", "touch \(marker)"), ("filter.a.b.clean", "touch \(marker); cat")] {
+            XCTAssertEqual(try run("config", key, command), 0)
+        }
+        XCTAssertEqual(try run("config", "filter.evil.required", "true"), 0)
+        // The same size: git can only tell by hashing the file, which is where a clean filter would run.
+        try "b\n".write(toFile: repository + "/one.txt", atomically: true, encoding: .utf8)
+        let status = BrokerGit.status(directory: repository, environment: environment)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker), "No filter ran")
+        XCTAssertEqual(status, BrokerGitStatus(branch: "trunk", commit: nil, changes: 2, ahead: 0, behind: 0))
+    }
+
+    func testFilterOverridesBlankEveryDriverOrRefuse() {
+        XCTAssertEqual(BrokerGit.filterOverrides(""), [])
+        XCTAssertEqual(
+            BrokerGit.filterOverrides("filter.lfs.clean\0filter.lfs.process\0filter.a.b.smudge\0"),
+            [
+                "-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false",
+                "-c", "filter.a.b.clean=", "-c", "filter.a.b.smudge=", "-c", "filter.a.b.process=", "-c", "filter.a.b.required=false"
+            ])
+        XCTAssertNil(BrokerGit.filterOverrides("filter.x=y.clean\0"), "A name -c can't carry: no status rather than a running filter")
+    }
+
     #if os(macOS)
         func testXcodesShimIsSkippedWithoutDeveloperTools() {
             XCTAssertNotEqual(BrokerGit.locate("/usr/bin", developerDirectories: []), "/usr/bin/git", "It would ask to install the tools at every prompt")

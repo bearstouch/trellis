@@ -28,7 +28,8 @@ public struct BrokerGitStatus: Codable, Equatable, Sendable {
 /// `git status` with a fixed argument list, never through a shell, on this Mac or by a host's helper (FR-PL09, FR-RW12).
 public enum BrokerGit {
     /// Runs in whatever folder a shell enters, so repository settings that run programs are switched off where that leaves the
-    /// output unchanged: no fsmonitor hook, no hooks, and no transport (a partial clone's lazy fetch could run `core.sshCommand`).
+    /// output unchanged: no fsmonitor hook, no hooks, no transport (a partial clone's lazy fetch could run `core.sshCommand`),
+    /// and no filter driver (`filterOverrides`: re-hashing a changed file would run its clean filter).
     public static let arguments = [
         "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "protocol.allow=never", "status", "--porcelain=v2", "--branch"
     ]
@@ -63,7 +64,38 @@ public enum BrokerGit {
         guard directory.hasPrefix("/"), !directory.contains("\0"), let git = locate(environment["PATH"]) else { return nil }
         var variables = environment.filter { ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR"].contains($0.key) }
         variables["LC_ALL"] = "C"; variables["GIT_OPTIONAL_LOCKS"] = "0"; variables["GIT_TERMINAL_PROMPT"] = "0"; variables["GIT_NO_LAZY_FETCH"] = "1"
-        let argv: [UnsafeMutablePointer<CChar>?] = ([git] + arguments).map { strdup($0) } + [nil]
+        // Both runs share the one limit. Reading the configuration runs nothing; exit 1 means no filter is configured, and a
+        // listing that filled the buffer may be missing drivers, so it gives no status.
+        let deadline = ContinuousClock.now + .milliseconds(Int(timeoutMilliseconds))
+        guard let drivers = run(git, ["config", "-z", "--name-only", "--get-regexp", #"^filter\."#], variables, directory, until: deadline),
+            drivers.exit == 0 || drivers.exit == 1, !drivers.full, let overrides = filterOverrides(drivers.output),
+            let status = run(git, overrides + arguments, variables, directory, until: deadline), status.exit == 0
+        else { return nil }
+        return parse(status.output)
+    }
+
+    /// `-c` arguments that blank every configured filter driver, from `git config -z --name-only` output; nil when a driver
+    /// name can't be passed through `-c` (an `=` in it), so its filter would still run.
+    static func filterOverrides(_ names: String) -> [String]? {
+        var drivers: [String] = []
+        for key in names.split(separator: "\0", omittingEmptySubsequences: true) where key.hasPrefix("filter.") {
+            guard let dot = key.lastIndex(of: "."), dot > key.index(key.startIndex, offsetBy: 6) else { continue }
+            let name = String(key[key.index(key.startIndex, offsetBy: 7)..<dot])
+            guard !name.contains("=") else { return nil }
+            if !drivers.contains(name) { drivers.append(name) }
+        }
+        return drivers.flatMap { name in ["clean", "smudge", "process"].flatMap { ["-c", "filter.\(name).\($0)="] } + ["-c", "filter.\(name).required=false"] }
+    }
+
+    /// Git's exit status and output (`full` when it filled the buffer), or nil when it couldn't run, was signalled or
+    /// outlived the deadline.
+    private static func run(_ git: String, _ words: [String], _ variables: [String: String], _ directory: String, until deadline: ContinuousClock.Instant)
+        -> (exit: Int32, output: String, full: Bool)?
+    {
+        let left = deadline - ContinuousClock.now
+        let timeout = Int32(clamping: left.components.seconds * 1000 + left.components.attoseconds / 1_000_000_000_000_000)
+        guard timeout > 0 else { return nil }
+        let argv: [UnsafeMutablePointer<CChar>?] = ([git] + words).map { strdup($0) } + [nil]
         let envp: [UnsafeMutablePointer<CChar>?] = variables.map { strdup("\($0.key)=\($0.value)") } + [nil]
         defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
         var buffer = [CChar](repeating: 0, count: outputLimit)
@@ -71,14 +103,14 @@ public enum BrokerGit {
         let result = argv.withUnsafeBufferPointer { arguments in
             envp.withUnsafeBufferPointer { environment in
                 buffer.withUnsafeMutableBufferPointer { output in
-                    trellis_run_capture(git, arguments.baseAddress, environment.baseAddress, directory, output.baseAddress, output.count, &length, timeoutMilliseconds)
+                    trellis_run_capture(git, arguments.baseAddress, environment.baseAddress, directory, output.baseAddress, output.count, &length, timeout)
                 }
             }
         }
-        // Exited normally with status 0: (status & 0x7f) == 0 and the exit code in bits 8–15.
-        guard result >= 0, result & 0x7f == 0, (result >> 8) & 0xff == 0 else { return nil }
+        // Exited normally: (status & 0x7f) == 0 and the exit code in bits 8–15.
+        guard result >= 0, result & 0x7f == 0 else { return nil }
         let bytes = buffer.prefix(length).map { UInt8(bitPattern: $0) }
-        return parse(String(decoding: bytes, as: UTF8.self))
+        return ((result >> 8) & 0xff, String(decoding: bytes, as: UTF8.self), length >= outputLimit)
     }
 
     static func locate(_ path: String?, developerDirectories: [String]? = nil) -> String? {
