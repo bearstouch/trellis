@@ -50,6 +50,33 @@ public protocol SessionBrokerClient: AnyObject {
     func stopIncompatibleBroker() async
     /// Stops forwarding output and disconnects; kept sessions continue.
     func detach() async
+    /// What Settings shows about the broker; never starts one.
+    func status() async -> BrokerStatus
+}
+
+extension SessionBrokerClient {
+    public func status() async -> BrokerStatus { .notRunning }
+}
+
+/// This state directory's session broker as Settings → Sessions shows it.
+public enum BrokerStatus: Equatable, Sendable {
+    case notRunning
+    /// A broker answered but turned this app away: another Trellis holds it, or it is the wrong executable.
+    case busy
+    /// A broker that speaks no protocol version this app does; it can only be stopped.
+    case incompatible
+    case connected(BrokerStatusDetails)
+}
+
+public struct BrokerStatusDetails: Equatable, Sendable {
+    public var processID: Int32
+    public var protocolVersion: Int
+    public var socketPath: String?
+    /// The broker's executable and the only client executable it accepts (checked by user and path on every connection).
+    public var helperPath: String
+    public var clientPath: String
+    public var running: Int
+    public var ended: Int
 }
 
 /// One session held by the broker. Signals are checked against the process identity inside the
@@ -292,6 +319,22 @@ public final class BrokerSessionClient: SessionBrokerClient {
     public func makeTransport(sessionID: UUID) -> (any TerminalProcessTransport)? {
         guard let open else { return nil }
         return BrokerSessionTransport(sessionID: sessionID, connection: open, delivering: true)
+    }
+
+    public func status() async -> BrokerStatus {
+        switch await connectExisting() {
+        case .none: return .notRunning
+        case .busy: return .busy
+        case .incompatible: return .incompatible
+        case .connected(let connection):
+            let records: [BrokerSessionRecord]
+            if case .sessions(let listed)? = try? await connection.request(.list) { records = listed } else { records = [] }
+            return .connected(
+                BrokerStatusDetails(
+                    processID: connection.brokerPID, protocolVersion: connection.protocolVersion, socketPath: launcher.discovery()?.socketPath,
+                    helperPath: launcher.helperPath, clientPath: launcher.clientPath, running: records.filter(\.running).count,
+                    ended: records.filter { !$0.running }.count))
+        }
     }
 
     public func existingSessions() async -> BrokerListing? {

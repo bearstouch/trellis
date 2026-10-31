@@ -137,6 +137,9 @@ public final class RemoteHostsModel: ObservableObject {
 
     public func workspaceLinkState(_ hostID: UUID) -> RemoteHostLink.State? { workspaceLinks[hostID]?.state }
 
+    /// Every host with a connected workspace link, for Settings → Sessions.
+    public var connectedWorkspaceHosts: [UUID] { workspaceLinks.filter { $0.value.state == .connected }.map(\.key) }
+
     /// The connected link's protocol connection to `hostID`, without connecting.
     public func workspaceConnection(_ hostID: UUID) -> BrokerConnection? {
         workspaceLinks[hostID].flatMap { $0.state == .connected ? $0.connection : nil }
