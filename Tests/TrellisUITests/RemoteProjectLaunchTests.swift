@@ -117,4 +117,64 @@ final class RemoteProjectLaunchTests: XCTestCase {
         let terminal = try XCTUnwrap(model.terminals[pane])
         try await until("the command ran on the host") { terminal.screenText.contains("api-42") }
     }
+    func testASetupOnTheHostSurvivesALinkDropAndIsNeverAnOrphan() async throws {
+        // The clone waits until the test lets it finish.
+        try "#!/bin/sh\necho \"git $*\" >> \"$HOME/git.log\"\nwhile [ ! -e \"$HOME/release\" ]; do sleep 0.1; done\nfor last; do :; done\nmkdir -p \"$last/.git\"\n"
+            .write(toFile: home + "/bin/git", atomically: true, encoding: .utf8)
+        var orphanPrompts = 0
+        model.confirmStopOrphans = { _ in
+            orphanPrompts += 1; return true
+        }
+        let project = ProjectDefinition(name: "Shop", tabs: [ProjectTab(title: "API", directory: "api", repository: ProjectRepository(url: "git@github.com:acme/api.git"))])
+        model.beginProjectLaunch(project)
+        let session = try XCTUnwrap(model.projectLaunch)
+        model.setProjectLaunchTarget(session, .host(host.id))
+        session.folder = "code/shop"
+        await model.checkProjectLaunch(session)
+        try await until("the host was checked") { if case .ready = session.stage { true } else { false } }
+        await model.runProjectSetup(session)
+        try await until("the clone started") { FileManager.default.fileExists(atPath: home + "/git.log") }
+        let setup = try XCTUnwrap(session.terminal)
+
+        model.remoteHosts?.closeWorkspaceLinks()
+        try await until("the setup knows the link is down") { setup.remoteTransport?.linkLost == true }
+        XCTAssertTrue(model.hasRemoteWorkspace(host.id), "A running setup is reconnected for, though no window is bound to the host yet")
+        let failure = await model.connectRemote(hostID: host.id, interactive: false)
+        XCTAssertNil(failure)
+        try await until("the setup resumed") { setup.remoteTransport?.linkLost == false }
+        XCTAssertEqual(orphanPrompts, 0, "The setup is never offered as an orphan")
+
+        FileManager.default.createFile(atPath: home + "/release", contents: nil)
+        try await until("the window opened") { model.projectLaunch == nil && model.snapshot.windows.contains { $0.name == "Shop" } }
+    }
+    func testASetupCancelledWhileDisconnectedIsHungUpOnReconnect() async throws {
+        try "#!/bin/sh\necho \"git $*\" >> \"$HOME/git.log\"\nexec sleep 30\n".write(toFile: home + "/bin/git", atomically: true, encoding: .utf8)
+        let project = ProjectDefinition(name: "Shop", tabs: [ProjectTab(title: "API", directory: "api", repository: ProjectRepository(url: "git@github.com:acme/api.git"))])
+        model.beginProjectLaunch(project)
+        let session = try XCTUnwrap(model.projectLaunch)
+        model.setProjectLaunchTarget(session, .host(host.id))
+        session.folder = "code/shop"
+        await model.checkProjectLaunch(session)
+        try await until("the host was checked") { if case .ready = session.stage { true } else { false } }
+        await model.runProjectSetup(session)
+        try await until("the clone started") { FileManager.default.fileExists(atPath: home + "/git.log") }
+        let setup = try XCTUnwrap(session.terminal)
+        let setupID = try XCTUnwrap(setup.remoteTransport?.sessionID)
+
+        model.remoteHosts?.closeWorkspaceLinks()
+        try await until("the setup knows the link is down") { setup.remoteTransport?.linkLost == true }
+        model.cancelProjectLaunch(session)
+        XCTAssertTrue(model.hasRemoteWorkspace(host.id), "No window is bound to the host, but its hangup still needs the link")
+        let failure = await model.connectRemote(hostID: host.id, interactive: false)
+        XCTAssertNil(failure)
+        XCTAssertFalse(model.hasRemoteWorkspace(host.id), "Sent: nothing more to reconnect for")
+        let connection = try XCTUnwrap(model.remoteHosts?.workspaceConnection(host.id))
+        var ended = false
+        let deadline = Date().addingTimeInterval(5)
+        while !ended, Date() < deadline {
+            if case .sessions(let records)? = try? await connection.request(.list) { ended = records.first { $0.sessionID == setupID }?.running != true }
+            if !ended { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        XCTAssertTrue(ended, "The cancelled setup was hung up once the host was reachable")
+    }
 }

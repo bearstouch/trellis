@@ -195,6 +195,8 @@ extension AppWorkspaceModel {
                 return
             }
             let transport = RemoteSessionTransport(sessionID: UUID(), hostID: hostID, connection: connection)
+            // Resumed with the host's panes after a drop, never offered as an orphan, and Cancel's hangup is kept until then.
+            wire(transport)
             await terminal.start(
                 remote: transport,
                 request: BrokerLoginRequest(

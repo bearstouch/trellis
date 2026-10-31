@@ -128,7 +128,7 @@ extension AppWorkspaceModel {
         await terminal.start(remote: transport, request: login, nonce: nonce)
     }
 
-    private func wire(_ transport: RemoteSessionTransport) {
+    func wire(_ transport: RemoteSessionTransport) {
         let hostID = transport.hostID, sessionID = transport.sessionID
         transport.onSignalWhileDisconnected = { [weak self] _ in self?.pendingRemoteHangups[hostID, default: []].insert(sessionID) }
         transport.onLinkChanged = { [weak self] _ in self?.objectWillChange.send() }
@@ -153,7 +153,17 @@ extension AppWorkspaceModel {
         }
     }
 
-    public func hasRemoteWorkspace(_ hostID: UUID) -> Bool { snapshot.windows.contains { $0.remoteHostID == hostID } }
+    /// A window bound to the host, a project setup running there, or a hangup still to send (a setup cancelled while
+    /// disconnected): each needs the link back after a drop (FR-RW07).
+    public func hasRemoteWorkspace(_ hostID: UUID) -> Bool {
+        snapshot.windows.contains { $0.remoteHostID == hostID } || projectLaunch?.terminal?.remoteTransport?.hostID == hostID
+            || pendingRemoteHangups[hostID]?.isEmpty == false
+    }
+
+    /// The host's terminals: its panes, and a project setup running there (FR-PL07), which is in no pane.
+    private func remoteTerminals(_ hostID: UUID) -> [NativeTerminal] {
+        (Array(terminals.values) + [projectLaunch?.terminal].compactMap { $0 }).filter { $0.remoteTransport?.hostID == hostID }
+    }
 
     /// **Reconnect…** (`interactive`: ssh may ask in the console) or **Retry Now**, through the reconnector, which
     /// schedules the next automatic attempt if this one fails for a reason a retry can fix (FR-RW07).
@@ -183,8 +193,8 @@ extension AppWorkspaceModel {
         remoteLinks[hostID] = .connected
         let hungUp = pendingRemoteHangups.removeValue(forKey: hostID) ?? []
         for id in hungUp { connection.post(.signal(sessionID: id, signal: SIGHUP)) }
-        for terminal in terminals.values {
-            guard let transport = terminal.remoteTransport, transport.hostID == hostID, let size = terminalSize(terminal) else { continue }
+        for terminal in remoteTerminals(hostID) {
+            guard let transport = terminal.remoteTransport, let size = terminalSize(terminal) else { continue }
             _ = await transport.resume(on: connection, size: size)
         }
         // A session just hung up can still be listed as running; it is never offered as an orphan.
@@ -204,7 +214,7 @@ extension AppWorkspaceModel {
         let panes = Dictionary(snapshot.panes.values.map { ($0.sessionID, $0.id) }, uniquingKeysWith: { first, _ in first })
         var orphans: [UUID] = []
         for record in records where !hungUp.contains(record.sessionID) {
-            if terminals.values.contains(where: { $0.sessionID == record.sessionID && $0.remoteTransport != nil && $0.isRunning }) { continue }
+            if remoteTerminals(hostID).contains(where: { $0.remoteTransport?.sessionID == record.sessionID && $0.isRunning }) { continue }
             guard let paneID = panes[record.sessionID], let terminal = terminals[paneID], terminal.sessionID == record.sessionID,
                 terminal.sessionState == .stopped, snapshot.sessions[record.sessionID]?.launch.remoteHostID == hostID, let size = terminalSize(terminal)
             else {
