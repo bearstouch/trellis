@@ -39,6 +39,7 @@ scripts/package-release.sh                  # Universal 2 DMG; ad-hoc unless TRE
 scripts/test-linux.sh                       # trellis-broker build + tests on Linux (Docker); the manifest is broker-only there
 scripts/build-remote-helpers.sh [OUT]       # static Linux remote helpers, gzipped, with remote-helpers.json (Docker)
 scripts/test-remote-docker.sh               # remote-link tests against a disposable sshd container (Docker)
+scripts/verify-remote-projects.sh [--keep]  # guided manual check of remote workspaces + project library (Docker; report in .build/manual-verify)
 ```
 
 There is no SwiftLint/SwiftFormat binary; use the toolchain's `swift format` with the repo

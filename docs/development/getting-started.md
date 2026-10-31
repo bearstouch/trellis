@@ -85,6 +85,7 @@ python3 scripts/bench-renderer.py [--quick] [--only NAMES]  # Metal vs CoreGraph
 scripts/test-linux.sh                         # trellis-broker build and tests on Linux, in Docker
 scripts/build-remote-helpers.sh [OUT]         # static Linux remote helpers (Docker); default OUT is the debug bin path's remote/
 scripts/test-remote-docker.sh                 # remote-link tests against a disposable sshd container (needs Docker)
+scripts/verify-remote-projects.sh [--keep]    # guided manual check of remote workspaces and the project library (Docker)
 scripts/package-release.sh                    # Universal 2 app + DMG (ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE)
 scripts/generate-app-icon.sh                  # regenerate icons from Design/AppIcon/*.svg (needs rsvg-convert)
 ```
