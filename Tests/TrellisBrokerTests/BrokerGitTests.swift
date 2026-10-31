@@ -60,8 +60,9 @@ final class BrokerGitTests: XCTestCase {
     /// The capture behind it: output beyond the buffer is drained, and a slow child (or one its group keeps running) is killed.
     func testCaptureIsBoundedInSizeAndTime() {
         func run(_ script: String, size: Int, timeout: Int32) -> (result: Int32, length: Int, seconds: Double) {
-            // Typed: Swift 6.3.3 (CI) can't infer these literals.
-            let argv: [UnsafeMutablePointer<CChar>?] = ["/bin/sh", "-c", script].map { strdup($0) } + [nil]
+            // Typed: Swift 6.3.3 (CI) otherwise reads the string literals as C pointers.
+            let words: [String] = ["/bin/sh", "-c", script]
+            let argv: [UnsafeMutablePointer<CChar>?] = words.map { strdup($0) } + [nil]
             let envp: [UnsafeMutablePointer<CChar>?] = [strdup("PATH=/usr/bin:/bin"), nil]
             defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
             var buffer = [CChar](repeating: 0, count: size)
