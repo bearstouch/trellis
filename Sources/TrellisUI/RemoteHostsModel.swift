@@ -36,7 +36,11 @@ public final class RemoteHostsModel: ObservableObject {
     public var confirmRemove: (SavedHost) -> Bool = { _ in false }
     /// Running sessions would lose their helper; production asks to stop them.
     public var confirmStopSessions: (SavedHost, Int) -> Bool = { _, _ in false }
-    private var links: [UUID: RemoteHostLink] = [:]
+    /// The link of each host's running host-library action, which Cancel closes.
+    private var actionLinks: [UUID: RemoteHostLink] = [:]
+    private var cancelled: Set<UUID> = []
+    /// A workspace link still connecting, closed at quit with the connected ones.
+    private var connectingLinks: [UUID: RemoteHostLink] = [:]
     /// The connected link each host's remote workspaces share (FR-RW03).
     private var workspaceLinks: [UUID: RemoteHostLink] = [:]
     private var connecting: [UUID: Task<Result<RemoteHostLink, RemoteHostLink.Failure>, Never>] = [:]
@@ -93,7 +97,7 @@ public final class RemoteHostsModel: ObservableObject {
                 let running: Int? =
                     if case .sessions(let records)? = try? await connection.request(.list) { records.filter(\.running).count } else { nil }
                 // Cancelled while listing: cancelling never changes the host.
-                if link?.state == .closed { return Self.message(for: .cancelled) }
+                if link?.state == .closed || self.cancelled.contains(host.id) { link?.close(); return Self.message(for: .cancelled) }
                 guard let running else { link?.close(); return "The helper was kept: its running sessions couldn’t be checked." }
                 if running > 0 {
                     guard self.confirmStopSessions(host, running) else { link?.close(); return "The helper was kept, with its \(running) running session(s)." }
@@ -102,6 +106,7 @@ public final class RemoteHostsModel: ObservableObject {
                 }
             }
             link?.close()
+            if self.cancelled.contains(host.id) { return Self.message(for: .cancelled) }
             return await self.connect(host, .remove, install: .never)
         }
     }
@@ -110,8 +115,11 @@ public final class RemoteHostsModel: ObservableObject {
         guard activity[host.id] == nil, isAvailable else { return }
         activity[host.id] = kind
         messages[host.id] = nil
+        cancelled.remove(host.id)
         let message = await work()
         activity[host.id] = nil
+        actionLinks[host.id] = nil
+        cancelled.remove(host.id)
         messages[host.id] = message
     }
 
@@ -126,7 +134,7 @@ public final class RemoteHostsModel: ObservableObject {
         let task = Task { [self] () -> Result<RemoteHostLink, RemoteHostLink.Failure> in
             let link = self.makeLink(host, batch: !interactive)
             let policy: RemoteHostLink.InstallPolicy = self.preferences(host).autoInstall ? .always : (interactive ? .ask : .never)
-            let result = await self.run(link, host, .bridge, install: policy)
+            let result = await self.run(link, host, .bridge, install: policy, workspace: true)
             guard case .success = result else {
                 await self.record(host, link, .bridge, result)
                 return .failure(result.failure ?? .lost)
@@ -167,7 +175,7 @@ public final class RemoteHostsModel: ObservableObject {
         workspaceLinks = [:]
         for link in open { link.onStateChanged = nil; link.close() }
         // A link still connecting (an automatic attempt) ends too, so none is left open after quit.
-        for host in connecting.keys { links[host]?.close() }
+        connectingLinks.values.forEach { $0.close() }
     }
 
     private func record(_ host: SavedHost, _ link: RemoteHostLink, _ purpose: RemoteHostLink.Purpose, _ result: Result<RemoteProbe, RemoteHostLink.Failure>) async {
@@ -200,10 +208,11 @@ public final class RemoteHostsModel: ObservableObject {
         return RemoteHostLink(request: request, catalog: catalog)
     }
 
-    private func run(_ link: RemoteHostLink, _ host: SavedHost, _ purpose: RemoteHostLink.Purpose, install: RemoteHostLink.InstallPolicy) async -> Result<
-        RemoteProbe, RemoteHostLink.Failure
-    > {
-        links[host.id] = link
+    /// `workspace`: the link remote workspaces will share; otherwise a host-library action's, until the action ends.
+    private func run(_ link: RemoteHostLink, _ host: SavedHost, _ purpose: RemoteHostLink.Purpose, install: RemoteHostLink.InstallPolicy, workspace: Bool = false)
+        async -> Result<RemoteProbe, RemoteHostLink.Failure>
+    {
+        if workspace { connectingLinks[host.id] = link } else { actionLinks[host.id] = link }
         link.confirmInstall = { [weak self] probe, artifact in
             await self?.confirmInstall(host, probe, artifact, !probe.installed.isEmpty) ?? false
         }
@@ -224,12 +233,16 @@ public final class RemoteHostsModel: ObservableObject {
         }
         let result = await link.run(purpose, install: install)
         if let registration { askpass?.unregister(registration) }
-        if links[host.id] === link, purpose != .bridge { links[host.id] = nil }
+        if workspace, connectingLinks[host.id] === link { connectingLinks[host.id] = nil }
         return result
     }
 
     /// Stops a running action's ssh; the host is never changed by cancelling.
-    public func cancel(_ host: SavedHost) { links[host.id]?.close() }
+    public func cancel(_ host: SavedHost) {
+        guard activity[host.id] != nil else { return }
+        cancelled.insert(host.id)
+        actionLinks[host.id]?.close()
+    }
 
     public static func message(for failure: RemoteHostLink.Failure) -> String {
         switch failure {

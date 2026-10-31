@@ -190,6 +190,26 @@ final class RemoteHelperInstallTests: XCTestCase {
         XCTAssertNil(model.workspaceConnection(host.id))
     }
 
+    func testCancelStopsOnlyTheHostsActionNeverItsWorkspaceLink() async throws {
+        model.confirmInstall = { _, _, _, _ in true }
+        await model.install(host)
+        // An update waits at its confirmation while an automatic reconnect opens the workspace link.
+        var release: CheckedContinuation<Bool, Never>?
+        model.confirmInstall = { _, _, _, _ in await withCheckedContinuation { release = $0 } }
+        let action = Task { await self.model.install(self.host) }
+        let deadline = Date().addingTimeInterval(10)
+        while release == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        guard case .success(let workspace) = await model.workspaceLink(host, interactive: false) else { return XCTFail("No workspace link") }
+
+        model.cancel(host)
+        release?.resume(returning: true)
+        await action.value
+        XCTAssertEqual(model.messages[host.id], "Cancelled.")
+        XCTAssertEqual(workspace.state, .connected, "Cancel never closes the link the host's workspaces share")
+        model.closeWorkspaceLinks()
+        XCTAssertEqual(workspace.state, .closed)
+    }
+
     func testAutoInstallIsOffByDefaultAndSaved() async {
         XCTAssertFalse(model.preferences(host).autoInstall)
         await model.setAutoInstall(host, true)
