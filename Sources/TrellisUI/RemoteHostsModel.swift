@@ -50,8 +50,9 @@ public final class RemoteHostsModel: ObservableObject {
         confirmStopSessions = { [weak self] host, count in self?.showStopSessionsAlert(host, count) ?? false }
     }
 
-    public func load(hosts: [SavedHost]) async {
-        await settings.retain(Set(hosts.map(\.id)))
+    /// `hosts` nil: the host library couldn't be read, so no entry is known to be stale and none is dropped.
+    public func load(hosts: [SavedHost]?) async {
+        if let hosts { await settings.retain(Set(hosts.map(\.id))) }
         preferences = await settings.all()
     }
 

@@ -158,6 +158,18 @@ final class RemoteHelperInstallTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: home + "/.trellis/remote"))
     }
 
+    func testAnUnreadableHostLibraryKeepsEveryHostsSettings() async {
+        await model.setAutoInstall(host, true)
+        let storage = MemoryHosts()
+        storage.data = Data("not json".utf8)
+        let hosts = HostListModel(library: HostLibrary(storage: storage))
+        hosts.remote = model
+        await hosts.load()
+        XCTAssertTrue(hosts.loadFailed)
+        let saved = await RemoteHostSettings(stateDirectory: URL(fileURLWithPath: root + "/state")).preferences(host.id)
+        XCTAssertTrue(saved.autoInstall, "Kept for when the library is readable again")
+    }
+
     func testAutoInstallIsOffByDefaultAndSaved() async {
         XCTAssertFalse(model.preferences(host).autoInstall)
         await model.setAutoInstall(host, true)

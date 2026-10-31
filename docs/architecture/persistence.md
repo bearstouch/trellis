@@ -18,7 +18,7 @@ All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.
 | `Scrollback/<session-uuid>.txt` | Only with **Restore scrollback after quit** (FR-R04): a pane's redacted plain text | `0600` in a `0700` folder; see [below](#opt-in-scrollback-file) |
 | `broker.json` | Only after a session was kept running (FR-R03): `{protocolVersion, socketPath}` of this folder's `trellis-broker` | `0600`, read without following symlinks; no token or PID |
 | `remote-client.json` | `{clientID}`: 128 random bits naming this state directory's remote brokers (FR-RW13). Created on first use, only when absent: an unreadable file is never replaced, and remote workspaces stay unavailable until it is repaired or removed. | `0600`; no secret |
-| `remote-hosts.json` | Per saved host: the last observed remote helper status (state, OS, architecture, time) and the auto-install choice (FR-RW17). Entries of deleted hosts are dropped. An unreadable file reads as empty. | `0600`; no secret |
+| `remote-hosts.json` | Per saved host: the last observed remote helper status (state, OS, architecture, time) and the auto-install choice (FR-RW17). Entries of deleted hosts are dropped, never while `hosts.json` itself can't be read. An unreadable file reads as empty. | `0600`; no secret |
 
 Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.directory`, `app.windowFrame` and `keyboard.settings`. Grant tokens live in the Keychain, under service `Trellis Automation`. Saved-host passwords live under service `Trellis SSH Host`, with the host UUID as account. The Keychain is written before `hosts.json`, and a failed metadata write restores the previous Keychain value.
 
