@@ -120,6 +120,21 @@ final class BrokerBridgeTests: XCTestCase {
         }
     }
 
+    func testALateGitStatusNeverReachesTheLinkThatTookOver() throws {
+        // A git slow enough for the takeover to happen while it runs.
+        try FileManager.default.createDirectory(atPath: home + "/bin", withIntermediateDirectories: true)
+        try "#!/bin/sh\nsleep 0.6\nexit 1\n".write(toFile: home + "/bin/git", atomically: true, encoding: .utf8)
+        chmod(home + "/bin/git", 0o755)
+        let stale = try TestLink(helper: helper, home: home, clientID: clientID, path: home + "/bin:/usr/bin:/bin")
+        links.append(stale)
+        _ = try stale.hello(clientID: clientID, maximumVersion: 3)
+        try stale.post(.gitStatus(path: home))
+        let fresh = try link()
+        guard case .welcome = try fresh.hello(clientID: clientID, maximumVersion: 3) else { return XCTFail("No takeover") }
+        // The stale request's ID is the next one the fresh link will use.
+        XCTAssertEqual(fresh.unsolicited(within: 2.5), [:], "The reply belongs to the link that asked")
+    }
+
     func testANewLinkTakesOverAStaleOne() throws {
         let stale = try link()
         _ = try stale.hello(clientID: clientID)
@@ -188,7 +203,7 @@ private final class TestLink {
     private var replays: [UUID: Data] = [:]
     private var closed = false
 
-    init(helper: String, home: String, clientID: String) throws {
+    init(helper: String, home: String, clientID: String, path: String = "/usr/bin:/bin") throws {
         var pair: [Int32] = [0, 0]
         #if canImport(Darwin)
             let stream = SOCK_STREAM
@@ -202,7 +217,7 @@ private final class TestLink {
         let token = BrokerFiles.randomHex(16)!
         process.executableURL = URL(fileURLWithPath: helper)
         process.arguments = ["bridge", "--client-id", clientID, "--sync", token, "--idle-exit", "5"]
-        process.environment = ["HOME": home, "PATH": "/usr/bin:/bin", "TMPDIR": "/tmp"]
+        process.environment = ["HOME": home, "PATH": path, "TMPDIR": "/tmp"]
         process.standardInput = child
         process.standardOutput = child
         process.standardError = FileHandle.nullDevice
@@ -231,6 +246,19 @@ private final class TestLink {
             try pump(timeout: 0.2)
         }
         return replies.removeValue(forKey: id)!
+    }
+
+    /// Sends without waiting for the reply.
+    func post(_ message: BrokerMessage) throws {
+        try write(BrokerFrame.control(BrokerEnvelope(requestID: nextID, message: message)).encoded)
+        nextID += 1
+    }
+
+    /// Every reply that arrives within `seconds` and no request is waiting for.
+    func unsolicited(within seconds: TimeInterval) -> [UInt64: BrokerMessage] {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline, (try? pump(timeout: 0.2)) != nil {}
+        return replies
     }
 
     func send(input: String, to session: UUID) throws {

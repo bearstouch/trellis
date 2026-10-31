@@ -284,12 +284,16 @@ public final class BrokerServer: @unchecked Sendable {
             case .failure(let failure): reply(id, .failed(code: failure.rawValue, errno: 0))
             }
         case .gitStatus(let path) where remote && client?.version ?? 0 >= 3:
-            // Off the server queue: git may take up to its limit, and sessions keep flowing meanwhile.
-            let environment = baseEnvironment
+            // Off the server queue: git may take up to its limit, and sessions keep flowing meanwhile. Answered only to the
+            // client that asked: a takeover's request IDs start again, so a late reply could resolve its unrelated request.
+            let environment = baseEnvironment, asker = client
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 let status = BrokerGit.status(directory: path, environment: environment)
                 guard let server = self else { return }
-                server.queue.async { server.reply(id, .gitState(status)) }
+                server.queue.async {
+                    guard let asker, server.client === asker else { return }
+                    server.reply(id, .gitState(status))
+                }
             }
         case .list:
             reply(id, .sessions(sessions.values.map(\.record).sorted { $0.sessionID.uuidString < $1.sessionID.uuidString }))
