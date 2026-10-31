@@ -71,29 +71,36 @@ public final class RemoteHostsModel: ObservableObject {
         await perform(host, .installing) { await self.connect(host, .install, install: .ask) }
     }
 
-    /// Refused while this Mac's sessions run there, unless the user stops them first.
+    /// Refused while this Mac's sessions run there, unless the user stops them first, and whenever they can't be counted.
     public func remove(_ host: SavedHost) async {
         guard confirmRemove(host) else { return }
         await perform(host, .removing) {
-            if self.preferences(host).helper?.state == .current {
-                let link = self.makeLink(host)
-                let bridged = await self.run(link, host, .bridge, install: .never)
-                if case .success = bridged, let connection = link.connection {
-                    let running =
-                        (try? await connection.request(.list)).flatMap { message -> Int? in
-                            if case .sessions(let records) = message { records.filter(\.running).count } else { nil }
-                        } ?? 0
-                    // Cancelled while listing: the empty count above is not an answer, and cancelling never changes the host.
-                    if link.state == .closed { return Self.message(for: .cancelled) }
-                    if running > 0 {
-                        guard self.confirmStopSessions(host, running) else { link.close(); return "The helper was kept, with its \(running) running session(s)." }
-                        connection.sendStopAll()
-                        try? await Task.sleep(for: .milliseconds(600))
-                    }
+            // The shared workspace link lists them: a bridge of its own would take the broker's client slot from it.
+            var link: RemoteHostLink?
+            var connection = self.workspaceConnection(host.id)
+            if connection == nil {
+                let bridge = self.makeLink(host)
+                switch await self.run(bridge, host, .bridge, install: .never) {
+                case .success: link = bridge; connection = bridge.connection
+                case .failure(.cancelled): return Self.message(for: .cancelled)
+                // No helper at all, so no broker of this Mac's runs there.
+                case .failure where bridge.probe?.installed.isEmpty == true: break
+                case .failure(let failure): return "The helper was kept: its running sessions couldn’t be checked. " + Self.message(for: failure)
                 }
-                link.close()
-                if bridged == .failure(.cancelled) { return Self.message(for: .cancelled) }
             }
+            if let connection {
+                let running: Int? =
+                    if case .sessions(let records)? = try? await connection.request(.list) { records.filter(\.running).count } else { nil }
+                // Cancelled while listing: cancelling never changes the host.
+                if link?.state == .closed { return Self.message(for: .cancelled) }
+                guard let running else { link?.close(); return "The helper was kept: its running sessions couldn’t be checked." }
+                if running > 0 {
+                    guard self.confirmStopSessions(host, running) else { link?.close(); return "The helper was kept, with its \(running) running session(s)." }
+                    connection.sendStopAll()
+                    try? await Task.sleep(for: .milliseconds(600))
+                }
+            }
+            link?.close()
             return await self.connect(host, .remove, install: .never)
         }
     }

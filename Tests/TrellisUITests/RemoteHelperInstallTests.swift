@@ -113,6 +113,51 @@ final class RemoteHelperInstallTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: home + "/.trellis"))
     }
 
+    func testRemoveProtectsAnOlderHelpersSessions() async throws {
+        model.confirmInstall = { _, _, _, _ in true }
+        await model.install(host)
+        let directory = try XCTUnwrap(model.catalog.artifacts["darwin"]).directory
+        // After a Trellis update only the older helper is installed (FR-RW14), and its broker still runs a session.
+        try FileManager.default.moveItem(atPath: home + "/.trellis/remote/" + directory, toPath: home + "/.trellis/remote/" + String(repeating: "0", count: 16))
+        await model.check(host)
+        XCTAssertEqual(model.preferences(host).helper?.state, .outdated)
+        let link = RemoteHostLink(
+            request: .init(sshExecutable: model.sshExecutable, options: [], destination: host.destination, environment: model.environment(), clientID: model.clientID!),
+            catalog: model.catalog)
+        _ = try await link.run(.bridge, install: .never).get()
+        let spawned = try await XCTUnwrap(link.connection).request(
+            .spawnLogin(BrokerLoginRequest(sessionID: UUID(), shell: "/bin/sh", directory: nil, environment: [:], integration: nil, columns: 80, rows: 24)))
+        guard case .spawned = spawned else { return XCTFail("\(spawned)") }
+        link.close()
+
+        model.confirmRemove = { _ in true }
+        var running = 0
+        model.confirmStopSessions = { _, count in
+            running = count; return false
+        }
+        await model.remove(host)
+        XCTAssertEqual(running, 1, "An outdated helper's sessions are counted too")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: home + "/.trellis/remote"))
+
+        model.confirmStopSessions = { _, _ in true }
+        await model.remove(host)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: home + "/.trellis"))
+    }
+
+    func testRemoveIsRefusedWhenSessionsCannotBeChecked() async throws {
+        model.confirmInstall = { _, _, _, _ in true }
+        await model.install(host)
+        // ssh fails before the helper answers: the count is unknown, never taken as zero.
+        let ssh = model.sshExecutable
+        model.sshExecutable = "/usr/bin/false"
+        model.confirmRemove = { _ in true }
+        model.confirmStopSessions = { _, _ in true }
+        await model.remove(host)
+        model.sshExecutable = ssh
+        XCTAssertEqual(model.messages[host.id]?.hasPrefix("The helper was kept"), true, model.messages[host.id] ?? "")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: home + "/.trellis/remote"))
+    }
+
     func testAutoInstallIsOffByDefaultAndSaved() async {
         XCTAssertFalse(model.preferences(host).autoInstall)
         await model.setAutoInstall(host, true)
