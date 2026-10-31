@@ -154,6 +154,24 @@ final class RemoteLinkTests: XCTestCase {
         try Data("not json".utf8).write(to: URL(fileURLWithPath: path))
         let unreadable = await RemoteHostSettings(stateDirectory: folder).all()
         XCTAssertEqual(unreadable, [:], "An unreadable file reads as empty")
+        let aside = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix("remote-hosts.unreadable.") }
+        XCTAssertEqual(aside.count, 1, "and is set aside, never overwritten")
+        XCTAssertEqual(try Data(contentsOf: folder.appendingPathComponent(aside[0])), Data("not json".utf8))
+    }
+
+    func testANewerHostSettingsFileIsNeverOverwritten() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-remote-hosts-\(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent(RemoteHostSettings.fileName)
+        let newer = Data(#"{"version":2,"hosts":{},"profiles":["from a newer Trellis"]}"#.utf8)
+        try newer.write(to: url)
+        let settings = RemoteHostSettings(stateDirectory: folder)
+        let host = UUID()
+        let changed = await settings.update(host) { $0.autoInstall = true }
+        XCTAssertTrue(changed.autoInstall, "The change lasts until quit")
+        await settings.retain([])
+        XCTAssertEqual(try Data(contentsOf: url), newer)
     }
 }
 

@@ -122,12 +122,16 @@ public struct RemoteHostPreferences: Codable, Equatable, Sendable {
 }
 
 /// `remote-hosts.json` in the state directory: per saved host, the helper status and the auto-install choice. Owner-only,
-/// replaced atomically, never holds a secret; an unreadable file reads as empty and is replaced on the next change.
+/// replaced atomically with the previous version kept as `remote-hosts.backup.json`, never holds a secret. An unparsable
+/// file is set aside and reads as empty; one from a newer Trellis, or one that can't be read, is never written over, so
+/// changes then last until quit.
 public actor RemoteHostSettings {
     public static let fileName = "remote-hosts.json"
+    static let byteLimit = 4_194_304
     private let url: URL?
     private var hosts: [UUID: RemoteHostPreferences] = [:]
     private var loaded = false
+    private var readOnly = false
 
     public init(stateDirectory: URL?) { url = stateDirectory?.appendingPathComponent(Self.fileName) }
 
@@ -135,6 +139,7 @@ public actor RemoteHostSettings {
         var version = 1
         var hosts: [String: RemoteHostPreferences]
     }
+    private struct Version: Decodable { var version: Int }
 
     public func all() -> [UUID: RemoteHostPreferences] {
         load()
@@ -167,17 +172,30 @@ public actor RemoteHostSettings {
     private func load() {
         guard !loaded else { return }
         loaded = true
-        guard let url, let data = try? Data(contentsOf: url), let document = try? Self.decoder.decode(Document.self, from: data), document.version == 1 else { return }
+        guard let url else { return }
+        let data: Data?
+        do { data = try LibraryFile.read(url, limit: Self.byteLimit) } catch { readOnly = true; return }
+        guard let data else { return }
+        if let version = try? Self.decoder.decode(Version.self, from: data), version.version > 1 { readOnly = true; return }
+        guard let document = Self.decode(data) else {
+            if (try? LibraryFile.preserveUnreadable(url, name: "remote-hosts")) == nil { readOnly = true }
+            return
+        }
         hosts = Dictionary(uniqueKeysWithValues: document.hosts.compactMap { key, value in UUID(uuidString: key).map { ($0, value) } })
     }
 
+    private static func decode(_ data: Data) -> Document? {
+        guard let document = try? decoder.decode(Document.self, from: data), document.version == 1 else { return nil }
+        return document
+    }
+
     private func save() {
-        guard let url else { return }
+        guard let url, !readOnly else { return }
         let document = Document(hosts: Dictionary(uniqueKeysWithValues: hosts.map { ($0.key.uuidString, $0.value) }))
         guard let data = try? Self.encoder.encode(document) else { return }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        guard (try? data.write(to: url, options: .atomic)) != nil else { return }
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try? LibraryFile.write(data, to: url, backup: url.deletingLastPathComponent().appendingPathComponent("remote-hosts.backup.json"), limit: Self.byteLimit) {
+            Self.decode($0) != nil
+        }
     }
 
     private static let encoder: JSONEncoder = {
