@@ -13,7 +13,8 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Shell integration:** zsh, bash and fish report their directory and exit status with no dotfile edits; jump between prompts with ⌘↑/⌘↓.
 - **Themes:** 10 editor-inspired families plus a JSON theme library, with separate light and dark slots and live preview.
 - **SSH hosts:** a saved host library and `~/.ssh/config` discovery, using `/usr/bin/ssh` and optional Keychain-stored passwords.
-- **Tasks and project files:** run `.trellis/launch.json` tasks from a pane header and check a project's layout in as `.trellis/project.json`.
+- **Remote workspaces (preview):** open a saved Linux or macOS host as a sidebar window whose sessions run under a small Trellis helper on the host. They keep running when you quit or lose the connection, reconnect on their own, and splits open where you are on the host; tasks work there too. See [Remote workspaces](docs/features/remote-workspaces.md).
+- **Projects and tasks:** define projects (tabs, splits, commands and git repositories) in the **Projects** library and launch them on this Mac or a saved host, cloning what's missing; run `.trellis/launch.json` tasks from a pane header.
 - **Command palette:** ⇧⌘P opens one searchable list of every action, window, tab, pane, saved host, task and theme.
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
 - **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.

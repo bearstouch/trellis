@@ -92,7 +92,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             case "session.get": return .success(try sessionJSON(try p.uuid("id"), access))
             case "session.start": return try await startSession(p, access)
             case "session.restart": return try await restartSession(p, access)
-            case "session.sendInput": return .success(try sendInput(p))
+            case "session.sendInput": return .success(try sendInput(p, access))
             case "session.readOutput": return .success(try readOutput(p))
             case "layout.validate": return .success(try layoutValidate(p, access))
             case "layout.plan": return .success(try layoutPlan(p, access))
@@ -109,7 +109,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 return .success(.object(["id": .string(id), "deleted": .bool(true), "appearance": appearanceJSON()]))
             case "appearance.get": return .success(appearanceJSON())
             case "appearance.set": return .success(try appearanceSet(p))
-            case "session.execute": return .success(try execute(p))
+            case "session.execute": return .success(try execute(p, access))
             case "host.connect": return try await connect(p, access)
             case "host.list": return .success(.object(["hosts": .array(hostsVisible(access, query: try p.optionalString("query")).map(hostJSON))]))
             case "host.get":
@@ -345,7 +345,13 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
 
     /// Starting a pane that already references a saved host still needs access to it.
     @MainActor private func requireHostAccess(forStoredLaunchOf paneID: UUID, _ access: GrantAccess) throws {
-        guard let session = model.snapshot.panes[paneID].flatMap({ model.snapshot.sessions[$0.sessionID] }), case .host(let hostID) = session.launch else { return }
+        guard let session = model.snapshot.panes[paneID].flatMap({ model.snapshot.sessions[$0.sessionID] }) else { return }
+        // A remote workspace pane runs on its saved host too (FR-RW15).
+        let hostID: UUID
+        switch session.launch {
+        case .host(let id), .remoteShell(let id, _): hostID = id
+        case .shell, .process: return
+        }
         switch access.hostAccess(hosts.hosts.first { $0.id == hostID }) {
         case .allowed: return
         case .hidden: throw ControlError.application("PERMISSION_DENIED", "This pane connects to a saved host this grant cannot use.")
@@ -353,8 +359,9 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         }
     }
 
-    @MainActor private func sendInput(_ p: Params) throws -> JSONValue {
+    @MainActor private func sendInput(_ p: Params, _ access: GrantAccess) throws -> JSONValue {
         let sessionID = try p.uuid("id")
+        try requireRemoteHostAccess(sessionID, access)
         let text = try p.optionalString("text"), encoded = try p.optionalString("base64")
         guard (text == nil) != (encoded == nil) else {
             throw ControlError.invalidParams("Send exactly one of text or base64.", fields: ["text": "exactly one of text/base64", "base64": "exactly one of text/base64"])
@@ -381,8 +388,9 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         return .object(["acceptedBytes": .number(Double(data.count)), "mode": .string(paste ? "paste" : "literal")])
     }
 
-    @MainActor private func execute(_ p: Params) throws -> JSONValue {
+    @MainActor private func execute(_ p: Params, _ access: GrantAccess) throws -> JSONValue {
         let sessionID = try p.uuid("id")
+        try requireRemoteHostAccess(sessionID, access)
         guard try p.optionalBool("submit") == true else {
             throw ControlError.invalidParams("session.execute requires submit: true; it sends the command plus Return.", fields: ["submit": "true"])
         }
@@ -397,7 +405,23 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         return .object(["acceptedBytes": .number(Double(data.count)), "submitted": .bool(true)])
     }
 
+    /// FR-RW15: typing into a remote workspace session needs access to its host, as connecting to it does.
+    @MainActor private func requireRemoteHostAccess(_ sessionID: UUID, _ access: GrantAccess) throws {
+        guard let hostID = model.snapshot.sessions[sessionID]?.launch.remoteHostID else { return }
+        switch access.hostAccess(hosts.hosts.first { $0.id == hostID }) {
+        case .allowed: return
+        case .hidden: throw ControlError.application("PERMISSION_DENIED", "This session runs on a saved host this grant cannot use.")
+        case .needsReapproval: throw ControlError.application("PERMISSION_DENIED", "This host's connection changed after it was approved. Reapprove it in Settings → Automation.")
+        }
+    }
+
     @MainActor private func send(_ sessionID: UUID, _ data: Data, paste: Bool) throws {
+        // FR-RW15: input is never queued for a host that isn't connected; the session keeps running there.
+        // A stopped or ended session isn't "keeps running there"; it fails as any other session that isn't running.
+        if let session = model.snapshot.sessions[sessionID], session.state == .running, let host = session.launch.remoteHostID, model.remoteLinks[host] != .connected {
+            throw ControlError.application(
+                "REMOTE_DISCONNECTED", "The session's host is not connected. The session keeps running there; retry after it reconnects.", retryable: true)
+        }
         do {
             try model.automationSendInput(sessionID: sessionID, data: data, paste: paste)
         } catch .notFound {
@@ -880,6 +904,14 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         case .host(let hostID):
             object["launchKind"] = .string("host")
             if access.allows(.hostRead), access.hostAccess(hosts.hosts.first { $0.id == hostID }) == .allowed { object["hostId"] = .string(hostID.uuidString) }
+        case .remoteShell(let hostID, let directory):
+            // FR-RW15: a remote workspace session; its directory is a path on the host.
+            object["launchKind"] = .string("remoteShell")
+            if access.allows(.hostRead), access.hostAccess(hosts.hosts.first { $0.id == hostID }) == .allowed {
+                object["hostId"] = .string(hostID.uuidString)
+                object["remoteLink"] = .string(Self.linkName(model.remoteLinks[hostID]))
+            }
+            if access.allows(.sessionExecute), let directory { object["directory"] = .string(directory) }
         case .process(let executable, let arguments, let directory):
             // Login shells are recorded as resolved processes; report them as shells.
             object["launchKind"] = .string(arguments == ["-l"] ? "shell" : "process")
@@ -890,6 +922,18 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             }
         }
         return .object(object)
+    }
+
+    /// FR-RW15: the host link as automation sees it; `needsInput` is when only a person can reconnect.
+    static func linkName(_ link: RemoteLinkDisplay?) -> String {
+        switch link {
+        case .connected?: "connected"
+        case .connecting?: "connecting"
+        case .reconnecting?: "reconnecting"
+        case .offline?: "offline"
+        case .needsInput?: "needsInput"
+        case .disconnected?, nil: "disconnected"
+        }
     }
 
     @MainActor private func hostsVisible(_ access: GrantAccess, query: String?) -> [SavedHost] {

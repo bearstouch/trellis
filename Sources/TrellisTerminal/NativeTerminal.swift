@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import SwiftTerm
+import TrellisBroker
 import TrellisCore
 import Combine
 
@@ -435,6 +436,22 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         return true
     }
 
+    /// The host of a remote workspace session (FR-RW04); nil for local and SSH panes.
+    public var remoteTransport: RemoteSessionTransport? { transport as? RemoteSessionTransport }
+
+    /// Starts a remote workspace session through its transport (FR-RW04): the helper on the host spawns the login shell.
+    /// `nonce` authenticates the shell-integration marks when integration was planned (FR-RW05).
+    public func start(remote transport: RemoteSessionTransport, request: BrokerLoginRequest, nonce: String?) async {
+        guard !adapter.isDetached, session.state == .stopped, useTransport(transport) else { return }
+        let size = getWindowSize()
+        guard let dimensions = try? TerminalSize(columns: Int(size.ws_col), rows: Int(size.ws_row)) else { return }
+        if let nonce, shellMarkOrigin == nil { observeShellIntegration(nonce: nonce) }
+        var request = request
+        request.columns = UInt16(dimensions.columns); request.rows = UInt16(dimensions.rows)
+        await session.start(size: dimensions) { _, _ in try await transport.launchRemote(request) }
+        if session.state == .failed { adapter.receive(Data("Unable to start the remote session. The host’s helper refused it or the connection ended.\r\n".utf8)) }
+    }
+
     /// Takes over a session the broker kept while the app was closed: its marks, then its replay with
     /// every reply suppressed, then live I/O at this view's size. Never starts a process.
     @discardableResult
@@ -451,10 +468,10 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     }
 
     /// A kept session that ended while the app was closed: its replay, then a notice; the pane stays stopped.
-    public func showEndedSession(replay data: Data, exitCode: Int32?) {
+    public func showEndedSession(replay data: Data, exitCode: Int32?, while reason: String = "Trellis was closed") {
         guard session.state == .stopped else { return }
         replay(data)
-        replay(Data("\r\n\u{1b}[0m\u{1b}[2m— Session ended while Trellis was closed\(exitCode.map { " (exit \($0))" } ?? "") —\u{1b}[0m\r\n".utf8))
+        replay(Data("\r\n\u{1b}[0m\u{1b}[2m— Session ended while \(reason)\(exitCode.map { " (exit \($0))" } ?? "") —\u{1b}[0m\r\n".utf8))
     }
 
     /// Restored plain text from the scrollback file (FR-R04), cleaned to printable text first.

@@ -1,5 +1,16 @@
-import Darwin
-import Foundation
+#if canImport(Darwin)
+    import Darwin
+#elseif canImport(Glibc)
+    import Glibc
+#elseif canImport(Musl)
+    import Musl
+#endif
+import Dispatch
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
 import TrellisPOSIX
 
 /// Receives one broker session's stream on the main actor.
@@ -33,6 +44,9 @@ public final class BrokerConnection {
     private var outbox = 0
     public private(set) var isOpen = true
     public private(set) var brokerPID: Int32 = 0
+    /// Negotiated in `hello`; v2 messages are sent only when this is at least 2.
+    public private(set) var protocolVersion = 0
+    public private(set) var hostInfo: BrokerHostInfo?
     public var onClose: (() -> Void)?
 
     private struct WeakSink { weak var sink: (any BrokerSessionSink)? }
@@ -40,30 +54,28 @@ public final class BrokerConnection {
 
     /// Connects to `socketPath` and proves the listener is our user's `brokerExecutable`.
     public static func connect(socketPath: String, brokerExecutable: String) throws(BrokerClientError) -> BrokerConnection {
-        guard BrokerFiles.isOwnedSocket(socketPath), var address = BrokerFiles.address(socketPath) else { throw .unavailable }
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw .unavailable }
-        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
-        guard BrokerFiles.preventSigPipe(fd) else { Darwin.close(fd); throw .unavailable }
-        let connected = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
-        guard connected == 0 else { Darwin.close(fd); throw .unavailable }
-        guard BrokerFiles.peerRuns(fd, executable: brokerExecutable) else { Darwin.close(fd); throw .untrustedPeer }
+        guard BrokerFiles.isOwnedSocket(socketPath), let fd = BrokerFiles.connect(socketPath) else { throw .unavailable }
+        guard BrokerFiles.peerRuns(fd, executable: brokerExecutable) else { systemClose(fd); throw .untrustedPeer }
         BrokerFiles.configure(fd)
         return BrokerConnection(fd: fd)
     }
 
-    /// Internal so tests can drive a connection over a socket pair.
-    init(fd: Int32) {
-        io = DispatchIO(type: .stream, fileDescriptor: fd, queue: readQueue) { @Sendable _ in Darwin.close(fd) }
+    /// An already-authenticated stream: a socket pair in tests, or a remote link's ssh pipe, where SSH authenticated the
+    /// host and the remote bridge checked the broker (FR-RW03). The connection owns and closes `fd`.
+    public init(fd: Int32) {
+        io = DispatchIO(type: .stream, fileDescriptor: fd, queue: readQueue) { @Sendable _ in systemClose(fd) }
         io.setLimit(lowWater: 1)
         readNext(DecoderBox())
     }
 
-    /// Fails with `incompatible` when the broker speaks another protocol version.
-    public func hello() async throws {
-        switch try await request(.hello(protocolVersion: BrokerProtocol.version, features: [BrokerProtocol.inputRejectedFeature])) {
-        case .welcome(_, let pid): brokerPID = pid
-        case .refused: close(); throw BrokerClientError.incompatible
+    /// Fails with `incompatible` when the broker speaks no version in `minimumVersion…version`. Remote links require
+    /// v2 and name their client ID.
+    public func hello(minimumVersion: Int = BrokerProtocol.minimumVersion, clientID: String? = nil) async throws {
+        let message = BrokerMessage.hello(
+            protocolVersion: minimumVersion, features: [BrokerProtocol.inputRejectedFeature], maximumVersion: BrokerProtocol.version, clientID: clientID)
+        switch try await request(message) {
+        case .welcome(let version, let pid, let info) where version >= minimumVersion && version <= BrokerProtocol.version:
+            brokerPID = pid; protocolVersion = version; hostInfo = info
         default: close(); throw BrokerClientError.incompatible
         }
     }
@@ -174,68 +186,5 @@ public final class BrokerConnection {
         sinks = [:]
         for sink in attached { sink.brokerDisconnected() }
         onClose?()
-    }
-}
-
-/// Finds or starts the broker for one state directory: its socket lives in a fresh owner-only
-/// directory under the per-user temporary folder, recorded in `<state>/broker.json`.
-public struct BrokerLauncher: Sendable {
-    public let stateDirectory: URL
-    /// The bundled `trellis-broker`.
-    public let helperPath: String
-    /// This app's executable; the broker accepts only it as a client.
-    public let clientPath: String
-    public let runtimeRoot: URL
-    public let idleExit: Int
-
-    public init(stateDirectory: URL, helperPath: String, clientPath: String, runtimeRoot: URL = FileManager.default.temporaryDirectory, idleExit: Int = 30) {
-        self.stateDirectory = stateDirectory; self.helperPath = helperPath; self.clientPath = clientPath; self.runtimeRoot = runtimeRoot; self.idleExit = idleExit
-    }
-
-    public var discoveryPath: String { stateDirectory.appendingPathComponent(BrokerProtocol.discoveryName).path }
-
-    public static func currentExecutable() -> String? { BrokerFiles.executablePath(pid: getpid()) }
-
-    public func discovery() -> BrokerDiscovery? {
-        BrokerFiles.readOwnerFile(discoveryPath).flatMap { try? JSONDecoder().decode(BrokerDiscovery.self, from: $0) }
-    }
-
-    public func publish(socketPath: String) {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        guard let data = try? encoder.encode(BrokerDiscovery(protocolVersion: BrokerProtocol.version, socketPath: socketPath)) else { return }
-        try? FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        _ = BrokerFiles.writeOwnerFile(data, to: discoveryPath)
-    }
-
-    public func removeDiscovery() { unlink(discoveryPath) }
-
-    /// Starts a detached broker and waits up to two seconds for its socket; returns the socket path.
-    public func spawn() throws(BrokerClientError) -> String {
-        var random = [UInt8](repeating: 0, count: 6)
-        arc4random_buf(&random, random.count)
-        let directory = runtimeRoot.appendingPathComponent("trellis-broker-" + random.map { String(format: "%02x", $0) }.joined()).path
-        guard mkdir(directory, 0o700) == 0, BrokerFiles.isOwnerOnlyDirectory(directory) else { throw .unavailable }
-        let socketPath = directory + "/s"
-        guard socketPath.utf8.count <= BrokerFiles.socketPathLimit else { rmdir(directory); throw .unavailable }
-        let argv: [String] = [helperPath, "--socket", socketPath, "--client", clientPath, "--idle-exit", String(idleExit)]
-        let arguments = argv.map { strdup($0) }
-        defer { arguments.forEach { free($0) } }
-        // An empty environment: nothing of the app's environment reaches the broker.
-        let environment: [UnsafeMutablePointer<CChar>?] = [nil]
-        let failure = helperPath.withCString { helper in
-            (arguments + [nil]).withUnsafeBufferPointer { argv in
-                environment.withUnsafeBufferPointer { envp in
-                    trellis_spawn_detached(helper, argv.baseAddress, envp.baseAddress)
-                }
-            }
-        }
-        guard failure == 0 else { rmdir(directory); throw .unavailable }
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline {
-            if BrokerFiles.isOwnedSocket(socketPath) { return socketPath }
-            usleep(20_000)
-        }
-        throw .timedOut
     }
 }

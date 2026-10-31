@@ -9,7 +9,11 @@ public struct LayoutDocument: Equatable, Sendable {
 
 public struct LayoutWindow: Equatable, Sendable {
     public var key: String, name: String, tabs: [LayoutTab]
-    public init(key: String, name: String, tabs: [LayoutTab]) { self.key = key; self.name = name; self.tabs = tabs }
+    /// A remote workspace's saved host (FR-R02, FR-RW01); only exports carry it, never API layouts.
+    public var remoteHostID: UUID?
+    public init(key: String, name: String, tabs: [LayoutTab], remoteHostID: UUID? = nil) {
+        self.key = key; self.name = name; self.tabs = tabs; self.remoteHostID = remoteHostID
+    }
 }
 
 public struct LayoutTab: Equatable, Sendable {
@@ -101,11 +105,11 @@ public enum LayoutPlanner {
 
     /// Validates the document and reconciles it with `snapshot` under the
     /// namespace `bindings`. Never mutates; the target is applied atomically.
-    /// `keepOmittedPanes` leaves a bound tab's live panes the document omits where they are (project files, FR-WF04).
+    /// `keepOmittedPanes` leaves a bound tab's live panes the document omits where they are (project launches, FR-PL08).
     public static func plan(
         _ document: LayoutDocument, bindings existing: [String: LayoutBinding], snapshot: WorkspaceSnapshot, home: String,
         hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, keepLiveLaunches: Bool = false, keepOmittedPanes: Bool = false,
-        makeID: () -> UUID = { UUID() }
+        remoteHostID: UUID? = nil, makeID: () -> UUID = { UUID() }
     ) -> LayoutPlan {
         var plan = LayoutPlan(baseRevision: snapshot.revision)
         // Structural validation first; nothing is reconciled on errors.
@@ -161,8 +165,10 @@ public enum LayoutPlanner {
             }
             return binding.id
         }
-        func launch(_ value: LayoutLaunch) -> SessionLaunch {
+        // A remote window's layout opens on its host (FR-RW10): every shell is that host's, in a path there.
+        func launch(_ value: LayoutLaunch, on host: UUID?) -> SessionLaunch {
             switch value {
+            case .shell(let directory) where host != nil: .remoteShell(hostID: host!, directory: directory.flatMap { expand($0, home: home) })
             case .shell(let directory): .shell(directory: directory.flatMap { expand($0, home: home) })
             case .host(let id): .host(id)
             }
@@ -180,6 +186,8 @@ public enum LayoutPlanner {
                 plan.creates.append((.window, declared.key))
             }
             bindings[declared.key] = LayoutBinding(kind: .window, id: windowID)
+            // An existing window keeps its own binding; a new one takes the document's, or the plan's.
+            let windowHost = next.windows.first { $0.id == windowID }.map(\.remoteHostID) ?? declared.remoteHostID ?? remoteHostID
             for tab in declared.tabs {
                 let tabID: UUID
                 let existingTab = bound(tab.key, .tab).flatMap { next.tabs[$0] }
@@ -193,7 +201,7 @@ public enum LayoutPlanner {
                 func build(_ node: LayoutNode) -> PaneLayout? {
                     switch node {
                     case .pane(let key, let title, let desired):
-                        let desiredLaunch = launch(desired)
+                        let desiredLaunch = launch(desired, on: windowHost)
                         if let id = bound(key, .pane), let pane = next.panes[id] {
                             guard pane.tabID == tabID else {
                                 plan.conflicts.append(LayoutIssue(key: key, "Panes cannot move between tabs; close and recreate it instead."))
@@ -204,8 +212,8 @@ public enum LayoutPlanner {
                             updated.title = title
                             var changed = pane.title != title
                             if var session = next.sessions[pane.sessionID], !sameLaunch(session.launch, desiredLaunch) {
-                                // Live sessions keep their launch; inactive ones may be reconfigured. Project files
-                                // (FR-WF04) leave live panes running where they are instead of conflicting.
+                                // Live sessions keep their launch; inactive ones may be reconfigured. Project launches
+                                // (FR-PL08) leave live panes running where they are instead of conflicting.
                                 if [.stopped, .exited, .failed].contains(session.state) {
                                     session.launch = desiredLaunch
                                     next.sessions[session.id] = session
@@ -275,7 +283,7 @@ public enum LayoutPlanner {
                 window.name = declared.name
                 next.windows[index] = window
             } else if let first = managedTabs.first {
-                next.windows.append(ManagedWindow(id: windowID, name: declared.name, tabIDs: managedTabs, activeTabID: first))
+                next.windows.append(ManagedWindow(id: windowID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: windowHost))
             }
             managedWindows.append(windowID)
         }
