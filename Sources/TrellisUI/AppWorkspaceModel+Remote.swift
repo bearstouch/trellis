@@ -193,10 +193,8 @@ extension AppWorkspaceModel {
         remoteLinks[hostID] = .connected
         let hungUp = pendingRemoteHangups.removeValue(forKey: hostID) ?? []
         for id in hungUp { connection.post(.signal(sessionID: id, signal: SIGHUP)) }
-        for terminal in remoteTerminals(hostID) {
-            guard let transport = terminal.remoteTransport, let size = terminalSize(terminal) else { continue }
-            _ = await transport.resume(on: connection, size: size)
-        }
+        let resumable = remoteTerminals(hostID).compactMap { terminal in terminal.remoteTransport.flatMap { transport in terminalSize(terminal).map { (transport, $0) } } }
+        _ = await RemoteSessionTransport.resume(resumable, on: connection)
         // A session just hung up can still be listed as running; it is never offered as an orphan.
         await adoptRemoteSessions(hostID: hostID, connection: connection, ignoring: hungUp)
         return nil
