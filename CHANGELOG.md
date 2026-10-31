@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **Remote workspaces reconnect faster:** when a host's link comes back, all of its panes resume together instead of one network round trip after another, so with many panes on a slow link the last one is usable after about one round trip.
+- **Remote workspaces reconnect faster:** when a host's link comes back, its panes resume four at a time instead of one network round trip after another, so twelve panes on a slow link are back after three round trips instead of twelve.
 
 ### Removed
 

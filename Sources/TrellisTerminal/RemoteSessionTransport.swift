@@ -82,7 +82,8 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
 
     /// Re-attaches on a new connection after the link came back. The missed output is delivered once: exactly, when
     /// the host still holds it, otherwise after a reset with the most recent output (FR-RW08).
-    public func resume(on next: BrokerConnection, size: TerminalSize) async -> Bool {
+    /// `timeout` covers the attach and the replay the broker sends before answering it.
+    public func resume(on next: BrokerConnection, size: TerminalSize, timeout: Duration = .seconds(5)) async -> Bool {
         // Only a live session resumes: one that ended, or was closed while the link was down, is never attached again.
         guard used, isRunning, !resuming, linkLost || !connection.isOpen else { return true }
         resuming = true
@@ -93,7 +94,7 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
         let prompt = passwordPromptActive
         // Live output can arrive before this continues; it is held so it follows the missed output.
         delivering = false
-        guard let attachment = await requestAttach(size: size, since: received) else { beginDelivery(); return false }
+        guard let attachment = await requestAttach(size: size, since: received, timeout: timeout) else { beginDelivery(); return false }
         let missed = replay
         replay = Data()
         linkLost = false
@@ -110,26 +111,33 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
         return true
     }
 
-    /// Re-attaches a host's sessions on `next` together: each attach is its own round trip, answered by request ID, so
-    /// the last pane is back after one round trip instead of one per pane. Results are in the order given.
+    /// Re-attaches a host's sessions on `next` a few at a time: each attach is its own round trip, answered by request ID,
+    /// so twelve panes are back after three round trips instead of twelve. The broker answers in order, each reply after its
+    /// replay (up to 4 MiB), so the batch is capped and each attach's timeout covers the replays queued ahead of it, as one
+    /// attach alone had before. Results are in the order given.
+    public static let resumeBatch = 4
     public static func resume(_ sessions: [(RemoteSessionTransport, TerminalSize)], on next: BrokerConnection) async -> [Bool] {
-        // All are sent before any is awaited; each task stays on the main actor, like a single resume.
-        let resuming = sessions.map { transport, size in Task { await transport.resume(on: next, size: size) } }
         var results: [Bool] = []
-        for task in resuming { results.append(await task.value) }
+        for start in stride(from: 0, to: sessions.count, by: resumeBatch) {
+            let batch = sessions[start..<min(start + resumeBatch, sessions.count)]
+            let timeout = Duration.seconds(5) * batch.count
+            // All of a batch are sent before any is awaited; each task stays on the main actor, like a single resume.
+            let resuming = batch.map { transport, size in Task { await transport.resume(on: next, size: size, timeout: timeout) } }
+            for task in resuming { results.append(await task.value) }
+        }
         return results
     }
 
     /// Without the exact tail, the screen is cleared before the most recent output so nothing is shown twice.
     static let reset = Data("\u{1b}c".utf8)
 
-    private func requestAttach(size: TerminalSize, since: UInt64?) async -> BrokerAttachment? {
+    private func requestAttach(size: TerminalSize, since: UInt64?, timeout: Duration = .seconds(5)) async -> BrokerAttachment? {
         connection.register(self, sessionID: sessionID)
         awaitingStart = true
         arrivedWhileAttaching = 0
         defer { awaitingStart = false }
         let request = BrokerMessage.attach(sessionID: sessionID, columns: UInt16(size.columns), rows: UInt16(size.rows), since: since)
-        guard case .attached(let attachment)? = try? await connection.request(request) else {
+        guard case .attached(let attachment)? = try? await connection.request(request, timeout: timeout) else {
             connection.unregister(sessionID: sessionID)
             return nil
         }
