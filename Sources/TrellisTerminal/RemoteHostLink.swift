@@ -131,33 +131,40 @@ public final class RemoteHostLink {
         }
         guard let platform = probe.platform else { await channel.send(RemoteBootstrap.quitLine); return .failure(.unsupported(probe.displayName)) }
         guard let artifact = catalog.artifacts[platform] else { await channel.send(RemoteBootstrap.quitLine); return .failure(.artifactUnavailable(probe.displayName)) }
+        var directory = artifact.directory
         if purpose == .install || !probe.installed.contains(artifact.directory) {
-            guard probe.checksumTool != nil else { await channel.send(RemoteBootstrap.quitLine); return .failure(.noChecksumTool) }
+            // FR-RW14: without an install, an older helper already there still bridges to this Mac's running broker.
+            let older = purpose == .bridge ? probe.installed.sorted().first : nil
+            guard probe.checksumTool != nil || older != nil else { await channel.send(RemoteBootstrap.quitLine); return .failure(.noChecksumTool) }
             let allowed: Bool
             switch policy {
             case .never: allowed = false
-            case .always: allowed = true
-            case .ask: allowed = await confirmInstall?(probe, artifact) ?? false
+            case .always: allowed = probe.checksumTool != nil
+            case .ask: allowed = probe.checksumTool != nil ? await confirmInstall?(probe, artifact) ?? false : false
             }
-            guard allowed, state == .connecting else { await channel.send(RemoteBootstrap.quitLine); return .failure(.declined) }
-            guard let payload = await Task.detached(priority: .userInitiated, operation: { RemoteArtifactCatalog.payload(artifact) }).value else {
-                await channel.send(RemoteBootstrap.quitLine)
-                return .failure(.artifactUnavailable(probe.displayName))
+            guard state == .connecting, allowed || older != nil else { await channel.send(RemoteBootstrap.quitLine); return .failure(.declined) }
+            if allowed {
+                guard let payload = await Task.detached(priority: .userInitiated, operation: { RemoteArtifactCatalog.payload(artifact) }).value else {
+                    await channel.send(RemoteBootstrap.quitLine)
+                    return .failure(.artifactUnavailable(probe.displayName))
+                }
+                state = .installing
+                // Nothing more is sent until the host acknowledges, so the upload can never swallow a later command.
+                // The scripts first, the helper last: the host lists a directory only once its helper is in place.
+                for file in catalog.integration {
+                    await channel.send(RemoteBootstrap.fileLine(file, directory: artifact.directory), file.data)
+                    guard case .stored(file.path) = await channel.reply() else { return .failure(failure(ended: false)) }
+                }
+                await channel.send(RemoteBootstrap.installLine(artifact), payload)
+                guard case .installed(artifact.directory) = await channel.reply() else { return .failure(failure(ended: false)) }
+                self.probe?.installed.insert(artifact.directory)
+                state = .connecting
+            } else if let older {
+                directory = older
             }
-            state = .installing
-            // Nothing more is sent until the host acknowledges, so the upload can never swallow a later command.
-            // The scripts first, the helper last: the host lists a directory only once its helper is in place.
-            for file in catalog.integration {
-                await channel.send(RemoteBootstrap.fileLine(file, directory: artifact.directory), file.data)
-                guard case .stored(file.path) = await channel.reply() else { return .failure(failure(ended: false)) }
-            }
-            await channel.send(RemoteBootstrap.installLine(artifact), payload)
-            guard case .installed(artifact.directory) = await channel.reply() else { return .failure(failure(ended: false)) }
-            self.probe?.installed.insert(artifact.directory)
-            state = .connecting
         }
         guard purpose == .bridge else { await channel.send(RemoteBootstrap.quitLine); return .success(self.probe ?? probe) }
-        await channel.send(RemoteBootstrap.bridgeLine(directory: artifact.directory))
+        await channel.send(RemoteBootstrap.bridgeLine(directory: directory))
         guard await channel.awaitSync() else { return .failure(failure(ended: false)) }
         let fd = channel.takeDescriptor()
         guard fd >= 0 else { return .failure(failure(ended: true)) }

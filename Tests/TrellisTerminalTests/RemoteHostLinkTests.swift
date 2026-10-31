@@ -109,6 +109,27 @@ final class RemoteHostLinkTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: home + "/.trellis"), "Remove deletes only Trellis's folders, and an empty ~/.trellis")
     }
 
+    func testAnOlderHelperStillBridgesWhenNothingIsInstalled() async throws {
+        let artifact = try XCTUnwrap(RemoteArtifactCatalog.load(remoteDirectory: nil, macHelper: helper).artifacts["darwin"])
+        _ = try await makeLink().run(.install, install: .always).get()
+        // Only another build's helper is left on the host, as after a Trellis update (FR-RW14).
+        let older = String(repeating: "0", count: 16)
+        try FileManager.default.moveItem(atPath: installRoot + "/" + artifact.directory, toPath: installRoot + "/" + older)
+
+        let automatic = makeLink()
+        let probe = try await automatic.run(.bridge, install: .never).get()
+        XCTAssertEqual(probe.installed, [older])
+        XCTAssertEqual(automatic.state, .connected)
+        guard case .pong(1) = try await XCTUnwrap(automatic.connection).request(.ping(1)) else { return XCTFail("No pong through the older helper") }
+        automatic.close()
+
+        let declining = makeLink()
+        declining.confirmInstall = { _, _ in false }
+        _ = try await declining.run(.bridge, install: .ask).get()
+        XCTAssertEqual(declining.state, .connected, "Declining the update keeps using the older helper")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: installRoot + "/" + artifact.directory), "Nothing was installed")
+    }
+
     func testAHelperThatDoesNotMatchItsDigestIsNeverInstalled() async throws {
         // The file is intact here, but its recorded helper digest is wrong: the host's own check must refuse it.
         let real = try XCTUnwrap(RemoteArtifactCatalog.load(remoteDirectory: nil, macHelper: helper).artifacts["darwin"])
