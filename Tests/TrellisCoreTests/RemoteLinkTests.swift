@@ -122,6 +122,17 @@ final class RemoteLinkTests: XCTestCase {
         XCTAssertNotEqual(try RemoteClientIdentity.load(stateDirectory: other), first, "Each state directory is its own client")
     }
 
+    func testAnUnreadableClientIdentityIsNeverReplaced() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-client-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent(RemoteClientIdentity.fileName)
+        _ = try RemoteClientIdentity.load(stateDirectory: folder)
+        let truncated = Data(#"{"clientID":"0123"#.utf8)
+        try truncated.write(to: url)
+        XCTAssertThrowsError(try RemoteClientIdentity.load(stateDirectory: folder))
+        XCTAssertEqual(try Data(contentsOf: url), truncated, "The old ID's sessions stay reachable once the file is repaired")
+    }
+
     func testHostSettingsRoundTripAndForgetDeletedHosts() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-remote-hosts-\(UUID())")
         defer { try? FileManager.default.removeItem(at: folder) }

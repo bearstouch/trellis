@@ -183,9 +183,12 @@ public enum RemoteClientIdentity {
     public static let fileName = "remote-client.json"
     private struct Document: Codable { var clientID: String }
 
+    /// Created only when absent. A file that can't be read or parsed is never replaced: it names the brokers holding this
+    /// Mac's remote sessions, so this throws and remote workspaces stay unavailable until it is repaired or removed.
     public static func load(stateDirectory: URL) throws -> String {
         let url = stateDirectory.appendingPathComponent(fileName)
-        if let data = try? Data(contentsOf: url), let document = try? JSONDecoder().decode(Document.self, from: data), RemoteBootstrap.isNonce(document.clientID) {
+        if let data = try LibraryFile.read(url, limit: 4096) {
+            guard let document = try? JSONDecoder().decode(Document.self, from: data), RemoteBootstrap.isNonce(document.clientID) else { throw HostLibraryError.readOnly }
             return document.clientID
         }
         let id = randomHex()
