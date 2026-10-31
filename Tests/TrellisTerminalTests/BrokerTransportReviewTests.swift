@@ -117,4 +117,49 @@ final class BrokerTransportReviewTests: XCTestCase {
         XCTAssertEqual(shown.last, UInt8((chunks - 1) & 0xff), "The most recent output is kept")
         connection.close()
     }
+    func testAHostsSessionsResumeTogether() async throws {
+        let count = 3
+        /// A broker end that answers attaches only once it holds `batch` of them, so one-at-a-time attaches never complete.
+        func broker(batch: Int) -> (BrokerConnection, Int32) {
+            var fds: [Int32] = [0, 0]
+            XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+            let peer = fds[1]
+            Task.detached {
+                var decoder = BrokerFrameDecoder(), buffer = [UInt8](repeating: 0, count: 4096), waiting: [(UInt64, UUID)] = []
+                while true {
+                    let read = Darwin.read(peer, &buffer, buffer.count)
+                    guard read > 0, let frames = try? decoder.append(Data(buffer[0..<read])) else { return }
+                    for frame in frames {
+                        if let envelope = frame.envelope, let id = envelope.requestID, case .attach(let session, _, _, _) = envelope.message { waiting.append((id, session)) }
+                    }
+                    guard waiting.count >= batch else { continue }
+                    for (id, session) in waiting {
+                        let record = BrokerSessionRecord(sessionID: session, processID: 4242, running: true, waitStatus: nil)
+                        let attachment = BrokerAttachment(record: record, nonce: nil, passwordPrompt: false, truncated: false, offset: 0, resumed: true)
+                        let reply = try! BrokerFrame.control(BrokerEnvelope(requestID: id, message: .attached(attachment))).encoded
+                        reply.withUnsafeBytes { _ = Darwin.write(peer, $0.baseAddress, reply.count) }
+                    }
+                    waiting = []
+                }
+            }
+            return (BrokerConnection(fd: fds[0]), peer)
+        }
+        let (first, firstPeer) = broker(batch: 1), (next, nextPeer) = broker(batch: count)
+        defer { first.close(); next.close(); Darwin.close(firstPeer); Darwin.close(nextPeer) }
+        let size = try TerminalSize(columns: 80, rows: 24)
+        var transports: [RemoteSessionTransport] = []
+        for _ in 0..<count {
+            let transport = RemoteSessionTransport(sessionID: UUID(), hostID: UUID(), connection: first)
+            let attached = await transport.attach(size: size)
+            XCTAssertNotNil(attached)
+            transport.beginDelivery()
+            transport.brokerDisconnected()
+            transports.append(transport)
+        }
+        let started = Date()
+        let resumed = await RemoteSessionTransport.resume(transports.map { ($0, size) }, on: next)
+        XCTAssertEqual(resumed, Array(repeating: true, count: count))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "All attaches were out before any answer, not one per round trip")
+        XCTAssertTrue(transports.allSatisfy { !$0.linkLost && $0.connection === next })
+    }
 }

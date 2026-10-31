@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Session broker status:** Settings → **Session Broker** shows whether the session broker is running, its PID and protocol, how many sessions it keeps, its socket, and the one Trellis executable allowed to connect, plus the broker on each connected remote host.
 
+### Changed
+
+- **Remote workspaces reconnect faster:** when a host's link comes back, all of its panes resume together instead of one network round trip after another, so with many panes on a slow link the last one is usable after about one round trip.
+
 ### Removed
 
 - **Repository project files:** `.trellis/project.json` (and the older `workspace.json`) is no longer read. **Load Project**, **Open Project…**, **Save as Project…** and **Edit Project File** are gone; projects now live in Trellis's **Projects** library (FR-PL01–FR-PL09). ⌘O, or a shortcut you set for **Open Project…**, opens the library instead. Tasks in `.trellis/launch.json` are unchanged, and the remote helper no longer reads `project.json` on hosts.

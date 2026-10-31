@@ -110,6 +110,16 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
         return true
     }
 
+    /// Re-attaches a host's sessions on `next` together: each attach is its own round trip, answered by request ID, so
+    /// the last pane is back after one round trip instead of one per pane. Results are in the order given.
+    public static func resume(_ sessions: [(RemoteSessionTransport, TerminalSize)], on next: BrokerConnection) async -> [Bool] {
+        // All are sent before any is awaited; each task stays on the main actor, like a single resume.
+        let resuming = sessions.map { transport, size in Task { await transport.resume(on: next, size: size) } }
+        var results: [Bool] = []
+        for task in resuming { results.append(await task.value) }
+        return results
+    }
+
     /// Without the exact tail, the screen is cleared before the most recent output so nothing is shown twice.
     static let reset = Data("\u{1b}c".utf8)
 
