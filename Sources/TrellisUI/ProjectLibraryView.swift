@@ -48,7 +48,8 @@ public struct ProjectLibraryView: View {
                             .font(.callout).foregroundStyle(workspace.themeColor(.mutedForeground))
                     }
                     Spacer()
-                    Picker("Editor", selection: Binding(get: { showsJSON }, set: switchEditor)) {
+                    // A closure, not `set: switchEditor`: Swift 6.3.3 (Xcode 26.6, CI) crashes in IRGen on that method-reference thunk.
+                    Picker("Editor", selection: Binding(get: { showsJSON }, set: { switchEditor($0) })) {
                         Text("Form").tag(false)
                         Text("JSON").tag(true)
                     }
