@@ -30,6 +30,12 @@ final class BrokerProtocolTests: XCTestCase {
         XCTAssertThrowsError(try empty.append(Data([0, 0, 0, 0]))) { XCTAssertEqual($0 as? BrokerFrameError, .oversized) }
         var unknown = BrokerFrameDecoder()
         XCTAssertThrowsError(try unknown.append(Data([0, 0, 0, 1, 42]))) { XCTAssertEqual($0 as? BrokerFrameError, .unknownKind) }
+        // A control frame the peer would reject is never built.
+        let large = BrokerEnvelope(requestID: 1, message: .fileData(Data(count: BrokerProtocol.frameLimit)))
+        XCTAssertThrowsError(try BrokerFrame.control(large)) { XCTAssertEqual($0 as? BrokerFrameError, .oversized) }
+        let fits = try? BrokerFrame.control(BrokerEnvelope(requestID: 1, message: .fileData(Data(count: BrokerProtocol.remoteFileLimit))))
+        var reader = BrokerFrameDecoder()
+        XCTAssertEqual(try reader.append(XCTUnwrap(fits).encoded).count, 1)
     }
 
     func testStreamsAreChunkedAndCarryTheirSession() throws {

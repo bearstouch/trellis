@@ -225,8 +225,12 @@ public final class BrokerServer: @unchecked Sendable {
         if connection.pending > Self.backpressureLimit { setPaused(true) }
     }
 
+    /// A reply too large for one frame fails alone; sent, it would end the connection and every session's link with it.
     private func reply(_ requestID: UInt64?, _ message: BrokerMessage) {
-        guard let frame = try? BrokerFrame.control(BrokerEnvelope(requestID: requestID, message: message)) else { return }
+        guard
+            let frame = (try? BrokerFrame.control(BrokerEnvelope(requestID: requestID, message: message)))
+                ?? requestID.flatMap({ try? BrokerFrame.control(BrokerEnvelope(requestID: $0, message: .failed(code: "TOO_LARGE", errno: 0))) })
+        else { return }
         enqueue([frame])
     }
 

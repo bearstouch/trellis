@@ -135,6 +135,20 @@ final class BrokerBridgeTests: XCTestCase {
         XCTAssertEqual(fresh.unsolicited(within: 2.5), [:], "The reply belongs to the link that asked")
     }
 
+    func testAReplyTooLargeForAFrameFailsAloneAndKeepsTheLink() throws {
+        let link = try link()
+        _ = try link.hello(clientID: clientID)
+        // The largest request that fits one frame; its answer adds each path's facts, so it does not.
+        func paths(_ length: Int) -> [String] { (0..<BrokerProtocol.statLimit).map { "/" + String(repeating: "a", count: length) + String(format: "%03d", $0) } }
+        var length = 4092
+        while (try? BrokerFrame.control(BrokerEnvelope(requestID: 2, message: .stat(paths: paths(length))))) == nil { length -= 1 }
+        let request = paths(length)
+        XCTAssertNil(try? BrokerFrame.control(BrokerEnvelope(requestID: 2, message: .pathInfo(BrokerRemoteFiles.describe(request) ?? []))))
+        let reply = try link.request(.stat(paths: request))
+        XCTAssertTrue(reply == .failed(code: "TOO_LARGE", errno: 0), "Refused alone, not sent")
+        guard case .pong(3) = try link.request(.ping(3)) else { return XCTFail("The link and its sessions stay up") }
+    }
+
     func testANewLinkTakesOverAStaleOne() throws {
         let stale = try link()
         _ = try stale.hello(clientID: clientID)

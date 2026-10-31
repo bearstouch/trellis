@@ -51,8 +51,11 @@ public struct BrokerFrame: Equatable, Sendable {
         return data
     }
 
+    /// Throws `oversized` past `frameLimit`: the peer's decoder would take that frame as a broken stream and close.
     public static func control(_ envelope: BrokerEnvelope) throws -> BrokerFrame {
-        BrokerFrame(kind: .control, payload: try JSONEncoder().encode(envelope))
+        let payload = try JSONEncoder().encode(envelope)
+        guard payload.count < BrokerProtocol.frameLimit else { throw BrokerFrameError.oversized }
+        return BrokerFrame(kind: .control, payload: payload)
     }
 
     /// One session's bytes, split into chunks of at most `chunkLimit`.

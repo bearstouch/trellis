@@ -21,6 +21,8 @@ final class RemoteFacts {
     private var entries: [String: BrokerPathInfo] = [:]
     private var contents: [String: Result<Data, ReadFailure>] = [:]
     private static let rounds = 4
+    /// Path bytes per `stat` request: escaped as JSON, still well inside a frame.
+    static let statBytes = 65_536
 
     init(connection: BrokerConnection) { self.connection = connection }
 
@@ -66,11 +68,20 @@ final class RemoteFacts {
     }
 
     private func fetch(stats: Set<String>, reads: [String: Int]) async {
-        let paths = Array(stats.filter { entries[$0] == nil }).sorted()
-        for start in stride(from: 0, to: paths.count, by: BrokerProtocol.statLimit) {
-            let chunk = Array(paths[start..<min(start + BrokerProtocol.statLimit, paths.count)])
-            guard case .pathInfo(let infos)? = try? await connection.request(.stat(paths: chunk)) else { continue }
-            for info in infos { entries[info.path] = info }
+        // Chunks by count and size, so a request fits one frame; an answer can still outgrow it (each path's real path
+        // is added), which the helper refuses as TOO_LARGE, and halves are asked instead.
+        var chunks: [[String]] = [], chunk: [String] = [], bytes = 0
+        for path in Array(stats.filter { entries[$0] == nil }).sorted() {
+            if !chunk.isEmpty, chunk.count == BrokerProtocol.statLimit || bytes + path.utf8.count > Self.statBytes { chunks.append(chunk); chunk = []; bytes = 0 }
+            chunk.append(path); bytes += path.utf8.count
+        }
+        if !chunk.isEmpty { chunks.append(chunk) }
+        while let next = chunks.popLast() {
+            switch try? await connection.request(.stat(paths: next)) {
+            case .pathInfo(let infos)?: for info in infos { entries[info.path] = info }
+            case .failed("TOO_LARGE", _)? where next.count > 1: chunks += [Array(next[..<(next.count / 2)]), Array(next[(next.count / 2)...])]
+            default: continue
+            }
         }
         for (path, limit) in reads.sorted(by: { $0.key < $1.key }) where contents[path] == nil {
             // Names the helper never reads are answered here, without a round trip.
