@@ -397,7 +397,7 @@ private struct RemoteHelperSection: View {
             Text("The helper keeps sessions running on the host. It lives in ~/.trellis there and needs no administrator rights.")
                 .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
         }
-        .sheet(item: $remote.console) { console in RemoteConsoleSheet(console: console, close: { remote.console = nil }) }
+        .sheet(item: $remote.console) { console in RemoteConsoleSheet(console: console, background: workspace.terminalBackground, close: { remote.console = nil }) }
     }
 
     private func symbol(_ state: RemoteHelperRecord.State?) -> String {
@@ -423,6 +423,7 @@ private struct RemoteHelperSection: View {
 /// ssh's own terminal for a host: host-key questions, passwords and one-time codes are answered here (FR-H04).
 private struct RemoteConsoleSheet: View {
     let console: RemoteHostsModel.Console
+    let background: Color
     let close: () -> Void
 
     var body: some View {
@@ -430,7 +431,9 @@ private struct RemoteConsoleSheet: View {
             Text("Connecting to \(console.hostName)").font(.headline)
             Text("This is ssh’s own terminal. Answer its questions here; Trellis never answers them for you.")
                 .font(.caption).fixedSize(horizontal: false, vertical: true)
-            NativeTerminalSurface(terminal: console.terminal).frame(width: 600, height: 260)
+            // The same inset and background as a pane's terminal.
+            NativeTerminalSurface(terminal: console.terminal).padding(.horizontal, 8).padding(.top, 8).background(background)
+                .clipShape(RoundedRectangle(cornerRadius: 6)).frame(width: 600, height: 260)
                 .accessibilityLabel("ssh connection console for \(console.hostName)")
             HStack {
                 Spacer()
