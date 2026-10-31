@@ -84,7 +84,9 @@ struct ProjectLaunchSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(status).font(.callout).fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.updatesFrequently)
             if let terminal = session.terminal {
-                NativeTerminalSurface(terminal: terminal).frame(width: 650, height: 280).accessibilityLabel("Setup terminal on \(targetName)")
+                // The same inset and background as a pane's terminal.
+                NativeTerminalSurface(terminal: terminal).padding(.horizontal, 8).padding(.top, 8).background(model.terminalBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6)).frame(width: 650, height: 280).accessibilityLabel("Setup terminal on \(targetName)")
             }
         }
     }
