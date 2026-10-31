@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles() }
+    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles(); model.stopAgentHooks() }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
     static func helperPath(_ name: String) -> String? {
@@ -724,6 +724,9 @@ struct TrellisMain {
             if let helper = AppDelegate.helperPath(BrokerSessionClient.helperName), let client = BrokerSessionClient.currentExecutable() {
                 model.sessionBroker = BrokerSessionClient(stateDirectory: directory, helperPath: helper, clientPath: client)
             }
+            // FR-AG01: the user's own agent definitions sit beside the theme library.
+            model.agentsDirectory = directory.appendingPathComponent("Agents", isDirectory: true)
+            model.reloadAgentCatalog()
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
             // FR-RW17: the Linux helpers ship in Resources/remote (scripts/build-remote-helpers.sh); macOS hosts get the bundled broker.
             hosts.remote = RemoteHostsModel(

@@ -24,6 +24,12 @@ public enum BrokerProtocol {
     /// Optional events a client announces in `hello`; a broker sends one only to a client that listed it, so an
     /// older app (which can't decode it and would drop the connection) never receives it. No version bump needed.
     public static let inputRejectedFeature = "inputRejected"
+    /// `agentEvent` (FR-AG08): announced by apps that show agent state.
+    public static let agentEventsFeature = "agentEvents"
+    /// Beside the broker's socket; agent hooks send their datagrams here (FR-AG08).
+    public static let agentSocketName = "agent.sock"
+    public static let agentSocketVariable = "TRELLIS_AGENT_SOCKET"
+    public static let agentNonceVariable = "TRELLIS_AGENT_NONCE"
     /// Remote brokers: a client silent this long is dropped (the app pings every 15 s), and a remote file read never exceeds this.
     public static let remoteClientTimeout: TimeInterval = 45
     public static let remoteFileLimit = 262_144
@@ -137,12 +143,15 @@ public struct BrokerLoginRequest: Codable, Equatable, Sendable {
     /// v3: run this with the login shell's `-c` instead of an interactive shell (FR-RW18). A v2 broker ignores the key,
     /// so the app sends it only to a broker that welcomed version 3.
     public var command: String?
+    /// The broker gives the session its own agent hook socket and nonce (FR-AG08). An older broker ignores the key and the
+    /// agent runs without live state.
+    public var agentHooks: Bool?
     public init(
         sessionID: UUID, shell: String?, directory: String?, environment: [String: String], integration: BrokerIntegration?, columns: UInt16, rows: UInt16,
-        command: String? = nil
+        command: String? = nil, agentHooks: Bool? = nil
     ) {
         self.sessionID = sessionID; self.shell = shell; self.directory = directory; self.environment = environment
-        self.integration = integration; self.columns = columns; self.rows = rows; self.command = command
+        self.integration = integration; self.columns = columns; self.rows = rows; self.command = command; self.agentHooks = agentHooks
     }
 }
 
@@ -218,9 +227,13 @@ public struct BrokerAttachment: Codable, Equatable, Sendable {
     public var offset: UInt64?
     /// v2: the replay is exactly the output after the requested `since`, with no reset.
     public var resumed: Bool?
-    public init(record: BrokerSessionRecord, nonce: String?, passwordPrompt: Bool, truncated: Bool, offset: UInt64? = nil, resumed: Bool? = nil) {
+    /// The last agent event the session's hooks reported (FR-AG08), so a re-attached pane shows the state it missed.
+    public var agentEvent: String?
+    public init(
+        record: BrokerSessionRecord, nonce: String?, passwordPrompt: Bool, truncated: Bool, offset: UInt64? = nil, resumed: Bool? = nil, agentEvent: String? = nil
+    ) {
         self.record = record; self.nonce = nonce; self.passwordPrompt = passwordPrompt; self.truncated = truncated
-        self.offset = offset; self.resumed = resumed
+        self.offset = offset; self.resumed = resumed; self.agentEvent = agentEvent
     }
 }
 
@@ -268,6 +281,9 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     /// `git status` in an absolute folder (FR-PL09); answered by `gitState`, nil outside a work tree or on failure.
     case gitStatus(path: String)
     case gitState(BrokerGitStatus?)
+    /// An agent hook reported `event` for this session (FR-AG08). Sent only to a client that announced
+    /// `agentEventsFeature`.
+    case agentEvent(sessionID: UUID, event: String)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {

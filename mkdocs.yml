@@ -50,6 +50,7 @@ nav:
       - Windows, tabs and panes: features/workspace.md
       - Project library: features/project-library.md
       - Tasks: features/tasks.md
+      - Coding agents: features/agents.md
       - Command scratchpad: features/scratchpad.md
       - Command palette: features/command-palette.md
       - Terminal: features/terminal.md

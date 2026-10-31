@@ -62,7 +62,8 @@ public enum PortableDocument {
             // A remote workspace's pane is a shell in a path on its host; the window carries the host (FR-R02).
             case .remoteShell(let host, let directory)? where references[host] != nil:
                 return .object(directory.map { ["kind": .string("shell"), "directory": .string($0)] } ?? ["kind": .string("shell")])
-            case .process?, .remoteShell?:
+            // An agent pane is exported as a plain shell: layouts carry no agent wiring (FR-AG04).
+            case .process?, .remoteShell?, .agent?:
                 converted += 1
                 return .object(["kind": .string("shell")])
             default: return .object(["kind": .string("shell")])

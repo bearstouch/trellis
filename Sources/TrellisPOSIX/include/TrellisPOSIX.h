@@ -30,6 +30,8 @@ int trellis_set_window_size(int fd, unsigned short columns, unsigned short rows)
 int trellis_random_bytes(void *buffer, size_t count);
 /// A new close-on-exec AF_UNIX stream socket, or -1.
 int trellis_unix_socket(void);
+/// A close-on-exec AF_UNIX datagram socket for the agent hook channel (FR-AG08), or -1.
+int trellis_unix_datagram_socket(void);
 /// Darwin: SO_NOSIGPIPE. Elsewhere a no-op; those processes ignore SIGPIPE. Returns 0 or an errno.
 int trellis_prevent_sigpipe(int fd);
 void trellis_disable_core_dumps(void);

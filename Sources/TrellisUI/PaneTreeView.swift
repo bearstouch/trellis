@@ -78,12 +78,20 @@ struct PaneTreeView: View {
                         Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
                             .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
                     }
-                    if context.kind == "Local" {
+                    if let agent = model.agentDefinition(paneID: id) {
+                        // FR-AG10: an agent pane shows its agent and state instead of shell tools.
+                        AgentStateLabel(
+                            agent: agent, state: terminal.sessionState == .running ? model.agentStates[id]?.state ?? .ready : .ready,
+                            directory: model.agentCatalog.iconDirectories[agent.id])
+                        AgentDropdownButton(model: model, paneID: id)
+                    } else if context.kind == "Local" {
                         scratchpadButton(id, pressed: model.scratchpadVisible && focused)
                         TaskDropdownButton(model: model, paneID: id)
+                        AgentDropdownButton(model: model, paneID: id)
                     } else if model.isRemoteWorkspace(paneID: id) {
                         // FR-RW11: the host's tasks; the scratchpad stays local.
                         TaskDropdownButton(model: model, paneID: id)
+                        AgentDropdownButton(model: model, paneID: id)
                     }
                     if let git = model.gitStatuses[id] {
                         // Words and symbols, never color alone (FR-PL09).
@@ -95,15 +103,22 @@ struct PaneTreeView: View {
                         // Text, not only color, reports stopped/exited/failed panes.
                         Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)
                     }
+                    if terminal.sessionState == .exited || terminal.sessionState == .failed, let agent = model.agentDefinition(paneID: id), !agent.resumeArguments.isEmpty {
+                        Button("Resume") { Task { await model.restartAgent(paneID: id, resume: true) } }
+                            .help("Start \(agent.name) again, continuing its last conversation here")
+                            .accessibilityLabel("Resume \(agent.name)")
+                    }
                     if terminal.sessionState == .exited || terminal.sessionState == .failed {
                         // Saved-host panes reconnect only when the user asks; there is no retry timer.
                         let isHost =
                             model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID] }.map {
                                 if case .host = $0.launch { true } else { false }
                             } == true
-                        Button(isHost ? "Reconnect" : "Restart") { Task { await model.restartPane(id) } }
-                            .help(isHost ? "Start a new ssh connection in this pane" : "Start a fresh session in this pane")
-                            .accessibilityLabel(isHost ? "Reconnect" : "Restart Session")
+                        Button(isHost ? "Reconnect" : "Restart") {
+                            Task { if model.agentLaunch(paneID: id) != nil { await model.restartAgent(paneID: id, resume: false) } else { await model.restartPane(id) } }
+                        }
+                        .help(isHost ? "Start a new ssh connection in this pane" : "Start a fresh session in this pane")
+                        .accessibilityLabel(isHost ? "Reconnect" : "Restart Session")
                     }
                     Button {
                         Task { await model.toggleMaximize(id) }
@@ -140,7 +155,13 @@ struct PaneTreeView: View {
                 .overlay {
                     if terminal.sessionState == .stopped {
                         VStack(spacing: 8) {
-                            if model.unconfiguredPaneIDs.contains(id) {
+                            if let agent = model.agentDefinition(paneID: id) {
+                                // FR-AG06: a restored agent pane starts fresh unless asked to continue; nothing is replayed.
+                                Button("Start \(agent.name)") { Task { await model.restartAgent(paneID: id, resume: false) } }.buttonStyle(.borderedProminent)
+                                if !agent.resumeArguments.isEmpty {
+                                    Button("Resume Last Conversation") { Task { await model.restartAgent(paneID: id, resume: true) } }
+                                }
+                            } else if model.unconfiguredPaneIDs.contains(id) {
                                 Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
                                 Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
                             } else {
@@ -180,12 +201,17 @@ struct PaneTreeView: View {
             let link = model.remoteLinks[hostID] ?? .disconnected(nil)
             return (model.remoteWorkingDirectory(paneID: id) ?? path, model.remoteHostName(hostID) + (link == .connected ? "" : " · " + link.label))
         }
+        if case .agent(let agent)? = launch, let hostID = agent.hostID {
+            let link = model.remoteLinks[hostID] ?? .disconnected(nil)
+            return (agent.directory, model.remoteHostName(hostID) + (link == .connected ? "" : " · " + link.label))
+        }
         // A remote shell's own report, unverified and display-only (FR-SI09).
         if let launch, AppWorkspaceModel.isRemote(launch) { return (model.remoteDirectory(paneID: id), "SSH") }
         switch launch {
         case .host, .remoteShell: return (nil, "SSH")
         // Shell integration reports the live directory; otherwise show where the session started (INT-01).
         case .shell(let path), .process(_, _, let path): directory = model.currentDirectory(paneID: id) ?? path ?? model.defaultDirectory
+        case .agent(let agent): directory = agent.directory ?? model.defaultDirectory
         case nil: directory = model.defaultDirectory
         }
         let home = FileManager.default.homeDirectoryForCurrentUser.path

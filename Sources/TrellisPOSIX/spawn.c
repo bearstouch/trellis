@@ -359,6 +359,12 @@ int trellis_unix_socket(void) {
     return fd;
 }
 
+int trellis_unix_datagram_socket(void) {
+    int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (fd >= 0 && fcntl(fd, F_SETFD, FD_CLOEXEC) < 0) { close(fd); return -1; }
+    return fd;
+}
+
 int trellis_prevent_sigpipe(int fd) {
 #if defined(__APPLE__)
     int one = 1;

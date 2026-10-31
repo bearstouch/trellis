@@ -107,6 +107,42 @@
             XCTAssertTrue(after.isEmpty)
         }
 
+        /// FR-AG08: a session's own `agent-hook` reaches the app, only for its nonce, and a re-attach gets the last event.
+        func testAgentHooksReachTheAppThroughTheBrokerAndSurviveReattach() async throws {
+            let launcher = try launcher()
+            let (socket, first) = try await start(launcher)
+            var events: [(UUID, String)] = []
+            first.onAgentEvent = { events.append(($0, $1)) }
+            let agentSocket = BrokerFiles.parent(socket) + "/" + BrokerProtocol.agentSocketName
+            let nonce = AgentHook.makeNonce(), other = AgentHook.makeNonce()
+            let id = UUID()
+            let sink = Sink()
+            first.register(sink, sessionID: id)
+            let script = """
+                "$HELPER" agent-hook working; TRELLIS_AGENT_NONCE=\(other) "$HELPER" agent-hook error; printf 'sent\\n'; exec sleep 600
+                """
+            let reply = try await first.request(
+                .spawn(
+                    BrokerSpawnRequest(
+                        sessionID: id, executable: "/bin/sh", arguments: ["/bin/sh", "-c", script],
+                        environment: [
+                            "PATH=/usr/bin:/bin", "HELPER=\(launcher.helperPath)", "\(BrokerProtocol.agentSocketVariable)=\(agentSocket)",
+                            "\(BrokerProtocol.agentNonceVariable)=\(nonce)"
+                        ], directory: "/", columns: 80, rows: 24)))
+            guard case .spawned = reply else { return XCTFail("\(reply)") }
+            try await waitFor { sink.text.contains("sent") && !events.isEmpty }
+            try await Task.sleep(for: .milliseconds(200))
+            XCTAssertEqual(events.map(\.0), [id], "Another nonce names no session")
+            XCTAssertEqual(events.map(\.1), ["working"])
+            first.close()
+
+            let second = try await connect(launcher, socket: socket)
+            let adopted = Sink()
+            second.register(adopted, sessionID: id)
+            guard case .attached(let attachment) = try await second.request(.attach(sessionID: id, columns: 80, rows: 24)) else { return XCTFail("No attach") }
+            XCTAssertEqual(attachment.agentEvent, "working")
+        }
+
         func testInputOverTheLimitIsReportedNotDroppedSilently() async throws {
             let launcher = try launcher()
             let (_, connection) = try await start(launcher)

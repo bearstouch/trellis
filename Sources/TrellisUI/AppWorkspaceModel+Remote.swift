@@ -82,7 +82,7 @@ extension AppWorkspaceModel {
 
     /// FR-RW04: the account's login shell on the host, in `directory` or home, with Trellis's integration when its scripts
     /// are installed beside the helper.
-    func startRemote(paneID: UUID, terminal: NativeTerminal, request: SessionLaunchRequest, hostID: UUID, directory: String?) async {
+    func startRemote(paneID: UUID, terminal: NativeTerminal, request: SessionLaunchRequest, hostID: UUID, directory: String?, agent: AgentLaunch? = nil) async {
         func refuse(_ message: String) async {
             if terminals[paneID] === terminal { terminal.refuseLaunch(message: message) }
             if let result = try? await service.execute(
@@ -108,6 +108,20 @@ extension AppWorkspaceModel {
         if !wasConnected { Task { await reconnectRemote(hostID: hostID, interactive: false) } }
         guard terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
             return await refuse("Session launch was cancelled.")
+        }
+        observeAgentEvents(on: connection)
+        if let agent {
+            // An agent runs as a login shell's command, which helpers older than protocol 3 can't do (FR-RW18).
+            guard connection.protocolVersion >= 3, let info = connection.hostInfo else {
+                return await refuse("Update the Trellis helper on \(host.name) to run agents there: Hosts → Update Helper….")
+            }
+            guard let login = remoteAgentRequest(agent, paneID: paneID, sessionID: request.sessionID, info: info, hostID: hostID) else {
+                return await refuse("This agent is no longer in the agent catalog.")
+            }
+            let transport = RemoteSessionTransport(sessionID: request.sessionID, hostID: hostID, connection: connection)
+            wire(transport)
+            await terminal.start(remote: transport, request: login, nonce: nil)
+            return
         }
         let transport = RemoteSessionTransport(sessionID: request.sessionID, hostID: hostID, connection: connection)
         wire(transport)
@@ -191,6 +205,7 @@ extension AppWorkspaceModel {
             return failure
         }
         remoteLinks[hostID] = .connected
+        observeAgentEvents(on: connection)
         let hungUp = pendingRemoteHangups.removeValue(forKey: hostID) ?? []
         for id in hungUp { connection.post(.signal(sessionID: id, signal: SIGHUP)) }
         let resumable = remoteTerminals(hostID).compactMap { terminal in terminal.remoteTransport.flatMap { transport in terminalSize(terminal).map { (transport, $0) } } }
@@ -230,8 +245,13 @@ extension AppWorkspaceModel {
             do { publish(try await service.execute(.adoptRunningSession(sessionID: record.sessionID, processID: attachment.record.processID)).snapshot) } catch { continue }
             installLifecycle(terminal, paneID: paneID, sessionID: record.sessionID, attemptID: nil)
             let adoption = BrokerAdoption(
-                sessionID: record.sessionID, processID: attachment.record.processID, exitCode: nil, nonce: attachment.nonce, replay: replay, transport: transport)
-            if !terminal.adopt(adoption) { enqueue(.recordSessionExit(sessionID: record.sessionID, code: nil)) }
+                sessionID: record.sessionID, processID: attachment.record.processID, exitCode: nil, nonce: attachment.nonce, replay: replay, transport: transport,
+                agentEvent: attachment.agentEvent)
+            if terminal.adopt(adoption) {
+                restoreAgentState(paneID: paneID, event: adoption.agentEvent)
+            } else {
+                enqueue(.recordSessionExit(sessionID: record.sessionID, code: nil))
+            }
         }
         remoteOrphansAsked.formUnion(orphans)
         if !orphans.isEmpty, confirmStopOrphans(orphans.count) {

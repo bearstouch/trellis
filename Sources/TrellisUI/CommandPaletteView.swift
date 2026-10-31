@@ -208,6 +208,7 @@ struct CommandPaletteView: View {
         case .project: "Launch Project"
         case .task: "Run Task"
         case .theme: "Use Theme"
+        case .agent: "Launch Agent"
         }
     }
 
@@ -224,6 +225,7 @@ struct CommandPaletteView: View {
         case .project: "folder.badge.gearshape"
         case .task: "play"
         case .theme: "paintpalette"
+        case .agent: "sparkles"
         }
     }
 

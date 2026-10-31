@@ -15,8 +15,13 @@ public struct BrokerAdoption {
     /// Retained output, at most `OutputRing.sessionLimit` plus a mode prefix.
     public let replay: Data
     public let transport: (any TerminalProcessTransport)?
-    public init(sessionID: UUID, processID: Int32?, exitCode: Int32?, nonce: String?, replay: Data, transport: (any TerminalProcessTransport)?) {
+    /// The last agent event the broker kept for this session (FR-AG08).
+    public let agentEvent: String?
+    public init(
+        sessionID: UUID, processID: Int32?, exitCode: Int32?, nonce: String?, replay: Data, transport: (any TerminalProcessTransport)?, agentEvent: String? = nil
+    ) {
         self.sessionID = sessionID; self.processID = processID; self.exitCode = exitCode; self.nonce = nonce; self.replay = replay; self.transport = transport
+        self.agentEvent = agentEvent
     }
 }
 
@@ -52,10 +57,19 @@ public protocol SessionBrokerClient: AnyObject {
     func detach() async
     /// What Settings → Session Broker shows; never starts one.
     func status() async -> BrokerStatus
+    /// The bundled `trellis-broker`, which agent hooks run as `agent-hook` (FR-AG08).
+    var hookHelperPath: String? { get }
+    /// The running broker's agent hook socket; nil until `prepare` succeeded.
+    var agentSocketPath: String? { get }
+    /// Agent events for any session this broker holds, on the main actor.
+    func observeAgentEvents(_ handler: @escaping @MainActor (UUID, String) -> Void)
 }
 
 extension SessionBrokerClient {
     public func status() async -> BrokerStatus { .notRunning }
+    public var hookHelperPath: String? { nil }
+    public var agentSocketPath: String? { nil }
+    public func observeAgentEvents(_ handler: @escaping @MainActor (UUID, String) -> Void) {}
 }
 
 /// This state directory's session broker as Settings → Session Broker shows it.
@@ -232,6 +246,20 @@ public final class BrokerSessionClient: SessionBrokerClient {
     private let launcher: BrokerLauncher
     private var connection: BrokerConnection?
     private var preparing: Task<Bool, Never>?
+    private var agentEventHandler: (@MainActor (UUID, String) -> Void)?
+
+    public var hookHelperPath: String? { launcher.helperPath }
+    public var agentSocketPath: String? {
+        guard open != nil, let socket = launcher.discovery()?.socketPath else { return nil }
+        // A broker from an older Trellis, still keeping sessions after an update, has no agent socket.
+        let path = BrokerFiles.parent(socket) + "/" + BrokerProtocol.agentSocketName
+        return BrokerFiles.isOwnedSocket(path) ? path : nil
+    }
+
+    public func observeAgentEvents(_ handler: @escaping @MainActor (UUID, String) -> Void) {
+        agentEventHandler = handler
+        connection?.onAgentEvent = handler
+    }
 
     public init(launcher: BrokerLauncher) { self.launcher = launcher }
 
@@ -279,6 +307,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
 
     private func adopt(_ connection: BrokerConnection) {
         self.connection = connection
+        connection.onAgentEvent = agentEventHandler
         connection.onClose = { [weak self, weak connection] in
             guard let self, self.connection === connection else { return }
             self.connection = nil
@@ -354,7 +383,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
         let running = attachment.record.running
         return BrokerAdoption(
             sessionID: sessionID, processID: running ? attachment.record.processID : nil, exitCode: attachment.record.exitCode,
-            nonce: attachment.nonce, replay: replay, transport: running ? transport : nil)
+            nonce: attachment.nonce, replay: replay, transport: running ? transport : nil, agentEvent: attachment.agentEvent)
     }
 
     public func release(sessionID: UUID) { open?.post(.release(sessionID: sessionID)) }

@@ -27,7 +27,7 @@ let package = Package(
     targets: [
         .target(name: "TrellisAskpass"),
         .executableTarget(name: "TrellisAskpassMain", dependencies: ["TrellisAskpass"]),
-        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon")]),
+        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon"), .copy("Resources/Agents")]),
         .target(name: "TrellisPOSIX"),
         // The broker's resident code depends only on the POSIX shim: no Core resources, no engine.
         .target(name: "TrellisBroker", dependencies: ["TrellisPOSIX"]),

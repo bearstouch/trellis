@@ -30,6 +30,12 @@ public struct WindowTabPreview: Identifiable, Equatable, Sendable {
     public let progress: TerminalProgress?
     public let failedCommandExit: Int32?
     public let hasExitedSession: Bool
+    /// FR-AG09/FR-AG10: the tab's running agent, its icon's folder, and its most urgent state.
+    public var agent: AgentDefinition? = nil
+    public var agentIconDirectory: URL? = nil
+    public var agentState: AgentState? = nil
+    /// The agent whose state `agentState` is, which can differ from the icon's with several agents in a tab.
+    public var agentStateName: String? = nil
 }
 
 @MainActor
@@ -285,7 +291,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// VoiceOver names each terminal by pane and status; its value stays the text.
-    private func refreshTerminalAccessibility() {
+    func refreshTerminalAccessibility() {
         for pane in accessibility.panes {
             terminals[pane.id]?.view.setAccessibilityLabel("\(pane.label), \(pane.value)")
         }
@@ -319,7 +325,33 @@ public final class AppWorkspaceModel: ObservableObject {
     public var workspaceIsFrontmost: () -> Bool = { NSApp.isActive }
     /// Whether the workspace window is on screen at all (not hidden, minimized or covered); for OSC 99 `o=invisible`.
     public var workspaceIsVisible: () -> Bool = { true }
-    private var notificationLimiter = NotificationRateLimiter()
+    var notificationLimiter = NotificationRateLimiter()
+    /// FR-AG01: the agents this Trellis can launch, bundled and from the Agents folder.
+    @Published public internal(set) var agentCatalog = AgentCatalogSnapshot(definitions: AgentCatalog.bundled())
+    /// FR-AG10: each agent pane's state, by pane; runtime only, never persisted.
+    @Published public internal(set) var agentStates: [UUID: AgentStateReducer] = [:]
+    /// FR-AG07: whether each agent is on this Mac's login PATH, by agent ID; only ever from a check.
+    @Published public internal(set) var agentAvailability: [String: AgentAvailability] = [:]
+    /// FR-AG12: agents a launch found missing on a host, by host.
+    @Published public internal(set) var remoteMissingAgents: [UUID: Set<String>] = [:]
+    /// FR-AG12: the install offer on screen.
+    @Published public var agentInstallOffer: AgentInstallOffer?
+    /// The user's Agents folder; nil offers only the bundled agents.
+    public var agentsDirectory: URL?
+    /// Sessions started without the broker report to the app's own socket, by nonce.
+    var agentHookNonces: [String: UUID] = [:]
+    var agentHookReceiver: AgentHookReceiver?
+    /// Panes whose next start runs the agent's installer first (FR-AG12).
+    var agentInstallPanes: Set<UUID> = []
+    var agentPathProbe: Task<Void, Never>?
+    /// The login shell's PATH from the last check, for agents and their installers' requirements.
+    var agentLoginPath: [String]?
+    /// When the last PATH check finished; pane headers appearing re-check at most once a minute.
+    var agentPathCheckedAt: Date?
+    /// Sessions whose launch ran the agent's installer first.
+    var agentInstalling: Set<UUID> = []
+    /// Each host's OS from its helper (`linux`, `darwin`), for the installer that fits it.
+    var remoteHostPlatforms: [UUID: String] = [:]
     var activityNow: () -> Date = Date.init
     var activitySleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
     /// Applies to sessions started after a change (FR-SI06).
@@ -469,7 +501,9 @@ public final class AppWorkspaceModel: ObservableObject {
     private var askpassRegistrations: [UUID: AskpassBroker.Registration] = [:]
     /// Owns every session's PTY (FR-R07), so sessions survive quit and crashes; nil (tests, no helper) keeps every
     /// session a local PTY.
-    public var sessionBroker: (any SessionBrokerClient)?
+    public var sessionBroker: (any SessionBrokerClient)? {
+        didSet { sessionBroker?.observeAgentEvents { [weak self] sessionID, event in self?.receiveAgentEvent(sessionID: sessionID, event: event) } }
+    }
     /// FR-R03: on by default; off means quitting and closing the window stop sessions. Saved per state directory.
     @Published public internal(set) var keepSessionsRunning = true
     /// This launch only (`--fixture`, never saved): quitting and closing the window end sessions whatever the setting, so
@@ -513,7 +547,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public var confirmStopOrphans: (Int) -> Bool = { _ in false }
     let service: WorkspaceCommandService
     private var updates: Task<Void, Never>?
-    private let preferences: UserDefaults
+    let preferences: UserDefaults
     var shuttingDown = false
     var pendingOperations = 0
 
@@ -740,6 +774,8 @@ public final class AppWorkspaceModel: ObservableObject {
         for id in progressTrackers.keys where next.panes[id] == nil { clearProgress(paneID: id) }
         // Looking at the pane answers a bell; a password prompt stays until echo returns.
         if let viewed = presentation.activePane?.id, inputWaits[viewed] == .attention { inputWaits.removeValue(forKey: viewed) }
+        if agentStates.keys.contains(where: { next.panes[$0] == nil }) { agentStates = agentStates.filter { next.panes[$0.key] != nil } }
+        markAgentsViewed()
         for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
@@ -793,7 +829,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     resolvedLaunch = .process(executable: defaultShell, arguments: ["-l"], directory: directory ?? defaultDirectory)
                 case .process(let executable, let arguments, let directory):
                     resolvedLaunch = .process(executable: executable, arguments: arguments, directory: directory ?? defaultDirectory)
-                case .host, .remoteShell: resolvedLaunch = nil
+                case .host, .remoteShell, .agent: resolvedLaunch = nil
                 }
             } else {
                 resolvedLaunch = nil
@@ -817,6 +853,10 @@ public final class AppWorkspaceModel: ObservableObject {
                 await startRemote(paneID: paneID, terminal: terminal, request: request, hostID: hostID, directory: directory)
                 return
             }
+            if case .agent(let agent) = request.launch, let hostID = agent.hostID {
+                await startRemote(paneID: paneID, terminal: terminal, request: request, hostID: hostID, directory: agent.directory, agent: agent)
+                return
+            }
             if fixture {
                 await terminal.startFixture()
             } else {
@@ -832,6 +872,17 @@ public final class AppWorkspaceModel: ObservableObject {
                     // panes started before the default shell changed keep integration on restart and restore.
                     if arguments == ["-l"] { configuration.shellIntegration = shellIntegration(for: configuration) }
                 case .remoteShell: return
+                case .agent(let agent):
+                    guard let planned = await agentConfiguration(agent, paneID: paneID, sessionID: request.sessionID, environment: environment) else {
+                        let message = "This agent is no longer in the agent catalog."
+                        if terminals[paneID] === terminal { terminal.refuseLaunch(message: message) }
+                        publish(
+                            try await service.execute(
+                                .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: message))
+                            ).snapshot)
+                        return
+                    }
+                    configuration = planned
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
                     // `.host(id)` so persistence and explicit reconnects re-read it.
@@ -888,6 +939,7 @@ public final class AppWorkspaceModel: ObservableObject {
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
+                if terminal.processID == nil { agentHookNonces = agentHookNonces.filter { $0.value != request.sessionID } }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
     }
@@ -926,6 +978,7 @@ public final class AppWorkspaceModel: ObservableObject {
             self.closureCoordinator.forget(sessionID: sessionID)
             self.pendingProjectCommands.removeValue(forKey: sessionID)
             if let registration = self.askpassRegistrations.removeValue(forKey: sessionID) { self.askpass?.unregister(registration) }
+            self.agentSessionEnded(paneID: paneID, sessionID: sessionID, code: code, current: self.terminals[paneID] === terminal)
             if self.terminals[paneID] === terminal {
                 self.shellStates.removeValue(forKey: paneID); self.inputWaits.removeValue(forKey: paneID); self.settleOutput(paneID: paneID)
                 self.taskRuns.removeValue(forKey: paneID)
@@ -971,6 +1024,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public static func isRemote(_ launch: SessionLaunch) -> Bool {
         switch launch {
         case .host, .remoteShell: true
+        case .agent(let agent): agent.hostID != nil
         case .process(let executable, _, _): ["ssh", "mosh", "autossh"].contains((executable as NSString).lastPathComponent)
         case .shell: false
         }
@@ -1018,7 +1072,9 @@ public final class AppWorkspaceModel: ObservableObject {
                 id: tab.id, title: displayTitle(tab), color: tab.color, isActive: tab.id == window.activeTabID, paneCount: panes.count,
                 isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id), progress: progress(tabID: tab.id),
                 failedCommandExit: panes.lazy.compactMap(failedCommandExit(paneID:)).first,
-                hasExitedSession: panes.contains { [.exited, .failed].contains(terminals[$0]?.sessionState) })
+                hasExitedSession: panes.contains { [.exited, .failed].contains(terminals[$0]?.sessionState) },
+                agent: tabAgent(tabID: tab.id), agentIconDirectory: tabAgent(tabID: tab.id).flatMap { agentCatalog.iconDirectories[$0.id] },
+                agentState: agentBadge(tabID: tab.id)?.state, agentStateName: agentBadge(tabID: tab.id)?.agent.name)
         }
     }
 
@@ -1035,6 +1091,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func setPasswordPrompt(_ active: Bool, paneID: UUID) {
         if active, !atShellPrompt(paneID) {
+            applyAgentSignal(.attention, paneID: paneID)
             if inputWaits[paneID] != .password { inputWaits[paneID] = .password }
         } else if inputWaits[paneID] == .password {
             inputWaits.removeValue(forKey: paneID)
@@ -1043,6 +1100,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     private func requestAttention(paneID: UUID) {
+        applyAgentSignal(.attention, paneID: paneID)
         guard inputWaits[paneID] == nil, presentation.activePane?.id != paneID, !atShellPrompt(paneID) else { return }
         inputWaits[paneID] = .attention
         refreshTerminalAccessibility()
@@ -1050,6 +1108,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     /// FR-T08: shown only while the user isn't looking at the pane (or as OSC 99 `o=` asks), never at the shell's own prompt.
     private func postNotification(_ notification: TerminalNotification, paneID: UUID) {
+        applyAgentSignal(.attention, paneID: paneID)
         guard appearance.desktopNotifications, let desktopNotifier, !atShellPrompt(paneID), let pane = snapshot.panes[paneID] else { return }
         let frontmost = workspaceIsFrontmost()
         switch notification.occasion {
@@ -1086,6 +1145,7 @@ public final class AppWorkspaceModel: ObservableObject {
         let next = tracker.apply(report, at: activityNow())
         progressTrackers[paneID] = next == nil ? nil : tracker
         if progress[paneID] != next { progress[paneID] = next; refreshTerminalAccessibility() }
+        applyAgentSignal(.progress(active: next != nil), paneID: paneID)
         scheduleProgressExpiry()
     }
 
@@ -1138,6 +1198,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     private func automaticTitle(paneID: UUID) -> String? {
+        if let title = agentTitle(paneID: paneID) { return title }
         guard let state = shellStates[paneID] else { return nil }
         if let name = state.commandName { return name }
         guard let directory = state.currentDirectory else { return nil }
@@ -1294,8 +1355,13 @@ public final class AppWorkspaceModel: ObservableObject {
             guard let self else { return }
             self.outputActivity.recordInput(pane.id, at: self.activityNow())
         }
+        terminal.onReturnKey = { [weak self, weak terminal] in
+            guard let self, let terminal, self.terminals[pane.id] === terminal else { return }
+            self.applyAgentSignal(.inputSubmitted, paneID: pane.id)
+        }
         shellStates.removeValue(forKey: pane.id)
         inputWaits.removeValue(forKey: pane.id)
+        agentStates.removeValue(forKey: pane.id)
         taskRuns.removeValue(forKey: pane.id)
         clearProgress(paneID: pane.id)
         terminal.onPasswordPromptChanged = { [weak self, weak terminal] active in
@@ -1778,7 +1844,7 @@ public final class AppWorkspaceModel: ObservableObject {
         switch session.launch {
         case .shell: shell = defaultShell
         case .process(let executable, _, _): shell = executable
-        case .host, .remoteShell: shell = nil
+        case .host, .remoteShell, .agent: shell = nil
         }
         let plan = TerminalPastePlan(input: input, shell: shell)
         let paneNumber = (presentation.selectedTab?.root.paneIDs.firstIndex(of: paneID) ?? 0) + 1

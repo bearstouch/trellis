@@ -161,6 +161,9 @@ extension AppWorkspaceModel {
             let task = detected ? catalog.detected.first { $0.task.name == name }?.task : catalog.tasks.first { $0.name == name }
             if let task { runTask(task, fromFile: !detected) }
         case .theme(let id): useTheme(id)
+        case .agent(let id):
+            guard let paneID = presentation.activePane?.id else { return }
+            await launchAgent(id, from: paneID, placement: modifier == .option ? .tab : .split)
         }
     }
 
@@ -261,6 +264,15 @@ extension AppWorkspaceModel {
                 target: .theme(theme.id), kind: .theme, title: "Theme: " + theme.name,
                 subtitle: theme.appearance.rawValue.capitalized + (theme.id == currentTheme ? " · current" : ""), keywords: ["appearance colors"])
         }
+        // FR-AG07: the same agents as the pane's Agent button, opened beside the focused pane.
+        let agentItems =
+            presentation.activePane == nil
+            ? []
+            : agentCatalog.definitions.map { agent in
+                CommandPaletteItem(
+                    target: .agent(agent.id), kind: .agent, title: "Launch Agent: " + agent.name, subtitle: "Beside the focused pane · ⌥↩ in a new tab",
+                    keywords: ["agent", "ai", agent.executable])
+            }
         let counts: [CommandPaletteScope: (Int, String)] = [
             .windows: (windowItems.count, Self.count(windowItems.count, "window")),
             .tabs: (tabItems.count, Self.count(tabItems.count, "tab") + " in " + Self.count(windows.count, "window")),
@@ -268,13 +280,14 @@ extension AppWorkspaceModel {
             .hosts: (hostItems.count, Self.count(commandPaletteHosts().count, "saved host")),
             .projects: (projectItems.count, Self.count(projectItems.count, "project")),
             .tasks: (taskItems.count, Self.count(taskItems.count, "task") + " in " + (taskCatalog?.name ?? "this project")),
-            .themes: (themeItems.count, Self.count(themeItems.count, "theme"))
+            .themes: (themeItems.count, Self.count(themeItems.count, "theme")),
+            .agents: (agentItems.count, Self.count(agentItems.count, "agent"))
         ]
         let scopes = CommandPaletteScope.allCases.compactMap { scope -> CommandPaletteItem? in
             guard let (count, text) = counts[scope], count > 0 else { return nil }
             return CommandPaletteItem(target: .scope(scope), kind: .action, title: scope.title, subtitle: text, keywords: ["go to jump switch"])
         }
-        return scopes + actions + tabItems + windowItems + paneItems + hostItems + projectItems + taskItems + themeItems
+        return scopes + actions + tabItems + windowItems + paneItems + hostItems + projectItems + taskItems + themeItems + agentItems
     }
 
     /// The menu's own title where it changes with state.

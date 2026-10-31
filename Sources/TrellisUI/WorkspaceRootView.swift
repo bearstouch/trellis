@@ -405,11 +405,24 @@ public struct WorkspaceRootView: View {
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let parts: [String] = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""]
+        let agentBadge = model.agentBadge(tabID: tab.id)
+        let agent = model.tabAgent(tabID: tab.id)
+        let parts: [String] = [
+            descriptor?.value ?? "", agentBadge.map { "\($0.agent.name) \($0.state.spokenText)" } ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "",
+            busy ? "output in progress" : ""
+        ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
         let label = HStack(spacing: 8) {
-            Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
-                .accessibilityHidden(true)
+            // FR-AG09: a running agent's icon replaces the terminal's, in the same tint.
+            Group {
+                if let agent {
+                    AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id]).help(agent.name)
+                } else {
+                    Image(systemName: "terminal").font(.system(size: 10))
+                }
+            }
+            .foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
+            .accessibilityHidden(true)
             if model.editingTabID == tab.id {
                 TextField("Tab name", text: $model.tabRenameDraft)
                     .textFieldStyle(.plain).focused($tabNameFocused)
@@ -437,7 +450,10 @@ public struct WorkspaceRootView: View {
                     .help(WorkspaceAccessibility.commandFailureText(code))
                     .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
             }
-            if let wait {
+            if let agentBadge {
+                // FR-AG10: the agent's state as a word and symbol; it outranks the generic Input capsule.
+                AgentTabBadge(state: agentBadge.state).help("\(agentBadge.agent.name): \(agentBadge.state.label)")
+            } else if let wait {
                 // A word in a capsule, not color alone (FR-T06); the tab's value speaks it.
                 Label("Input", systemImage: "keyboard").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium)).lineLimit(1)
                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -588,6 +604,7 @@ private struct TaskSheets: ViewModifier {
             .sheet(item: Binding(get: { model.projectLaunch }, set: { if $0 == nil, let session = model.projectLaunch { model.cancelProjectLaunch(session) } })) {
                 ProjectLaunchSheet(model: model, session: $0)
             }
+            .sheet(item: $model.agentInstallOffer) { AgentInstallSheet(model: model, offer: $0) }
     }
 }
 
@@ -919,12 +936,15 @@ private struct WindowTabsPreviewCard: View {
             // The active tab is marked by a chevron and weight, never color alone.
             Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).opacity(tab.isActive ? 1 : 0)
             Circle().fill(tab.color?.swatchColor ?? .clear).frame(width: 7, height: 7)
+            if let agent = tab.agent { AgentIconView(icon: agent.icon, directory: tab.agentIconDirectory).accessibilityHidden(true) }
             Text(tab.title).lineLimit(1).fontWeight(tab.isActive ? .semibold : .regular)
             Spacer(minLength: 8)
             if tab.paneCount > 1 { Text("\(tab.paneCount) panes").foregroundStyle(model.themeColor(.mutedForeground)) }
             if let code = tab.failedCommandExit { Label("exit \(code)", systemImage: "exclamationmark.circle").labelStyle(.titleAndIcon) }
             if tab.hasExitedSession { Label("Exited", systemImage: "stop.circle").labelStyle(.titleAndIcon) }
-            if let wait = tab.inputWait {
+            if let state = tab.agentState {
+                AgentTabBadge(state: state)
+            } else if let wait = tab.inputWait {
                 Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
@@ -947,7 +967,9 @@ private struct WindowTabsPreviewCard: View {
         if tab.paneCount > 1 { parts.append("\(tab.paneCount) panes") }
         if let code = tab.failedCommandExit { parts.append(WorkspaceAccessibility.commandFailureText(code)) }
         if tab.hasExitedSession { parts.append("a session exited") }
-        if let wait = tab.inputWait {
+        if let name = tab.agentStateName, let state = tab.agentState {
+            parts.append("\(name) \(state.spokenText)")
+        } else if let wait = tab.inputWait {
             parts.append(wait.text.lowercased())
         } else if let progress = tab.progress {
             parts.append(progress.spokenText)
