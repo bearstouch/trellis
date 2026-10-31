@@ -105,12 +105,7 @@ public struct LocalLaunchValidator: Sendable {
         }
         var environment = configuration.inheritedEnvironment.filter { !Self.isControlKey($0.key) && valid($0) }
         environment.merge(configuration.environmentOverrides) { _, override in override }
-        environment["TERM"] = "xterm-256color"
-        environment["COLORTERM"] = "truecolor"
-        environment["TERM_PROGRAM"] = "Trellis"
-        // Image tools look for iTerm2 here before using its inline image protocol (FR-IM05).
-        environment["LC_TERMINAL"] = "iTerm2"
-        environment["LC_TERMINAL_VERSION"] = "3.5.0"
+        environment.merge(Self.terminalEnvironment) { _, terminal in terminal }
         environment.removeValue(forKey: "ITERM_SESSION_ID")
         environment.removeValue(forKey: "TERM_SESSION_ID")
         var arguments = configuration.arguments
@@ -126,6 +121,12 @@ public struct LocalLaunchValidator: Sendable {
             executable: configuration.executable, arguments: arguments,
             directory: configuration.directory, environment: environment)
     }
+
+    /// What every Trellis session advertises, local or remote (FR-RW04). Image tools look for iTerm2 in `LC_TERMINAL`
+    /// before using its inline image protocol (FR-IM05).
+    public static let terminalEnvironment = [
+        "TERM": "xterm-256color", "COLORTERM": "truecolor", "TERM_PROGRAM": "Trellis", "LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.5.0"
+    ]
 
     private static func isControlKey(_ key: String) -> Bool {
         let name = key.uppercased()

@@ -77,4 +77,30 @@ final class BrokerSessionClientReviewTests: XCTestCase {
         let listing = await client.existingSessions()
         XCTAssertNil(listing)
     }
+
+    /// Settings → Sessions: the status never starts a broker, names a busy one, and describes a connected one.
+    func testStatusReportsWithoutStartingABroker() async throws {
+        let launcher = try makeLauncher()
+        let idle = BrokerSessionClient(launcher: launcher)
+        let none = await idle.status()
+        XCTAssertEqual(none, .notRunning)
+        XCTAssertNil(launcher.discovery(), "Asking for the status started nothing")
+
+        let client = BrokerSessionClient(launcher: launcher)
+        let ready = await client.prepare()
+        XCTAssertTrue(ready)
+        guard case .connected(let details) = await client.status() else { return XCTFail("No status") }
+        XCTAssertGreaterThan(details.processID, 0)
+        XCTAssertEqual(details.protocolVersion, BrokerProtocol.version)
+        XCTAssertEqual(details.running, 0)
+        XCTAssertEqual(details.socketPath, launcher.discovery()?.socketPath)
+        XCTAssertEqual(details.clientPath, launcher.clientPath)
+        await client.detach()
+
+        // Another client holding the broker's only slot shows as busy.
+        held = try BrokerConnection.connect(socketPath: try XCTUnwrap(launcher.discovery()?.socketPath), brokerExecutable: launcher.helperPath)
+        _ = try await held?.hello()
+        let other = await BrokerSessionClient(launcher: launcher).status()
+        XCTAssertEqual(other, .busy)
+    }
 }

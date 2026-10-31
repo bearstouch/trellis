@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Project library (in progress):** **Projects** at the bottom of the sidebar, **File → Projects…** (⌘O) and the command palette open a library of projects kept in Trellis (`projects.json`), not in a repository. Each project has tabs with colors, splits, pane titles, folders, commands and git repositories at the project, tab or pane level, edited in a form or as JSON, made from an open window (**New from Window…**) imported from JSON, or exported to a JSON file with **Export JSON…** (FR-PL01–FR-PL05). **Launch…** (or **Launch Project…** in the command palette) asks for this Mac or a saved host and the folder, shows what's there, creates the folder and clones missing repositories in a **Setting Up** terminal with that machine's own git and credentials, then opens the window, bound to the host when it runs there, and types each pane's command once. Launching again reconciles the same window (FR-PL06–FR-PL08). **Export/Import Windows & Hosts** carries projects too (FR-PL05). Pane headers show the git branch, uncommitted changes (●), and commits ahead (↑) and behind (↓) for shells inside a work tree, on this Mac and on hosts (FR-PL09).
+
+- **Session broker status:** Settings → **Session Broker** shows whether the session broker is running, its PID and protocol, how many sessions it keeps, its socket, and the one Trellis executable allowed to connect, plus the broker on each connected remote host.
+
+### Removed
+
+- **Repository project files:** `.trellis/project.json` (and the older `workspace.json`) is no longer read. **Load Project**, **Open Project…**, **Save as Project…** and **Edit Project File** are gone; projects now live in Trellis's **Projects** library (FR-PL01–FR-PL09). ⌘O, or a shortcut you set for **Open Project…**, opens the library instead. Tasks in `.trellis/launch.json` are unchanged, and the remote helper no longer reads `project.json` on hosts.
+
 ## [1.0.0] - 2026-10-29
 
 The first stable release of Trellis. This release adds in-app software updates with Sparkle and a cap on workspace disk writes, brightens selections in the dark themes, and fixes the collapsed sidebar's tabs card.
@@ -14,11 +24,14 @@ Earlier versions have no updater, so install 1.0.0 from the DMG; from here on, *
 
 ### Added
 
+- **Remote workspaces (preview):** **Open Remote Workspace** in **File → Hosts…** opens a window whose tabs and splits run on that host, in the directory you're in there, and keep running when you quit, close the window or lose the connection. The sidebar shows the connection. A dropped connection reconnects on its own (1 s to 1 min apart, paused while offline, checked again after sleep) and each pane resumes where it left off; when ssh needs your password or a host-key decision it stops and the window's menu offers **Reconnect…**, and **Retry Now** skips the wait. Relaunching re-attaches the sessions. A project's `.trellis/project.json` on the host is offered as locally and opens on that host after the same review, trusted per host; its Tasks menu runs the host's tasks in the remote shell. Trellis never writes files on the host. The command palette has **Open Remote Workspace: <host>**, exports keep each remote window's host, and `session.get` reports the host's connection (FR-RW01–FR-RW15).
+- **Remote helper on saved hosts (preview):** **File → Hosts…** can check, install, update and remove the Trellis helper on a Linux (x86_64, aarch64) or macOS host over your own `ssh`, with a confirmation, a SHA-256 check on the host and nothing written outside `~/.trellis`. ssh's prompts appear in a connection console. It prepares remote workspaces, whose windows come next (FR-RW17).
 - **Software updates:** **Trellis → Check for Updates…** and **Settings → Updates** download, verify and install new versions in place with Sparkle 2. Automatic daily checks are off until you turn them on, and **Include beta versions** chooses whether pre-releases are offered (on by default in pre-release builds). A check downloads only the update list and sends no system profile. Installing quits through the usual confirmation, so sessions kept after quit keep running (MAC-14).
 - **Workspace disk writes:** **Settings → Sessions → Workspace disk writes** caps how much the workspace file and its backup may write per hour (50 MB by default). Past it, changes are saved together every 5 minutes; ⌘S and Quit still save at once (FR-R06).
 
 ### Changed
 
+- **Sessions keep running by default:** every session now runs in the `trellis-broker` helper, so quitting, closing the window, a crash or a force quit no longer ends it; the next launch reconnects it with its recent output, and full-screen programs redraw. ⌘Q asks only when a session would stop. **Settings → Sessions → Stop sessions when Trellis quits** brings back the previous behavior, and replaces **Keep sessions running after quit** (FR-R03, FR-R07, MAC-04).
 - **Selection:** the dark built-in themes and the default palette use a brighter selection background, so selected text stands out from the pane. One Dark, Solarized Dark and Gruvbox Dark also brighten the selected text to keep it readable.
 - **Underlines:** links and dotted or dashed underlines (`4:4`, `4:5`) are drawn as a solid line (FR-TX02).
 - **Privacy:** the update check is the one network request Trellis makes by itself, and only when you check or turn on automatic checks (MAC-14).

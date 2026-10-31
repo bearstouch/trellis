@@ -6,16 +6,19 @@ All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `keepSessionsRunning`, `restoreScrollback`, `saveBudgetMegabytesPerHour`) | Last-known-good copy in `workspace.backup.json` |
+| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `stopSessionsOnQuit` (the older `keepSessionsRunning` key is read only to show the FR-R03 change notice), `restoreScrollback`, `saveBudgetMegabytesPerHour`) | Last-known-good copy in `workspace.backup.json` |
 | `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
-| `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each project's [project file](../features/project-files.md) window (namespace `workspace-file:<folder>`) | An unreadable file is preserved |
-| `workspace-trust.json` | Trusted project files as (canonical project folder, SHA-256 digest) pairs, and folders never to offer (FR-WF03); never the commands | `0600`. An unreadable file trusts nothing and is never overwritten. |
+| `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each launched [project](../features/project-library.md)'s window (namespace `project:<project>:<target>:<folder>`) | An unreadable file is preserved |
+| `projects.json` | The [project library](../features/project-library.md): each project's name, notes, layout, folders, commands, repository URLs and branches, and its last folder per target (FR-PL05) | `projects.backup.json`. An unreadable or newer file is preserved and the library is read-only. |
+| `workspace-trust.json` | Left from builds with repository project files (FR-WF03, removed); no longer read or written | Left in place; safe to delete |
 | `control.json` | Discovery for the running control socket | Rewritten on every launch |
 | `instance.lock` | The running app's PID, under an exclusive `flock` held while it runs, so one app writes each folder however its path is given (a link, or the default folder passed as `--state-directory`); a second launch activates the first instead | `0600`; released on exit or crash |
 | `Themes/<id>.theme.json` | Custom themes | File names come only from validated IDs |
 | `Scrollback/<session-uuid>.txt` | Only with **Restore scrollback after quit** (FR-R04): a pane's redacted plain text | `0600` in a `0700` folder; see [below](#opt-in-scrollback-file) |
 | `broker.json` | Only after a session was kept running (FR-R03): `{protocolVersion, socketPath}` of this folder's `trellis-broker` | `0600`, read without following symlinks; no token or PID |
+| `remote-client.json` | `{clientID}`: 128 random bits naming this state directory's remote brokers (FR-RW13). Created on first use, only when absent: an unreadable file is never replaced, and remote workspaces stay unavailable until it is repaired or removed. | `0600`; no secret |
+| `remote-hosts.json` | Per saved host: the last observed remote helper status (state, OS, architecture, time) and the auto-install choice (FR-RW17). Entries of deleted hosts are dropped, never while `hosts.json` itself can't be read. Replaced atomically, the previous version kept as `remote-hosts.backup.json`. An unparsable file is set aside (`remote-hosts.unreadable.<uuid>.json`) and reads as empty; one from a newer version, or one that can't be read, is never written over, and changes then last until quit. | `0600`; no secret |
 
 Some settings are also stored in `UserDefaults`: `terminal.shell`, `terminal.directory`, `app.windowFrame` and `keyboard.settings`. Grant tokens live in the Keychain, under service `Trellis Automation`. Saved-host passwords live under service `Trellis SSH Host`, with the host UUID as account. The Keychain is written before `hosts.json`, and a failed metadata write restores the previous Keychain value.
 
@@ -50,6 +53,7 @@ Interrupting a save at any point must still leave a readable current file or bac
 
 - `WorkspaceSnapshotCodec.currentVersion` is `1`, and `HostLibraryCodec.currentVersion` is `1`. Version 0 workspaces are migrated in memory when loaded.
 - When you change the on-disk format, bump the version, add a migration, and add a test that loads the old format. A failed migration must leave the original file untouched.
+- Schema version 2 adds [remote workspaces](../features/remote-workspaces.md): a window's `remoteHostID` and `remoteShell` pane launches (host and remote directory). A workspace without a remote window is still written as version 1, so older builds keep reading it; one with a remote window is version 2, which an older build opens read-only instead of treating it as corrupt.
 - A **newer, unknown** version opens in read-only recovery and is never overwritten. Downgrading isn't supported, so keep a copy of the folder before you try.
 
 ## Recovery
@@ -58,7 +62,7 @@ Loading returns `.missing`, `.loaded` or `.recovery(reason, backup?)`.
 
 - **Corrupt file:** the user chooses **Recover backup** or **Start empty**. Before anything is written, the original is preserved as `workspace.corrupt.<UUID>.json`.
 - **Unsupported version:** persistence stays read-only for the rest of the session.
-- **After a crash:** the app says that sessions stopped. It never implies that processes continued, and it never replays input. The one exception is a session kept by the broker (FR-R03), which is reported as running only because the broker answered for it.
+- **After a crash:** sessions in the broker (FR-R07, the default) keep running and are reported as running only because the broker answered for them; any other session is reported as stopped. The app never implies that processes continued without that answer, and it never replays input.
 
 ## Restoring stopped sessions
 

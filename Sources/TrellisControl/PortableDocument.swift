@@ -17,6 +17,8 @@ public enum PortableDocument {
     public struct Parsed: Equatable, Sendable {
         public let layout: LayoutDocument
         public let hosts: [PortableHost]
+        /// Library projects (FR-PL05), without identity or launch history; each gets a new identity on import.
+        public var projects: [ProjectDefinition] = []
     }
 
     public enum Collision: Equatable, Sendable {
@@ -24,7 +26,7 @@ public enum PortableDocument {
     }
 
     public struct Preview: Equatable, Sendable {
-        public var windows = 0, tabs = 0, panes = 0, hosts = 0
+        public var windows = 0, tabs = 0, panes = 0, hosts = 0, projects = 0
         public var directories: [String] = []
         public var hostReferences: [String] = []
         /// Imported host index → existing host it collides with.
@@ -34,7 +36,7 @@ public enum PortableDocument {
         public var errors: [LayoutIssue] = []
 
         public static func == (a: Self, b: Self) -> Bool {
-            a.windows == b.windows && a.tabs == b.tabs && a.panes == b.panes && a.hosts == b.hosts && a.directories == b.directories
+            a.windows == b.windows && a.tabs == b.tabs && a.panes == b.panes && a.hosts == b.hosts && a.projects == b.projects && a.directories == b.directories
                 && a.hostReferences == b.hostReferences && a.collisions.map { "\($0.imported)\($0.existing)\($0.reason)" } == b.collisions.map { "\($0.imported)\($0.existing)\($0.reason)" }
                 && a.collisionDetails == b.collisionDetails && a.errors == b.errors
         }
@@ -44,7 +46,7 @@ public enum PortableDocument {
 
     /// Exports every window and every saved host. Custom process panes become
     /// plain shells (their commands are never written), and are counted.
-    public static func export(snapshot: WorkspaceSnapshot, hosts: [SavedHost]) -> (document: JSONValue, convertedProcesses: Int) {
+    public static func export(snapshot: WorkspaceSnapshot, hosts: [SavedHost], projects: [ProjectDefinition] = []) -> (document: JSONValue, convertedProcesses: Int) {
         var references: [UUID: UUID] = [:]
         for host in hosts { references[host.id] = UUID() }
         var counter = 0, converted = 0
@@ -57,7 +59,10 @@ public enum PortableDocument {
             case .host(let id)? where references[id] != nil: return .object(["kind": .string("host"), "hostId": .string(references[id]!.uuidString)])
             case .shell(let directory?)?: return .object(["kind": .string("shell"), "directory": .string(directory)])
             case .process(_, let arguments, let directory?)? where arguments == ["-l"]: return .object(["kind": .string("shell"), "directory": .string(directory)])
-            case .process?:
+            // A remote workspace's pane is a shell in a path on its host; the window carries the host (FR-R02).
+            case .remoteShell(let host, let directory)? where references[host] != nil:
+                return .object(directory.map { ["kind": .string("shell"), "directory": .string($0)] } ?? ["kind": .string("shell")])
+            case .process?, .remoteShell?:
                 converted += 1
                 return .object(["kind": .string("shell")])
             default: return .object(["kind": .string("shell")])
@@ -77,10 +82,12 @@ public enum PortableDocument {
             "version": .number(1),
             "windows": .array(
                 snapshot.windows.map { window in
-                    .object([
+                    var object: [String: JSONValue] = [
                         "key": key("w"), "name": .string(window.name),
                         "tabs": .array(window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in .object(["key": key("t"), "title": .string(tab.title), "root": node(tab.root)]) })
-                    ])
+                    ]
+                    if let host = window.remoteHostID.flatMap({ references[$0] }) { object["remoteHostId"] = .string(host.uuidString) }
+                    return .object(object)
                 })
         ])
         let hostList: JSONValue = .array(
@@ -94,7 +101,11 @@ public enum PortableDocument {
                 if let identity = host.identityFile { object["identityFile"] = .string(identity) }
                 return .object(object)
             })
-        return (.object(["format": .string(format), "version": .number(Double(version)), "layout": layout, "hosts": hostList]), converted)
+        var document: [String: JSONValue] = ["format": .string(format), "version": .number(Double(version)), "layout": layout, "hosts": hostList]
+        // In the library's JSON form; folders a project was launched in belong to this Mac and its hosts, so they stay.
+        let projectList = projects.compactMap { try? JSONDecoder().decode(JSONValue.self, from: ProjectJSON.encode($0)) }
+        if !projectList.isEmpty { document["projects"] = .array(projectList) }
+        return (.object(document), converted)
     }
 
     // MARK: Import
@@ -104,7 +115,7 @@ public enum PortableDocument {
         guard case .object(let root) = value else { return failure("The file is not a Trellis export.") }
         guard root["format"] == .string(format) else { return failure("The file is not a Trellis portable export.") }
         guard root["version"] == .number(Double(version)) else { return failure("This export uses an unsupported version. Update Trellis to import it.") }
-        let unknown = Set(root.keys).subtracting(["format", "version", "layout", "hosts"])
+        let unknown = Set(root.keys).subtracting(["format", "version", "layout", "hosts", "projects"])
         guard unknown.isEmpty else { return failure("Unsupported fields: \(unknown.sorted().joined(separator: ", ")).") }
         var hosts: [PortableHost] = []
         if case .array(let entries)? = root["hosts"] {
@@ -130,8 +141,21 @@ public enum PortableDocument {
         } else if root["hosts"] != nil {
             return failure("hosts must be an array.")
         }
-        switch LayoutJSON.parse(root["layout"] ?? .object(["version": .number(1), "windows": .array([])])) {
-        case .success(let layout): return .success(Parsed(layout: layout, hosts: hosts))
+        var projects: [ProjectDefinition] = []
+        if case .array(let entries)? = root["projects"] {
+            guard entries.count <= 1_000 else { return failure("Exports are limited to 1,000 projects.") }
+            for (index, entry) in entries.enumerated() {
+                guard let data = try? JSONEncoder().encode(entry) else { return failure("Project \(index + 1) is malformed.") }
+                switch ProjectJSON.parse(data) {
+                case .success(let project): projects.append(project)
+                case .failure(let error): return failure("Project \(index + 1): " + error.problems.joined(separator: " "))
+                }
+            }
+        } else if root["projects"] != nil {
+            return failure("projects must be an array.")
+        }
+        switch LayoutJSON.parse(root["layout"] ?? .object(["version": .number(1), "windows": .array([])]), allowRemoteHosts: true) {
+        case .success(let layout): return .success(Parsed(layout: layout, hosts: hosts, projects: projects))
         case .failure(let error): return .failure(error)
         }
     }
@@ -141,26 +165,31 @@ public enum PortableDocument {
         var preview = Preview()
         preview.windows = parsed.layout.windows.count
         preview.hosts = parsed.hosts.count
-        func walk(_ node: LayoutNode) {
+        preview.projects = parsed.projects.count
+        func reference(_ reference: UUID, _ what: String) {
+            let name = parsed.hosts.first { $0.reference == reference }?.draft.name ?? "Missing host \(reference.uuidString)"
+            if !preview.hostReferences.contains(name) { preview.hostReferences.append(name) }
+            if !parsed.hosts.contains(where: { $0.reference == reference }) {
+                preview.errors.append(LayoutIssue(key: nil, "A \(what) refers to a host that is not in this export."))
+            }
+        }
+        // A remote workspace's folders are paths on its host, not on this Mac, so they aren't listed as local folders.
+        func walk(_ node: LayoutNode, remote: Bool) {
             switch node {
             case .pane(_, _, let launch):
                 preview.panes += 1
                 switch launch {
-                case .shell(let directory?): if !preview.directories.contains(directory) { preview.directories.append(directory) }
-                case .shell(nil): break
-                case .host(let reference):
-                    let name = parsed.hosts.first { $0.reference == reference }?.draft.name ?? "Missing host \(reference.uuidString)"
-                    if !preview.hostReferences.contains(name) { preview.hostReferences.append(name) }
-                    if !parsed.hosts.contains(where: { $0.reference == reference }) {
-                        preview.errors.append(LayoutIssue(key: nil, "A pane refers to a host that is not in this export."))
-                    }
+                case .shell(let directory?) where !remote: if !preview.directories.contains(directory) { preview.directories.append(directory) }
+                case .shell: break
+                case .host(let host): reference(host, "pane")
                 }
-            case .split(_, _, _, let children): children.forEach(walk)
+            case .split(_, _, _, let children): children.forEach { walk($0, remote: remote) }
             }
         }
         for window in parsed.layout.windows {
             preview.tabs += window.tabs.count
-            window.tabs.forEach { walk($0.root) }
+            if let host = window.remoteHostID { reference(host, "remote workspace window") }
+            window.tabs.forEach { walk($0.root, remote: window.remoteHostID != nil) }
         }
         for (index, host) in parsed.hosts.enumerated() {
             let destination = host.draft.destination.trimmingCharacters(in: .whitespacesAndNewlines)

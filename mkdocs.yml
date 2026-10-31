@@ -48,13 +48,14 @@ nav:
       - Terminal engine: architecture/terminal-engine.md
   - Features:
       - Windows, tabs and panes: features/workspace.md
-      - Project files: features/project-files.md
+      - Project library: features/project-library.md
       - Tasks: features/tasks.md
       - Command scratchpad: features/scratchpad.md
       - Command palette: features/command-palette.md
       - Terminal: features/terminal.md
       - Shell integration: features/shell-integration.md
       - SSH hosts: features/ssh-hosts.md
+      - Remote workspaces: features/remote-workspaces.md
       - Themes: features/themes.md
       - Keyboard and accessibility: features/keyboard-accessibility.md
   - Automation API:

@@ -1,4 +1,5 @@
 import SwiftUI
+import TrellisBroker
 import TrellisCore
 
 struct PaneTreeView: View {
@@ -79,8 +80,15 @@ struct PaneTreeView: View {
                     }
                     if context.kind == "Local" {
                         scratchpadButton(id, pressed: model.scratchpadVisible && focused)
-                        if let offer = model.projectFileOffers[id] { projectFileButton(id, offer: offer) }
                         TaskDropdownButton(model: model, paneID: id)
+                    } else if model.isRemoteWorkspace(paneID: id) {
+                        // FR-RW11: the host's tasks; the scratchpad stays local.
+                        TaskDropdownButton(model: model, paneID: id)
+                    }
+                    if let git = model.gitStatuses[id] {
+                        // Words and symbols, never color alone (FR-PL09).
+                        Label(AppWorkspaceModel.gitStatusText(git), systemImage: "arrow.triangle.branch").lineLimit(1).monospacedDigit()
+                            .help(AppWorkspaceModel.gitStatusSpoken(git)).accessibilityLabel(AppWorkspaceModel.gitStatusSpoken(git))
                     }
                     Text(context.kind).lineLimit(1)
                     if terminal.sessionState != .running {
@@ -163,24 +171,19 @@ struct PaneTreeView: View {
         .accessibilityLabel("Scratchpad").accessibilityAddTraits(pressed ? [.isSelected] : [])
     }
 
-    /// Opens the project file found for this pane's directory in the JSON editor (FR-WF08).
-    private func projectFileButton(_ id: UUID, offer: ProjectFileOffer) -> some View {
-        let file = URL(fileURLWithPath: offer.path).lastPathComponent
-        return Button {
-            model.beginEditProjectFile(paneID: id)
-        } label: {
-            Image(systemName: "curlybraces.square").frame(width: 20, height: 18).foregroundStyle(model.themeColor(.mutedForeground)).contentShape(Rectangle())
-        }
-        .help("Edit Project File (\(file))").accessibilityLabel("Edit Project File").accessibilityValue(offer.name)
-    }
-
     private func sessionContext(_ id: UUID) -> (directory: String?, kind: String) {
         let launch = model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
         let directory: String
+        // A remote workspace pane: its authenticated directory on the host, named after the host (FR-RW05).
+        if case .remoteShell(let hostID, let path)? = launch {
+            // FR-RW07: a pane on a host that isn't connected says so, in words.
+            let link = model.remoteLinks[hostID] ?? .disconnected(nil)
+            return (model.remoteWorkingDirectory(paneID: id) ?? path, model.remoteHostName(hostID) + (link == .connected ? "" : " · " + link.label))
+        }
         // A remote shell's own report, unverified and display-only (FR-SI09).
         if let launch, AppWorkspaceModel.isRemote(launch) { return (model.remoteDirectory(paneID: id), "SSH") }
         switch launch {
-        case .host: return (nil, "SSH")
+        case .host, .remoteShell: return (nil, "SSH")
         // Shell integration reports the live directory; otherwise show where the session started (INT-01).
         case .shell(let path), .process(_, _, let path): directory = model.currentDirectory(paneID: id) ?? path ?? model.defaultDirectory
         case nil: directory = model.defaultDirectory

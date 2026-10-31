@@ -15,6 +15,12 @@ public final class HostListModel: ObservableObject {
 
     public init(library: HostLibrary) { self.library = library }
 
+    /// The remote helper on each host (FR-RW17); nil hides its actions.
+    public var remote: RemoteHostsModel?
+
+    /// Opens the host as a remote workspace window (FR-RW01); set by the app.
+    public var onOpenRemoteWorkspace: ((SavedHost) -> Void)?
+
     /// Opens a connection; set by the app to the workspace model.
     public var onConnect: ((SavedHost, AppWorkspaceModel.HostPlacement) -> Void)?
 
@@ -26,6 +32,7 @@ public final class HostListModel: ObservableObject {
     public func load() async {
         await library.load()
         await refresh()
+        await remote?.load(hosts: loadFailed ? nil : hosts)
     }
 
     /// Creates when `editing` is nil, otherwise updates from the revision the editor loaded.

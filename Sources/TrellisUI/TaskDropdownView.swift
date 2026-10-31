@@ -100,8 +100,10 @@ private struct TaskPopover: View {
         }.frame(maxHeight: 420).fixedSize(horizontal: false, vertical: true)
         Divider()
         HStack {
-            Button(catalog.file == .missing ? "Create launch.json" : "Edit launch.json") { Task { await model.editLaunchFile() } }
-                .help(catalog.path)
+            if catalog.hostID == nil {
+                Button(catalog.file == .missing ? "Create launch.json" : "Edit launch.json") { Task { await model.editLaunchFile() } }
+                    .help(catalog.path)
+            }
             Spacer()
             Button("Reload") { Task { await model.refreshTaskCatalog(paneID: paneID) } }
         }.controlSize(.small)
@@ -136,7 +138,8 @@ private struct TaskRow: View {
                 if !env.isEmpty { Text("env: " + env.joined(separator: ", ")).font(.caption2).foregroundStyle(muted).lineLimit(2) }
             }.accessibilityElement(children: .combine)
             Spacer(minLength: 4)
-            if let detected {
+            // A host's launch.json is read-only here (FR-RW11).
+            if let detected, catalog.hostID == nil {
                 let added = catalog.contains(task)
                 Button {
                     Task { await model.addDetectedTask(detected) }
@@ -190,6 +193,9 @@ struct TaskReviewView: View {
             Text("Running “\(review.taskName)” trusts this version of the project's launch.json. These are all of its tasks:")
                 .fixedSize(horizontal: false, vertical: true)
             Text(review.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).foregroundStyle(muted)
+            if let host = review.hostName {
+                Label("On \(host). Its tasks run on that host.", systemImage: "server.rack").font(.callout).accessibilityIdentifier("task.review.host")
+            }
             if review.changedSinceTrusted { Label("This file changed since you last trusted it.", systemImage: "exclamationmark.triangle").font(.callout) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {

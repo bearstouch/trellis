@@ -15,7 +15,6 @@ public struct WorkspaceRootView: View {
     static let scratchpadWidths: ClosedRange<CGFloat> = 280...640
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
-    @State private var hoveredTabID: UUID?
     @State private var draggedTabID: UUID?
     @State private var tabDropTargetID: UUID?
     @State private var draggedWindowID: UUID?
@@ -105,9 +104,8 @@ public struct WorkspaceRootView: View {
                 }
             }.padding(24).frame(width: 540)
         }
-        .modifier(ProjectSheets(model: model))
-        // A project file sheet shows its own errors; an alert behind it could go unseen (FR-WF06, FR-WF08).
-        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil && !model.showsProjectSheet }, set: { if !$0 { model.errorMessage = nil } })) {
+        .modifier(TaskSheets(model: model))
+        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
@@ -168,6 +166,12 @@ public struct WorkspaceRootView: View {
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
             Button {
+                model.openProjects?()
+            } label: {
+                Label("Projects", systemImage: "folder.badge.gearshape")
+            }
+            .buttonStyle(.plain).help(model.keyboard.shortcuts[.showProjects].map { "Project library (\($0))" as String } ?? "Project library").padding(.horizontal, 10).padding(.top, 6)
+            Button {
                 model.openHosts?()
             } label: {
                 Label("Hosts", systemImage: "server.rack")
@@ -199,6 +203,12 @@ public struct WorkspaceRootView: View {
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
             Button {
+                model.openProjects?()
+            } label: {
+                Image(systemName: "folder.badge.gearshape")
+            }
+            .buttonStyle(.plain).help("Project library").accessibilityLabel("Projects")
+            Button {
                 model.openHosts?()
             } label: {
                 Image(systemName: "server.rack")
@@ -220,8 +230,18 @@ public struct WorkspaceRootView: View {
             Task { await model.selectWindow(window.id) }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "macwindow").foregroundStyle(model.themeColor(.mutedForeground))
-                Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
+                Image(systemName: window.remoteHostID == nil ? "macwindow" : "server.rack").foregroundStyle(model.themeColor(.mutedForeground))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
+                    // FR-RW16: the link in words and a symbol, never color alone.
+                    if let host = window.remoteHostID {
+                        let link = model.remoteLinks[host] ?? .disconnected(nil)
+                        Label("\(model.remoteHostName(host)) · \(link.label)", systemImage: link.symbol)
+                            .font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
+                            .help(link == .connected ? "Connected to \(model.remoteHostName(host))" : linkHelp(link))
+                    }
+                }
                 Spacer()
                 if model.windowsNeedingInput.contains(window.id) {
                     Image(systemName: "keyboard").font(.system(size: 10)).help("Waiting for input")
@@ -239,6 +259,10 @@ public struct WorkspaceRootView: View {
         .buttonStyle(.plain)
         .modifier(windowDrag(window))
         .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+    }
+
+    private func linkHelp(_ link: RemoteLinkDisplay) -> String {
+        [link.label, link.detail, link.isUp ? nil : "The window’s menu has Retry Now and Reconnect…."].compactMap { $0 }.joined(separator: " ")
     }
 
     private func windowDrag(_ window: ManagedWindow) -> DragReorder {
@@ -265,6 +289,13 @@ public struct WorkspaceRootView: View {
                     if model.windowsNeedingInput.contains(window.id) {
                         Image(systemName: "keyboard.fill").font(.system(size: 8)).foregroundStyle(model.themeColor(.accent))
                             .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: 4, y: 4).help("Waiting for input")
+                    }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    if let host = window.remoteHostID {
+                        Image(systemName: (model.remoteLinks[host] ?? .disconnected(nil)).symbol).font(.system(size: 8))
+                            .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: -4, y: 4)
+                            .help("\(model.remoteHostName(host)) · \((model.remoteLinks[host] ?? .disconnected(nil)).label)")
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -374,12 +405,7 @@ public struct WorkspaceRootView: View {
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
-        let offer = model.projectFileOffer(tabID: tab.id)
-        let shownOffer = hoveredTabID == tab.id || selected ? offer : nil
-        let parts: [String] = [
-            descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : "",
-            offer.map { WorkspaceAccessibility.projectOfferText($0.name) } ?? ""
-        ]
+        let parts: [String] = [descriptor?.value ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
         let label = HStack(spacing: 8) {
             Image(systemName: "terminal").font(.system(size: 10)).foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
@@ -425,7 +451,6 @@ public struct WorkspaceRootView: View {
                     .foregroundStyle(progress.state == .error ? Color.red : progress.state == .paused ? Color.orange : model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
             }
-            if let shownOffer { ProjectOfferButton(model: model, offer: shownOffer, expanded: hoveredTabID == tab.id) }
             Button {
                 Task { await model.closeTab(tab.id) }
             } label: {
@@ -444,7 +469,6 @@ public struct WorkspaceRootView: View {
             .contentShape(Rectangle())
         return
             label
-            .modifier(TabProjectOffer(model: model, offer: offer, tabID: tab.id, hoveredTabID: $hoveredTabID))
             .modifier(
                 DragReorder(
                     id: tab.id, order: model.presentation.visibleTabs.map(\.id), axis: .horizontal, enabled: model.editingTabID != tab.id,
@@ -463,7 +487,7 @@ public struct WorkspaceRootView: View {
             .contextMenu {
                 TabContextMenu(
                     model: model, tab: tab, canMoveLeft: model.presentation.visibleTabs.first?.id != tab.id,
-                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay, offer: offer,
+                    canMoveRight: model.presentation.visibleTabs.last?.id != tab.id, separator: model.separatorOverlay,
                     rename: { beginTabRename(tab) }
                 ).equatable()
             }
@@ -552,23 +576,17 @@ extension TabColor {
 /// the side it comes from, where an accent bar marks it. The payload is the item's UUID and the drop reads it back, so
 /// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a window never moves
 /// anything. Off while renaming, so a drag in the name field selects text.
-/// Project file and task sheets (FR-WF03, FR-WF06, FR-WF08, FR-TK06), apart so the root's modifier chain type-checks.
-private struct ProjectSheets: ViewModifier {
+/// The task review (FR-TK06) and project launch (FR-PL06) sheets, apart so the root's modifier chain type-checks.
+private struct TaskSheets: ViewModifier {
     @ObservedObject var model: AppWorkspaceModel
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: Binding(get: { model.pendingProjectReview }, set: { if $0 == nil, let id = model.pendingProjectReview?.id { Task { await model.resolveProjectReview(id, .cancel) } } })) {
-                ProjectFileReviewView(model: model, review: $0)
-            }
             .sheet(item: Binding(get: { model.pendingTaskReview }, set: { if $0 == nil, let id = model.pendingTaskReview?.id { model.resolveTaskReview(id, trust: false) } })) {
                 TaskReviewView(model: model, review: $0)
             }
-            .sheet(item: Binding(get: { model.pendingProjectSave }, set: { if $0 == nil { model.cancelProjectSave() } })) {
-                ProjectFileSaveView(model: model, draft: $0)
-            }
-            .sheet(item: Binding(get: { model.pendingProjectEdit }, set: { if $0 == nil { model.cancelProjectEdit() } })) {
-                ProjectFileEditView(model: model, edit: $0)
+            .sheet(item: Binding(get: { model.projectLaunch }, set: { if $0 == nil, let session = model.projectLaunch { model.cancelProjectLaunch(session) } })) {
+                ProjectLaunchSheet(model: model, session: $0)
             }
     }
 }
@@ -641,12 +659,11 @@ private struct TabContextMenu: View, Equatable {
     let canMoveLeft: Bool
     let canMoveRight: Bool
     let separator: Color
-    let offer: ProjectFileOffer?
     let rename: () -> Void
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.tab.id == rhs.tab.id && lhs.tab.color == rhs.tab.color && lhs.canMoveLeft == rhs.canMoveLeft && lhs.canMoveRight == rhs.canMoveRight
-            && lhs.separator == rhs.separator && lhs.offer == rhs.offer
+            && lhs.separator == rhs.separator
     }
 
     var body: some View {
@@ -664,11 +681,6 @@ private struct TabContextMenu: View, Equatable {
         Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
         Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
         Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
-        if let offer {
-            Divider().overlay(separator)
-            Button("Load Project “\(offer.name)”") { Task { await model.loadProjectFile(root: offer.root) } }
-            Button("Don’t Offer for This Folder") { model.stopOfferingProjectFile(root: offer.root) }
-        }
         Divider().overlay(separator)
         Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
     }
@@ -778,21 +790,41 @@ private struct WindowItemActions: ViewModifier {
     @ObservedObject var model: AppWorkspaceModel
     let rename: (ManagedWindow) -> Void
 
+    /// FR-RW16: VoiceOver hears the host and its link, for example "build-box, Disconnected".
+    private var value: String {
+        guard let host = window.remoteHostID else { return descriptor?.value ?? "" }
+        let state = model.remoteLinks[host] ?? .disconnected(nil)
+        let link = ["\(model.remoteHostName(host)), \(state.label)", state.detail].compactMap { $0 }.joined(separator: ". ")
+        return [descriptor?.value, link].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    private var canReconnect: Bool {
+        guard let host = window.remoteHostID else { return false }
+        return !(model.remoteLinks[host] ?? .disconnected(nil)).isUp
+    }
+
     func body(content: Content) -> some View {
         content
             .accessibilityLabel(descriptor?.label ?? window.name)
-            .accessibilityValue(descriptor?.value ?? "")
+            .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected] : [])
+            .accessibilityAction(named: "Retry Now") { if canReconnect, let host = window.remoteHostID { model.remoteReconnector.retryNow(host) } }
+            .accessibilityAction(named: "Reconnect") { if canReconnect, let host = window.remoteHostID { Task { await model.reconnectRemote(hostID: host) } } }
             .accessibilityAction(named: "Rename") { rename(window) }
             .accessibilityAction(named: "Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
             .accessibilityAction(named: "Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
             .contextMenu {
+                if let host = window.remoteHostID {
+                    // Retry Now never prompts; Reconnect… lets ssh ask for a password or a host-key decision (FR-RW07).
+                    Button("Retry Now") { model.remoteReconnector.retryNow(host) }.disabled(!canReconnect)
+                    Button("Reconnect to \(model.remoteHostName(host))…") { Task { await model.reconnectRemote(hostID: host) } }.disabled(!canReconnect)
+                    Divider().overlay(model.separatorOverlay)
+                }
                 Button("Rename…") { rename(window) }
                 Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
                     .disabled(model.snapshot.windows.first?.id == window.id)
                 Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
                     .disabled(model.snapshot.windows.last?.id == window.id)
-                Button("Save as Project…") { model.beginSaveProjectFile(windowID: window.id) }
                 Divider().overlay(model.separatorOverlay)
                 Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
             }
@@ -1080,10 +1112,18 @@ public struct LaunchSettingsView: View {
             ).accessibilityIdentifier("settings.shellIntegration")
             caption("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions.")
             Toggle(
-                "Keep sessions running after quit",
-                isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) })
-            ).accessibilityIdentifier("settings.keepSessionsRunning")
-            caption("New sessions can keep running when you quit and reconnect next time. Closing the window or logging out ends them.")
+                "Stop sessions when Trellis quits",
+                isOn: Binding(get: { !model.keepSessionsRunning }, set: { model.setKeepSessionsRunning(!$0) })
+            ).accessibilityIdentifier("settings.stopSessionsOnQuit")
+            caption(
+                model.keepSessionsRunning
+                    ? "Sessions run in a background helper: they keep running when you quit, close the window or Trellis stops unexpectedly, and reconnect next time. Logging out or restarting ends them."
+                    : "Quitting or closing the window stops every session. Sessions still survive if Trellis stops unexpectedly.")
+            if model.sessionDefaultNoticePending {
+                caption("New: sessions now keep running after quit by default. Turn this on to stop them when Trellis quits.")
+                    .accessibilityIdentifier("settings.sessionDefaultNotice")
+                    .onDisappear { model.dismissSessionDefaultNotice() }
+            }
             Toggle(
                 "Restore scrollback after quit",
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
@@ -1128,44 +1168,5 @@ public struct LaunchSettingsView: View {
             }
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
             .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
-    }
-}
-
-/// A tab’s project offer (FR-WF02): words while hovered, a glyph on a selected tab so it can be found.
-private struct ProjectOfferButton: View {
-    @ObservedObject var model: AppWorkspaceModel
-    let offer: ProjectFileOffer
-    let expanded: Bool
-
-    var body: some View {
-        Button {
-            Task { await model.loadProjectFile(root: offer.root) }
-        } label: {
-            Group {
-                if expanded { Label("Load Project", systemImage: "square.grid.2x2").labelStyle(.titleAndIcon) } else { Image(systemName: "square.grid.2x2") }
-            }
-            .font(.system(size: 10, weight: .medium)).lineLimit(1).padding(.horizontal, expanded ? 5 : 0).padding(.vertical, 1)
-            .background(Capsule().fill(model.themeColor(.accent).opacity(expanded ? 0.18 : 0)))
-        }
-        .buttonStyle(.plain).fixedSize().help("Load project “\(offer.name)” from \(offer.path)")
-        .accessibilityLabel("Load Project \(offer.name)")
-    }
-}
-
-/// Tracks the hovered tab and offers Load Project to VoiceOver, so the offer never needs a pointer.
-private struct TabProjectOffer: ViewModifier {
-    let model: AppWorkspaceModel
-    let offer: ProjectFileOffer?
-    let tabID: UUID
-    @Binding var hoveredTabID: UUID?
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { inside in
-                if inside { hoveredTabID = tabID } else if hoveredTabID == tabID { hoveredTabID = nil }
-            }
-            .accessibilityActions {
-                if let offer { Button("Load Project") { Task { await model.loadProjectFile(root: offer.root) } } }
-            }
     }
 }

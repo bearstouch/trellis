@@ -20,7 +20,7 @@ public struct ScratchpadLanguage: Hashable, Identifiable, Sendable {
         id: "javascript", displayName: "JavaScript", fileExtension: "js", interpreter: "node", checkArguments: ["--check"], grammar: .javascript)
     public static let markdown = ScratchpadLanguage(id: "markdown", displayName: "Markdown", fileExtension: "md", interpreter: nil, checkArguments: [], grammar: .markdown)
     public static let all: [ScratchpadLanguage] = [.sh, .bash, .javascript, .markdown]
-    /// Project files (FR-WF06), highlighted like JavaScript; not offered in the scratchpad's selector.
+    /// JSON, highlighted like JavaScript; not offered in the scratchpad's selector.
     public static let json = ScratchpadLanguage(id: "json", displayName: "JSON", fileExtension: "json", interpreter: nil, checkArguments: [], grammar: .javascript)
 
     /// Can be checked, run and saved as a task.
@@ -49,7 +49,7 @@ public struct ScratchpadDocument: Equatable, Sendable {
     public static let maximumNameLength = 64
     public static let defaultName = "untitled"
     /// Saved scripts live here, relative to the project folder, so tasks can name them.
-    public static let projectDirectory = ProjectFile.directoryName + "/scratch"
+    public static let projectDirectory = ProjectText.directoryName + "/scratch"
 
     public var name: String
     public var language: ScratchpadLanguage
@@ -68,7 +68,7 @@ public struct ScratchpadDocument: Equatable, Sendable {
     public func runLine(path: String, kind: ShellIntegrationKind) -> String? {
         guard let interpreter = language.interpreter else { return nil }
         let line = interpreter + " " + TaskCommand.shellQuote(path, kind: kind)
-        return ProjectFile.commandProblem(line) == nil ? line : nil
+        return ProjectText.commandProblem(line) == nil ? line : nil
     }
 
     /// Saved scripts the scratchpad can open: names it could have written, with a registered extension.

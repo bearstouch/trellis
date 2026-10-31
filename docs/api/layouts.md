@@ -2,7 +2,7 @@
 
 A layout document describes windows, tabs and split trees, plus safe launch references. It is **data, not shell code**. A layout can't embed commands, and validating or applying one never runs anything; starting work is always a separate, explicit API call.
 
-A project's [project file](../features/project-files.md) (`.trellis/project.json`) is a separate format for people rather than agents. It can carry commands, which run only after the user trusts that exact file. Automation can't open project files.
+Projects in the [project library](../features/project-library.md) are a separate, in-app format for people rather than agents; they can carry commands and repositories, and automation can't launch them.
 
 - Schema: [`layout.schema.json`](layout.schema.json) (JSON Schema 2020-12)
 - Example: [`example-layout.json`](example-layout.json). The tests apply it twice and check that the result is stable.

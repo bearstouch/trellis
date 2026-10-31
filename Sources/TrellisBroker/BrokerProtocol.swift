@@ -1,19 +1,35 @@
-import Foundation
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
 
 /// The app ↔ `trellis-broker` wire format (FR-R03). Frames are `[u32 BE length][u8 kind][payload]`,
 /// where the length counts the kind byte and the payload.
 public enum BrokerProtocol {
-    public static let version = 1
+    /// The highest version this build speaks; v2 adds remote workspaces (FR-RW01–FR-RW17), v3 a login request that runs a
+    /// project's setup command instead of an interactive shell (FR-RW18).
+    public static let version = 3
+    /// The lowest version this build still speaks, so an updated app keeps a running older broker's sessions.
+    public static let minimumVersion = 1
     public static let helperName = "trellis-broker"
     public static let frameLimit = 1_048_576
     /// Output, replay and input chunks never exceed this.
     public static let chunkLimit = 65_536
+    /// A setup command's limit (FR-RW18).
+    public static let commandLimit = 65_536
     public static let discoveryName = "broker.json"
     /// The variable carrying a shell-integration nonce; the broker keeps it in memory to return on attach.
     public static let nonceVariable = "TRELLIS_SHELL_INTEGRATION_NONCE"
     /// Optional events a client announces in `hello`; a broker sends one only to a client that listed it, so an
     /// older app (which can't decode it and would drop the connection) never receives it. No version bump needed.
     public static let inputRejectedFeature = "inputRejected"
+    /// Remote brokers: a client silent this long is dropped (the app pings every 15 s), and a remote file read never exceeds this.
+    public static let remoteClientTimeout: TimeInterval = 45
+    public static let remoteFileLimit = 262_144
+    public static let statLimit = 256
+    /// Printed by `bridge` before the first frame; anything a login script printed before it is discarded.
+    public static let syncPrefix = "TRELLIS-SYNC-1 "
 }
 
 public enum BrokerFrameKind: UInt8, Sendable {
@@ -35,8 +51,11 @@ public struct BrokerFrame: Equatable, Sendable {
         return data
     }
 
+    /// Throws `oversized` past `frameLimit`: the peer's decoder would take that frame as a broken stream and close.
     public static func control(_ envelope: BrokerEnvelope) throws -> BrokerFrame {
-        BrokerFrame(kind: .control, payload: try JSONEncoder().encode(envelope))
+        let payload = try JSONEncoder().encode(envelope)
+        guard payload.count < BrokerProtocol.frameLimit else { throw BrokerFrameError.oversized }
+        return BrokerFrame(kind: .control, payload: payload)
     }
 
     /// One session's bytes, split into chunks of at most `chunkLimit`.
@@ -103,6 +122,78 @@ public struct BrokerSpawnRequest: Codable, Equatable, Sendable {
     }
 }
 
+/// v2: a login shell planned by the broker on its own host. The app supplies only what it knows from `welcome`:
+/// the shell, environment overrides and an optional integration rewrite; the broker validates and falls back.
+public struct BrokerLoginRequest: Codable, Equatable, Sendable {
+    public var sessionID: UUID
+    /// Absolute; nil or unusable means the account's login shell.
+    public var shell: String?
+    /// Absolute; nil or not a directory means the home directory.
+    public var directory: String?
+    public var environment: [String: String]
+    public var integration: BrokerIntegration?
+    public var columns: UInt16
+    public var rows: UInt16
+    /// v3: run this with the login shell's `-c` instead of an interactive shell (FR-RW18). A v2 broker ignores the key,
+    /// so the app sends it only to a broker that welcomed version 3.
+    public var command: String?
+    public init(
+        sessionID: UUID, shell: String?, directory: String?, environment: [String: String], integration: BrokerIntegration?, columns: UInt16, rows: UInt16,
+        command: String? = nil
+    ) {
+        self.sessionID = sessionID; self.shell = shell; self.directory = directory; self.environment = environment
+        self.integration = integration; self.columns = columns; self.rows = rows; self.command = command
+    }
+}
+
+/// Applied only when the shell is the one it was planned for and `scriptPath` is a readable file; otherwise the plain
+/// login shell starts (INT-01).
+public struct BrokerIntegration: Codable, Equatable, Sendable {
+    public var shell: String
+    /// argv after argv[0].
+    public var arguments: [String]
+    public var environment: [String: String]
+    public var scriptPath: String
+    public init(shell: String, arguments: [String], environment: [String: String], scriptPath: String) {
+        self.shell = shell; self.arguments = arguments; self.environment = environment; self.scriptPath = scriptPath
+    }
+}
+
+/// What a v2 broker reports about its host in `welcome`.
+public struct BrokerHostInfo: Codable, Equatable, Sendable {
+    /// `uname` system name lowercased (`linux`, `darwin`) and machine (`x86_64`, `aarch64`, `arm64`).
+    public var os: String
+    public var arch: String
+    public var user: String
+    public var home: String
+    /// The account's login shell.
+    public var shell: String
+    /// Raw host identifier (`/etc/machine-id` or the Darwin host UUID); the app hashes it before storing.
+    public var machineID: String?
+    /// The broker's resolved executable, which names its install directory.
+    public var executable: String
+    /// Set when the host's logind would end the broker at logout (`KillUserProcesses=yes`).
+    public var sessionsEndAtLogout: Bool
+    public init(os: String, arch: String, user: String, home: String, shell: String, machineID: String?, executable: String, sessionsEndAtLogout: Bool) {
+        self.os = os; self.arch = arch; self.user = user; self.home = home; self.shell = shell; self.machineID = machineID
+        self.executable = executable; self.sessionsEndAtLogout = sessionsEndAtLogout
+    }
+}
+
+public struct BrokerPathInfo: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable { case file, directory, symlink, missing, other }
+    public var path: String
+    public var kind: Kind
+    /// Owned by the broker's user.
+    public var owned: Bool
+    public var size: Int64
+    /// The symlink-resolved path when it exists.
+    public var realPath: String?
+    public init(path: String, kind: Kind, owned: Bool, size: Int64, realPath: String?) {
+        self.path = path; self.kind = kind; self.owned = owned; self.size = size; self.realPath = realPath
+    }
+}
+
 public struct BrokerSessionRecord: Codable, Equatable, Sendable {
     public var sessionID: UUID
     public var processID: Int32
@@ -123,15 +214,22 @@ public struct BrokerAttachment: Codable, Equatable, Sendable {
     public var passwordPrompt: Bool
     /// The ring evicted older output; the replay starts at a line boundary after a reset.
     public var truncated: Bool
-    public init(record: BrokerSessionRecord, nonce: String?, passwordPrompt: Bool, truncated: Bool) {
+    /// v2: the session's output position at the end of the replay; later output frames continue from it.
+    public var offset: UInt64?
+    /// v2: the replay is exactly the output after the requested `since`, with no reset.
+    public var resumed: Bool?
+    public init(record: BrokerSessionRecord, nonce: String?, passwordPrompt: Bool, truncated: Bool, offset: UInt64? = nil, resumed: Bool? = nil) {
         self.record = record; self.nonce = nonce; self.passwordPrompt = passwordPrompt; self.truncated = truncated
+        self.offset = offset; self.resumed = resumed
     }
 }
 
 public enum BrokerMessage: Codable, Equatable, Sendable {
     /// `features`: optional events this client can decode; an older peer ignores the extra key.
-    case hello(protocolVersion: Int, features: [String]? = nil)
-    case welcome(protocolVersion: Int, brokerPID: Int32)
+    /// `protocolVersion` is the lowest version the client speaks; v2 clients add `maximumVersion` and, for remote
+    /// brokers, the `clientID` the broker was started for.
+    case hello(protocolVersion: Int, features: [String]? = nil, maximumVersion: Int? = nil, clientID: String? = nil)
+    case welcome(protocolVersion: Int, brokerPID: Int32, info: BrokerHostInfo? = nil)
     case refused(reason: String)
     case spawn(BrokerSpawnRequest)
     case spawned(sessionID: UUID, processID: Int32)
@@ -140,7 +238,8 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     case list
     case sessions([BrokerSessionRecord])
     /// Replay frames for the session precede the `attached` reply.
-    case attach(sessionID: UUID, columns: UInt16, rows: UInt16)
+    /// v2 `since`: the output position the client already shows; the replay is the exact rest when still held.
+    case attach(sessionID: UUID, columns: UInt16, rows: UInt16, since: UInt64? = nil)
     case attached(BrokerAttachment)
     case resize(sessionID: UUID, columns: UInt16, rows: UInt16)
     case signal(sessionID: UUID, signal: Int32)
@@ -155,6 +254,20 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     /// until that drains, so a paste is cut short rather than written with holes. Sent only to a client that
     /// announced `inputRejectedFeature`; older brokers never send it.
     case inputRejected(sessionID: UUID)
+    // v2 (remote brokers only).
+    case spawnLogin(BrokerLoginRequest)
+    case ping(UInt64)
+    case pong(UInt64)
+    /// At most `statLimit` absolute paths; answered by `pathInfo` in the same order.
+    case stat(paths: [String])
+    case pathInfo([BrokerPathInfo])
+    /// An allow-listed task file or manifest (FR-RW11, FR-RW12); answered by `fileData` or `failed`.
+    case readFile(path: String, limit: Int)
+    case fileData(Data)
+    // v3.
+    /// `git status` in an absolute folder (FR-PL09); answered by `gitState`, nil outside a work tree or on failure.
+    case gitStatus(path: String)
+    case gitState(BrokerGitStatus?)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {
@@ -168,7 +281,11 @@ public struct BrokerEnvelope: Codable, Equatable, Sendable {
 public struct BrokerDiscovery: Codable, Equatable, Sendable {
     public var protocolVersion: Int
     public var socketPath: String
-    public init(protocolVersion: Int, socketPath: String) { self.protocolVersion = protocolVersion; self.socketPath = socketPath }
+    /// Remote brokers: the resolved executable serving the socket; bridges accept only a broker that runs it.
+    public var executable: String?
+    public init(protocolVersion: Int, socketPath: String, executable: String? = nil) {
+        self.protocolVersion = protocolVersion; self.socketPath = socketPath; self.executable = executable
+    }
 }
 
 extension UUID {

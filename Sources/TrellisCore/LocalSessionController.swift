@@ -68,15 +68,25 @@ public final class LocalSessionController {
     }
 
     public func start(_ configuration: LocalLaunchConfiguration, size: TerminalSize) async {
+        let validator = validator
+        await start(size: size) { [self] transport, size in
+            let launch = try await Task.detached(priority: .userInitiated) { try validator.validate(configuration) }.value
+            // A close requested while validating ends the launch before anything is spawned.
+            guard closeSignal == nil, !Task.isCancelled else { throw LocalLaunchError.cancelled }
+            return try await transport.launch(launch, size: size)
+        }
+    }
+
+    /// A session its transport spawns itself, such as a remote login shell (FR-RW04): no local validation, which can't
+    /// check another machine's paths, and the same states as a local launch.
+    public func start(size: TerminalSize, spawn: @MainActor (any LocalSessionTransport, TerminalSize) async throws -> Int32) async {
         guard state == .stopped else { return }
         starting = true
         requestedSize = size
         changeState(.starting)
         do {
-            let validator = validator
-            let launch = try await Task.detached(priority: .userInitiated) { try validator.validate(configuration) }.value
             guard closeSignal == nil, !Task.isCancelled else { throw LocalLaunchError.cancelled }
-            let pid = try await transport.launch(launch, size: size)
+            let pid = try await spawn(transport, size)
             guard pid > 0 else { throw LocalLaunchError.spawnFailed(EIO) }
             processID = pid
             // Validation and spawning suspend this actor; a resize in either

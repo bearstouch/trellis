@@ -38,8 +38,9 @@ Trellis relies on the system and on existing tools rather than reimplementing th
 **INT-05 (P0).**
 
 - Each connection is a local SSH process with normal lifecycle reporting. "Running" means the process is alive, not that authentication finished.
-- Disconnecting and retrying are always explicit.
-- Network reconnect, keeping remote processes alive, SFTP and automatic tmux attachment are outside the MVP.
+- Disconnecting and retrying are always explicit for SSH panes.
+- Exception: a [remote workspace](features/remote-workspaces.md) link reconnects automatically, but only with `BatchMode=yes`, so it never retries a credential prompt (FR-RW07). Remote workspaces keep remote processes alive through a Trellis helper on the host.
+- SFTP and automatic tmux attachment are outside the MVP.
 
 See [SSH hosts](features/ssh-hosts.md).
 
@@ -70,6 +71,7 @@ See [SSH hosts](features/ssh-hosts.md).
 
 - Exports are portable JSON with schema versions. They exclude credentials (including saved host passwords and whether one exists), output history and runtime environment values. Imports never set a password.
 - Before applying an import, Trellis previews the counts, hosts and launch references.
+- A [remote workspace](features/remote-workspaces.md) window keeps its saved host, as `remoteHostId` on the window pointing at a host in the export (an export-only field: API layouts can't bind a window to a host), and its panes keep their paths on that host. Without its host in the file it imports as local shells, and the export flow says so.
 - Host import is atomic. Existing hosts don't change unless the user explicitly picks a collision policy, and a matching alias or name alone never authorizes overwriting a host.
 - `layout.apply` through the API follows its [additive semantics](api/layouts.md#matching-and-idempotency-fr-a04). An interactive import always creates fresh resources.
 - Full compatibility with iTerm2 profiles or proprietary automation isn't promised. A future importer must map only the fields it supports and explain what it leaves out.

@@ -1,8 +1,7 @@
 import Foundation
 
 /// A project's `.trellis/launch.json` (FR-TK01): named one-line tasks the Tasks menu types into the active
-/// pane's shell. Like a project file it is shared through the repository, so its tasks only run once the
-/// exact bytes are trusted (FR-TK06).
+/// pane's shell. It is shared through the repository, so its tasks only run once the exact bytes are trusted (FR-TK06).
 public struct LaunchFile: Equatable, Sendable {
     public static let fileName = "launch.json"
     public static let maximumBytes = 65_536
@@ -17,14 +16,14 @@ public struct LaunchFile: Equatable, Sendable {
     public init(schema: String? = nil, env: [String: String] = [:], tasks: [LaunchTask] = []) { self.schema = schema; self.env = env; self.tasks = tasks }
 
     public static func url(projectRoot: String) -> URL {
-        URL(fileURLWithPath: projectRoot, isDirectory: true).appendingPathComponent(ProjectFile.directoryName, isDirectory: true)
+        URL(fileURLWithPath: projectRoot, isDirectory: true).appendingPathComponent(ProjectText.directoryName, isDirectory: true)
             .appendingPathComponent(fileName)
     }
 
     public func task(named name: String) -> LaunchTask? { tasks.first { $0.name == name } }
 
     /// Why `name` can't name a task, or nil.
-    public static func taskNameProblem(_ name: String) -> String? { ProjectFile.textProblem(name, limit: 100).map { "The task name " + $0 } }
+    public static func taskNameProblem(_ name: String) -> String? { ProjectText.textProblem(name, limit: 100).map { "The task name " + $0 } }
 
     /// The variables `task` runs with, sorted by name so the typed line is stable (FR-TK09).
     public func environment(for task: LaunchTask) -> [(name: String, value: String)] {
@@ -50,10 +49,10 @@ public struct LaunchFile: Equatable, Sendable {
         var seen = Set<String>()
         for task in tasks {
             let key = task.name
-            if let problem = ProjectFile.textProblem(task.name, limit: 100) { issues.append(LayoutIssue(key: key, "The task name \(problem)")) }
+            if let problem = ProjectText.textProblem(task.name, limit: 100) { issues.append(LayoutIssue(key: key, "The task name \(problem)")) }
             if !seen.insert(task.name).inserted { issues.append(LayoutIssue(key: key, "Task names must be unique.")) }
-            if let problem = ProjectFile.commandProblem(task.command) { issues.append(LayoutIssue(key: key, "The command \(problem)")) }
-            if let cwd = task.cwd, cwd != ".", ProjectFile.relativeDirectory(cwd) == nil {
+            if let problem = ProjectText.commandProblem(task.command) { issues.append(LayoutIssue(key: key, "The command \(problem)")) }
+            if let cwd = task.cwd, cwd != ".", ProjectText.relativeDirectory(cwd) == nil {
                 issues.append(LayoutIssue(key: key, "cwd must be relative to the project folder, without .., ~, $ or backticks."))
             }
             issues += Self.variableIssues(task.env, key: key)
@@ -67,10 +66,10 @@ public struct LaunchFile: Equatable, Sendable {
     static func variableIssues(_ env: [String: String], key: String?) -> [LayoutIssue] {
         env.sorted { $0.key < $1.key }.compactMap { name, value in
             if !isVariableName(name) { return LayoutIssue(key: key, "The variable name “\(name)” must match [A-Za-z_][A-Za-z0-9_]*.") }
-            if value.count > ProjectFile.maximumCommandLength || ProjectFile.hasHiddenCharacters(value)
+            if value.count > ProjectText.maximumCommandLength || ProjectText.hasHiddenCharacters(value)
                 || value.unicodeScalars.contains(where: \.properties.isDefaultIgnorableCodePoint)
             {
-                return LayoutIssue(key: key, "The value of \(name) must be one line of at most \(ProjectFile.maximumCommandLength) characters without control characters.")
+                return LayoutIssue(key: key, "The value of \(name) must be one line of at most \(ProjectText.maximumCommandLength) characters without control characters.")
             }
             return nil
         }
@@ -97,7 +96,7 @@ public struct LaunchTask: Equatable, Sendable {
 
     /// The absolute folder the task runs in. Call only on a file without issues.
     public func directory(projectRoot: String) -> String {
-        let relative = cwd.flatMap(ProjectFile.relativeDirectory) ?? ""
+        let relative = cwd.flatMap(ProjectText.relativeDirectory) ?? ""
         return relative.isEmpty ? projectRoot : projectRoot + "/" + relative
     }
 }
@@ -118,18 +117,18 @@ public enum TaskCommand {
     public static func compose(
         command: String, directory: String, currentDirectory: String?, environment: [(name: String, value: String)], shell: String?, kind: ShellIntegrationKind
     ) -> String? {
-        guard directory.hasPrefix("/"), !ProjectFile.hasHiddenCharacters(directory) else { return nil }
+        guard directory.hasPrefix("/"), !ProjectText.hasHiddenCharacters(directory) else { return nil }
         var line = command
         if !environment.isEmpty {
             // `env` reads every leading `NAME=value` word as a variable, so the shell path must not look like one.
-            guard let shell, shell.hasPrefix("/"), !shell.contains("="), !ProjectFile.hasHiddenCharacters(shell),
+            guard let shell, shell.hasPrefix("/"), !shell.contains("="), !ProjectText.hasHiddenCharacters(shell),
                 environment.allSatisfy({ LaunchFile.isVariableName($0.name) })
             else { return nil }
             let assignments = environment.map { $0.name + "=" + shellQuote($0.value, kind: kind) }
             line = (["/usr/bin/env"] + assignments + [shellQuote(shell, kind: kind), "-c", shellQuote(command, kind: kind)]).joined(separator: " ")
         }
         if currentDirectory.map(standardized) != standardized(directory) { line = "cd " + shellQuote(directory, kind: kind) + " && " + line }
-        return ProjectFile.commandProblem(line) == nil ? line : nil
+        return ProjectText.commandProblem(line) == nil ? line : nil
     }
 
     private static func standardized(_ path: String) -> String { URL(fileURLWithPath: path).standardizedFileURL.path }

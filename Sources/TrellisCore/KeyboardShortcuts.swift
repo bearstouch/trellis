@@ -44,8 +44,8 @@ public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view
 
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts
-    // Saved keyboard settings store raw values; this keeps its name from before project files were renamed.
-    case openProjectFile = "openWorkspaceFile"
+    /// The project library (FR-PL01). The stored name predates it, so a customized ⌘O carries over.
+    case showProjects = "openWorkspaceFile"
     case findInPane, findNext, findPrevious, previousPrompt, nextPrompt, clearPane
     case zoomIn, zoomOut, actualSize, toggleSidebar, toggleScratchpad, commandPalette
     case splitLeftRight, splitTopBottom, maximizePane
@@ -65,7 +65,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .deleteWindow: "Delete Window…"
         case .saveWorkspace: "Save Workspace"
         case .showHosts: "Hosts…"
-        case .openProjectFile: "Open Project…"
+        case .showProjects: "Projects…"
         case .findInPane: "Find in Pane…"
         case .findNext: "Find Next"
         case .findPrevious: "Find Previous"
@@ -105,7 +105,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
 
     public var menu: ShortcutMenu {
         switch self {
-        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .openProjectFile: .file
+        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .showProjects: .file
         case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt, .clearPane: .edit
         case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleScratchpad, .commandPalette: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
@@ -122,7 +122,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .closePane: KeyChord("w")
         case .closeTab: KeyChord("w", [.command, .shift])
         case .saveWorkspace: KeyChord("s")
-        case .openProjectFile: KeyChord("o")
+        case .showProjects: KeyChord("o")
         case .findInPane: KeyChord("f")
         case .findNext: KeyChord("g")
         case .findPrevious: KeyChord("g", [.command, .shift])
@@ -256,7 +256,7 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
     private struct Override: Codable { var chord: KeyChord? }
 
     /// Actions whose default chord shipped after saved maps already existed.
-    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .openProjectFile, .toggleScratchpad, .commandPalette]
+    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .showProjects, .toggleScratchpad, .commandPalette]
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)

@@ -5,7 +5,9 @@ Runs the release app on isolated temporary state directories, drives it over
 the real control socket with a seeded test grant, and writes a Markdown report.
 It never touches the user's workspace, Keychain, or saved hosts.
 
-Usage: scripts/qualify.py [--quick] [--renderer metal|coregraphics] [--report PATH]
+Usage: scripts/qualify.py [--quick] [--renderer metal|coregraphics] [--remote | --remote-only] [--report PATH]
+
+--remote adds remote workspace measurements against a disposable Docker sshd (scripts/qualify_remote.py).
 """
 import argparse, base64, datetime, hashlib, json, math, os, platform, shutil, signal, socket, subprocess, sys, tempfile, time, uuid
 
@@ -166,7 +168,12 @@ def main():
     parser.add_argument("--quick", action="store_true", help="shorter runs for smoke testing (not a qualification)")
     parser.add_argument("--renderer", choices=["metal", "coregraphics"], help="renderer for every launch (default: the GPU rendering setting, off)")
     parser.add_argument("--report", default=os.path.join(ROOT, ".build/qualification-results.md"))
+    parser.add_argument("--remote", action="store_true", help="also measure remote workspaces against a Docker sshd (needs Docker)")
+    parser.add_argument("--remote-only", action="store_true", help="only the remote workspace measurements")
     args = parser.parse_args()
+    if args.remote_only:
+        write_remote_report(args, remote_results(args))
+        return
     extra = ["--renderer", args.renderer] if args.renderer else []
     launches, idle_seconds, flood_seconds = (5, 10, 10) if args.quick else (20, 60, 60)
 
@@ -337,7 +344,49 @@ def main():
     finally:
         app.stop()
 
+    if args.remote:
+        results["remote"] = remote_results(args)
     write_report(args, results, notes)
+
+
+def remote_results(args):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import qualify_remote
+    raw = qualify_remote.run(ROOT, 60 if args.quick else 300)
+    raw["echo_workspace"] = p95(raw.pop("echo_workspace_ms"))
+    raw["echo_plain_ssh"] = p95(raw.pop("echo_plain_ssh_ms"))
+    raw["echo_plain_ssh_obscured"] = p95(raw.pop("echo_plain_ssh_obscured_ms"))
+    return raw
+
+
+def remote_lines(remote):
+    def summary(value):
+        return "insufficient samples" if value is None else f"p95 {value['p95']:.1f} ms (p50 {value['p50']:.1f}, max {value['max']:.1f}, n={value['n']})"
+    return [
+        "## Remote workspaces", "",
+        "Against a disposable Docker sshd on this Mac (loopback network), with the static Linux helper "
+        f"(`{remote['helper_platform']}`).", "",
+        "| Measurement | Result |", "| --- | --- |",
+        f"| helper install over ssh (gzip upload, SHA-256 checked on the host) | {remote['install_s']} s |",
+        f"| link up: ssh, bridge, sync line, v2 hello | {remote['connect_s']} s |",
+        f"| keystroke echo through the helper's session protocol over `ssh -T` (driven by this script, not the app) | {summary(remote['echo_workspace'])} |",
+        f"| keystroke echo through a plain `ssh -tt` shell with `ObscureKeystrokeTiming=no`, measured the same way | {summary(remote['echo_plain_ssh'])} |",
+        f"| the same plain `ssh -tt` shell with OpenSSH's default keystroke timing obfuscation | {summary(remote['echo_plain_ssh_obscured'])} |",
+        "",
+        "- Loopback only: real network latency, Nagle and delayed-ACK effects over `ssh -T` still need a real host.",
+        "- OpenSSH 9.5+ paces keystrokes sent to a PTY session (ObscureKeystrokeTiming); the `ssh -T` bridge carries no PTY, so remote "
+        "workspace keystrokes are not paced. Compare against the `ObscureKeystrokeTiming=no` row for transport cost.", "",
+    ]
+
+
+def write_remote_report(args, remote):
+    commit = sh("git", "-C", ROOT, "rev-parse", "--short", "HEAD")
+    lines = ["# Qualification results (remote only)", "",
+             f"Generated {datetime.datetime.now().isoformat(timespec='seconds')} by `scripts/qualify.py --remote-only` on commit `{commit}`.", ""]
+    lines += remote_lines(remote) + ["## Raw", "", "```json", json.dumps(remote, indent=2), "```", ""]
+    with open(args.report, "w") as handle:
+        handle.write("\n".join(lines))
+    print("\n".join(lines))
 
 
 def write_report(args, results, notes):
@@ -385,6 +434,8 @@ def write_report(args, results, notes):
     ]
     if args.quick:
         lines.append("- `--quick` run: shortened windows and sample counts. Not a qualification result.")
+    if "remote" in r:
+        lines += [""] + remote_lines(r["remote"])
     if notes:
         lines += ["", "## Notes", ""] + [f"- {note}" for note in notes]
     lines += ["", "## Raw", "", "```json", json.dumps({"hardware": hardware, "results": r}, indent=2), "```", ""]

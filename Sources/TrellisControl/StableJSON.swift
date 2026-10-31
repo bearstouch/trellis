@@ -1,7 +1,7 @@
 import Foundation
 
-/// Fields in a fixed, readable order with two-space indentation and a final newline, so project files written
-/// twice are identical bytes and reviews show only real changes (FR-WF06, FR-TK04).
+/// Fields in a fixed, readable order with two-space indentation and a final newline, so files written twice are
+/// identical bytes and reviews show only real changes (FR-TK04).
 enum StableJSON {
     indirect enum Value: Sendable {
         case string(String), number(Double), array([Value]), object([(String, Value)])
