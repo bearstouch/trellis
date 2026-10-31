@@ -1124,7 +1124,6 @@ public struct LaunchSettingsView: View {
                     .accessibilityIdentifier("settings.sessionDefaultNotice")
                     .onDisappear { model.dismissSessionDefaultNotice() }
             }
-            SessionBrokerStatusView(model: model)
             Toggle(
                 "Restore scrollback after quit",
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })

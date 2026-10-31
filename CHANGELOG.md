@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Project library (in progress):** **Projects** at the bottom of the sidebar, **File → Projects…** (⌘O) and the command palette open a library of projects kept in Trellis (`projects.json`), not in a repository. Each project has tabs with colors, splits, pane titles, folders, commands and git repositories at the project, tab or pane level, edited in a form or as JSON, made from an open window (**New from Window…**) imported from JSON, or exported to a JSON file with **Export JSON…** (FR-PL01–FR-PL05). **Launch…** (or **Launch Project…** in the command palette) asks for this Mac or a saved host and the folder, shows what's there, creates the folder and clones missing repositories in a **Setting Up** terminal with that machine's own git and credentials, then opens the window, bound to the host when it runs there, and types each pane's command once. Launching again reconciles the same window (FR-PL06–FR-PL08). **Export/Import Windows & Hosts** carries projects too (FR-PL05). Pane headers show the git branch, uncommitted changes (●), and commits ahead (↑) and behind (↓) for shells inside a work tree, on this Mac and on hosts (FR-PL09).
 
-- **Session broker status:** Settings → Sessions shows whether the session broker is running, its PID and protocol, how many sessions it keeps, its socket, and the one Trellis executable allowed to connect, plus the broker on each connected remote host.
+- **Session broker status:** Settings → **Session Broker** shows whether the session broker is running, its PID and protocol, how many sessions it keeps, its socket, and the one Trellis executable allowed to connect, plus the broker on each connected remote host.
 
 ### Removed
 

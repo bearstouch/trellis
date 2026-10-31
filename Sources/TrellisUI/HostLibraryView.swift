@@ -440,6 +440,7 @@ private struct RemoteConsoleSheet: View {
                 Button("Close", action: close).keyboardShortcut(.cancelAction)
             }
         }
-        .padding(16)
+        // A sheet takes its content's ideal height; without this it grows to the Hosts window's.
+        .padding(16).frame(width: 632).fixedSize(horizontal: false, vertical: true)
     }
 }

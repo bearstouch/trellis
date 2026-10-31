@@ -50,7 +50,7 @@ public protocol SessionBrokerClient: AnyObject {
     func stopIncompatibleBroker() async
     /// Stops forwarding output and disconnects; kept sessions continue.
     func detach() async
-    /// What Settings shows about the broker; never starts one.
+    /// What Settings → Session Broker shows; never starts one.
     func status() async -> BrokerStatus
 }
 
@@ -58,7 +58,7 @@ extension SessionBrokerClient {
     public func status() async -> BrokerStatus { .notRunning }
 }
 
-/// This state directory's session broker as Settings → Sessions shows it.
+/// This state directory's session broker as Settings → Session Broker shows it.
 public enum BrokerStatus: Equatable, Sendable {
     case notRunning
     /// A broker answered but turned this app away: another Trellis holds it, or it is the wrong executable.

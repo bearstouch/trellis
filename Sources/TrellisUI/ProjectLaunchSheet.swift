@@ -40,7 +40,7 @@ struct ProjectLaunchSheet: View {
                 }
             }
         }
-        .padding(24).frame(width: 700)
+        .padding(24).frame(width: 700).fixedSize(horizontal: false, vertical: true)
     }
 
     private var showsChoice: Bool {

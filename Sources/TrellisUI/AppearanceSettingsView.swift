@@ -74,6 +74,8 @@ public struct AppSettingsView: View {
                         ScrollView { AppearanceSettingsView(model: model).disabled(model.previewedTheme != nil) }
                     case .sessions:
                         ScrollView { LaunchSettingsView(model: model) }
+                    case .broker:
+                        ScrollView { SessionBrokerStatusView(model: model).padding(.top, 8) }
                     case .keyboard:
                         KeyboardSettingsView(model: model)
                     case .themes:
@@ -102,13 +104,14 @@ public struct AppSettingsView: View {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case appearance = "Appearance", sessions = "Sessions", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
+    case appearance = "Appearance", sessions = "Sessions", broker = "Session Broker", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
     case remoteControl = "Remote Control", updates = "Updates"
     var id: Self { self }
     var symbol: String {
         switch self {
         case .appearance: "paintbrush"
         case .sessions: "terminal"
+        case .broker: "server.rack"
         case .keyboard: "keyboard"
         case .themes: "swatchpalette"
         case .automation: "bolt"
@@ -120,6 +123,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .appearance: "Customize the window, terminal text, and cursor."
         case .sessions: "Choose how sessions start, draw, and keep their output."
+        case .broker: "The helpers that keep sessions running, on this Mac and on your hosts."
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
         case .automation: "Manage access for scripts and agents."

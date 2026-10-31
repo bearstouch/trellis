@@ -1,7 +1,7 @@
 import SwiftUI
 import TrellisTerminal
 
-/// Settings → Sessions: which session brokers hold this Trellis's sessions, and who may connect to them (FR-R07).
+/// Settings → Session Broker: which session brokers hold this Trellis's sessions, and who may connect to them (FR-R07).
 struct SessionBrokerStatusView: View {
     @ObservedObject var model: AppWorkspaceModel
     @State private var local: BrokerStatus?
@@ -44,7 +44,7 @@ struct SessionBrokerStatusView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(4)
         } label: {
-            Text("Session broker")
+            Text("This Mac and connected hosts")
         }
         .accessibilityElement(children: .contain).accessibilityIdentifier("settings.sessionBroker")
         .task { refresh() }
