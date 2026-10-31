@@ -88,4 +88,33 @@ final class BrokerTransportReviewTests: XCTestCase {
         XCTAssertEqual(exits, [0])
         connection.close()
     }
+    func testHeldOutputPastTheCapKeepsTheNewestAfterAReset() async throws {
+        let connection = try makeConnection()
+        let sessionID = UUID()
+        let transport = RemoteSessionTransport(sessionID: sessionID, hostID: UUID(), connection: connection)
+        var shown = Data()
+        transport.onOutput = { shown.append($0) }
+        let peer = self.peer
+        let request = Task.detached { readBrokerRequest(peer) }
+        let size = try TerminalSize(columns: 80, rows: 24)
+        let attached = Task { await transport.attach(size: size) }
+        let asked = await request.value
+        let envelope = try XCTUnwrap(asked)
+        let record = BrokerSessionRecord(sessionID: sessionID, processID: 4242, running: true, waitStatus: nil)
+        write([
+            try BrokerFrame.control(
+                BrokerEnvelope(requestID: envelope.requestID, message: .attached(BrokerAttachment(record: record, nonce: nil, passwordPrompt: false, truncated: false, offset: 0))))
+        ])
+        let attachment = await attached.value
+        XCTAssertNotNil(attachment)
+        // Adopted, not yet delivering: more than the cap arrives, chunk by chunk.
+        let chunk = 65_536, chunks = OutputRing.sessionLimit / chunk + 8
+        for index in 0..<chunks { transport.brokerOutput(Data(repeating: UInt8(index & 0xff), count: chunk)) }
+        XCTAssertEqual(transport.received, UInt64(chunk * chunks), "Everything that arrived is accounted for")
+        transport.beginDelivery()
+        XCTAssertEqual(shown.prefix(RemoteSessionTransport.reset.count), RemoteSessionTransport.reset, "Dropped output is replaced by a reset, never a gap")
+        XCTAssertEqual(shown.count - RemoteSessionTransport.reset.count, OutputRing.sessionLimit)
+        XCTAssertEqual(shown.last, UInt8((chunks - 1) & 0xff), "The most recent output is kept")
+        connection.close()
+    }
 }

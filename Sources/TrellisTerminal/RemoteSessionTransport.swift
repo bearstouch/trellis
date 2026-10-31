@@ -29,7 +29,10 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
     private var used = false
     private var delivering = true
     private var held: [Data] = []
+    private var heldStart = 0
     private var heldBytes = 0
+    /// Held output went past the cap: its oldest part was dropped, so delivery starts with a reset.
+    private var heldTruncated = false
     private var heldExit: Int32??
     private var exitReported = false
     private var awaitingStart = false
@@ -156,8 +159,9 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
     public func beginDelivery() {
         guard !delivering else { return }
         delivering = true
-        let output = held
-        held = []; heldBytes = 0
+        let output = held[heldStart...], truncated = heldTruncated
+        held = []; heldStart = 0; heldBytes = 0; heldTruncated = false
+        if truncated { onOutput?(Self.reset) }
         for data in output { onOutput?(data) }
         if let code = heldExit { heldExit = nil; reportExit(code) }
     }
@@ -166,8 +170,13 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
         received &+= UInt64(data.count)
         if awaitingStart { arrivedWhileAttaching &+= UInt64(data.count) }
         guard delivering else {
-            guard heldBytes + data.count <= OutputRing.sessionLimit else { return }
+            // Every byte stays counted as shown, so beyond the cap the oldest held output goes and the screen is reset
+            // before the most recent, as for a truncated replay (FR-RW08); dropping the newest would lose it for good.
             held.append(data); heldBytes += data.count
+            while heldBytes > OutputRing.sessionLimit, heldStart < held.count - 1 {
+                heldBytes -= held[heldStart].count; held[heldStart] = Data(); heldStart += 1; heldTruncated = true
+            }
+            if heldStart > 1024, heldStart * 2 > held.count { held.removeFirst(heldStart); heldStart = 0 }
             return
         }
         onOutput?(data)
