@@ -63,8 +63,8 @@ public enum BrokerGit {
         guard directory.hasPrefix("/"), !directory.contains("\0"), let git = locate(environment["PATH"]) else { return nil }
         var variables = environment.filter { ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR"].contains($0.key) }
         variables["LC_ALL"] = "C"; variables["GIT_OPTIONAL_LOCKS"] = "0"; variables["GIT_TERMINAL_PROMPT"] = "0"; variables["GIT_NO_LAZY_FETCH"] = "1"
-        let argv = ([git] + arguments).map { strdup($0) } + [nil]
-        let envp = variables.map { strdup("\($0.key)=\($0.value)") } + [nil]
+        let argv: [UnsafeMutablePointer<CChar>?] = ([git] + arguments).map { strdup($0) } + [nil]
+        let envp: [UnsafeMutablePointer<CChar>?] = variables.map { strdup("\($0.key)=\($0.value)") } + [nil]
         defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
         var buffer = [CChar](repeating: 0, count: outputLimit)
         var length = 0
