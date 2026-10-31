@@ -127,14 +127,19 @@ public final class RemoteHostsModel: ObservableObject {
             let link = self.makeLink(host, batch: !interactive)
             let policy: RemoteHostLink.InstallPolicy = self.preferences(host).autoInstall ? .always : (interactive ? .ask : .never)
             let result = await self.run(link, host, .bridge, install: policy)
-            await self.record(host, link, .bridge, result)
-            guard case .success = result else { return .failure(result.failure ?? .lost) }
+            guard case .success = result else {
+                await self.record(host, link, .bridge, result)
+                return .failure(result.failure ?? .lost)
+            }
+            // Watched before the status is saved: a drop while that waits is reported, never handed out as connected.
             self.workspaceLinks[host.id] = link
             link.onStateChanged = { [weak self, weak link] state in
                 guard let self, let link, self.workspaceLinks[host.id] === link else { return }
                 if state != .connected { self.workspaceLinks[host.id] = nil }
                 self.onWorkspaceLinkChanged?(host.id, state)
             }
+            await self.record(host, link, .bridge, result)
+            guard link.state == .connected else { return .failure(.lost) }
             self.onWorkspaceLinkChanged?(host.id, .connected)
             return .success(link)
         }

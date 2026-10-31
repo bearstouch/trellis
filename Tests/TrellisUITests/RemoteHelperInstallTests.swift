@@ -170,6 +170,26 @@ final class RemoteHelperInstallTests: XCTestCase {
         XCTAssertTrue(saved.autoInstall, "Kept for when the library is readable again")
     }
 
+    func testALinkThatDropsWhileItsStatusIsSavedIsNeverHandedOut() async throws {
+        model.confirmInstall = { _, _, _, _ in true }
+        await model.install(host)
+        var reported: [RemoteHostLink.State] = []
+        model.onWorkspaceLinkChanged = { _, state in reported.append(state) }
+        // The settings actor is busy, so the new link waits to record its probe; it drops meanwhile.
+        let settings = model.settings, other = UUID()
+        let busy = Task.detached { await settings.update(other) { _ in usleep(1_500_000) } }
+        try await Task.sleep(for: .milliseconds(100))
+        let pending = Task { await self.model.workspaceLink(self.host, interactive: false) }
+        let deadline = Date().addingTimeInterval(10)
+        while model.workspaceConnection(host.id) == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try XCTUnwrap(model.workspaceConnection(host.id)).close()
+        let result = await pending.value
+        _ = await busy.value
+        guard case .failure(.lost) = result else { return XCTFail("Returned \(result), never connected") }
+        XCTAssertEqual(reported, [.failed(.lost)], "The drop reaches the sidebar, which schedules a reconnect")
+        XCTAssertNil(model.workspaceConnection(host.id))
+    }
+
     func testAutoInstallIsOffByDefaultAndSaved() async {
         XCTAssertFalse(model.preferences(host).autoInstall)
         await model.setAutoInstall(host, true)
