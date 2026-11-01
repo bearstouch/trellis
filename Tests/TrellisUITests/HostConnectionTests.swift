@@ -311,6 +311,36 @@ final class HostConnectionTests: XCTestCase {
         return script.path
     }
 
+    /// FR-AG15: anything printed in an SSH pane can forge a mark, so its command name stays a plain title.
+    @MainActor
+    func testAnUnverifiedRemoteMarkNeverNamesAnAgent() async throws {
+        let ssh = try markingSSH()
+        let h = try Harness()
+        try await h.grant("full")
+        let model = h.model
+        defer {
+            model.terminals.values.forEach {
+                $0.requestTermination(force: true); $0.adapter.detach()
+            }
+        }
+        let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
+        model.sshExecutable = ssh
+        model.resolveHost = { $0 == host.id ? host : nil }
+        await model.createWindow(name: "Ops", startSession: false)
+        let paneResult = await model.connect(host: host)
+        let pane = try XCTUnwrap(paneResult)
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await waitUntil { try terminal.adapter.read(.retainedText).contains("MARKS-DONE") }
+        await model.waitForUpdates()
+        XCTAssertEqual(model.shellStates[pane]?.origin, .remote)
+
+        terminal.onShellIntegrationEvent?(.commandStart(commandLine: "claude"))
+        XCTAssertEqual(model.shellStates[pane]?.commandName, "claude")
+        XCTAssertNil(model.detectedAgent(paneID: pane))
+        XCTAssertNil(model.tabAgent(tabID: try XCTUnwrap(model.snapshot.panes[pane]?.tabID)))
+        XCTAssertEqual(model.paneTitle(pane), "claude")
+    }
+
     @MainActor
     func testRemoteMarksDriveDisplayStateButNeverLocalPaths() async throws {
         let ssh = try markingSSH()

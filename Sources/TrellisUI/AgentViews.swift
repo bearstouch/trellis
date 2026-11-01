@@ -121,23 +121,30 @@ struct AgentDropdownButton: View {
     }
 }
 
-/// The agent's state in the pane header (FR-AG10), as words plus a symbol.
+/// The agent's state in the pane header (FR-AG10), as words plus a symbol. A nil state is an agent typed in a shell
+/// (FR-AG15): its state is unknown, so only its name is claimed.
 struct AgentStateLabel: View {
     let agent: AgentDefinition
-    let state: AgentState
+    let state: AgentState?
     var directory: URL?
+    /// A narrow pane's typed agent (FR-AG15): the automatic title already names it, and the header's tools can't shrink.
+    var iconOnly = false
+
+    static func fitsName(paneWidth: CGFloat) -> Bool { paneWidth >= 640 }
 
     var body: some View {
+        let shown = state ?? .ready
         HStack(spacing: 4) {
             AgentIconView(icon: agent.icon, directory: directory)
-            Text(state == .ready ? agent.name : "\(agent.name) · \(state.label)").lineLimit(1)
+            if !iconOnly { Text(shown == .ready ? agent.name : "\(agent.name) · \(shown.label)").lineLimit(1) }
         }
+        .help(iconOnly ? agent.name : "")
         .padding(.horizontal, 6).padding(.vertical, 1)
-        .background(Capsule().fill(AgentStateStyle.color(state).opacity(state == .ready ? 0 : 0.18)))
-        .overlay(Capsule().strokeBorder(AgentStateStyle.color(state).opacity(state == .ready ? 0 : 0.6), lineWidth: 1))
+        .background(Capsule().fill(AgentStateStyle.color(shown).opacity(shown == .ready ? 0 : 0.18)))
+        .overlay(Capsule().strokeBorder(AgentStateStyle.color(shown).opacity(shown == .ready ? 0 : 0.6), lineWidth: 1))
         .fixedSize()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(agent.name) \(state.spokenText)")
+        .accessibilityLabel(state.map { "\(agent.name) \($0.spokenText)" } ?? agent.name)
     }
 }
 

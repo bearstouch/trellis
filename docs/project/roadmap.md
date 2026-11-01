@@ -27,7 +27,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Per-window, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
 | P1 | Project library: projects defined in Trellis (form, JSON, from a window), launched on this Mac or a saved host, with missing repositories cloned in a setup terminal and git status in pane headers | `FR-PL01`–`FR-PL09`, [Project library](../features/project-library.md) |
 | P1 | Remote workspaces: windows bound to a saved host, sessions kept by a Trellis helper on the host, automatic reconnect, remote tasks (draft) | `FR-RW01`–`FR-RW18`, [Remote workspaces](../features/remote-workspaces.md) |
-| P1 | Coding agents: the pane Agent button, live state on tabs, agent icons, installers on this Mac and hosts (draft) | `FR-AG01`–`FR-AG14`, [Coding agents](../features/agents.md) |
+| P1 | Coding agents: the pane Agent button, live state on tabs, agent icons, installers on this Mac and hosts (draft) | `FR-AG01`–`FR-AG15`, [Coding agents](../features/agents.md) |
 | P2 | Agent registry: a signed, hosted index of agent definitions in the same schema, browsed and installed from Settings → Agents; automation `agent.list`, `launch.kind: "agent"` and an `agent.state` event; per-agent extra arguments | [Coding agents](../features/agents.md#known-limits) |
 | P2 | tmux awareness, richer terminal protocols, plugins | |
 | P2 | Command palette: saved scratchpads as items (with the unsaved-changes confirmation), recents kept across launches | `FR-CP03`, `FR-CP05`, [Command palette](../features/command-palette.md#not-included) |

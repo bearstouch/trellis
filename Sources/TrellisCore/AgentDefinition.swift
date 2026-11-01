@@ -219,6 +219,9 @@ public struct AgentCatalogSnapshot: Equatable, Sendable {
     }
 
     public func definition(_ id: String) -> AgentDefinition? { definitions.first { $0.id == id } }
+    /// The agent a shell command's program name runs (FR-AG15): an exact match, so `claude-foo` is not Claude Code. A program
+    /// name has no path, so a definition's absolute `executable` is compared by its last component.
+    public func definition(forCommand name: String) -> AgentDefinition? { definitions.first { ($0.executable as NSString).lastPathComponent == name } }
 }
 
 public protocol AgentCatalogFiles: Sendable {
