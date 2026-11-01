@@ -104,16 +104,13 @@ struct PaneTreeView: View {
                             text: AppWorkspaceModel.gitStatusText(git), spoken: AppWorkspaceModel.gitStatusSpoken(git),
                             foreground: model.themeColor(.foreground), background: model.themeColor(.surface))
                     }
-                    if let host = context.host {
-                        // FR-RW05: the machine these panes run on stands out; a link's state stays in plain words beside it.
-                        HStack(spacing: 0) {
-                            Text(host).fontWeight(.bold).foregroundStyle(model.themeColor(.accent)).lineLimit(1)
-                            // A narrow pane shortens the name, never the link's state (FR-RW07).
-                            Text(context.kind.dropFirst(host.count)).lineLimit(1).fixedSize()
-                        }.accessibilityElement(children: .combine)
-                    } else {
-                        Text(context.kind).lineLimit(1)
-                    }
+                    // The machine this pane runs on stands out (Local, SSH or the host's name); a link's state stays in plain words beside it.
+                    let machine = context.host ?? context.kind
+                    HStack(spacing: 0) {
+                        Text(machine).fontWeight(.bold).foregroundStyle(model.machineLabelColor).lineLimit(1)
+                        // A narrow pane shortens the name, never the link's state (FR-RW07).
+                        Text(context.kind.dropFirst(machine.count)).lineLimit(1).fixedSize()
+                    }.accessibilityElement(children: .combine)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.
                         Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)

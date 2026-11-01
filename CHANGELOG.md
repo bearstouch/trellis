@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **Remote host names stand out:** a remote pane's header shows the host's name in bold in the theme's accent color (FR-RW05).
+- **The pane's machine stands out:** a pane's header shows **Local**, **SSH** or the remote host's name in bold dark green (FR-RW05).
 
 - **Remote workspaces reconnect faster:** when a host's link comes back, its panes resume four at a time instead of one network round trip after another, so twelve panes on a slow link are back after three round trips instead of twelve.
 
