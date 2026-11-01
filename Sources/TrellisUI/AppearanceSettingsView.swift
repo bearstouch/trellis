@@ -42,7 +42,12 @@ public struct AppSettingsView: View {
                         selection = section
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: section.symbol).frame(width: 18)
+                            Image(systemName: section.symbol)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 20, height: 20)
+                                .background(section.tint.gradient, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                .accessibilityHidden(true)
                             Text(section.rawValue)
                             Spacer()
                         }
@@ -112,15 +117,29 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var id: Self { self }
     var symbol: String {
         switch self {
-        case .appearance: "paintbrush"
-        case .sessions: "terminal"
+        case .appearance: "paintbrush.fill"
+        case .sessions: "terminal.fill"
         case .broker: "server.rack"
-        case .keyboard: "keyboard"
-        case .themes: "swatchpalette"
+        case .keyboard: "command"
+        case .themes: "swatchpalette.fill"
         case .agents: "sparkles"
-        case .automation: "bolt"
+        case .automation: "bolt.fill"
         case .remoteControl: "antenna.radiowaves.left.and.right"
-        case .updates: "arrow.down.circle"
+        case .updates: "arrow.down"
+        }
+    }
+    /// Tile color behind the white glyph, System Settings style; fixed so it reads on any theme.
+    var tint: Color {
+        switch self {
+        case .appearance: .blue
+        case .sessions: Color(white: 0.2)
+        case .broker: .teal
+        case .keyboard: .gray
+        case .themes: .pink
+        case .agents: .purple
+        case .automation: .orange
+        case .remoteControl: .indigo
+        case .updates: .green
         }
     }
     var detail: String {
