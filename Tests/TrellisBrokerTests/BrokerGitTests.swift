@@ -6,6 +6,9 @@ import XCTest
 
 /// Git status for pane headers (FR-PL09): counts from `--porcelain=v2 --branch`, run with a fixed argument list.
 final class BrokerGitTests: XCTestCase {
+    /// A loaded CI runner's cold git start can outlast the 2 s production limit; these tests check the result, not the limit.
+    static let slowRunnerTimeout: Int32 = 30_000
+
     func testPorcelainOutputBecomesCountsWithoutFileNames() {
         let status = BrokerGit.parse(
             """
@@ -46,7 +49,7 @@ final class BrokerGitTests: XCTestCase {
         guard initialize.terminationStatus == 0 else { throw XCTSkip("git couldn't create a repository here") }
         try "a".write(toFile: repository + "/one.txt", atomically: true, encoding: .utf8)
         try "b".write(toFile: repository + "/two.txt", atomically: true, encoding: .utf8)
-        XCTAssertEqual(BrokerGit.status(directory: repository, environment: environment), BrokerGitStatus(branch: "trunk", commit: nil, changes: 2, ahead: 0, behind: 0))
+        XCTAssertEqual(BrokerGit.status(directory: repository, environment: environment, timeout: Self.slowRunnerTimeout), BrokerGitStatus(branch: "trunk", commit: nil, changes: 2, ahead: 0, behind: 0))
     }
 
     func testARepositorysFilterDriversNeverRun() throws {
@@ -78,7 +81,7 @@ final class BrokerGitTests: XCTestCase {
         XCTAssertEqual(try run("config", "filter.evil.required", "true"), 0)
         // The same size: git can only tell by hashing the file, which is where a clean filter would run.
         try "b\n".write(toFile: repository + "/one.txt", atomically: true, encoding: .utf8)
-        let status = BrokerGit.status(directory: repository, environment: environment)
+        let status = BrokerGit.status(directory: repository, environment: environment, timeout: Self.slowRunnerTimeout)
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker), "No filter ran")
         XCTAssertEqual(status, BrokerGitStatus(branch: "trunk", commit: nil, changes: 2, ahead: 0, behind: 0))
     }

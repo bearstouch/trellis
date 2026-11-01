@@ -59,17 +59,17 @@ public enum BrokerGit {
         return status
     }
 
-    /// Nil outside a work tree, when git isn't found, fails or takes longer than the limit.
-    public static func status(directory: String, environment: [String: String]) -> BrokerGitStatus? {
+    /// Nil outside a work tree, when git isn't found, fails or takes longer than the limit (tests on a loaded runner pass a longer one).
+    public static func status(directory: String, environment: [String: String], timeout: Int32 = timeoutMilliseconds) -> BrokerGitStatus? {
         guard directory.hasPrefix("/"), !directory.contains("\0"), let git = locate(environment["PATH"]) else { return nil }
         var variables = environment.filter { ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR"].contains($0.key) }
         variables["LC_ALL"] = "C"; variables["GIT_OPTIONAL_LOCKS"] = "0"; variables["GIT_TERMINAL_PROMPT"] = "0"; variables["GIT_NO_LAZY_FETCH"] = "1"
         // Each run has the limit to itself: a slow machine's first git start can take most of it, and a status that never
         // finishes is no use. Reading the configuration runs nothing; exit 1 means no filter is configured, and a listing
         // that filled the buffer may be missing drivers, so it gives no status.
-        guard let drivers = run(git, ["config", "-z", "--name-only", "--get-regexp", #"^filter\."#], variables, directory),
+        guard let drivers = run(git, ["config", "-z", "--name-only", "--get-regexp", #"^filter\."#], variables, directory, timeout),
             drivers.exit == 0 || drivers.exit == 1, !drivers.full, let overrides = filterOverrides(drivers.output),
-            let status = run(git, overrides + arguments, variables, directory), status.exit == 0
+            let status = run(git, overrides + arguments, variables, directory, timeout), status.exit == 0
         else { return nil }
         return parse(status.output)
     }
@@ -89,7 +89,7 @@ public enum BrokerGit {
 
     /// Git's exit status and output (`full` when it filled the buffer), or nil when it couldn't run, was signalled or
     /// outlived the limit.
-    private static func run(_ git: String, _ words: [String], _ variables: [String: String], _ directory: String) -> (exit: Int32, output: String, full: Bool)? {
+    private static func run(_ git: String, _ words: [String], _ variables: [String: String], _ directory: String, _ timeout: Int32) -> (exit: Int32, output: String, full: Bool)? {
         let argv: [UnsafeMutablePointer<CChar>?] = ([git] + words).map { strdup($0) } + [nil]
         let envp: [UnsafeMutablePointer<CChar>?] = variables.map { strdup("\($0.key)=\($0.value)") } + [nil]
         defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
@@ -98,7 +98,7 @@ public enum BrokerGit {
         let result = argv.withUnsafeBufferPointer { arguments in
             envp.withUnsafeBufferPointer { environment in
                 buffer.withUnsafeMutableBufferPointer { output in
-                    trellis_run_capture(git, arguments.baseAddress, environment.baseAddress, directory, output.baseAddress, output.count, &length, timeoutMilliseconds)
+                    trellis_run_capture(git, arguments.baseAddress, environment.baseAddress, directory, output.baseAddress, output.count, &length, timeout)
                 }
             }
         }
