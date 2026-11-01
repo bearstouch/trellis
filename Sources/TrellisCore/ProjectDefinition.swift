@@ -7,8 +7,10 @@ public struct ProjectPane: Codable, Equatable, Sendable {
     public var directory: String?
     public var command: String?
     public var repository: ProjectRepository?
-    public init(title: String? = nil, directory: String? = nil, command: String? = nil, repository: ProjectRepository? = nil) {
-        self.title = title; self.directory = directory; self.command = command; self.repository = repository
+    /// An agent catalog ID (FR-PL10): the pane opens as that agent's pane instead of a shell. Never with `command`.
+    public var agent: String?
+    public init(title: String? = nil, directory: String? = nil, command: String? = nil, repository: ProjectRepository? = nil, agent: String? = nil) {
+        self.title = title; self.directory = directory; self.command = command; self.repository = repository; self.agent = agent
     }
 }
 
@@ -50,7 +52,7 @@ public indirect enum ProjectNode: Equatable, Sendable {
 }
 
 extension ProjectNode: Codable {
-    private enum Keys: String, CodingKey { case type, title, directory, command, repository, axis, ratio, children }
+    private enum Keys: String, CodingKey { case type, title, directory, command, repository, agent, axis, ratio, children }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: Keys.self)
@@ -59,7 +61,8 @@ extension ProjectNode: Codable {
             self = .pane(
                 ProjectPane(
                     title: try values.decodeIfPresent(String.self, forKey: .title), directory: try values.decodeIfPresent(String.self, forKey: .directory),
-                    command: try values.decodeIfPresent(String.self, forKey: .command), repository: try values.decodeIfPresent(ProjectRepository.self, forKey: .repository)))
+                    command: try values.decodeIfPresent(String.self, forKey: .command), repository: try values.decodeIfPresent(ProjectRepository.self, forKey: .repository),
+                    agent: try values.decodeIfPresent(String.self, forKey: .agent)))
         case "split":
             let children = try values.decode([ProjectNode].self, forKey: .children)
             guard children.count == 2 else { throw DecodingError.dataCorruptedError(forKey: .children, in: values, debugDescription: "A split has two children.") }
@@ -79,6 +82,7 @@ extension ProjectNode: Codable {
             try values.encodeIfPresent(pane.directory, forKey: .directory)
             try values.encodeIfPresent(pane.command, forKey: .command)
             try values.encodeIfPresent(pane.repository, forKey: .repository)
+            try values.encodeIfPresent(pane.agent, forKey: .agent)
         case .split(let axis, let ratio, let first, let second):
             try values.encode("split", forKey: .type)
             try values.encode(axis, forKey: .axis)
@@ -144,6 +148,7 @@ public struct ProjectDefinition: Codable, Equatable, Identifiable, Sendable {
 
     public var paneCount: Int { tabs.reduce(0) { $0 + $1.root.panes.count } }
     public var commandCount: Int { tabs.reduce(0) { $0 + $1.root.panes.filter { $0.pane.command != nil }.count } }
+    public var agentCount: Int { tabs.reduce(0) { $0 + $1.root.panes.filter { $0.pane.agent != nil }.count } }
 
     /// Every repository with its folder relative to the project folder ("" for the project folder), project first,
     /// then by tab; a folder named twice with the same repository is listed once.
@@ -175,7 +180,7 @@ public struct ProjectDefinition: Codable, Equatable, Identifiable, Sendable {
         case node(tab: Int, path: [Int])
     }
 
-    public enum Field: String, Sendable { case name, notes, title, directory, command, repositoryURL, repositoryBranch, layout }
+    public enum Field: String, Sendable { case name, notes, title, directory, command, agent, repositoryURL, repositoryBranch, layout }
 
     public struct Issue: Equatable, Sendable {
         public let place: Place, field: Field, message: String
@@ -232,6 +237,10 @@ public struct ProjectDefinition: Codable, Equatable, Identifiable, Sendable {
             let folder = pane.directory.flatMap(GitRepository.folder)
             if pane.directory != nil, folder == nil { issues.append(Issue(place, .directory, Self.folderRule)) }
             if let command = pane.command, let problem = ProjectText.commandProblem(command) { issues.append(Issue(place, .command, "The command \(problem)")) }
+            if let agent = pane.agent {
+                if !AgentDefinitionValidator.isID(agent) { issues.append(Issue(place, .agent, "The agent is an ID from Settings → Agents, such as trellis-claude-code.")) }
+                if pane.command != nil { issues.append(Issue(place, .command, "A pane runs an agent or a command, not both.")) }
+            }
             issues += Self.repositoryIssues(pane.repository, at: place)
             if let repository = pane.repository {
                 if let folder, !folder.isEmpty {
@@ -318,7 +327,10 @@ public struct ProjectDefinition: Codable, Equatable, Identifiable, Sendable {
         func clean(_ node: ProjectNode) -> ProjectNode {
             switch node {
             case .pane(let pane):
-                .pane(ProjectPane(title: clean(pane.title), directory: clean(pane.directory), command: clean(pane.command), repository: clean(pane.repository)))
+                .pane(
+                    ProjectPane(
+                        title: clean(pane.title), directory: clean(pane.directory), command: clean(pane.command), repository: clean(pane.repository),
+                        agent: clean(pane.agent)))
             case .split(let axis, let ratio, let first, let second): .split(axis: axis, ratio: ratio, first: clean(first), second: clean(second))
             }
         }

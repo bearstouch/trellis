@@ -9,6 +9,8 @@ public struct LocalLaunchConfiguration: Equatable, Sendable {
     public var environmentOverrides: [String: String]
     /// Trusted, app-planned rewrite; never derived from automation input.
     public var shellIntegration: ShellIntegrationInjection?
+    /// Trusted, app-planned agent hook channel (FR-AG08): the only control variables a launch carries.
+    public var agentHook: AgentHookEnvironment?
 
     public init(
         executable: String, arguments: [String] = [], directory: String,
@@ -38,6 +40,17 @@ public struct LocalLaunchConfiguration: Equatable, Sendable {
             directory: directory ?? FileManager.default.homeDirectoryForCurrentUser.path,
             environmentOverrides: environmentOverrides)
     }
+}
+
+/// Where an agent session's hooks report and the nonce that names it (FR-AG08). The names match `BrokerProtocol`'s, which
+/// Core can't import.
+public struct AgentHookEnvironment: Equatable, Sendable {
+    public static let socketVariable = "TRELLIS_AGENT_SOCKET"
+    public static let nonceVariable = "TRELLIS_AGENT_NONCE"
+    public var socket: String
+    public var nonce: String
+    public init(socket: String, nonce: String) { self.socket = socket; self.nonce = nonce }
+    var isValid: Bool { socket.hasPrefix("/") && !socket.contains("\0") && !nonce.isEmpty && nonce.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
 }
 
 public enum LocalLaunchError: Error, Equatable, Sendable {
@@ -106,6 +119,10 @@ public struct LocalLaunchValidator: Sendable {
         var environment = configuration.inheritedEnvironment.filter { !Self.isControlKey($0.key) && valid($0) }
         environment.merge(configuration.environmentOverrides) { _, override in override }
         environment.merge(Self.terminalEnvironment) { _, terminal in terminal }
+        if let hook = configuration.agentHook, hook.isValid {
+            environment[AgentHookEnvironment.socketVariable] = hook.socket
+            environment[AgentHookEnvironment.nonceVariable] = hook.nonce
+        }
         environment.removeValue(forKey: "ITERM_SESSION_ID")
         environment.removeValue(forKey: "TERM_SESSION_ID")
         var arguments = configuration.arguments

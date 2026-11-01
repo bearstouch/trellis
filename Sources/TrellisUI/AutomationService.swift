@@ -350,6 +350,9 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         let hostID: UUID
         switch session.launch {
         case .host(let id), .remoteShell(let id, _): hostID = id
+        case .agent(let agent):
+            guard let id = agent.hostID else { return }
+            hostID = id
         case .shell, .process: return
         }
         switch access.hostAccess(hosts.hosts.first { $0.id == hostID }) {
@@ -912,6 +915,16 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 object["remoteLink"] = .string(Self.linkName(model.remoteLinks[hostID]))
             }
             if access.allows(.sessionExecute), let directory { object["directory"] = .string(directory) }
+        case .agent(let agent):
+            // FR-AG13: the agent and its state; its command line, which Trellis builds, is never reported.
+            object["launchKind"] = .string("agent")
+            object["agentId"] = .string(agent.agentID)
+            if terminal?.sessionID == id, let state = model.agentStates[pane.id]?.state { object["agentState"] = .string(state.rawValue) }
+            if let hostID = agent.hostID, access.allows(.hostRead), access.hostAccess(hosts.hosts.first { $0.id == hostID }) == .allowed {
+                object["hostId"] = .string(hostID.uuidString)
+                object["remoteLink"] = .string(Self.linkName(model.remoteLinks[hostID]))
+            }
+            if access.allows(.sessionExecute), let directory = agent.directory { object["directory"] = .string(directory) }
         case .process(let executable, let arguments, let directory):
             // Login shells are recorded as resolved processes; report them as shells.
             object["launchKind"] = .string(arguments == ["-l"] ? "shell" : "process")

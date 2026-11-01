@@ -2,7 +2,7 @@ import Foundation
 
 /// What a palette row is, in the order equal scores are listed (FR-CP04).
 public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
-    case action, tab, window, pane, host, project, task, theme
+    case action, tab, window, pane, host, project, task, theme, agent
 
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -16,6 +16,7 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .project: "Projects"
         case .task: "Tasks"
         case .theme: "Themes"
+        case .agent: "Agents"
         }
     }
 
@@ -30,13 +31,14 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .project: "project"
         case .task: "task"
         case .theme: "theme"
+        case .agent: "agent"
         }
     }
 }
 
 /// One kind listed alone (FR-CP06).
 public enum CommandPaletteScope: String, CaseIterable, Sendable {
-    case windows, tabs, panes, hosts, projects, tasks, themes
+    case windows, tabs, panes, hosts, projects, tasks, themes, agents
 
     public var kind: CommandPaletteKind {
         switch self {
@@ -47,6 +49,7 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .projects: .project
         case .tasks: .task
         case .themes: .theme
+        case .agents: .agent
         }
     }
 
@@ -59,6 +62,7 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .projects: "Launch Project…"
         case .tasks: "Run Task…"
         case .themes: "Use Theme…"
+        case .agents: "Launch Agent…"
         }
     }
 
@@ -81,6 +85,8 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     case project(UUID)
     case task(name: String, detected: Bool)
     case theme(String)
+    /// Launches a catalog agent beside the focused pane (FR-AG07).
+    case agent(String)
 
     public var id: String {
         switch self {
@@ -95,6 +101,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .project(let id): "project:" + id.uuidString
         case .task(let name, let detected): (detected ? "task:detected:" : "task:file:") + name
         case .theme(let id): "theme:" + id
+        case .agent(let id): "agent:" + id
         }
     }
 }

@@ -49,6 +49,9 @@ public final class BrokerServer: @unchecked Sendable {
         let identity: BrokerProcessIdentity?
         let descriptor: Int32
         let nonce: String?
+        /// Names this session to its agent hooks (FR-AG08); `agentEvent` is the last one they reported.
+        let agentNonce: String?
+        var agentEvent: String?
         var io: DispatchIO?
         #if canImport(Darwin)
             var exitSource: DispatchSourceProcess?
@@ -64,8 +67,8 @@ public final class BrokerServer: @unchecked Sendable {
         var rejectingInput = false
         var promptActive = false
         var promptCheckScheduled = false
-        init(id: UUID, pid: Int32, identity: BrokerProcessIdentity?, descriptor: Int32, nonce: String?) {
-            self.id = id; self.pid = pid; self.identity = identity; self.descriptor = descriptor; self.nonce = nonce
+        init(id: UUID, pid: Int32, identity: BrokerProcessIdentity?, descriptor: Int32, nonce: String?, agentNonce: String?) {
+            self.id = id; self.pid = pid; self.identity = identity; self.descriptor = descriptor; self.nonce = nonce; self.agentNonce = agentNonce
         }
         var record: BrokerSessionRecord { BrokerSessionRecord(sessionID: id, processID: pid, running: waitStatus == nil, waitStatus: waitStatus) }
     }
@@ -89,6 +92,7 @@ public final class BrokerServer: @unchecked Sendable {
     private var core: BrokerCore
     private var listenFD: Int32 = -1
     private var listener: DispatchSourceRead?
+    private var agentReceiver: AgentHookReceiver?
     private var client: Client?
     private var sessions: [UUID: Session] = [:]
     private var rings: [UUID: OutputRing] = [:]
@@ -122,10 +126,19 @@ public final class BrokerServer: @unchecked Sendable {
         let path = configuration.socketPath
         guard BrokerFiles.isOwnerOnlyDirectory(BrokerFiles.parent(path)), var address = BrokerFiles.address(path) else { throw BrokerServerError.socketDirectory }
         if isRemote, installRoot == nil { throw BrokerServerError.installRoot }
+        // Optional: without it, agents run without live state (FR-AG08). Bound before the broker's socket appears, so the
+        // app finds it once the broker is up and no request reads `agentReceiver` while it is set.
+        let receiver = AgentHookReceiver(path: BrokerFiles.parent(path) + "/" + BrokerProtocol.agentSocketName, queue: queue) { [weak self] nonce, event in
+            self?.agentEvent(nonce: nonce, event: event)
+        }
+        if (try? receiver.start()) != nil { agentReceiver = receiver }
         let fd = trellis_unix_socket()
-        guard fd >= 0 else { throw BrokerServerError.socket }
+        guard fd >= 0 else { agentReceiver?.stop(); agentReceiver = nil; throw BrokerServerError.socket }
         let bound = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
-        guard bound == 0, chmod(path, 0o600) == 0, listen(fd, 4) == 0 else { close(fd); throw BrokerServerError.socket }
+        guard bound == 0, chmod(path, 0o600) == 0, listen(fd, 4) == 0 else {
+            close(fd); agentReceiver?.stop(); agentReceiver = nil
+            throw BrokerServerError.socket
+        }
         BrokerFiles.configure(fd)
         listenFD = fd
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
@@ -314,7 +327,7 @@ public final class BrokerServer: @unchecked Sendable {
                 .attached(
                     BrokerAttachment(
                         record: session.record, nonce: session.nonce, passwordPrompt: session.promptActive, truncated: ring.truncated,
-                        offset: v2 ? ring.appendedTotal : nil, resumed: v2 ? resumed : nil)))
+                        offset: v2 ? ring.appendedTotal : nil, resumed: v2 ? resumed : nil, agentEvent: session.agentEvent)))
             // Full-screen programs redraw for the newly attached view.
             if session.waitStatus == nil, !session.readEnded {
                 let group = tcgetpgrp(session.descriptor)
@@ -376,7 +389,10 @@ public final class BrokerServer: @unchecked Sendable {
         guard result.error_code == 0 else { return .failed(code: "SPAWN_FAILED", errno: result.error_code) }
         let prefix = BrokerProtocol.nonceVariable + "="
         let nonce = request.environment.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
-        let session = Session(id: request.sessionID, pid: result.pid, identity: Self.identity(result.pid), descriptor: result.master_fd, nonce: nonce)
+        let agentPrefix = BrokerProtocol.agentNonceVariable + "="
+        let agentNonce = request.environment.first { $0.hasPrefix(agentPrefix) }.map { String($0.dropFirst(agentPrefix.count)) }.flatMap { AgentHook.isNonce($0) ? $0 : nil }
+        let session = Session(
+            id: request.sessionID, pid: result.pid, identity: Self.identity(result.pid), descriptor: result.master_fd, nonce: nonce, agentNonce: agentNonce)
         let fd = result.master_fd
         let io = DispatchIO(type: .stream, fileDescriptor: fd, queue: queue) { _ in close(fd) }
         io.setLimit(lowWater: 1)
@@ -409,6 +425,10 @@ public final class BrokerServer: @unchecked Sendable {
         environment["LOGNAME"] = account.user
         environment["SHELL"] = shell
         environment.merge(request.environment) { _, requested in requested }
+        if request.agentHooks == true, let receiver = agentReceiver {
+            environment[BrokerProtocol.agentSocketVariable] = receiver.path
+            environment[BrokerProtocol.agentNonceVariable] = AgentHook.makeNonce()
+        }
         var arguments = [shell, "-l"]
         var executable = shell
         if let command = request.command {
@@ -552,7 +572,16 @@ public final class BrokerServer: @unchecked Sendable {
         queue.asyncAfter(deadline: .now() + .milliseconds(500)) { [weak self] in self?.exitNow() }
     }
 
+    /// Only a running session's own nonce counts; the event reaches the app only if it said it can decode one.
+    private func agentEvent(nonce: String, event: String) {
+        guard let session = sessions.values.first(where: { $0.agentNonce == nonce && $0.waitStatus == nil }) else { return }
+        session.agentEvent = event
+        guard session.attached, let client, client.greeted, client.features.contains(BrokerProtocol.agentEventsFeature) else { return }
+        reply(nil, .agentEvent(sessionID: session.id, event: event))
+    }
+
     private func exitNow() {
+        agentReceiver?.stop()
         let path = configuration.socketPath
         if BrokerFiles.isOwnedSocket(path) {
             unlink(path)
@@ -575,6 +604,7 @@ public final class BrokerServer: @unchecked Sendable {
         let configuration: Configuration
         switch arguments.dropFirst().first {
         case "bridge": return BrokerBridge.main(arguments: arguments)
+        case "agent-hook": return AgentHook.main(arguments: arguments, environment: ProcessInfo.processInfo.environment)
         case "remote-broker":
             guard let socket = value("--socket"), let clientID = value("--client-id"), BrokerBridge.isValidClientID(clientID), let root = value("--install-root") else { return 64 }
             let timeout = value("--client-timeout").flatMap(TimeInterval.init).map { min(max($0, 1), 3600) } ?? BrokerProtocol.remoteClientTimeout

@@ -9,7 +9,8 @@ struct SessionBrokerStatusView: View {
     @State private var loading = false
 
     var body: some View {
-        GroupBox {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("This Mac and connected hosts").font(.headline).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 6) {
                 switch local {
                 case nil: Text("Checking…").foregroundStyle(model.themeColor(.mutedForeground))
@@ -42,10 +43,12 @@ struct SessionBrokerStatusView: View {
                     Button("Refresh", action: refresh).disabled(loading)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(4)
-        } label: {
-            Text("This Mac and connected hosts")
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 10)
+            // A single rule under the section instead of a box around it.
+            Rectangle().fill(model.themeColor(.border)).frame(height: 1).accessibilityHidden(true)
         }
+        // Not a Form, which insets itself: line up with the section title and divider like the other sections.
+        .padding(.leading, 16)
         .accessibilityElement(children: .contain).accessibilityIdentifier("settings.sessionBroker")
         .task { refresh() }
     }

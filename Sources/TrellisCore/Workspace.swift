@@ -22,9 +22,19 @@ public enum SessionLaunch: Equatable, Codable, Sendable {
     case process(executable: String, arguments: [String], directory: String?)
     /// The account's login shell on a saved host, run by its remote helper (FR-RW04); `directory` is a remote path.
     case remoteShell(hostID: UUID, directory: String?)
+    /// A coding agent from the agent catalog (FR-AG04), locally or on a remote workspace's host.
+    case agent(AgentLaunch)
 
     /// The host whose remote helper owns this session, for remote workspace sessions only.
-    public var remoteHostID: UUID? { if case .remoteShell(let id, _) = self { id } else { nil } }
+    public var remoteHostID: UUID? {
+        switch self {
+        case .remoteShell(let id, _): id
+        case .agent(let agent): agent.hostID
+        default: nil
+        }
+    }
+
+    public var agent: AgentLaunch? { if case .agent(let agent) = self { agent } else { nil } }
 }
 
 public enum SessionState: String, Codable, Sendable {

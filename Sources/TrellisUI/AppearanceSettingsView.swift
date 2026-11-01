@@ -80,6 +80,8 @@ public struct AppSettingsView: View {
                         KeyboardSettingsView(model: model)
                     case .themes:
                         ThemePreviewView(workspace: model)
+                    case .agents:
+                        ScrollView { AgentSettingsView(model: model) }
                     case .automation:
                         if let grants, let hosts { AutomationSettingsView(grants: grants, workspace: model, hosts: hosts) }
                     case .remoteControl:
@@ -104,7 +106,8 @@ public struct AppSettingsView: View {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case appearance = "Appearance", sessions = "Sessions", broker = "Session Broker", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
+    case appearance = "Appearance", sessions = "Sessions", broker = "Session Broker", keyboard = "Keyboard", themes = "Themes", agents = "Agents"
+    case automation = "Automation"
     case remoteControl = "Remote Control", updates = "Updates"
     var id: Self { self }
     var symbol: String {
@@ -114,6 +117,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .broker: "server.rack"
         case .keyboard: "keyboard"
         case .themes: "swatchpalette"
+        case .agents: "sparkles"
         case .automation: "bolt"
         case .remoteControl: "antenna.radiowaves.left.and.right"
         case .updates: "arrow.down.circle"
@@ -126,6 +130,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .broker: "The helpers that keep sessions running, on this Mac and on your hosts."
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
+        case .agents: "The coding agents the Agent button launches, and how they report their state."
         case .automation: "Manage access for scripts and agents."
         case .remoteControl: "Let agents connect over the Model Context Protocol (MCP)."
         case .updates: "Check for new versions of Trellis and install them."

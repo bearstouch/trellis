@@ -89,12 +89,15 @@ private enum SavedLaunch: Codable {
     case host(UUID)
     case customProcess(directory: String?)
     case remoteShell(hostID: UUID, directory: String?)
+    /// Only the agent's ID and where it ran: never its arguments, and never `resume` (FR-AG06).
+    case agent(agentID: String, hostID: UUID?, directory: String?)
 
     init(_ launch: SessionLaunch, settings: WorkspaceSettings) {
         switch launch {
         case .shell(let directory): self = .shell(executable: settings.shell, directory: directory)
         case .host(let id): self = .host(id)
         case .remoteShell(let host, let directory): self = .remoteShell(hostID: host, directory: directory)
+        case .agent(let agent): self = .agent(agentID: agent.agentID, hostID: agent.hostID, directory: agent.directory)
         case .process(let executable, let arguments, let directory):
             // Never serialize arbitrary command arguments, which can contain
             // typed commands or credentials. Login shells are safe references.
@@ -107,6 +110,7 @@ private enum SavedLaunch: Codable {
         case .host(let id): .host(id)
         case .customProcess(let directory): .process(executable: "", arguments: [], directory: directory)
         case .remoteShell(let host, let directory): .remoteShell(hostID: host, directory: directory)
+        case .agent(let id, let host, let directory): .agent(AgentLaunch(agentID: id, directory: directory, hostID: host))
         }
     }
     var needsConfiguration: Bool { if case .customProcess = self { return true }; return false }
@@ -126,9 +130,10 @@ private struct SavedWorkspace: Codable {
 }
 
 public enum WorkspaceSnapshotCodec {
-    /// 2 adds remote workspaces (FR-RW01). A workspace without one is still written as 1, so an older build keeps
-    /// reading it; one with a remote workspace is read-only there (unsupported version), never mistaken for corrupt.
-    public static let currentVersion = 2
+    /// 2 adds remote workspaces (FR-RW01), 3 agent panes (FR-AG04). A workspace is written at the lowest version that
+    /// holds it, so an older build keeps reading what it can; anything newer is read-only there (unsupported version),
+    /// never mistaken for corrupt.
+    public static let currentVersion = 3
     private struct Header: Decodable { var schemaVersion: Int }
     private struct Document: Codable {
         var schemaVersion: Int
@@ -146,7 +151,8 @@ public enum WorkspaceSnapshotCodec {
             revision: snapshot.revision, windows: snapshot.windows, activeWindowID: snapshot.activeWindowID,
             tabs: snapshot.tabs.values.sorted { $0.id.uuidString < $1.id.uuidString }, panes: panes)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let version = snapshot.windows.contains { $0.remoteHostID != nil } ? 2 : 1
+        let version =
+            snapshot.sessions.values.contains { $0.launch.agent != nil } ? 3 : snapshot.windows.contains { $0.remoteHostID != nil } ? 2 : 1
         let data = try encoder.encode(Document(schemaVersion: version, workspace: saved, settings: settings))
         guard data.count <= 4_194_304 else { throw WorkspacePersistenceError.corrupt }
         return data

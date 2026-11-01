@@ -52,6 +52,7 @@ See [SSH hosts](features/ssh-hosts.md).
 - Trellis publishes everything a client needs: version discovery, structured JSON results, resource IDs, bounded output cursors and layout examples.
 - Recommended flow: validate, plan and apply a layout first, then explicitly start sessions or execute commands. See [CLI → Agent workflow](api/cli.md#agent-workflow-int-06).
 - Trellis doesn't embed an AI model, obtain provider API keys, or interpret terminal output as instructions. Any local client that can run the CLI or speak the socket protocol can act as an agent.
+- Coding agents that run *in* a pane (Claude Code, pi, Codex and your own definitions) are launched from each pane's **Agent** button and report their state through a pane-scoped hook channel that carries only an event name and grants no API access. See [Coding agents](features/agents.md) (FR-AG01–FR-AG14).
 
 **INT-07 (P1).** An optional MCP adapter exposes the existing command service as tools. It can't expand a grant's permissions, it must keep the output limits, redaction and execution semantics, and it must not be a second, independent automation implementation. It's implemented as the [MCP server](api/mcp.md), off by default and enabled in Settings → Remote Control.
 

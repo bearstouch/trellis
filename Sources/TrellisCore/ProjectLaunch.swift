@@ -28,6 +28,8 @@ public struct ProjectLaunch: Equatable, Sendable {
     public let layout: LayoutDocument
     /// Layout pane key → command.
     public let commands: [String: String]
+    /// Layout pane key → agent ID (FR-PL10): those panes open as agent panes, not shells.
+    public var agents: [String: String] = [:]
     public var checkouts: [Checkout]
     public var rootExists = true
 
@@ -54,12 +56,13 @@ public struct ProjectLaunch: Equatable, Sendable {
         }
         guard root != "/", root != home else { return nil }
         func absolute(_ relative: String) -> String { relative.isEmpty ? root : root + "/" + relative }
-        var commands: [String: String] = [:]
+        var commands: [String: String] = [:], agents: [String: String] = [:]
         func layoutNode(_ node: ProjectNode, tab: Int, path: [Int], in projectTab: ProjectTab) -> LayoutNode {
             let key = "t\(tab + 1)-" + (path.isEmpty ? "0" : path.map { String($0 + 1) }.joined())
             switch node {
             case .pane(let pane):
                 if let command = pane.command { commands[key] = command }
+                if let agent = pane.agent { agents[key] = agent }
                 return .pane(key: key, title: pane.title, launch: .shell(directory: absolute(ProjectDefinition.folder(of: pane, in: projectTab))))
             case .split(let axis, let ratio, let first, let second):
                 return .split(
@@ -72,9 +75,11 @@ public struct ProjectLaunch: Equatable, Sendable {
         }
         let checkouts = project.checkouts.map { Checkout(repository: $0.repository, folder: $0.folder, path: absolute($0.folder), state: .present) }
         let remembered = target == .local ? root : String(root.dropFirst(home.count + 1))
-        return ProjectLaunch(
+        var launch = ProjectLaunch(
             project: project, target: target, root: root, folder: remembered,
             layout: LayoutDocument(windows: [LayoutWindow(key: windowKey(), name: project.name, tabs: tabs)]), commands: commands, checkouts: checkouts)
+        launch.agents = agents
+        return launch
     }
 
     /// What setup finds on the target: `exists` and `isDirectory` answer for absolute paths there.

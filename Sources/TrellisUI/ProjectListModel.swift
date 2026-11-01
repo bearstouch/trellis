@@ -92,8 +92,9 @@ public final class ProjectListModel: ObservableObject {
 
     /// "3 tabs · 2 repositories".
     public func summary(_ project: ProjectDefinition) -> String {
-        let tabs = project.tabs.count, repositories = project.checkouts.count
+        let tabs = project.tabs.count, repositories = project.checkouts.count, agents = project.agentCount
         return "\(tabs) tab\(tabs == 1 ? "" : "s")" + (repositories == 0 ? "" : " · \(repositories) repositor\(repositories == 1 ? "y" : "ies")")
+            + (agents == 0 ? "" : " · \(agents) agent\(agents == 1 ? "" : "s")")
     }
 
     /// "Last: build-box, This Mac", or nil before the first launch.

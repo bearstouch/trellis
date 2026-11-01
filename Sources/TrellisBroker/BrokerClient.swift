@@ -48,6 +48,8 @@ public final class BrokerConnection {
     public private(set) var protocolVersion = 0
     public private(set) var hostInfo: BrokerHostInfo?
     public var onClose: (() -> Void)?
+    /// A session's agent hook reported an event (FR-AG08), for any session on this connection.
+    public var onAgentEvent: ((UUID, String) -> Void)?
 
     private struct WeakSink { weak var sink: (any BrokerSessionSink)? }
     private final class DecoderBox: @unchecked Sendable { var decoder = BrokerFrameDecoder() }
@@ -72,7 +74,8 @@ public final class BrokerConnection {
     /// v2 and name their client ID.
     public func hello(minimumVersion: Int = BrokerProtocol.minimumVersion, clientID: String? = nil) async throws {
         let message = BrokerMessage.hello(
-            protocolVersion: minimumVersion, features: [BrokerProtocol.inputRejectedFeature], maximumVersion: BrokerProtocol.version, clientID: clientID)
+            protocolVersion: minimumVersion, features: [BrokerProtocol.inputRejectedFeature, BrokerProtocol.agentEventsFeature], maximumVersion: BrokerProtocol.version,
+            clientID: clientID)
         switch try await request(message) {
         case .welcome(let version, let pid, let info) where version >= minimumVersion && version <= BrokerProtocol.version:
             brokerPID = pid; protocolVersion = version; hostInfo = info
@@ -165,6 +168,7 @@ public final class BrokerConnection {
                 case .exited(let id, let status): sinks[id]?.sink?.brokerExited(waitStatus: status)
                 case .prompt(let id, let active): sinks[id]?.sink?.brokerPrompt(active)
                 case .inputRejected(let id): sinks[id]?.sink?.brokerInputRejected()
+                case .agentEvent(let id, let event): onAgentEvent?(id, event)
                 case .refused: close()
                 default: break
                 }

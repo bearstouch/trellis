@@ -38,6 +38,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// Fires on each write to the PTY through the view (keystrokes, paste, and terminal-generated replies such as
     /// cursor or mouse reports); carries no data, so input is never exposed.
     public var onInput: (() -> Void)?
+    /// A typed Return (FR-AG11). Only that a key was pressed is reported, never what was typed.
+    public var onReturnKey: (() -> Void)?
     /// Raw PTY bytes in arrival order, for bounded automation journaling.
     public var onOutputData: ((Data) -> Void)?
     public var onExit: ((Int32?) -> Void)?
@@ -195,6 +197,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         // Replayed queries (DA, DSR, cursor reports, kitty `p=?`) were answered when first printed; never again.
         guard !inputSuspended, !isReplaying else { return }
         onInput?()
+        // A keystroke, not a paste: pastes arrive as larger writes through the paste review.
+        if data.count <= 4, data.contains(0x0d) { onReturnKey?() }
         do { try adapter.send(Data(data)) } catch { onInputError?(error) }
         schedulePasswordCheck()
     }
