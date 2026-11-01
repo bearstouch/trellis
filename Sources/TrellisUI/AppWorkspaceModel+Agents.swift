@@ -130,8 +130,8 @@ extension AppWorkspaceModel {
         return started.flatMap { SystemLaunchFileAccess().isAccessibleDirectory($0) ? $0 : nil }
     }
 
-    /// FR-AG07: a new split beside `sourcePaneID` (or a new tab) runs the agent in that pane's directory, on its host.
-    public func launchAgent(_ agentID: String, from sourcePaneID: UUID, placement: AgentPlacement = .split, resume: Bool = false) async {
+    /// FR-AG07: a new tab (or a split beside `sourcePaneID`) runs the agent in that pane's directory, on its host.
+    public func launchAgent(_ agentID: String, from sourcePaneID: UUID, placement: AgentPlacement = .tab, resume: Bool = false) async {
         guard !shuttingDown, agentCatalog.definition(agentID) != nil, let pane = snapshot.panes[sourcePaneID], let tab = snapshot.tabs[pane.tabID],
             let window = snapshot.windows.first(where: { $0.id == tab.windowID })
         else { return }

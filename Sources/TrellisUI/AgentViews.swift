@@ -58,14 +58,14 @@ enum AgentIconImages {
     }
 }
 
-/// FR-AG07: launches an agent beside this pane, in its directory and on its host. ⌥ opens it in a new tab instead.
+/// FR-AG07: launches an agent in a new tab, in this pane's directory and on its host. ⌥ opens it in a split beside the pane.
 struct AgentDropdownButton: View {
     @ObservedObject var model: AppWorkspaceModel
     let paneID: UUID
 
     var body: some View {
         Menu {
-            Section("Open Beside This Pane (⌥ for a New Tab)") {
+            Section("Open in a New Tab (⌥ Beside This Pane)") {
                 ForEach(model.agentCatalog.definitions) { agent in
                     Button {
                         launch(agent.id, resume: false)
@@ -88,13 +88,13 @@ struct AgentDropdownButton: View {
             }
         }
         .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
-        .help("Launch a coding agent beside this pane")
+        .help("Launch a coding agent in a new tab (⌥ beside this pane)")
         .accessibilityLabel("Launch agent")
         .onAppear { if !model.isRemoteWorkspace(paneID: paneID) { model.refreshAgentAvailability() } }
     }
 
     private func launch(_ id: String, resume: Bool) {
-        let placement: AppWorkspaceModel.AgentPlacement = NSEvent.modifierFlags.contains(.option) ? .tab : .split
+        let placement: AppWorkspaceModel.AgentPlacement = NSEvent.modifierFlags.contains(.option) ? .split : .tab
         Task { await model.launchAgent(id, from: paneID, placement: placement, resume: resume) }
     }
 

@@ -163,7 +163,7 @@ extension AppWorkspaceModel {
         case .theme(let id): useTheme(id)
         case .agent(let id):
             guard let paneID = presentation.activePane?.id else { return }
-            await launchAgent(id, from: paneID, placement: modifier == .option ? .tab : .split)
+            await launchAgent(id, from: paneID, placement: modifier == .option ? .split : .tab)
         }
     }
 
@@ -270,7 +270,7 @@ extension AppWorkspaceModel {
             ? []
             : agentCatalog.definitions.map { agent in
                 CommandPaletteItem(
-                    target: .agent(agent.id), kind: .agent, title: "Launch Agent: " + agent.name, subtitle: "Beside the focused pane · ⌥↩ in a new tab",
+                    target: .agent(agent.id), kind: .agent, title: "Launch Agent: " + agent.name, subtitle: "In a new tab · ⌥↩ beside the focused pane",
                     keywords: ["agent", "ai", agent.executable])
             }
         let counts: [CommandPaletteScope: (Int, String)] = [

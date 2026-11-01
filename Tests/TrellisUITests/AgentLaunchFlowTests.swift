@@ -75,7 +75,7 @@ final class AgentLaunchFlowTests: XCTestCase {
         let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
         XCTAssertNil(model.tabAgent(tabID: tab), "A shell tab keeps its terminal icon")
 
-        await model.launchAgent("fake", from: source)
+        await model.launchAgent("fake", from: source, placement: .split)
         let agentPane = try XCTUnwrap(model.snapshot.tabs[tab]?.activePaneID)
         XCTAssertNotEqual(agentPane, source)
         XCTAssertEqual(model.snapshot.tabs[tab]?.root.paneIDs, [source, agentPane], "A split beside the source pane")
@@ -98,11 +98,12 @@ final class AgentLaunchFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testANewTabPlacementAndHookEventsDriveTheTabBadge() async throws {
+    func testTheDefaultNewTabPlacementAndHookEventsDriveTheTabBadge() async throws {
         let (model, source) = try await makeModel()
         defer { cleanUp(model) }
         let firstTab = try XCTUnwrap(model.presentation.selectedTab?.id)
-        await model.launchAgent("fake", from: source, placement: .tab)
+        await model.launchAgent("fake", from: source)
+        XCTAssertEqual(model.snapshot.tabs[firstTab]?.root.paneIDs, [source], "The default is a new tab; the source tab is untouched")
         let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
         XCTAssertNotEqual(tab, firstTab)
         let pane = try XCTUnwrap(model.snapshot.tabs[tab]?.activePaneID)
@@ -156,9 +157,16 @@ final class AgentLaunchFlowTests: XCTestCase {
         defer { cleanUp(model) }
         let items = model.commandPaletteItems.filter { $0.kind == .agent }
         XCTAssertEqual(items.map(\.title), ["Launch Agent: Fake", "Launch Agent: Missing"])
+        let firstTab = try XCTUnwrap(model.presentation.selectedTab?.id)
         await model.performCommandPaletteTarget(.agent("fake"), modifier: .none)
         let tab = try XCTUnwrap(model.presentation.selectedTab)
-        XCTAssertEqual(tab.root.paneIDs.first, source)
+        XCTAssertNotEqual(tab.id, firstTab, "Return opens a new tab")
         XCTAssertEqual(model.agentLaunch(paneID: tab.activePaneID)?.agentID, "fake")
+        await model.selectTab(firstTab)
+        await model.performCommandPaletteTarget(.agent("fake"), modifier: .option)
+        let split = try XCTUnwrap(model.presentation.selectedTab)
+        XCTAssertEqual(split.id, firstTab, "⌥Return splits the focused pane")
+        XCTAssertEqual(split.root.paneIDs.first, source)
+        XCTAssertEqual(model.agentLaunch(paneID: split.activePaneID)?.agentID, "fake")
     }
 }
