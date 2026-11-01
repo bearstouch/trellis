@@ -271,7 +271,8 @@ struct AgentSettingsView: View {
             )
             .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
         }
-        .padding(.top, 8)
+        // Not a Form, which insets itself: line up with the section title and divider like the other sections.
+        .padding(.top, 8).padding(.leading, 16)
         .onAppear { model.refreshAgentAvailability() }
     }
 

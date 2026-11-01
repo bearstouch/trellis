@@ -46,6 +46,8 @@ struct SessionBrokerStatusView: View {
         } label: {
             Text("This Mac and connected hosts")
         }
+        // Not a Form, which insets itself: line up with the section title and divider like the other sections.
+        .padding(.leading, 16)
         .accessibilityElement(children: .contain).accessibilityIdentifier("settings.sessionBroker")
         .task { refresh() }
     }
