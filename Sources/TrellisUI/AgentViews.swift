@@ -85,9 +85,12 @@ struct AgentDropdownButton: View {
             HStack(spacing: 4) {
                 Image(systemName: "sparkles")
                 Text("Agent").lineLimit(1)
+                Image(systemName: "chevron.down").font(.system(size: 7, weight: .semibold)).accessibilityHidden(true)
             }
+            .padding(.horizontal, 6).padding(.vertical, 2)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+        // Plain, like the Tasks button beside it, so it takes the header's font and color.
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
         .help("Launch a coding agent in a new tab (⌥ beside this pane)")
         .accessibilityLabel("Launch agent")
         .onAppear { if !model.isRemoteWorkspace(paneID: paneID) { model.refreshAgentAvailability() } }
