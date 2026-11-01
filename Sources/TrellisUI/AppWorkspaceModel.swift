@@ -853,8 +853,8 @@ public final class AppWorkspaceModel: ObservableObject {
                 await startRemote(paneID: paneID, terminal: terminal, request: request, hostID: hostID, directory: directory)
                 return
             }
-            if case .agent(let agent) = request.launch, let hostID = agent.hostID {
-                await startRemote(paneID: paneID, terminal: terminal, request: request, hostID: hostID, directory: agent.directory, agent: agent)
+            if case .agent(let agent) = request.launch {
+                await startAgent(agent, paneID: paneID, terminal: terminal, request: request, environment: environment, quietly: quietly)
                 return
             }
             if fixture {
@@ -871,18 +871,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     // `.shell` is frozen to `.process(shell, ["-l"])` before launch. Any frozen login shell qualifies, so
                     // panes started before the default shell changed keep integration on restart and restore.
                     if arguments == ["-l"] { configuration.shellIntegration = shellIntegration(for: configuration) }
-                case .remoteShell: return
-                case .agent(let agent):
-                    guard let planned = await agentConfiguration(agent, paneID: paneID, sessionID: request.sessionID, environment: environment) else {
-                        let message = "This agent is no longer in the agent catalog."
-                        if terminals[paneID] === terminal { terminal.refuseLaunch(message: message) }
-                        publish(
-                            try await service.execute(
-                                .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: message))
-                            ).snapshot)
-                        return
-                    }
-                    configuration = planned
+                case .remoteShell, .agent: return
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
                     // `.host(id)` so persistence and explicit reconnects re-read it.
@@ -939,7 +928,6 @@ public final class AppWorkspaceModel: ObservableObject {
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
-                if terminal.processID == nil { agentHookNonces = agentHookNonces.filter { $0.value != request.sessionID } }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
     }

@@ -172,6 +172,42 @@ extension AppWorkspaceModel {
         await start(paneID: paneID)
     }
 
+    /// FR-AG04: an agent session after `start` committed its attempt, on its host or here. Kept out of `start`'s launch switch:
+    /// an extra suspension point there made Swift 6.3's task allocator abort ("freed pointer was not the last allocation").
+    func startAgent(_ agent: AgentLaunch, paneID: UUID, terminal: NativeTerminal, request: SessionLaunchRequest, environment: [String: String], quietly: Bool) async {
+        if let hostID = agent.hostID {
+            await startRemote(paneID: paneID, terminal: terminal, request: request, hostID: hostID, directory: agent.directory, agent: agent)
+            return
+        }
+        func refuse(_ message: String) async {
+            if terminals[paneID] === terminal { terminal.refuseLaunch(message: message) }
+            if let result = try? await service.execute(
+                .completeLaunch(sessionID: request.sessionID, attemptID: request.attemptID, outcome: .failed(message: message)))
+            {
+                publish(result.snapshot)
+            }
+        }
+        guard let configuration = await agentConfiguration(agent, paneID: paneID, sessionID: request.sessionID, environment: environment) else {
+            return await refuse("This agent is no longer in the agent catalog.")
+        }
+        // FR-R07, as for shells: the broker keeps the agent running whatever the quit setting.
+        if let sessionBroker {
+            let ready = await sessionBroker.prepare()
+            guard terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
+                agentHookNonces = agentHookNonces.filter { $0.value != request.sessionID }
+                return await refuse("Session launch was cancelled.")
+            }
+            if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
+                terminal.useTransport(transport)
+            } else if !quietly {
+                errorMessage = "The session broker could not start, so this session will end when Trellis quits."
+            }
+        }
+        await terminal.start(configuration: configuration)
+        // A launch refused before spawning never reports an exit, so drop its nonce here.
+        if terminal.processID == nil { agentHookNonces = agentHookNonces.filter { $0.value != request.sessionID } }
+    }
+
     /// A local agent runs in the user's login shell through `env`, with Trellis's hook wiring when the broker's helper is
     /// available (FR-AG08); without it the agent runs with the terminal's own signals only.
     func agentConfiguration(_ agent: AgentLaunch, paneID: UUID, sessionID: UUID, environment: [String: String]) async -> LocalLaunchConfiguration? {
