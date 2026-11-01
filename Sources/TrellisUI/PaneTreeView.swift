@@ -58,7 +58,8 @@ struct PaneTreeView: View {
                         .accessibilityAddTraits(focused ? [.isSelected] : [])
                     if let directory = context.directory {
                         Image(systemName: "folder").accessibilityHidden(true)
-                        Text(directory).lineLimit(1).truncationMode(.middle)
+                        // The first thing to give way in a narrow pane: a title cut to "…" says nothing at all.
+                        Text(directory).lineLimit(1).truncationMode(.middle).layoutPriority(-1)
                             .help(context.kind == "SSH" ? "\(directory) — reported by the remote shell, unverified" : directory)
                             .accessibilityHint(context.kind == "SSH" ? "Reported by the remote shell, unverified" : "")
                     }
@@ -77,6 +78,10 @@ struct PaneTreeView: View {
                         // Text with the symbol, never the tab bar's color alone (FR-T09).
                         Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
                             .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
+                    }
+                    if let detected = model.detectedAgent(paneID: id) {
+                        // FR-AG15: still a shell, so its tools stay below and no state is claimed.
+                        AgentStateLabel(agent: detected, state: nil, directory: model.agentCatalog.iconDirectories[detected.id], iconOnly: !AgentStateLabel.fitsName(paneWidth: size.width))
                     }
                     if let agent = model.agentDefinition(paneID: id) {
                         // FR-AG10: an agent pane shows its agent and state instead of shell tools.

@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Session broker status:** Settings → **Session Broker** shows whether the session broker is running, its PID and protocol, how many sessions it keeps, its socket, and the one Trellis executable allowed to connect, plus the broker on each connected remote host.
 
+- **Agents typed in a shell:** typing `claude`, `pi` or `codex` at a shell prompt now shows the agent's icon and name on the tab and pane header while it runs. These runs have no **Working** or **Needs you** badge; opening the agent from the **Agent** button still gives you those (FR-AG15).
+
 ### Changed
 
 - **Remote workspaces reconnect faster:** when a host's link comes back, its panes resume four at a time instead of one network round trip after another, so twelve panes on a slow link are back after three round trips instead of twelve.

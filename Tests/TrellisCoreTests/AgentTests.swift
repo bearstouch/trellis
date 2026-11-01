@@ -14,6 +14,15 @@ final class AgentCatalogTests: XCTestCase {
         XCTAssertNotNil(AgentCatalog.bundledFile(AgentCommand.piExtensionName), "The pi extension ships beside the definitions")
     }
 
+    func testACommandNameMatchesAnAgentOnlyExactly() {
+        let catalog = AgentCatalogSnapshot(definitions: AgentCatalog.bundled())
+        XCTAssertEqual(catalog.definition(forCommand: "claude")?.id, "trellis-claude-code")
+        XCTAssertEqual(catalog.definition(forCommand: "codex")?.id, "trellis-codex")
+        for name in ["claude-foo", "Claude", "laude", "trellis-claude-code", ""] { XCTAssertNil(catalog.definition(forCommand: name), name) }
+        let absolute = AgentCatalogSnapshot(definitions: [AgentDefinition(id: "mine", name: "Mine", executable: "/opt/tools/mine")])
+        XCTAssertEqual(absolute.definition(forCommand: "mine")?.id, "mine", "a program name has no path to compare")
+    }
+
     func testUserDefinitionsAreValidatedAndAnUnusableFileNeverHidesTheOthers() throws {
         let good = AgentDefinition(id: "aider", name: "Aider", executable: "aider", integration: .none, icon: .monogram("A"))
         let files = FakeFiles(files: [

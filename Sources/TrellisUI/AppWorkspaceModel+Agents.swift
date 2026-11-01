@@ -84,19 +84,35 @@ extension AppWorkspaceModel {
     public func agentLaunch(paneID: UUID) -> AgentLaunch? { snapshot.panes[paneID].flatMap { snapshot.sessions[$0.sessionID]?.launch.agent } }
     public func agentDefinition(paneID: UUID) -> AgentDefinition? { agentLaunch(paneID: paneID).flatMap { agentCatalog.definition($0.agentID) } }
 
+    /// FR-AG15: the agent a shell pane's authenticated command is running. Computed from runtime shell state, so it ends with
+    /// the command and is never saved. Display only: lifecycle and live state stay with `agentDefinition`, since a shell pane
+    /// has no Start or Resume, and without hooks nothing would end a Working.
+    public func detectedAgent(paneID: UUID) -> AgentDefinition? {
+        guard agentLaunch(paneID: paneID) == nil, let state = shellStates[paneID], state.origin == .authenticated, let name = state.commandName else { return nil }
+        return agentCatalog.definition(forCommand: name)
+    }
+
     /// "Claude Code · api": the automatic title of an agent pane, and of its tab unless the user named it.
     func agentTitle(paneID: UUID) -> String? {
-        guard let agent = agentLaunch(paneID: paneID) else { return nil }
-        let name = agentCatalog.definition(agent.agentID)?.name ?? "Agent"
-        guard let directory = agent.directory ?? (agent.hostID == nil ? defaultDirectory : nil) else { return name }
-        let folder = agent.hostID == nil && directory == FileManager.default.homeDirectoryForCurrentUser.path ? "~" : (directory as NSString).lastPathComponent
+        if let agent = agentLaunch(paneID: paneID) {
+            let name = agentCatalog.definition(agent.agentID)?.name ?? "Agent"
+            return agentTitle(name: name, directory: agent.directory ?? (agent.hostID == nil ? defaultDirectory : nil), remote: agent.hostID != nil)
+        }
+        guard let detected = detectedAgent(paneID: paneID) else { return nil }
+        return agentTitle(name: detected.name, directory: shellStates[paneID]?.currentDirectory, remote: isRemoteWorkspace(paneID: paneID))
+    }
+
+    private func agentTitle(name: String, directory: String?, remote: Bool) -> String {
+        guard let directory else { return name }
+        // A remote path is never this Mac's home, even when it is spelled the same.
+        let folder = !remote && directory == FileManager.default.homeDirectoryForCurrentUser.path ? "~" : (directory as NSString).lastPathComponent
         return folder.isEmpty ? name : "\(name) · \(folder)"
     }
 
     /// The agent a tab's icon shows in place of the terminal (FR-AG09): its focused pane's, else its first running one.
     public func tabAgent(tabID: UUID) -> AgentDefinition? {
         guard let tab = snapshot.tabs[tabID] else { return nil }
-        return ([tab.activePaneID] + tab.root.paneIDs).lazy.filter { self.terminals[$0]?.sessionState == .running }.compactMap(agentDefinition(paneID:)).first
+        return ([tab.activePaneID] + tab.root.paneIDs).lazy.filter { self.terminals[$0]?.sessionState == .running }.compactMap { self.agentDefinition(paneID: $0) ?? self.detectedAgent(paneID: $0) }.first
     }
 
     /// The most urgent agent state among a tab's panes (FR-AG10): needs you, then error, working, done.
