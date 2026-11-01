@@ -51,6 +51,7 @@ extension AppWorkspaceModel {
         switch snapshot.panes[paneID].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
         case .shell(let directory)?: return directory
         case .process(_, let arguments, let directory)? where arguments == ["-l"]: return directory
+        case .agent(let agent)? where agent.hostID == nil: return agent.directory
         default: return nil
         }
     }

@@ -125,6 +125,40 @@ final class ProjectLaunchFlowTests: XCTestCase {
         XCTAssertTrue(model.pendingProjectCommands.isEmpty)
     }
 
+    /// FR-PL10: a project pane that names an agent opens as that agent's pane, in its folder; the shell beside it stays a shell.
+    func testAnAgentPaneOpensAsTheAgentInItsFolder() async throws {
+        let model = try await makeModel()
+        let agent = scratch.appendingPathComponent("bin/fake-agent").path
+        try "#!/bin/sh\nprintf 'AGENT-UP %s\\n' \"$PWD\"\nexec /bin/sleep 30\n".write(toFile: agent, atomically: true, encoding: .utf8)
+        chmod(agent, 0o755)
+        model.agentCatalog = AgentCatalogSnapshot(definitions: [AgentDefinition(id: "fake", name: "Fake", executable: agent)])
+        try FileManager.default.createDirectory(at: scratch.appendingPathComponent("work/shop/api"), withIntermediateDirectories: true)
+        let project = ProjectDefinition(
+            name: "Shop",
+            tabs: [
+                ProjectTab(
+                    title: "API", directory: "api",
+                    root: .split(axis: .x, ratio: 0.5, first: .pane(ProjectPane(agent: "fake")), second: .pane(ProjectPane(title: "Shell"))))
+            ])
+        model.beginProjectLaunch(project)
+        let session = try XCTUnwrap(model.projectLaunch)
+        session.folder = scratch.appendingPathComponent("work/shop").path
+        let launch = try await ready(session, model)
+        XCTAssertFalse(launch.needsSetup)
+        XCTAssertEqual(launch.agents, ["t1-1": "fake"])
+        await model.openProjectLaunch(session, launch)
+        try await until("the window opened") { model.snapshot.windows.contains { $0.name == "Shop" } }
+        let window = try XCTUnwrap(model.snapshot.windows.first { $0.name == "Shop" })
+        let tab = try XCTUnwrap(model.snapshot.tabs[window.activeTabID])
+        let agentPane = tab.root.paneIDs[0], shellPane = tab.root.paneIDs[1]
+        XCTAssertEqual(model.agentLaunch(paneID: agentPane), AgentLaunch(agentID: "fake", directory: scratch.appendingPathComponent("work/shop/api").path))
+        XCTAssertNil(model.agentLaunch(paneID: shellPane))
+        let terminal = try XCTUnwrap(model.terminals[agentPane])
+        try await until("the agent started") { terminal.screenText.contains("AGENT-UP") }
+        XCTAssertTrue(terminal.screenText.contains("/work/shop/api"))
+        XCTAssertEqual(model.tabAgent(tabID: tab.id)?.id, "fake")
+    }
+
     func testAFailedSetupKeepsTheSheetAndCancelLeavesNoWindow() async throws {
         let model = try await makeModel()
         setenv("FAKE_GIT_STATUS", "128", 1)

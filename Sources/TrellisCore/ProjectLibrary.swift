@@ -17,7 +17,9 @@ public struct ProjectFileStorage: HostStorage {
 }
 
 public enum ProjectLibraryCodec {
-    public static let currentVersion = 1
+    /// 2 adds agent panes (FR-PL10). A library without one is still written as 1, so an older build keeps reading it; one
+    /// with an agent pane is read-only there instead of losing the agent on its next save.
+    public static let currentVersion = 2
     static let byteLimit = 8_388_608
     private struct Header: Decodable { var schemaVersion: Int }
     private struct Document: Codable {
@@ -29,12 +31,13 @@ public enum ProjectLibraryCodec {
     public static func encode(_ projects: [ProjectDefinition], revision: UInt64) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(Document(schemaVersion: currentVersion, revision: revision, projects: projects))
+        let version = projects.contains { $0.agentCount > 0 } ? 2 : 1
+        return try encoder.encode(Document(schemaVersion: version, revision: revision, projects: projects))
     }
 
     /// Re-validates every stored project, so a hand-edited file can't smuggle a command or URL the editor refuses.
     public static func decode(_ data: Data) throws -> (projects: [ProjectDefinition], revision: UInt64) {
-        guard data.count <= byteLimit, let header = try? JSONDecoder().decode(Header.self, from: data), header.schemaVersion == currentVersion,
+        guard data.count <= byteLimit, let header = try? JSONDecoder().decode(Header.self, from: data), (1...currentVersion).contains(header.schemaVersion),
             let document = try? JSONDecoder().decode(Document.self, from: data), Set(document.projects.map(\.id)).count == document.projects.count,
             document.projects.allSatisfy({ $0.revision <= document.revision && $0.issues.isEmpty && $0 == $0.normalized })
         else { throw HostLibraryError.readOnly }

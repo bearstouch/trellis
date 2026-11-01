@@ -12,8 +12,11 @@ extension AppWorkspaceModel {
         let home = remoteHosts?.workspaceConnection(hostID)?.hostInfo?.home
         return ProjectCapture.capture(window: windowID, snapshot: snapshot, home: home) { paneID in
             if let directory = self.remoteWorkingDirectory(paneID: paneID) { return directory }
-            guard case .remoteShell(_, let directory)? = self.snapshot.panes[paneID].flatMap({ self.snapshot.sessions[$0.sessionID] })?.launch else { return nil }
-            return directory
+            switch self.snapshot.panes[paneID].flatMap({ self.snapshot.sessions[$0.sessionID] })?.launch {
+            case .remoteShell(_, let directory)?: return directory
+            case .agent(let agent)?: return agent.directory
+            default: return nil
+            }
         }
     }
 }

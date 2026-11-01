@@ -257,6 +257,7 @@ extension AppWorkspaceModel {
         pruneProjectState()
         for (key, paneID) in plan.createdPanes {
             if let command = launch.commands[key], let sessionID = sessionID(ofPane: paneID) { pendingProjectCommands[sessionID] = command }
+            if let agent = launch.agents[key] { await configureProjectAgent(paneID: paneID, agentID: agent) }
         }
         await selectWindow(windowID)
         let integration: Bool
@@ -276,4 +277,16 @@ extension AppWorkspaceModel {
     }
 
     private func sessionID(ofPane paneID: UUID) -> UUID? { snapshot.panes[paneID]?.sessionID }
+
+    /// FR-PL10: a created pane that names an agent becomes that agent's pane, in the folder and on the host the layout gave
+    /// it. An agent missing from the catalog still opens, and its pane says so when it starts.
+    private func configureProjectAgent(paneID: UUID, agentID: String) async {
+        let agent: AgentLaunch
+        switch snapshot.panes[paneID].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
+        case .shell(let directory)?, .process(_, _, let directory)?: agent = AgentLaunch(agentID: agentID, directory: directory)
+        case .remoteShell(let host, let directory)?: agent = AgentLaunch(agentID: agentID, directory: directory, hostID: host)
+        default: return
+        }
+        if let result = try? await service.execute(.configureStoppedSession(paneID: paneID, launch: .agent(agent))) { publish(result.snapshot) }
+    }
 }

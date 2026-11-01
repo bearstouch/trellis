@@ -205,8 +205,11 @@ public struct ProjectLibraryView: View {
     private func nodeRows(_ node: ProjectNode, tab: Int, path: [Int], depth: Int) -> AnyView {
         switch node {
         case .pane(let pane):
-            let detail = pane.command ?? pane.repository.map { "⎇ " + GitRepository.shortName($0.url) } ?? pane.directory
-            return AnyView(outlineRow(pane.title ?? "Pane", detail: detail, depth: depth, at: .node(tab: tab, path: path), symbol: "terminal"))
+            // FR-PL10: an agent pane names its agent and shows the agent's mark instead of a terminal.
+            let agentName = pane.agent.map { workspace.agentCatalog.definition($0)?.name ?? $0 }
+            let detail = agentName ?? pane.command ?? pane.repository.map { "⎇ " + GitRepository.shortName($0.url) } ?? pane.directory
+            return AnyView(
+                outlineRow(pane.title ?? agentName ?? "Pane", detail: detail, depth: depth, at: .node(tab: tab, path: path), symbol: pane.agent == nil ? "terminal" : "sparkles"))
         case .split(let axis, _, let first, let second):
             return AnyView(
                 VStack(alignment: .leading, spacing: 1) {
@@ -314,12 +317,46 @@ public struct ProjectLibraryView: View {
             "Folder (optional)", text: optional(Binding(get: { pane.directory }, set: { value in draft.updatePane(tab: tab, path: path) { $0.directory = value } })),
             error: issue(at, .directory), prompt: draft.tabs[tab].directory ?? "api",
             note: "Relative to the project folder chosen at launch. Empty uses the tab's folder.")
-        field(
-            "Command (optional)", text: optional(Binding(get: { pane.command }, set: { value in draft.updatePane(tab: tab, path: path) { $0.command = value } })),
-            error: issue(at, .command), prompt: "make dev", monospaced: true, note: "Typed into the shell after its first prompt.")
+        agentPicker(pane, tab: tab, path: path, at: at)
+        if pane.agent == nil {
+            field(
+                "Command (optional)", text: optional(Binding(get: { pane.command }, set: { value in draft.updatePane(tab: tab, path: path) { $0.command = value } })),
+                error: issue(at, .command), prompt: "make dev", monospaced: true, note: "Typed into the shell after its first prompt.")
+        } else if let error = issue(at, .command) {
+            Text(error).font(.caption).foregroundStyle(.red)
+        }
         repositoryFields(
             "Pane repository", note: "The pane's folder is a checkout.", repository: pane.repository, at: at,
             set: { value in draft.updatePane(tab: tab, path: path) { $0.repository = value } })
+    }
+
+    /// FR-PL10: the pane runs a shell or an agent from the catalog; an ID the catalog no longer has stays selectable, named as missing.
+    @ViewBuilder private func agentPicker(_ pane: ProjectPane, tab: Int, path: [Int], at: ProjectDefinition.Place) -> some View {
+        let catalog = workspace.agentCatalog.definitions
+        VStack(alignment: .leading, spacing: 3) {
+            Picker(
+                "Runs",
+                selection: Binding(
+                    get: { pane.agent },
+                    set: { value in
+                        draft.updatePane(tab: tab, path: path) {
+                            $0.agent = value; if value != nil { $0.command = nil }
+                        }
+                    })
+            ) {
+                Text("Shell").tag(String?.none)
+                ForEach(catalog) { agent in Text(agent.name).tag(String?.some(agent.id)) }
+                if let id = pane.agent, !catalog.contains(where: { $0.id == id }) { Text("\(id) (not in Settings → Agents)").tag(String?.some(id)) }
+            }
+            .frame(width: 320)
+            Text(
+                pane.agent == nil
+                    ? "A login shell; add a command to type into it."
+                    : "Opens the agent in this pane's folder, with its live state on the tab. A pane runs an agent or a command, not both."
+            )
+            .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
+            if let error = issue(at, .agent) { Text(error).font(.caption).foregroundStyle(.red) }
+        }
     }
 
     @ViewBuilder private func splitDetail(axis: SplitAxis, ratio: Double, tab: Int, path: [Int]) -> some View {

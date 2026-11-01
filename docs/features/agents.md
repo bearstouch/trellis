@@ -6,6 +6,8 @@ Agents are data: each is an `<id>.agent.json` definition. Trellis ships three, a
 
 All requirements here are P1 (draft).
 
+Library projects can name an agent per pane (`"agent": "trellis-claude-code"`), so launching a project opens its agents too ([FR-PL10](project-library.md)).
+
 ## Agent definitions
 
 Built-in definitions live in the app bundle with the `trellis-` ID prefix, which is reserved. Your own go in the **Agents** folder in the Trellis state directory (Settings → Agents → **Reveal Agents Folder**), one file per agent, named `<id>.agent.json`.

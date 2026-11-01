@@ -276,3 +276,52 @@ extension Optional {
         return value
     }
 }
+
+/// FR-PL10: agent panes in library projects.
+final class ProjectAgentTests: XCTestCase {
+    private func project(_ pane: ProjectPane) -> ProjectDefinition {
+        ProjectDefinition(name: "Shop", tabs: [ProjectTab(title: "API", directory: "api", root: .split(axis: .x, ratio: 0.5, first: .pane(pane), second: .pane(ProjectPane())))])
+    }
+
+    func testAnAgentPaneRoundTripsAndIsValidatedLikeTheCatalog() throws {
+        let stored = project(ProjectPane(title: "Claude", agent: "trellis-claude-code"))
+        let decoded = try JSONDecoder().decode(ProjectDefinition.self, from: JSONEncoder().encode(stored))
+        XCTAssertEqual(decoded, stored)
+        XCTAssertTrue(stored.issues.isEmpty)
+        XCTAssertEqual(stored.agentCount, 1)
+        XCTAssertEqual(project(ProjectPane(agent: "  trellis-pi ")).normalized.tabs[0].root.panes[0].pane.agent, "trellis-pi")
+        XCTAssertEqual(project(ProjectPane(agent: "Not An ID")).issues.map(\.field), [.agent])
+        XCTAssertEqual(project(ProjectPane(command: "make dev", agent: "trellis-pi")).issues.map(\.field), [.command], "An agent or a command, not both")
+    }
+
+    func testOnlyALibraryWithAnAgentPaneIsSavedAsVersionTwo() throws {
+        func version(_ data: Data) throws -> Int? { (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["schemaVersion"] as? Int }
+        let plain = try ProjectLibraryCodec.encode([project(ProjectPane(command: "make dev"))], revision: 1)
+        XCTAssertEqual(try version(plain), 1, "Older builds keep reading it")
+        let agents = try ProjectLibraryCodec.encode([project(ProjectPane(agent: "trellis-codex"))], revision: 1)
+        XCTAssertEqual(try version(agents), 2, "Older builds open it read-only instead of dropping the agent")
+        XCTAssertEqual(try ProjectLibraryCodec.decode(plain).projects.count, 1)
+        XCTAssertEqual(try ProjectLibraryCodec.decode(agents).projects.first?.agentCount, 1)
+        var future = try XCTUnwrap(JSONSerialization.jsonObject(with: agents) as? [String: Any])
+        future["schemaVersion"] = ProjectLibraryCodec.currentVersion + 1
+        XCTAssertThrowsError(try ProjectLibraryCodec.decode(JSONSerialization.data(withJSONObject: future)))
+    }
+
+    func testALaunchNamesItsAgentPanesAndTypesNoCommandIntoThem() throws {
+        let launch = try XCTUnwrap(ProjectLaunch.resolve(project(ProjectPane(agent: "trellis-pi")), target: .local, folder: "/tmp/shop", home: "/Users/me"))
+        XCTAssertEqual(launch.agents, ["t1-1": "trellis-pi"])
+        XCTAssertTrue(launch.commands.isEmpty)
+    }
+
+    func testCapturingAWindowKeepsItsAgentPanes() async throws {
+        let store = try WorkspaceStore()
+        let made = try await store.execute(.createWindow(name: "Agents")).snapshot
+        let window = try XCTUnwrap(made.windows.first)
+        let pane = try XCTUnwrap(made.panes.keys.first)
+        _ = try await store.execute(.configureStoppedSession(paneID: pane, launch: .agent(AgentLaunch(agentID: "trellis-claude-code", directory: "/tmp/shop"))))
+        let snapshot = await store.snapshot()
+        let capture = try XCTUnwrap(ProjectCapture.capture(window: window.id, snapshot: snapshot, home: "/Users/me") { _ in "/tmp/shop" })
+        XCTAssertEqual(capture.project.tabs.first?.root.panes.first?.pane.agent, "trellis-claude-code")
+        XCTAssertTrue(capture.warnings.isEmpty)
+    }
+}
