@@ -99,11 +99,21 @@ struct PaneTreeView: View {
                         AgentDropdownButton(model: model, paneID: id)
                     }
                     if let git = model.gitStatuses[id] {
-                        // Words and symbols, never color alone (FR-PL09).
-                        Label(AppWorkspaceModel.gitStatusText(git), systemImage: "arrow.triangle.branch").lineLimit(1).monospacedDigit()
-                            .help(AppWorkspaceModel.gitStatusSpoken(git)).accessibilityLabel(AppWorkspaceModel.gitStatusSpoken(git))
+                        // An icon in the header; the branch and counts are in its hover card and read by VoiceOver (FR-PL09).
+                        GitStatusBadge(
+                            text: AppWorkspaceModel.gitStatusText(git), spoken: AppWorkspaceModel.gitStatusSpoken(git),
+                            foreground: model.themeColor(.foreground), background: model.themeColor(.surface))
                     }
-                    Text(context.kind).lineLimit(1)
+                    if let host = context.host {
+                        // FR-RW05: the machine these panes run on stands out; a link's state stays in plain words beside it.
+                        HStack(spacing: 0) {
+                            Text(host).fontWeight(.bold).foregroundStyle(model.themeColor(.accent)).lineLimit(1)
+                            // A narrow pane shortens the name, never the link's state (FR-RW07).
+                            Text(context.kind.dropFirst(host.count)).lineLimit(1).fixedSize()
+                        }.accessibilityElement(children: .combine)
+                    } else {
+                        Text(context.kind).lineLimit(1)
+                    }
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.
                         Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)
@@ -197,23 +207,25 @@ struct PaneTreeView: View {
         .accessibilityLabel("Scratchpad").accessibilityAddTraits(pressed ? [.isSelected] : [])
     }
 
-    private func sessionContext(_ id: UUID) -> (directory: String?, kind: String) {
+    private func sessionContext(_ id: UUID) -> (directory: String?, kind: String, host: String?) {
         let launch = model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
         let directory: String
         // A remote workspace pane: its authenticated directory on the host, named after the host (FR-RW05).
         if case .remoteShell(let hostID, let path)? = launch {
             // FR-RW07: a pane on a host that isn't connected says so, in words.
             let link = model.remoteLinks[hostID] ?? .disconnected(nil)
-            return (model.remoteWorkingDirectory(paneID: id) ?? path, model.remoteHostName(hostID) + (link == .connected ? "" : " · " + link.label))
+            let host = model.remoteHostName(hostID)
+            return (model.remoteWorkingDirectory(paneID: id) ?? path, host + (link == .connected ? "" : " · " + link.label), host)
         }
         if case .agent(let agent)? = launch, let hostID = agent.hostID {
             let link = model.remoteLinks[hostID] ?? .disconnected(nil)
-            return (agent.directory, model.remoteHostName(hostID) + (link == .connected ? "" : " · " + link.label))
+            let host = model.remoteHostName(hostID)
+            return (agent.directory, host + (link == .connected ? "" : " · " + link.label), host)
         }
         // A remote shell's own report, unverified and display-only (FR-SI09).
-        if let launch, AppWorkspaceModel.isRemote(launch) { return (model.remoteDirectory(paneID: id), "SSH") }
+        if let launch, AppWorkspaceModel.isRemote(launch) { return (model.remoteDirectory(paneID: id), "SSH", nil) }
         switch launch {
-        case .host, .remoteShell: return (nil, "SSH")
+        case .host, .remoteShell: return (nil, "SSH", nil)
         // Shell integration reports the live directory; otherwise show where the session started (INT-01).
         case .shell(let path), .process(_, _, let path): directory = model.currentDirectory(paneID: id) ?? path ?? model.defaultDirectory
         case .agent(let agent): directory = agent.directory ?? model.defaultDirectory
@@ -221,7 +233,7 @@ struct PaneTreeView: View {
         }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let display = directory == home ? "~" : directory.hasPrefix(home + "/") ? "~" + directory.dropFirst(home.count) : directory
-        return (display, "Local")
+        return (display, "Local", nil)
     }
 
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {

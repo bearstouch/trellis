@@ -25,6 +25,11 @@ import SwiftUI
         } else {
             popover.contentViewController = NSHostingController(rootView: content)
         }
+        // AppKit places a popover for its size at the moment it shows, and the default is 320 x 320: content that then
+        // shrinks to fit ends up beside its anchor, with the arrow pointing at nothing.
+        if let measured = popover.contentViewController?.view.fittingSize, measured.width > 0, measured.height > 0, popover.contentSize != measured {
+            popover.contentSize = measured
+        }
         guard !isShown, view.window != nil else { return }
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: edge)
         isShown = true
