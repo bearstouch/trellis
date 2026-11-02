@@ -42,17 +42,14 @@ public struct AppSettingsView: View {
                         selection = section
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: section.symbol)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 20, height: 20)
-                                .background(section.tint.gradient, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            section.iconImage
+                                .frame(width: 28, height: 28)
                                 .accessibilityHidden(true)
                             Text(section.rawValue)
                             Spacer()
                         }
                         .font(.system(size: 13, weight: selection == section ? .semibold : .regular))
-                        .padding(.horizontal, 12).padding(.vertical, 11)
+                        .padding(.horizontal, 8).padding(.vertical, 7)
                         .contentShape(Rectangle())
                         .foregroundStyle(model.themeColor(selection == section ? .activeTabForeground : .foreground))
                         .background(selection == section ? model.themeColor(.activeTabBackground) : .clear, in: RoundedRectangle(cornerRadius: 6))
@@ -115,32 +112,25 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case automation = "Automation"
     case remoteControl = "Remote Control", updates = "Updates"
     var id: Self { self }
-    var symbol: String {
+    private var icon: BundledSettingsIcon {
         switch self {
-        case .appearance: "paintbrush.fill"
-        case .sessions: "terminal.fill"
-        case .broker: "server.rack"
-        case .keyboard: "command"
-        case .themes: "swatchpalette.fill"
-        case .agents: "sparkles"
-        case .automation: "bolt.fill"
-        case .remoteControl: "antenna.radiowaves.left.and.right"
-        case .updates: "arrow.down"
+        case .appearance: .appearance
+        case .sessions: .sessions
+        case .broker: .broker
+        case .keyboard: .keyboard
+        case .themes: .themes
+        case .agents: .agents
+        case .automation: .automation
+        case .remoteControl: .remote
+        case .updates: .updates
         }
     }
-    /// Tile color behind the white glyph, System Settings style; fixed so it reads on any theme.
-    var tint: Color {
-        switch self {
-        case .appearance: .blue
-        case .sessions: Color(white: 0.2)
-        case .broker: .teal
-        case .keyboard: .gray
-        case .themes: .pink
-        case .agents: .purple
-        case .automation: .orange
-        case .remoteControl: .indigo
-        case .updates: .green
-        }
+    /// Decoded once: the sidebar redraws on every selection change.
+    @MainActor private static let iconImages: [SettingsSection: NSImage] = Dictionary(
+        uniqueKeysWithValues: allCases.compactMap { section in section.icon.url.flatMap(NSImage.init(contentsOf:)).map { (section, $0) } })
+    /// A missing resource leaves an empty tile rather than failing Settings.
+    @MainActor @ViewBuilder var iconImage: some View {
+        if let image = Self.iconImages[self] { Image(nsImage: image).resizable().interpolation(.high) } else { Color.clear }
     }
     var detail: String {
         switch self {

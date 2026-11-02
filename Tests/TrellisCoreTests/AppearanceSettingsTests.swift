@@ -6,6 +6,14 @@ final class AppearanceSettingsTests: XCTestCase {
         let data = try Data(contentsOf: XCTUnwrap(BundledAppIcon.url()))
         XCTAssertEqual(Array(data.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
     }
+    func testEverySettingsIconIsA56PixelPNG() throws {
+        for icon in BundledSettingsIcon.allCases {
+            let data = try Data(contentsOf: XCTUnwrap(icon.url, icon.rawValue))
+            XCTAssertEqual(Array(data.prefix(4)), [0x89, 0x50, 0x4E, 0x47], icon.rawValue)
+            // IHDR width and height, big-endian, follow the 8-byte signature and the chunk header.
+            XCTAssertEqual(Array(data[16..<24]), [0, 0, 0, 56, 0, 0, 0, 56], icon.rawValue)
+        }
+    }
     func testSettingsSavedBeforeBellStyleLoadAsSoundAndKeepTheirMode() throws {
         var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
         legacy["bellStyle"] = nil; legacy["chromeMode"] = "light"
