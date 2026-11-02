@@ -60,27 +60,10 @@ public struct CLIEnvironment {
     public var home: String = ProcessInfo.processInfo.environment["HOME"].flatMap { $0.hasPrefix("/") ? $0 : nil } ?? NSHomeDirectory()
     // The real executable, not argv[0], which is a bare name when run through PATH.
     public var executablePath: String = Bundle.main.executableURL?.resolvingSymlinksInPath().path ?? ""
-    /// Resolves symlinks in the existing part of a path, so a link directory such
-    /// as `~/bin -> /usr/local/bin` is judged by where it really points.
-    public var resolvePath: (String) -> String = { path in
-        var existing = path, rest: [String] = []
-        while !FileManager.default.fileExists(atPath: existing), existing != "/" {
-            rest.insert((existing as NSString).lastPathComponent, at: 0); existing = (existing as NSString).deletingLastPathComponent
-        }
-        return NSString.path(withComponents: [URL(fileURLWithPath: existing).resolvingSymlinksInPath().path] + rest)
-    }
-    public var linkState: (String) -> CLILinkPlanner.Existing = { path in
-        if let target = try? FileManager.default.destinationOfSymbolicLink(atPath: path) { return .symlink(to: target) }
-        return FileManager.default.fileExists(atPath: path) ? .otherFile : .nothing
-    }
-    public var createLink: (String, String) throws -> Void = { link, target in
-        try FileManager.default.createDirectory(atPath: (link as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: target)
-    }
-    // unlink(2), never a recursive delete, even if the path changed since it was inspected.
-    public var removeLink: (String) throws -> Void = { path in
-        guard unlink(path) == 0 else { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: path]) }
-    }
+    public var resolvePath: (String) -> String = CLILinkEffects.live.resolvePath
+    public var linkState: (String) -> CLILinkPlanner.Existing = CLILinkEffects.live.linkState
+    public var createLink: (String, String) throws -> Void = CLILinkEffects.live.createLink
+    public var removeLink: (String) throws -> Void = CLILinkEffects.live.removeLink
 
     public static var live: CLIEnvironment {
         CLIEnvironment(
@@ -184,37 +167,20 @@ public enum CLI {
     /// Explicit, user-invoked setup. Only one symlink in a user-local directory is
     /// ever created or removed; shell startup files are never edited.
     private static func local(_ command: ParsedCommand, _ environment: CLIEnvironment) throws -> JSONValue {
-        let directory = command.value("dir") ?? "~/.local/bin"
-        // Judge the real (symlink-resolved) directory too, so links cannot escape the home folder.
-        let real = environment.resolvePath((CLILinkPlanner.linkPath(directory: directory, home: environment.home) as NSString).deletingLastPathComponent)
-        if let problem = CLILinkPlanner.validate(directory: directory, home: environment.home) ?? CLILinkPlanner.validate(directory: real, home: environment.resolvePath(environment.home)) {
-            throw CLIFailure.arguments(problem)
-        }
-        let link = { (plan: CLILinkPlanner.Plan) -> String? in
-            switch plan {
-            case .create(let link, _), .replace(let link, _), .alreadyInstalled(let link), .remove(let link): link
-            default: nil
-            }
-        }
+        let directory = command.value("dir") ?? CLILinkInstaller.defaultDirectory
+        let effects = CLILinkEffects(resolvePath: environment.resolvePath, linkState: environment.linkState, createLink: environment.createLink, removeLink: environment.removeLink, isExecutable: { _ in false })
+        if let problem = CLILinkInstaller.directoryProblem(directory: directory, home: environment.home, effects: effects) { throw CLIFailure.arguments(problem) }
         switch command.verb {
         case "install-link":
             let cli = environment.executablePath
-            guard cli.hasSuffix(".app/Contents/Helpers/\(CLILinkPlanner.linkName)") else {
+            guard cli.hasSuffix(CLILinkInstaller.bundledCLISuffix) else {
                 throw CLIFailure.arguments("Run install-link from the trellis inside Trellis.app (Trellis.app/Contents/Helpers/trellis).")
             }
-            let probe = CLILinkPlanner.install(directory: directory, home: environment.home, cliPath: cli, existing: .nothing)
-            guard let path = link(probe) else {
-                if case .refused(let reason) = probe { throw CLIFailure.arguments(reason) }
-                throw CLIFailure.arguments("Invalid directory.")
-            }
-            let plan = CLILinkPlanner.install(directory: directory, home: environment.home, cliPath: cli, existing: environment.linkState(path))
-            switch plan {
-            case .create(let path, let target), .replace(let path, let target):
-                if case .replace = plan { try environment.removeLink(path) }
-                try environment.createLink(path, target)
-            case .alreadyInstalled: break
-            case .refused(let reason): throw CLIFailure(code: "CONFLICT", message: reason, exitStatus: 5)
-            default: break
+            let path: String
+            switch try CLILinkInstaller.install(directory: directory, home: environment.home, cliPath: cli, effects: effects) {
+            case .installed(let link), .replaced(let link), .alreadyInstalled(let link): path = link
+            case .invalidDirectory(let reason): throw CLIFailure.arguments(reason)
+            case .conflict(let reason): throw CLIFailure(code: "CONFLICT", message: reason, exitStatus: 5)
             }
             return .object([
                 "link": .string(path), "target": .string(cli),

@@ -29,6 +29,7 @@ Errors follow JSON-RPC 2.0:
 | `CONFIRMATION_REQUIRED` | A container holds running sessions and `allowRunning` wasn't set. `sessionIds` lists them. | no |
 | `CLOSE_PENDING` | Graceful termination is still under way. Send `force: true` after the 2-second grace period. | yes |
 | `LIMIT_EXCEEDED` | A frame or response is too big, too many authentication attempts, too many idempotency keys or subscriptions, input too large, or the input queue is full | Usually yes |
+| `REMOTE_DISCONNECTED` | Input or `session.execute` for a [remote workspace](../features/remote-workspaces.md) session whose host isn't connected. Nothing is queued; the session keeps running on the host. | yes, after it reconnects |
 | `LAUNCH_FAILED` | The process couldn't be started. `session` holds the failed session record. | no |
 | `INVALID_CURSOR` | An output cursor or event sequence from another session or instance, or one that's ahead of the current position | no |
 | `UNSUPPORTED_VERSION` | The protocol, layout or theme version isn't supported | no |

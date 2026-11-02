@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "trellis-pi",
+  "name": "pi",
+  "executable": "pi",
+  "resumeArguments": ["--continue"],
+  "integration": "pi-extension",
+  "icon": { "monogram": "π" },
+  "install": {
+    "darwin": { "command": "npm install -g @mariozechner/pi-coding-agent", "requires": ["npm"] },
+    "linux": { "command": "npm install -g @mariozechner/pi-coding-agent", "requires": ["npm"] }
+  },
+  "homepage": "https://github.com/badlogic/pi-mono"
+}

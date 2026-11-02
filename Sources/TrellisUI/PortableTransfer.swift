@@ -35,6 +35,7 @@ public struct PortableImportSummary: Equatable, Sendable {
     public let windows: Int
     public let hostsCreated: Int
     public let hostsReplaced: Int
+    public var projectsCreated = 0
 }
 
 /// Interactive import/export. Imports always create fresh IDs and stopped
@@ -43,11 +44,13 @@ public struct PortableImportSummary: Equatable, Sendable {
 public final class PortableTransfer {
     private let model: AppWorkspaceModel
     private let hosts: HostListModel
+    private let projects: ProjectListModel?
 
-    public init(model: AppWorkspaceModel, hosts: HostListModel) { self.model = model; self.hosts = hosts }
+    public init(model: AppWorkspaceModel, hosts: HostListModel, projects: ProjectListModel? = nil) { self.model = model; self.hosts = hosts; self.projects = projects }
 
     public func exportData() async -> (data: Data, convertedProcesses: Int) {
-        let (document, converted) = PortableDocument.export(snapshot: model.snapshot, hosts: await hosts.library.hosts)
+        let library = await projects?.library.projects ?? []
+        let (document, converted) = PortableDocument.export(snapshot: model.snapshot, hosts: await hosts.library.hosts, projects: library)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return ((try? encoder.encode(document)) ?? Data(), converted)
@@ -125,6 +128,8 @@ public final class PortableTransfer {
         var layout = parsed.layout
         for window in layout.windows.indices {
             for tab in layout.windows[window].tabs.indices { layout.windows[window].tabs[tab].root = remap(layout.windows[window].tabs[tab].root) }
+            // FR-R02: a remote workspace stays bound to its host, imported or matched like the panes' hosts.
+            if let reference = layout.windows[window].remoteHostID { layout.windows[window].remoteHostID = mapping[reference] ?? reference }
         }
         let known = Set(existing.map(\.id)).union(mapping.values)
         let plan = plan(layout, hostExists: known.contains)
@@ -152,6 +157,16 @@ public final class PortableTransfer {
             }
         }
         await hosts.load()
-        return .success(PortableImportSummary(windows: parsed.layout.windows.count, hostsCreated: changes.creates.count, hostsReplaced: changes.replacements.count))
+        var summary = PortableImportSummary(windows: parsed.layout.windows.count, hostsCreated: changes.creates.count, hostsReplaced: changes.replacements.count)
+        // Projects come last and are added together; they never replace one you have, so a failure here keeps what was imported.
+        if let projects, !parsed.projects.isEmpty {
+            await projects.library.load()
+            guard let created = try? await projects.library.createAll(parsed.projects) else {
+                return .failure(.workspace("Windows and hosts were imported, but the project library could not be written, so the file's projects weren't added."))
+            }
+            await projects.load()
+            summary.projectsCreated = created.count
+        }
+        return .success(summary)
     }
 }

@@ -31,26 +31,25 @@ public struct HostFileStorage: HostStorage {
     public var backupURL: URL { directory.appendingPathComponent("hosts.backup.json") }
     public init(directory: URL) { self.directory = directory }
 
-    public func read() throws -> Data? { try Self.read(url) }
+    public func read() throws -> Data? { try LibraryFile.read(url, limit: HostLibraryCodec.byteLimit) }
 
     public func write(_ data: Data) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        if let previous = try Self.read(url), (try? HostLibraryCodec.decode(previous)) != nil { try publish(previous, to: backupURL) }
-        try publish(data, to: url)
+        try LibraryFile.write(data, to: url, backup: backupURL, limit: HostLibraryCodec.byteLimit) { (try? HostLibraryCodec.decode($0)) != nil }
     }
 
     /// Renames rather than copies, so oversized, unreadable, or symlinked files are kept too.
-    public func preserveUnreadable() throws {
-        let aside = directory.appendingPathComponent("hosts.unreadable.\(UUID().uuidString).json")
-        guard rename(url.path, aside.path) == 0 || errno == ENOENT else { throw HostLibraryError.io(errno) }
-    }
+    public func preserveUnreadable() throws { try LibraryFile.preserveUnreadable(url, name: "hosts") }
+}
 
-    private static func read(_ url: URL) throws -> Data? {
+/// Owner-only library files in the state directory (hosts, projects): read without following links, published by an
+/// atomic same-directory rename after fsync, the previous valid version kept as a backup.
+enum LibraryFile {
+    static func read(_ url: URL, limit: Int) throws -> Data? {
         let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
         if fd < 0 { if errno == ENOENT { return nil }; throw HostLibraryError.io(errno) }
         defer { _ = close(fd) }
         var info = stat()
-        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= HostLibraryCodec.byteLimit else { throw HostLibraryError.readOnly }
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= limit else { throw HostLibraryError.readOnly }
         var result = Data()
         var buffer = [UInt8](repeating: 0, count: 16_384)
         while true {
@@ -58,12 +57,25 @@ public struct HostFileStorage: HostStorage {
             if count == 0 { return result }
             if count < 0 { if errno == EINTR { continue }; throw HostLibraryError.io(errno) }
             result.append(contentsOf: buffer.prefix(count))
-            guard result.count <= HostLibraryCodec.byteLimit else { throw HostLibraryError.readOnly }
+            guard result.count <= limit else { throw HostLibraryError.readOnly }
         }
     }
 
-    private func publish(_ data: Data, to target: URL) throws {
-        let temporary = directory.appendingPathComponent(".hosts.\(UUID().uuidString).tmp")
+    static func write(_ data: Data, to url: URL, backup: URL, limit: Int, isValid: (Data) -> Bool) throws {
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        if let previous = try read(url, limit: limit), isValid(previous) { try publish(previous, to: backup) }
+        try publish(data, to: url)
+    }
+
+    static func preserveUnreadable(_ url: URL, name: String) throws {
+        let aside = url.deletingLastPathComponent().appendingPathComponent("\(name).unreadable.\(UUID().uuidString).json")
+        guard rename(url.path, aside.path) == 0 || errno == ENOENT else { throw HostLibraryError.io(errno) }
+    }
+
+    private static func publish(_ data: Data, to target: URL) throws {
+        let directory = target.deletingLastPathComponent()
+        let temporary = directory.appendingPathComponent(".\(target.deletingPathExtension().lastPathComponent).\(UUID().uuidString).tmp")
         let fd = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { throw HostLibraryError.io(errno) }
         var openDescriptor = true

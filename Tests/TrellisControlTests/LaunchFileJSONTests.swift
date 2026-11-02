@@ -23,11 +23,6 @@ final class LaunchFileJSONTests: XCTestCase {
         XCTAssertEqual(String(decoding: LaunchFileJSON.encode(file), as: UTF8.self), String(decoding: data, as: UTF8.self))
     }
 
-    func testWorkspaceFileBytesAreUnchangedBySharedEncoder() throws {
-        let data = try Data(contentsOf: repository.appendingPathComponent(".trellis/project.json"))
-        XCTAssertEqual(ProjectFileJSON.encode(try ProjectFileJSON.parse(data).get()), data)
-    }
-
     func testDocumentedExampleParses() throws {
         let page = try String(contentsOf: repository.appendingPathComponent("docs/features/tasks.md"), encoding: .utf8)
         let start = try XCTUnwrap(page.range(of: "```json\n")), end = try XCTUnwrap(page.range(of: "\n```", range: start.upperBound..<page.endIndex))

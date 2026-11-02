@@ -55,11 +55,16 @@ public struct SavedHost: Identifiable, Equatable, Codable, Sendable {
     /// The launch frozen into a session when it starts. Options precede `--`, so
     /// the destination can never be parsed as an ssh option.
     public var connectionLaunch: SessionLaunch {
+        .process(executable: "/usr/bin/ssh", arguments: sshOptions + ["--", destination], directory: nil)
+    }
+
+    /// The explicitly set fields as ssh options; shared by SSH panes and remote workspace links (FR-RW03).
+    public var sshOptions: [String] {
         var arguments: [String] = []
         if let port { arguments += ["-p", String(port)] }
         if let user { arguments += ["-l", user] }
         if let identityFile { arguments += ["-i", identityFile] }
-        return .process(executable: "/usr/bin/ssh", arguments: arguments + ["--", destination], directory: nil)
+        return arguments
     }
 
     /// Case-insensitive; every whitespace-separated term must match a name,

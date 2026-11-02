@@ -32,14 +32,15 @@ rm -rf "$dist"
 mkdir -p "$dist"
 
 # Per-architecture native builds (the multi-arch Xcode path needs a Metal
-# toolchain for SwiftTerm's shader), combined into Universal 2 with lipo.
+# toolchain for SwiftTerm's shader), combined into Universal 2 with lipo. Each architecture gets its own scratch path:
+# the swiftbuild build system (SwiftPM's default since Swift 6.4) uses one bin path for every --triple.
 for arch in arm64 x86_64; do
     for product in Trellis trellis-cli trellis-askpass trellis-broker; do
-        swift build --configuration release --triple "$arch-apple-macosx$minimum" --product "$product"
+        swift build --configuration release --scratch-path ".build/release-$arch" --triple "$arch-apple-macosx$minimum" --product "$product"
     done
 done
-arm=$(swift build --configuration release --triple "arm64-apple-macosx$minimum" --show-bin-path)
-intel=$(swift build --configuration release --triple "x86_64-apple-macosx$minimum" --show-bin-path)
+arm=$(swift build --configuration release --scratch-path .build/release-arm64 --triple "arm64-apple-macosx$minimum" --show-bin-path)
+intel=$(swift build --configuration release --scratch-path .build/release-x86_64 --triple "x86_64-apple-macosx$minimum" --show-bin-path)
 bin="$dist/universal"
 mkdir -p "$bin"
 for product in Trellis trellis-cli trellis-askpass trellis-broker; do
@@ -55,6 +56,14 @@ cp "$bin/Trellis" "$app/Contents/MacOS/Trellis"
 cp "$bin/trellis-cli" "$app/Contents/Helpers/trellis"
 cp "$bin/trellis-askpass" "$app/Contents/Helpers/trellis-askpass"
 cp "$bin/trellis-broker" "$app/Contents/Helpers/trellis-broker"
+# Linux remote helpers (FR-RW02): built with Docker by scripts/build-remote-helpers.sh into TRELLIS_REMOTE_HELPERS.
+# They are data, so they go in Resources: codesign refuses unsigned files under Contents/Helpers.
+remote_helpers="${TRELLIS_REMOTE_HELPERS:-.build/remote-helpers}"
+if [ -f "$remote_helpers/remote-helpers.json" ]; then
+    cp -R "$remote_helpers" "$app/Contents/Resources/remote"
+else
+    echo "package-release: no Linux remote helpers in $remote_helpers; this build supports only macOS remote hosts" >&2
+fi
 cp -R "$bin/SwiftTerm_SwiftTerm.bundle" "$bin/Trellis_TrellisCore.bundle" "$app/Contents/Resources/"
 /usr/bin/ditto "$bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
 rm -rf "$bin"

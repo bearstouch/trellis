@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "trellis-claude-code",
+  "name": "Claude Code",
+  "executable": "claude",
+  "resumeArguments": ["--continue"],
+  "integration": "claude-hooks",
+  "icon": { "symbol": "asterisk" },
+  "install": {
+    "darwin": { "command": "curl -fsSL https://claude.ai/install.sh | bash", "requires": ["curl", "bash"] },
+    "linux": { "command": "curl -fsSL https://claude.ai/install.sh | bash", "requires": ["curl", "bash"] }
+  },
+  "homepage": "https://docs.claude.com/en/docs/claude-code/overview"
+}

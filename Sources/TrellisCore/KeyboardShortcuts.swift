@@ -44,10 +44,10 @@ public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view
 
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts
-    // Saved keyboard settings store raw values; this keeps its name from before project files were renamed.
-    case openProjectFile = "openWorkspaceFile"
+    /// The project library (FR-PL01). The stored name predates it, so a customized ⌘O carries over.
+    case showProjects = "openWorkspaceFile"
     case findInPane, findNext, findPrevious, previousPrompt, nextPrompt, clearPane
-    case zoomIn, zoomOut, actualSize, toggleSidebar, toggleScratchpad, commandPalette
+    case zoomIn, zoomOut, actualSize, toggleSidebar, toggleScratchpad, commandPalette, jumpToDirectory
     case splitLeftRight, splitTopBottom, maximizePane
     case focusLeft, focusRight, focusUp, focusDown
     case resizeLeft, resizeRight, resizeUp, resizeDown
@@ -65,7 +65,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .deleteWindow: "Delete Window…"
         case .saveWorkspace: "Save Workspace"
         case .showHosts: "Hosts…"
-        case .openProjectFile: "Open Project…"
+        case .showProjects: "Projects…"
         case .findInPane: "Find in Pane…"
         case .findNext: "Find Next"
         case .findPrevious: "Find Previous"
@@ -78,6 +78,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .toggleSidebar: "Toggle Sidebar"
         case .toggleScratchpad: "Toggle Scratchpad"
         case .commandPalette: "Command Palette…"
+        case .jumpToDirectory: "Jump to Directory…"
         case .splitLeftRight: "Split Left/Right"
         case .splitTopBottom: "Split Top/Bottom"
         case .maximizePane: "Maximize / Restore Pane"
@@ -105,9 +106,9 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
 
     public var menu: ShortcutMenu {
         switch self {
-        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .openProjectFile: .file
+        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .showProjects: .file
         case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt, .clearPane: .edit
-        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleScratchpad, .commandPalette: .view
+        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleScratchpad, .commandPalette, .jumpToDirectory: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             .pane
@@ -122,7 +123,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .closePane: KeyChord("w")
         case .closeTab: KeyChord("w", [.command, .shift])
         case .saveWorkspace: KeyChord("s")
-        case .openProjectFile: KeyChord("o")
+        case .showProjects: KeyChord("o")
         case .findInPane: KeyChord("f")
         case .findNext: KeyChord("g")
         case .findPrevious: KeyChord("g", [.command, .shift])
@@ -135,6 +136,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .toggleSidebar: KeyChord("s", [.command, .control])
         case .toggleScratchpad: KeyChord("e", [.command, .option])
         case .commandPalette: KeyChord("p", [.command, .shift])
+        case .jumpToDirectory: KeyChord("j")
         case .splitLeftRight: KeyChord("d")
         case .splitTopBottom: KeyChord("d", [.command, .shift])
         case .maximizePane: KeyChord("return", [.command, .shift])
@@ -256,7 +258,7 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
     private struct Override: Codable { var chord: KeyChord? }
 
     /// Actions whose default chord shipped after saved maps already existed.
-    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .openProjectFile, .toggleScratchpad, .commandPalette]
+    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .showProjects, .toggleScratchpad, .commandPalette, .jumpToDirectory]
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)

@@ -1,8 +1,10 @@
 # Workflow actions are pinned to commit SHAs (the release job holds signing secrets);
-# Dependabot keeps the pins and their version comments current.
+# Dependabot keeps the pins and their version comments current; its PRs land on develop
+# so they ship with the next develop → master release merge.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly

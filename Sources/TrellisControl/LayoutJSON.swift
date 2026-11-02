@@ -10,7 +10,8 @@ public struct LayoutParseError: Error, Equatable, Sendable {
 }
 
 public enum LayoutJSON {
-    public static func parse(_ value: JSONValue?) -> Result<LayoutDocument, LayoutParseError> {
+    /// `allowRemoteHosts`: exports (FR-R02) may bind a window to a host reference; API layouts never can (FR-RW15).
+    public static func parse(_ value: JSONValue?, allowRemoteHosts: Bool = false) -> Result<LayoutDocument, LayoutParseError> {
         var issues: [LayoutIssue] = []
         func fail(_ key: String?, _ message: String) { issues.append(LayoutIssue(key: key, message)) }
         func object(_ value: JSONValue?, _ allowed: Set<String>, _ required: Set<String>, _ context: String) -> [String: JSONValue]? {
@@ -78,9 +79,14 @@ public enum LayoutJSON {
         guard case .array(let rawWindows)? = root["windows"] else { return .failure(LayoutParseError(issues: issues + [LayoutIssue(key: nil, "windows must be an array.")])) }
         var windows: [LayoutWindow] = []
         for rawWindow in rawWindows.prefix(11) {
-            guard let fields = object(rawWindow, ["key", "name", "tabs"], ["key", "name", "tabs"], "window"),
+            guard let fields = object(rawWindow, allowRemoteHosts ? ["key", "name", "tabs", "remoteHostId"] : ["key", "name", "tabs"], ["key", "name", "tabs"], "window"),
                 let key = string(fields["key"], nil, "key"), let name = string(fields["name"], key, "name")
             else { continue }
+            var remoteHostID: UUID?
+            if let raw = fields["remoteHostId"] {
+                guard case .string(let text) = raw, let id = UUID(uuidString: text) else { fail(key, "remoteHostId must be a UUID."); continue }
+                remoteHostID = id
+            }
             guard case .array(let rawTabs)? = fields["tabs"] else { fail(key, "tabs must be an array."); continue }
             var tabs: [LayoutTab] = []
             for rawTab in rawTabs.prefix(51) {
@@ -90,7 +96,7 @@ public enum LayoutJSON {
                 else { continue }
                 tabs.append(LayoutTab(key: tabKey, title: title, root: root))
             }
-            windows.append(LayoutWindow(key: key, name: name, tabs: tabs))
+            windows.append(LayoutWindow(key: key, name: name, tabs: tabs, remoteHostID: remoteHostID))
         }
         if rawWindows.count > 10 { fail(nil, "Use at most 10 windows.") }
         return issues.isEmpty ? .success(LayoutDocument(windows: windows)) : .failure(LayoutParseError(issues: issues))

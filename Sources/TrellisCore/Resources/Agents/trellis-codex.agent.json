@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "trellis-codex",
+  "name": "Codex",
+  "executable": "codex",
+  "resumeArguments": ["resume", "--last"],
+  "integration": "codex-notify",
+  "icon": { "symbol": "curlybraces" },
+  "install": {
+    "darwin": { "command": "npm install -g @openai/codex", "requires": ["npm"] },
+    "linux": { "command": "npm install -g @openai/codex", "requires": ["npm"] }
+  },
+  "homepage": "https://github.com/openai/codex"
+}

@@ -17,7 +17,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis-broker"), "The keep-running session broker is bundled")
         XCTAssertTrue(UninstallPlanner.firstStep.contains("trellis-broker"), "Uninstalling first ends kept sessions")
         XCTAssertEqual(UninstallPlanner.keychainServices, ["Trellis Automation", "Trellis SSH Host"], "Uninstall lists every Keychain service")
-        XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT", "MIT"] + Array(repeating: "OFL-1.1", count: 6))
+        XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT", "MIT"] + Array(repeating: "OFL-1.1", count: 6) + ["MIT", "MIT", "BSD-3-Clause"], "Plus musl, mimalloc and musl-fts in the Linux remote helpers")
         // Package.swift's deployment target must match the release policy.
         let package = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)
         let packageMinimum = package.contains(".macOS(.v14)") ? "14.0" : "unknown"
@@ -82,6 +82,154 @@ final class ReleaseTests: XCTestCase {
         }
         XCTAssertEqual(CLILinkPlanner.remove(directory: "~/.local/bin", home: home, existing: .symlink(to: cli)), .remove(link: "/Users/fixture/.local/bin/trellis"))
         XCTAssertEqual(CLILinkPlanner.remove(directory: "~/.local/bin", home: home, existing: .nothing), .nothingToRemove)
+    }
+
+    private final class FakeLinks {
+        var state: [String: CLILinkPlanner.Existing] = [:]
+        var executables: Set<String> = []
+        var resolved: [String: String] = [:]
+        var createFailures = 0
+        var log: [String] = []
+        var effects: CLILinkEffects {
+            CLILinkEffects(
+                resolvePath: { self.resolved[$0] ?? $0 }, linkState: { self.state[$0] ?? .nothing },
+                createLink: { link, target in
+                    if self.createFailures > 0 { self.createFailures -= 1; throw CocoaError(.fileWriteUnknown) }
+                    self.log.append("create \(link) -> \(target)"); self.state[link] = .symlink(to: target)
+                },
+                removeLink: {
+                    self.log.append("remove \($0)"); self.state[$0] = nil
+                }, isExecutable: { self.executables.contains($0) })
+        }
+    }
+    private let fixtureHome = "/Users/fixture", fixtureBundle = "/Applications/Trellis.app"
+    private let fixtureCLI = "/Applications/Trellis.app/Contents/Helpers/trellis", fixtureLink = "/Users/fixture/.local/bin/trellis"
+
+    func testInstallerCreatesOneLinkAndLeavesConflictsAlone() throws {
+        let fake = FakeLinks()
+        XCTAssertEqual(try CLILinkInstaller.install(home: fixtureHome, cliPath: fixtureCLI, effects: fake.effects), .installed(link: fixtureLink))
+        XCTAssertEqual(fake.log, ["create \(fixtureLink) -> \(fixtureCLI)"])
+        XCTAssertEqual(try CLILinkInstaller.install(home: fixtureHome, cliPath: fixtureCLI, effects: fake.effects), .alreadyInstalled(link: fixtureLink))
+        XCTAssertEqual(fake.log.count, 1, "Installing again changes nothing")
+        for existing: CLILinkPlanner.Existing in [.otherFile, .symlink(to: "/opt/homebrew/bin/other-trellis")] {
+            let other = FakeLinks(); other.state[fixtureLink] = existing
+            guard case .conflict = try CLILinkInstaller.install(home: fixtureHome, cliPath: fixtureCLI, effects: other.effects) else { return XCTFail("Replaced \(existing)") }
+            XCTAssertEqual(other.log, [])
+        }
+    }
+
+    func testInstallerRefusesADirectoryThatResolvesOutsideHome() throws {
+        let fake = FakeLinks(); fake.resolved["/Users/fixture/.local/bin"] = "/usr/local/bin"
+        guard case .invalidDirectory = try CLILinkInstaller.install(home: fixtureHome, cliPath: fixtureCLI, effects: fake.effects) else { return XCTFail("Linked outside home") }
+        XCTAssertEqual(fake.log, [])
+    }
+
+    func testFailedReplaceRestoresThePreviousLink() {
+        let fake = FakeLinks(), previous = "/Users/fixture/Downloads/Trellis.app/Contents/Helpers/trellis"
+        fake.state[fixtureLink] = .symlink(to: previous); fake.createFailures = 1
+        XCTAssertThrowsError(try CLILinkInstaller.install(home: fixtureHome, cliPath: fixtureCLI, effects: fake.effects))
+        XCTAssertEqual(fake.state[fixtureLink], .symlink(to: previous))
+    }
+
+    func testInstallLocationSeparatesStableFromTransient() {
+        XCTAssertEqual(CLILinkInstaller.location(bundlePath: fixtureBundle, home: fixtureHome, isReadOnlyVolume: false), .stable)
+        XCTAssertEqual(CLILinkInstaller.location(bundlePath: "/Users/fixture/Applications/Trellis.app", home: fixtureHome, isReadOnlyVolume: false), .stable)
+        XCTAssertEqual(CLILinkInstaller.location(bundlePath: "/Users/fixture/Downloads/Trellis.app", home: fixtureHome, isReadOnlyVolume: false), .elsewhere)
+        XCTAssertEqual(CLILinkInstaller.location(bundlePath: "/Volumes/Trellis 1.0/Trellis.app", home: fixtureHome, isReadOnlyVolume: true), .transient)
+        XCTAssertEqual(CLILinkInstaller.location(bundlePath: "/private/var/folders/x/AppTranslocation/ABC/d/Trellis.app", home: fixtureHome, isReadOnlyVolume: false), .transient)
+    }
+
+    func testOfferAsksOnlyWhenALinkWouldWorkAndNoneExists() {
+        let offer = { (fake: FakeLinks, bundle: String, readOnly: Bool) in
+            CLILinkInstaller.offer(bundlePath: bundle, home: self.fixtureHome, isReadOnlyVolume: readOnly, effects: fake.effects)
+        }
+        XCTAssertEqual(offer(FakeLinks(), fixtureBundle, false), .ask)
+        XCTAssertEqual(offer(FakeLinks(), "/Volumes/Trellis/Trellis.app", true), .skip, "A link into the DMG would break")
+        XCTAssertEqual(offer(FakeLinks(), "/Users/fixture/Downloads/Trellis.app", false), .skip)
+        let installed = FakeLinks(); installed.state[fixtureLink] = .symlink(to: fixtureCLI)
+        XCTAssertEqual(offer(installed, fixtureBundle, false), .alreadyInstalled)
+        let inBin = FakeLinks(); inBin.state["/Users/fixture/bin/trellis"] = .symlink(to: fixtureCLI)
+        XCTAssertEqual(offer(inBin, fixtureBundle, false), .alreadyInstalled, "A link made with --dir ~/bin counts")
+        let conflict = FakeLinks(); conflict.state[fixtureLink] = .otherFile
+        XCTAssertEqual(offer(conflict, fixtureBundle, false), .skip, "Don't offer what would fail")
+        let stale = FakeLinks(); stale.state[fixtureLink] = .symlink(to: "/Users/fixture/Downloads/Trellis.app/Contents/Helpers/trellis")
+        XCTAssertEqual(offer(stale, fixtureBundle, false), .ask, "A link to a moved copy can be repaired")
+        let escaped = FakeLinks(); escaped.resolved["/Users/fixture/.local/bin"] = "/usr/local/bin"
+        XCTAssertEqual(offer(escaped, fixtureBundle, false), .skip)
+        XCTAssertEqual(escaped.log, [], "Offering never changes anything")
+    }
+
+    func testPathStatusFindsWhichTrellisRuns() {
+        let fake = FakeLinks(); fake.executables = [fixtureLink]; fake.resolved[fixtureLink] = fixtureCLI
+        let status = { (path: [String]?) in CLILinkInstaller.pathStatus(link: self.fixtureLink, searchPath: path, effects: fake.effects) }
+        XCTAssertEqual(status(nil), .unknown)
+        XCTAssertEqual(status(["/usr/bin", "/bin"]), .notOnPath)
+        XCTAssertEqual(status(["/usr/bin", "/Users/fixture/.local/bin/"]), .onPath, "A trailing slash is the same directory")
+        fake.executables.insert("/opt/homebrew/bin/trellis")
+        XCTAssertEqual(status(["/opt/homebrew/bin", "/Users/fixture/.local/bin"]), .shadowed(by: "/opt/homebrew/bin/trellis"))
+        XCTAssertEqual(status(["/Users/fixture/.local/bin", "/opt/homebrew/bin"]), .onPath)
+        fake.resolved["/opt/homebrew/bin/trellis"] = fixtureCLI
+        XCTAssertEqual(status(["/opt/homebrew/bin", "/Users/fixture/.local/bin"]), .onPath, "Another link to the same CLI isn't a rival")
+    }
+
+    func testPathSetupCommandMatchesTheShell() {
+        XCTAssertEqual(CLILinkInstaller.pathSetupCommand(shell: "/bin/zsh"), #"echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc"#)
+        XCTAssertEqual(CLILinkInstaller.pathSetupCommand(shell: "/bin/bash"), #"echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile"#)
+        XCTAssertEqual(CLILinkInstaller.pathSetupCommand(shell: "/opt/homebrew/bin/fish"), "fish_add_path $HOME/.local/bin")
+        XCTAssertEqual(CLILinkInstaller.pathSetupCommand(shell: "/bin/ksh"), #"export PATH="$HOME/.local/bin:$PATH""#)
+    }
+
+    func testLoginShellPathParsesOnlyTheMarkedValue() {
+        XCTAssertEqual(LoginShellPath.parse("Welcome!\n__TRELLIS_PATH_BEGIN__/a:/b__TRELLIS_PATH_END__\nbye"), ["/a", "/b"])
+        XCTAssertEqual(LoginShellPath.parse("__TRELLIS_PATH_BEGIN__/old__TRELLIS_PATH_END__ __TRELLIS_PATH_BEGIN__/new__TRELLIS_PATH_END__"), ["/new"])
+        XCTAssertNil(LoginShellPath.parse("no markers"))
+        XCTAssertNil(LoginShellPath.parse("__TRELLIS_PATH_BEGIN____TRELLIS_PATH_END__"), "An empty PATH is unknown, not 'not on PATH'")
+    }
+
+    private func fakeShell(_ body: String) throws -> (URL, String) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tshell-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let script = directory.appendingPathComponent("shell")
+        try ("#!/bin/sh\n" + body + "\n").write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        return (directory, script.path)
+    }
+
+    func testLoginShellPathReadsThroughStartupNoise() throws {
+        let (directory, shell) = try fakeShell(#"echo "startup noise"; PATH=/fixture/a:/fixture/b:$PATH; eval "$4"; echo after"#)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        XCTAssertEqual(LoginShellPath.query(shell: shell)?.prefix(2), ["/fixture/a", "/fixture/b"])
+    }
+
+    func testLoginShellPathGivesUpOnAHangingOrFailingShell() throws {
+        // Ignores SIGTERM and keeps a child holding the pipe, the worst a startup file can do.
+        let (directory, hanging) = try fakeShell("trap '' TERM; sleep 20 & while true; do sleep 1; done")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let started = Date()
+        XCTAssertNil(LoginShellPath.query(shell: hanging, timeout: 0.3))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+        let (failingDirectory, failing) = try fakeShell("exit 1")
+        defer { try? FileManager.default.removeItem(at: failingDirectory) }
+        XCTAssertNil(LoginShellPath.query(shell: failing))
+        XCTAssertNil(LoginShellPath.query(shell: "/nonexistent/shell"))
+    }
+
+    func testLoginShellPathDoesNotLeakDescriptors() throws {
+        let (directory, shell) = try fakeShell(#"eval "$4""#)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let open = { (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? 0 }
+        XCTAssertNotNil(LoginShellPath.query(shell: shell))
+        let before = open()
+        for _ in 0..<12 { XCTAssertNotNil(LoginShellPath.query(shell: shell)) }
+        XCTAssertLessThan(open() - before, 6, "Each query closes its pipe")
+    }
+
+    func testLiveExecutableCheckIgnoresADirectory() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("texec-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        XCTAssertFalse(CLILinkEffects.live.isExecutable(directory.path))
+        XCTAssertTrue(CLILinkEffects.live.isExecutable("/bin/sh"))
     }
 
     func testCleanupAllowlistProtectsUserFiles() {

@@ -42,7 +42,12 @@ public struct AppSettingsView: View {
                         selection = section
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: section.symbol).frame(width: 18)
+                            Image(systemName: section.symbol)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 20, height: 20)
+                                .background(section.tint.gradient, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                .accessibilityHidden(true)
                             Text(section.rawValue)
                             Spacer()
                         }
@@ -74,10 +79,14 @@ public struct AppSettingsView: View {
                         ScrollView { AppearanceSettingsView(model: model).disabled(model.previewedTheme != nil) }
                     case .sessions:
                         ScrollView { LaunchSettingsView(model: model) }
+                    case .broker:
+                        ScrollView { SessionBrokerStatusView(model: model).padding(.top, 8) }
                     case .keyboard:
                         KeyboardSettingsView(model: model)
                     case .themes:
                         ThemePreviewView(workspace: model)
+                    case .agents:
+                        ScrollView { AgentSettingsView(model: model) }
                     case .automation:
                         if let grants, let hosts { AutomationSettingsView(grants: grants, workspace: model, hosts: hosts) }
                     case .remoteControl:
@@ -102,26 +111,45 @@ public struct AppSettingsView: View {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case appearance = "Appearance", sessions = "Sessions", keyboard = "Keyboard", themes = "Themes", automation = "Automation"
+    case appearance = "Appearance", sessions = "Sessions", broker = "Session Broker", keyboard = "Keyboard", themes = "Themes", agents = "Agents"
+    case automation = "Automation"
     case remoteControl = "Remote Control", updates = "Updates"
     var id: Self { self }
     var symbol: String {
         switch self {
-        case .appearance: "paintbrush"
-        case .sessions: "terminal"
-        case .keyboard: "keyboard"
-        case .themes: "swatchpalette"
-        case .automation: "bolt"
+        case .appearance: "paintbrush.fill"
+        case .sessions: "terminal.fill"
+        case .broker: "server.rack"
+        case .keyboard: "command"
+        case .themes: "swatchpalette.fill"
+        case .agents: "sparkles"
+        case .automation: "bolt.fill"
         case .remoteControl: "antenna.radiowaves.left.and.right"
-        case .updates: "arrow.down.circle"
+        case .updates: "arrow.down"
+        }
+    }
+    /// Tile color behind the white glyph, System Settings style; fixed so it reads on any theme.
+    var tint: Color {
+        switch self {
+        case .appearance: .blue
+        case .sessions: Color(white: 0.2)
+        case .broker: .teal
+        case .keyboard: .gray
+        case .themes: .pink
+        case .agents: .purple
+        case .automation: .orange
+        case .remoteControl: .indigo
+        case .updates: .green
         }
     }
     var detail: String {
         switch self {
         case .appearance: "Customize the window, terminal text, and cursor."
         case .sessions: "Choose how sessions start, draw, and keep their output."
+        case .broker: "The helpers that keep sessions running, on this Mac and on your hosts."
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
+        case .agents: "The coding agents the Agent button launches, and how they report their state."
         case .automation: "Manage access for scripts and agents."
         case .remoteControl: "Let agents connect over the Model Context Protocol (MCP)."
         case .updates: "Check for new versions of Trellis and install them."

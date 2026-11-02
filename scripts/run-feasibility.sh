@@ -34,6 +34,10 @@ chmod u+x "$bundle/Contents/Helpers/trellis-askpass"
 # Opt-in session broker that keeps sessions running after quit (FR-R03).
 cp "$bin_path/trellis-broker" "$bundle/Contents/Helpers/trellis-broker"
 chmod u+x "$bundle/Contents/Helpers/trellis-broker"
+# Linux remote helpers (FR-RW02), when scripts/build-remote-helpers.sh has built them; without them only macOS hosts work.
+# They are data (gzipped ELF files), so they go in Resources: codesign refuses unsigned files under Contents/Helpers.
+rm -rf "$bundle/Contents/Helpers/remote" "$bundle/Contents/Resources/remote"
+if [ -f "$bin_path/remote/remote-helpers.json" ]; then mkdir -p "$bundle/Contents/Resources"; cp -R "$bin_path/remote" "$bundle/Contents/Resources/remote"; fi
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

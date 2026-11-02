@@ -19,6 +19,20 @@ defaults:
     shell: bash
 
 jobs:
+  linux-broker:
+    name: Remote helper on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: swift:6.4.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Build and test trellis-broker
+        run: |
+          swift build 2>&1 | tee build.log
+          if grep -E '/Sources/[^ ]*: warning:' build.log; then echo "::error::Build produced warnings in project sources"; exit 1; fi
+          swift test
+
   build-test:
     name: Lint, build and test
     runs-on: macos-26

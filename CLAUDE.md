@@ -15,8 +15,8 @@ remaining qualification work is tracked in `docs/overview/status.md`.
   Requirement IDs (`FR-`, `API-`, `INT-`, `MAC-`) are stable. Backlog: `docs/project/roadmap.md`.
 - Contract fixtures read by tests:
   `docs/api/example-layout.json`, `docs/themes/*.json` (must match bundled theme copies),
-  `.trellis/project.json` and `.trellis/launch.json` (this repo's own project and tasks files; must
-  re-encode to identical bytes) and the examples in `docs/features/project-files.md` and `docs/features/tasks.md`.
+  `.trellis/launch.json` (this repo's own tasks file; must re-encode to identical bytes) and the examples in
+  `docs/features/tasks.md`.
 
 ## Toolchain and commands
 
@@ -36,6 +36,10 @@ python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debu
 python3 scripts/qualify.py [--quick]        # release qualification (~5 min, opens isolated app windows; report in .build/)
 python3 scripts/bench-renderer.py [--quick] # Metal vs CoreGraphics benchmarks (FR-TX05; keep its windows visible)
 scripts/package-release.sh                  # Universal 2 DMG; ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE
+scripts/test-linux.sh                       # trellis-broker build + tests on Linux (Docker); the manifest is broker-only there
+scripts/build-remote-helpers.sh [OUT]       # static Linux remote helpers, gzipped, with remote-helpers.json (Docker)
+scripts/test-remote-docker.sh               # remote-link tests against a disposable sshd container (Docker)
+scripts/verify-remote-projects.sh [--keep]  # guided manual check of remote workspaces + project library (Docker; report in .build/manual-verify)
 ```
 
 There is no SwiftLint/SwiftFormat binary; use the toolchain's `swift format` with the repo
@@ -125,4 +129,7 @@ are recorded as **pending**, never as passed. Document blockers instead of fakin
   `Trellis_TrellisCore`) into the app; a new target with resources must be added there too.
   It also copies and signs the bundled helpers (`trellis-askpass`, `trellis-broker`); a new helper
   goes there, in both packaging scripts and in `release/manifest.json`.
+- `trellis-broker` also runs on remote Linux/macOS hosts (remote workspaces, FR-RW): keep `TrellisPOSIX` and
+  `TrellisBroker` portable (`#if canImport(Darwin)`/`Glibc`/`Musl`, FoundationEssentials, no NSString paths) and check
+  with `scripts/test-linux.sh`. Protocol changes must stay readable by a running older broker (version ranges in `hello`).
 - Settings/theme preview state is never persisted; cancelling must restore exact prior state.

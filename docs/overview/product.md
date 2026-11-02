@@ -70,7 +70,7 @@ A script can build the same workspace, discover its IDs, observe the output it's
 4. In Operations, connect to a saved SSH alias and inspect a failed connection.
 5. Use the CLI to list the same object IDs and apply a layout twice.
 6. Confirm a restricted agent can't read output.
-7. Quit (accepting the running-session confirmation) and reopen. The layout returns stopped until it's explicitly started. With **Keep sessions running after quit** on (FR-R03), choosing Keep Running instead brings the kept sessions back running in their panes.
+7. Quit and reopen. Sessions keep running in the broker and come back running in their panes (FR-R03, FR-R07). With **Stop sessions when Trellis quits** on, quitting asks to end them and the layout returns stopped until it's explicitly started.
 
 ## Milestones
 

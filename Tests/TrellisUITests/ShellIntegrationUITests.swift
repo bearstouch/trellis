@@ -197,6 +197,116 @@ final class ShellIntegrationUITests: XCTestCase {
         XCTAssertEqual(model.paneTitle(pane), "top")
     }
 
+    // MARK: FR-AG15
+
+    /// Waits for the session to run: `tabAgent` only considers running panes.
+    @MainActor
+    private func makeShellPane(_ model: AppWorkspaceModel) async throws -> UUID {
+        await model.createWindow(name: "Typed agent")
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        _ = try await output(model, pane, containing: "ARGS=")
+        try emit(model, pane, .promptStart(directory: root.appendingPathComponent("project dir").path))
+        return pane
+    }
+
+    @MainActor
+    func testATypedAgentShowsItsIconAndTitleWithoutBecomingAnAgentPane() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        let tab = try XCTUnwrap(model.presentation.selectedTab)
+        let launch = model.snapshot.panes[pane].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
+        XCTAssertNil(model.tabAgent(tabID: tab.id))
+
+        try emit(model, pane, .commandStart(commandLine: "claude --continue"))
+        XCTAssertEqual(model.detectedAgent(paneID: pane)?.id, "trellis-claude-code")
+        XCTAssertEqual(model.tabAgent(tabID: tab.id)?.id, "trellis-claude-code")
+        XCTAssertEqual(model.tabPreviews(windowID: tab.windowID).first?.agent?.id, "trellis-claude-code", "the hover card shows it too")
+        XCTAssertEqual(model.paneTitle(pane), "Claude Code · project dir")
+        XCTAssertEqual(model.displayTitle(try XCTUnwrap(model.presentation.selectedTab)), "Claude Code · project dir")
+
+        // A shell pane, still: nothing about its launch or its lifecycle changes, and no state is claimed.
+        XCTAssertNil(model.agentLaunch(paneID: pane))
+        XCTAssertNil(model.agentDefinition(paneID: pane))
+        XCTAssertNil(model.agentBadge(tabID: tab.id))
+        XCTAssertNil(model.agentStates[pane])
+        XCTAssertEqual(model.snapshot.panes[pane].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }, launch)
+    }
+
+    @MainActor
+    func testATypedAgentIsMatchedByItsProgramNameOnly() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        for line in ["env claude", "FOO=1 claude", "/Users/me/.local/bin/claude -p hi", "command claude"] {
+            try emit(model, pane, .commandStart(commandLine: line))
+            XCTAssertEqual(model.detectedAgent(paneID: pane)?.id, "trellis-claude-code", line)
+            try emit(model, pane, .commandFinished(exitCode: 0))
+        }
+        for line in ["vim claude", "claude-foo", "cd api && claude", "ls"] {
+            try emit(model, pane, .commandStart(commandLine: line))
+            XCTAssertNil(model.detectedAgent(paneID: pane), line)
+            try emit(model, pane, .commandFinished(exitCode: 0))
+        }
+    }
+
+    @MainActor
+    func testATypedAgentClearsWhenItsCommandEndsOrThePromptReturns() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        let tab = try XCTUnwrap(model.presentation.selectedTab)
+        try emit(model, pane, .commandStart(commandLine: "codex"))
+        XCTAssertEqual(model.tabAgent(tabID: tab.id)?.id, "trellis-codex")
+        try emit(model, pane, .commandFinished(exitCode: 0))
+        XCTAssertNil(model.tabAgent(tabID: tab.id))
+        XCTAssertEqual(model.paneTitle(pane), "project dir")
+
+        // A shell that lost its finish mark still reports the next prompt.
+        try emit(model, pane, .commandStart(commandLine: "codex"))
+        XCTAssertNotNil(model.tabAgent(tabID: tab.id))
+        try emit(model, pane, .promptStart(directory: nil))
+        XCTAssertNil(model.tabAgent(tabID: tab.id))
+    }
+
+    @MainActor
+    func testTerminalSignalsGiveATypedAgentNoState() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        let tab = try XCTUnwrap(model.presentation.selectedTab)
+        try emit(model, pane, .commandStart(commandLine: "claude"))
+        for signal in [AgentSignal.inputSubmitted, .attention, .progress(active: true)] { model.applyAgentSignal(signal, paneID: pane) }
+        XCTAssertNil(model.agentStates[pane], "without hooks nothing would ever end a Working")
+        XCTAssertNil(model.agentBadge(tabID: tab.id))
+    }
+
+    @MainActor
+    func testATypedAgentInTheHomeFolderIsTitledWithATilde() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        try emit(model, pane, .promptStart(directory: FileManager.default.homeDirectoryForCurrentUser.path), .commandStart(commandLine: "claude"))
+        XCTAssertEqual(model.paneTitle(pane), "Claude Code · ~")
+    }
+
+    func testANarrowPaneShowsATypedAgentsIconWithoutItsName() {
+        XCTAssertFalse(AgentStateLabel.fitsName(paneWidth: 494), "half of a default window")
+        XCTAssertTrue(AgentStateLabel.fitsName(paneWidth: 986), "a whole default window")
+    }
+
+    @MainActor
+    func testARenamedTabKeepsItsNameWhileATypedAgentRuns() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        let tab = try XCTUnwrap(model.presentation.selectedTab)
+        await model.renameTab(tab.id, title: "Server")
+        try emit(model, pane, .commandStart(commandLine: "claude"))
+        XCTAssertEqual(model.displayTitle(try XCTUnwrap(model.presentation.selectedTab)), "Server")
+        XCTAssertEqual(model.tabAgent(tabID: tab.id)?.id, "trellis-claude-code", "the icon still shows")
+    }
+
     @MainActor
     func testFailedCommandIsAnnouncedAndClearsOnTheNextCommand() async throws {
         let model = try await makeModel()

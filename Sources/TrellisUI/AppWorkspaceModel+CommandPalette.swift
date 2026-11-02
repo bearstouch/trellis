@@ -21,7 +21,9 @@ extension AppWorkspaceModel {
     public func openCommandPalette() {
         guard !commandPaletteVisible, !isRestoring, recoveryMessage == nil, !shuttingDown else { return }
         // Read now: some actions are enabled only while a terminal, not the palette's field, has focus.
-        commandPaletteActions = ShortcutAction.allCases.filter { $0 != .commandPalette && $0.tabIndex == nil && canPerformShortcutAction?($0) == true }
+        // Jump to Directory is listed as its scope, whose row only needs a remembered directory.
+        commandPaletteActions = ShortcutAction.allCases.filter { $0 != .commandPalette && $0 != .jumpToDirectory && $0.tabIndex == nil && canPerformShortcutAction?($0) == true }
+        commandPaletteOpenedAt = activityNow()
         // The scratchpad editor gets its focus back; a terminal's is the active pane's, which may change meanwhile.
         let focused = (activeTerminal?.view.window ?? NSApp.keyWindow)?.firstResponder as? NSView
         let isFieldEditor = (focused as? NSText)?.isFieldEditor ?? false
@@ -150,11 +152,23 @@ extension AppWorkspaceModel {
                 case .option: .split(.x)
                 }
             await connect(host: host, placement: placement)
+        case .remoteWorkspace(let id):
+            guard let host = commandPaletteHosts().first(where: { $0.id == id }) else { return }
+            await openRemoteWorkspace(host: host)
+        case .project(let id):
+            guard let project = commandPaletteProjects().first(where: { $0.id == id }) else { return }
+            beginProjectLaunch(project)
         case .task(let name, let detected):
             guard let catalog = taskCatalog else { return }
             let task = detected ? catalog.detected.first { $0.task.name == name }?.task : catalog.tasks.first { $0.name == name }
             if let task { runTask(task, fromFile: !detected) }
         case .theme(let id): useTheme(id)
+        case .agent(let id):
+            guard let paneID = presentation.activePane?.id else { return }
+            await launchAgent(id, from: paneID, placement: modifier == .option ? .split : .tab)
+        case .directory(let machine, let path):
+            await jumpToDirectory(path: path, machine: machine, modifier: modifier)
+            focusActiveTerminal()
         }
     }
 
@@ -224,9 +238,23 @@ extension AppWorkspaceModel {
                 }
             }
         }
-        let hostItems = commandPaletteHosts().map { host in
+        let hostItems = commandPaletteHosts().flatMap { host in
             let destination = (host.user.map { "\($0)@" } ?? "") + host.destination + (host.port.map { " · port \($0)" } ?? "")
-            return CommandPaletteItem(target: .host(host.id), kind: .host, title: host.name, subtitle: destination, keywords: host.tags + ["ssh"])
+            let connect = CommandPaletteItem(target: .host(host.id), kind: .host, title: host.name, subtitle: destination, keywords: host.tags + ["ssh"])
+            // FR-RW01: each host can also open as a remote workspace whose sessions keep running there.
+            guard remoteHosts != nil else { return [connect] }
+            return [
+                connect,
+                CommandPaletteItem(
+                    target: .remoteWorkspace(host.id), kind: .host, title: "Open Remote Workspace: " + host.name, subtitle: destination,
+                    keywords: host.tags + ["ssh", "remote", "workspace"])
+            ]
+        }
+        let projectItems = commandPaletteProjects().map { project in
+            CommandPaletteItem(
+                target: .project(project.id), kind: .project, title: "Launch Project: " + project.name,
+                subtitle: "\(project.tabs.count) tab\(project.tabs.count == 1 ? "" : "s")" + (project.notes.map { " · " + $0.prefix(80) } ?? ""),
+                keywords: ["project", "workspace", "launch"] + project.checkouts.map { GitRepository.shortName($0.repository.url) })
         }
         var taskItems: [CommandPaletteItem] = []
         if let catalog = taskCatalog, catalog.paneID == presentation.activePane?.id, taskAvailability(paneID: catalog.paneID).reason == nil {
@@ -241,19 +269,34 @@ extension AppWorkspaceModel {
                 target: .theme(theme.id), kind: .theme, title: "Theme: " + theme.name,
                 subtitle: theme.appearance.rawValue.capitalized + (theme.id == currentTheme ? " · current" : ""), keywords: ["appearance colors"])
         }
+        // FR-AG07: the same agents as the pane's Agent button, opened beside the focused pane.
+        let agentItems =
+            presentation.activePane == nil
+            ? []
+            : agentCatalog.definitions.map { agent in
+                CommandPaletteItem(
+                    target: .agent(agent.id), kind: .agent, title: "Launch Agent: " + agent.name, subtitle: "In a new tab · ⌥↩ beside the focused pane",
+                    keywords: ["agent", "ai", agent.executable])
+            }
+        let directoryItems = directoryPaletteItems
         let counts: [CommandPaletteScope: (Int, String)] = [
             .windows: (windowItems.count, Self.count(windowItems.count, "window")),
             .tabs: (tabItems.count, Self.count(tabItems.count, "tab") + " in " + Self.count(windows.count, "window")),
             .panes: (paneItems.count, Self.count(paneItems.count, "pane")),
-            .hosts: (hostItems.count, Self.count(hostItems.count, "saved host")),
+            .hosts: (hostItems.count, Self.count(commandPaletteHosts().count, "saved host")),
+            .projects: (projectItems.count, Self.count(projectItems.count, "project")),
             .tasks: (taskItems.count, Self.count(taskItems.count, "task") + " in " + (taskCatalog?.name ?? "this project")),
-            .themes: (themeItems.count, Self.count(themeItems.count, "theme"))
+            .themes: (themeItems.count, Self.count(themeItems.count, "theme")),
+            .agents: (agentItems.count, Self.count(agentItems.count, "agent")),
+            .directories: (directoryItems.count, directoryItems.count == 1 ? "1 recent directory" : "\(directoryItems.count) recent directories")
         ]
         let scopes = CommandPaletteScope.allCases.compactMap { scope -> CommandPaletteItem? in
             guard let (count, text) = counts[scope], count > 0 else { return nil }
-            return CommandPaletteItem(target: .scope(scope), kind: .action, title: scope.title, subtitle: text, keywords: ["go to jump switch"])
+            let shortcut = scope == .directories ? keyboard.shortcuts[.jumpToDirectory] : nil
+            let keywords = scope == .directories ? ["go to jump switch", "cd folder recent"] : ["go to jump switch"]
+            return CommandPaletteItem(target: .scope(scope), kind: .action, title: scope.title, subtitle: text, keywords: keywords, shortcut: shortcut)
         }
-        return scopes + actions + tabItems + windowItems + paneItems + hostItems + taskItems + themeItems
+        return scopes + actions + tabItems + windowItems + paneItems + hostItems + projectItems + taskItems + themeItems + agentItems + directoryItems
     }
 
     /// The menu's own title where it changes with state.

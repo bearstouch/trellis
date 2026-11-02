@@ -21,6 +21,15 @@ public struct TaskCatalog: Equatable, Sendable {
     /// The bytes listed, so Add never overwrites a newer file and trust covers exactly what was shown.
     let data: Data?
     public let detected: [DetectedTask]
+    /// A project on a remote workspace's host (FR-RW11): Run types into that host's shell; nothing is written there.
+    public let hostID: UUID?
+    /// What trust is recorded under: the folder, or for a host its ID, machine and folder.
+    let trustKey: String
+
+    init(root: String, paneID: UUID, file: FileState, data: Data?, detected: [DetectedTask], hostID: UUID? = nil, trustKey: String? = nil) {
+        self.root = root; self.paneID = paneID; self.file = file; self.data = data; self.detected = detected
+        self.hostID = hostID; self.trustKey = trustKey ?? root
+    }
 
     public var name: String { URL(fileURLWithPath: root).lastPathComponent }
     public var path: String { LaunchFile.url(projectRoot: root).path }
@@ -47,6 +56,9 @@ public struct TaskReview: Identifiable, Equatable, Sendable {
     /// Another version of this folder's file was trusted before.
     public let changedSinceTrusted: Bool
     public var path: String { LaunchFile.url(projectRoot: root).path }
+    /// A remote project's host, named in the review (FR-RW11).
+    public var hostName: String? = nil
+    var trustKey: String? = nil
 }
 
 /// Why Run can't type into a pane right now (FR-TK05).
@@ -57,7 +69,7 @@ public enum TaskRunAvailability: Equatable, Sendable {
         switch self {
         case .ready: nil
         case .notRunning: "The pane's shell isn't running."
-        case .remote: "Tasks run only in local shells."
+        case .remote: "Tasks run in local shells and remote workspace shells, not in SSH panes."
         case .noIntegration: "Run needs shell integration, so Trellis knows the shell is waiting at its prompt."
         case .busy: "The shell is running a command. Wait for its prompt, or stop the command."
         case .taskActive: "A task is already running in this pane."
@@ -76,9 +88,19 @@ extension AppWorkspaceModel {
         taskCatalogGeneration &+= 1
         let generation = taskCatalogGeneration
         let target = [paneID, taskCatalog?.paneID, presentation.activePane?.id].lazy.compactMap { $0 }.first { self.snapshot.panes[$0] != nil }
-        guard let pane = target.flatMap({ snapshot.panes[$0] }), let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch),
-            let directory = paneDirectory(pane.id)
-        else {
+        guard let pane = target.flatMap({ snapshot.panes[$0] }), let launch = snapshot.sessions[pane.sessionID]?.launch else {
+            taskCatalog = nil
+            return
+        }
+        // FR-RW11: a remote workspace pane's project is read on its host, from the shell's authenticated directory.
+        if let hostID = launch.remoteHostID {
+            var catalog: TaskCatalog?
+            if let directory = remoteWorkingDirectory(paneID: pane.id) { catalog = await loadRemoteTaskCatalog(directory: directory, hostID: hostID, paneID: pane.id) }
+            guard generation == taskCatalogGeneration else { return }
+            if taskCatalog != catalog { taskCatalog = catalog }
+            return
+        }
+        guard !Self.isRemote(launch), let directory = paneDirectory(pane.id) else {
             taskCatalog = nil
             return
         }
@@ -91,12 +113,12 @@ extension AppWorkspaceModel {
 
     nonisolated static func loadTaskCatalog(directory: String, home: String, paneID: UUID) -> TaskCatalog? {
         let manager = FileManager.default
-        guard let found = ProjectFileLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
+        guard let found = ProjectLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
         let root = canonical(found)
         let state: TaskCatalog.FileState
         var data: Data?
         do {
-            // Only a regular file the user owns, like a project file: a shared folder could hold anyone's.
+            // Only a regular file the user owns: a shared folder could hold anyone's.
             data = try OwnerOnlyFile.read(LaunchFile.url(projectRoot: root), limit: LaunchFile.maximumBytes)
             switch data.map(LaunchFileJSON.parse) {
             case nil: state = .missing
@@ -119,7 +141,7 @@ extension AppWorkspaceModel {
         guard let pane = snapshot.panes[paneID], let terminal = terminals[paneID], terminal.sessionID == pane.sessionID, terminal.sessionState == .running,
             !isClosing(paneID: paneID), !shuttingDown
         else { return .notRunning }
-        guard let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch) else { return .remote }
+        guard let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch) || launch.remoteHostID != nil else { return .remote }
         if taskRuns[paneID]?.isActive == true { return .taskActive }
         guard terminal.shellMarkOrigin == .authenticated, let state = shellStates[paneID], taskShell(paneID: paneID) != nil else { return .noIntegration }
         return state.commandRunning || terminal.isReplaying ? .busy : .ready
@@ -127,6 +149,11 @@ extension AppWorkspaceModel {
 
     /// The pane's own login shell; integration (and so Run) only exists for the bundled kinds.
     func taskShell(paneID: UUID) -> (path: String, kind: ShellIntegrationKind)? {
+        // A remote workspace shell is the host account's login shell, as its helper reports it.
+        if let pane = snapshot.panes[paneID], let hostID = snapshot.sessions[pane.sessionID]?.launch.remoteHostID {
+            guard let shell = remoteHosts?.workspaceConnection(hostID)?.hostInfo?.shell, let kind = ShellIntegrationKind(executable: shell) else { return nil }
+            return (shell, kind)
+        }
         guard let pane = snapshot.panes[paneID], case .process(let executable, _, _)? = snapshot.sessions[pane.sessionID]?.launch,
             let kind = ShellIntegrationKind(executable: executable)
         else { return nil }
@@ -163,10 +190,11 @@ extension AppWorkspaceModel {
             errorMessage = error.localizedDescription
             return
         }
-        guard trust.isTrusted(root: catalog.root, digest: digest) else {
+        guard trust.isTrusted(root: catalog.trustKey, digest: digest) else {
             pendingTaskReview = TaskReview(
                 root: catalog.root, paneID: catalog.paneID, file: file, digest: digest, taskName: task.name,
-                changedSinceTrusted: trust.trustedOtherVersion(root: catalog.root, digest: digest))
+                changedSinceTrusted: trust.trustedOtherVersion(root: catalog.trustKey, digest: digest), hostName: catalog.hostID.map(remoteHostName),
+                trustKey: catalog.trustKey)
             return
         }
         typeTask(task, file: file, root: catalog.root, paneID: catalog.paneID, taskID: Self.taskID(task, detected: false))
@@ -178,7 +206,7 @@ extension AppWorkspaceModel {
         guard trust, let task = review.file.task(named: review.taskName) else { return }
         do {
             var list = try launchTrustList()
-            list.trust(root: review.root, digest: review.digest)
+            list.trust(root: review.trustKey ?? review.root, digest: review.digest)
             try saveLaunchTrust(list)
         } catch {
             errorMessage = error.localizedDescription
@@ -274,6 +302,8 @@ extension AppWorkspaceModel {
     /// someone else's tasks.
     func addTask(_ task: LaunchTask) async -> LaunchTask? {
         guard let catalog = taskCatalog else { return nil }
+        // Trellis never writes a host's files in this version (FR-RW11).
+        guard catalog.hostID == nil else { errorMessage = "launch.json on a remote host is read-only in Trellis. Add the task on the host."; return nil }
         if case .invalid(let reason) = catalog.file {
             errorMessage = "launch.json wasn't changed. " + reason
             return nil
@@ -311,6 +341,7 @@ extension AppWorkspaceModel {
     /// Opens launch.json in the user's editor, creating an empty one first when there is none.
     public func editLaunchFile() async {
         guard let catalog = taskCatalog else { return }
+        guard catalog.hostID == nil else { errorMessage = "launch.json on a remote host is read-only in Trellis. Edit it on the host."; return }
         let url = LaunchFile.url(projectRoot: catalog.root)
         if case .missing = catalog.file, !FileManager.default.fileExists(atPath: url.path), !isSymbolicLink(url) {
             let data = LaunchFileJSON.encode(LaunchFile())
@@ -331,8 +362,7 @@ extension AppWorkspaceModel {
 
     private var launchTrustURL: URL? { persistence?.directory.appendingPathComponent("launch-trust.json") }
 
-    /// Separate from project file trust, which holds one digest per folder. An unreadable list fails closed:
-    /// nothing is trusted and it is never overwritten.
+    /// One trusted digest per folder. An unreadable list fails closed: nothing is trusted and it is never overwritten.
     func launchTrustList() throws -> ProjectTrustList {
         if let launchTrust { return launchTrust }
         let list = try Self.readTrustList(launchTrustURL, failure: "Trusted launch.json files could not be read, so launch.json tasks can't run.")

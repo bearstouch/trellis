@@ -13,8 +13,11 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Shell integration:** zsh, bash and fish report their directory and exit status with no dotfile edits; jump between prompts with ⌘↑/⌘↓.
 - **Themes:** 10 editor-inspired families plus a JSON theme library, with separate light and dark slots and live preview.
 - **SSH hosts:** a saved host library and `~/.ssh/config` discovery, using `/usr/bin/ssh` and optional Keychain-stored passwords.
-- **Tasks and project files:** run `.trellis/launch.json` tasks from a pane header and check a project's layout in as `.trellis/project.json`.
+- **Remote workspaces (preview):** open a saved Linux or macOS host as a sidebar window whose sessions run under a small Trellis helper on the host. They keep running when you quit or lose the connection, reconnect on their own, and splits open where you are on the host; tasks work there too. See [Remote workspaces](docs/features/remote-workspaces.md).
+- **Projects and tasks:** define projects (tabs, splits, commands and git repositories) in the **Projects** library and launch them on this Mac or a saved host, cloning what's missing; run `.trellis/launch.json` tasks from a pane header.
+- **Coding agents (preview):** an **Agent** button in each pane header opens Claude Code, pi or Codex in a new tab (or beside the pane), on this Mac or a remote workspace's host. The tab shows the agent's icon and whether it's working, needs you or is done, from the agent's own hooks. A missing agent offers its vendor's installer, and you can add your own agents as JSON. See [Coding agents](docs/features/agents.md).
 - **Command palette:** ⇧⌘P opens one searchable list of every action, window, tab, pane, saved host, task and theme.
+- **Directory jump:** ⌘J lists the directories your shells have recently and frequently been in, on this Mac and in remote workspaces. Return goes there in the current pane, or in a new tab if it's busy.
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
 - **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
 - **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.
@@ -150,4 +153,4 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workf
 
 ## License
 
-Trellis is released under the [MIT License](LICENSE). The vendored SwiftTerm is also MIT-licensed. Its license, provenance and patch set are in [`ThirdParty/SwiftTerm`](ThirdParty/SwiftTerm/PATCHES.md).
+Trellis is released under the [MIT License](LICENSE). The vendored SwiftTerm is also MIT-licensed. Its license, provenance and patch set are in [`ThirdParty/SwiftTerm`](ThirdParty/SwiftTerm/PATCHES.md). The Git icon in pane headers is the [Git logo](https://commons.wikimedia.org/wiki/File:Git_icon.svg) by Jason Long, used under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).

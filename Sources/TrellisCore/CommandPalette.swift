@@ -2,7 +2,7 @@ import Foundation
 
 /// What a palette row is, in the order equal scores are listed (FR-CP04).
 public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
-    case action, tab, window, pane, host, task, theme
+    case action, tab, window, pane, host, project, task, theme, agent, directory
 
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -13,8 +13,11 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .window: "Windows"
         case .pane: "Panes"
         case .host: "Hosts"
+        case .project: "Projects"
         case .task: "Tasks"
         case .theme: "Themes"
+        case .agent: "Agents"
+        case .directory: "Directories"
         }
     }
 
@@ -26,15 +29,18 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .window: "window"
         case .pane: "pane"
         case .host: "host"
+        case .project: "project"
         case .task: "task"
         case .theme: "theme"
+        case .agent: "agent"
+        case .directory: "directory"
         }
     }
 }
 
 /// One kind listed alone (FR-CP06).
 public enum CommandPaletteScope: String, CaseIterable, Sendable {
-    case windows, tabs, panes, hosts, tasks, themes
+    case windows, tabs, panes, hosts, projects, tasks, themes, agents, directories
 
     public var kind: CommandPaletteKind {
         switch self {
@@ -42,8 +48,11 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .tabs: .tab
         case .panes: .pane
         case .hosts: .host
+        case .projects: .project
         case .tasks: .task
         case .themes: .theme
+        case .agents: .agent
+        case .directories: .directory
         }
     }
 
@@ -53,8 +62,11 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .tabs: "Go to Tab…"
         case .panes: "Go to Pane…"
         case .hosts: "Connect to Host…"
+        case .projects: "Launch Project…"
         case .tasks: "Run Task…"
         case .themes: "Use Theme…"
+        case .agents: "Launch Agent…"
+        case .directories: "Jump to Directory…"
         }
     }
 
@@ -71,8 +83,16 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     case tab(windowID: UUID, tabID: UUID)
     case pane(UUID)
     case host(UUID)
+    /// Opens the saved host as a remote workspace (FR-RW01).
+    case remoteWorkspace(UUID)
+    /// Opens the launch sheet for a library project (FR-PL08).
+    case project(UUID)
     case task(name: String, detected: Bool)
     case theme(String)
+    /// Launches a catalog agent beside the focused pane (FR-AG07).
+    case agent(String)
+    /// Jumps to a remembered directory on its own machine (FR-DJ06); `machine` is a `ProjectTarget.key`.
+    case directory(machine: String, path: String)
 
     public var id: String {
         switch self {
@@ -83,8 +103,12 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .tab(_, let id): "tab:" + id.uuidString
         case .pane(let id): "pane:" + id.uuidString
         case .host(let id): "host:" + id.uuidString
+        case .remoteWorkspace(let id): "remote-workspace:" + id.uuidString
+        case .project(let id): "project:" + id.uuidString
         case .task(let name, let detected): (detected ? "task:detected:" : "task:file:") + name
         case .theme(let id): "theme:" + id
+        case .agent(let id): "agent:" + id
+        case .directory(let machine, let path): "directory:" + machine + ":" + path
         }
     }
 }
@@ -100,14 +124,16 @@ public struct CommandPaletteItem: Identifiable, Equatable, Sendable {
     /// The heading inside a scope, such as a tab's window. `groupID` keeps two windows with one name apart.
     public var groupID: String?
     public var groupTitle: String?
+    /// Added to the search score, like recency: it settles similar matches without outranking a clearly better one.
+    public var boost: Int
     public var id: String { target.id }
 
     public init(
         target: CommandPaletteTarget, kind: CommandPaletteKind, title: String, subtitle: String = "", keywords: [String] = [], shortcut: KeyChord? = nil,
-        groupID: String? = nil, groupTitle: String? = nil
+        groupID: String? = nil, groupTitle: String? = nil, boost: Int = 0
     ) {
         self.target = target; self.kind = kind; self.title = title; self.subtitle = subtitle; self.keywords = keywords; self.shortcut = shortcut
-        self.groupID = groupID; self.groupTitle = groupTitle
+        self.groupID = groupID; self.groupTitle = groupTitle; self.boost = boost
     }
 }
 
@@ -213,7 +239,7 @@ public enum CommandPaletteSearch {
         }
         let recency = Dictionary(recents.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         let matches = pool.compactMap { item -> CommandPaletteMatch? in
-            let boost = recency[item.id].map { max(0, 10 - $0) } ?? 0
+            let boost = (recency[item.id].map { max(0, 10 - $0) } ?? 0) + item.boost
             if let title = FuzzyMatch.match(query, in: item.title) {
                 return CommandPaletteMatch(item: item, score: title.score + boost, titlePositions: title.positions, matchedAlias: nil)
             }
@@ -256,7 +282,7 @@ extension ShortcutAction {
         case .clearPane: ["reset screen", "cls"]
         case .closePane: ["kill"]
         case .showHosts: ["ssh servers"]
-        case .openProjectFile: ["folder"]
+        case .showProjects: ["folder", "workspace", "library"]
         case .saveWorkspace: ["layout"]
         case .toggleSidebar: ["windows list"]
         case .toggleScratchpad: ["script editor"]

@@ -4,6 +4,7 @@ import SwiftUI
 import TrellisControl
 import TrellisCore
 import TrellisMCP
+import TrellisRelease
 import TrellisTerminal
 import TrellisUI
 
@@ -12,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let model: AppWorkspaceModel
     private let hosts: HostListModel
     private var hostsWindow: NSWindow?
+    private let projects: ProjectListModel
+    private var projectsWindow: NSWindow?
     private let control: ControlServer
     private let mcp: MCPServer
     private let grants: GrantListModel
@@ -26,11 +29,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var accessibilityObserver: NSObjectProtocol?
     private var updater: SparkleUpdater?
     private var updates: UpdateSettingsModel?
+    private var cliInstall: CLIInstallController?
 
     private let identity: AppInstanceIdentity
 
-    init(model: AppWorkspaceModel, hosts: HostListModel, control: ControlServer, mcp: MCPServer, grants: GrantListModel, identity: AppInstanceIdentity) {
-        self.model = model; self.hosts = hosts; self.control = control; self.mcp = mcp; self.grants = grants; self.identity = identity
+    init(
+        model: AppWorkspaceModel, hosts: HostListModel, projects: ProjectListModel, control: ControlServer, mcp: MCPServer, grants: GrantListModel,
+        identity: AppInstanceIdentity
+    ) {
+        self.model = model; self.hosts = hosts; self.projects = projects; self.control = control; self.mcp = mcp; self.grants = grants; self.identity = identity
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -75,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.syncAccessibilityDisplayOptions() }
         }
+        cliInstall = CLIInstallController(identity: identity, shell: { [model] in model.defaultShell })
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
@@ -90,6 +98,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         model.openHosts = { [weak self] in self?.showHosts() }
+        model.openProjects = { [weak self] in self?.showProjects() }
+        projects.hostName = { [hosts] id in hosts.hosts.first { $0.id == id }?.name }
+        projects.onLaunch = { [weak self] project in
+            guard let self else { return }
+            window?.makeKeyAndOrderFront(nil)
+            model.beginProjectLaunch(project)
+        }
+        model.commandPaletteProjects = { [projects] in projects.projects }
+        model.gitStatusEnabled = true  // FR-PL09
+        Task { [projects] in await projects.load() }
+        model.onProjectLaunched = { [projects] id, target, folder in Task { await projects.recordLaunch(id, target: target, folder: folder) } }
         // FR-CP03, FR-CP07: palette actions are the menu's, validated and run the same way.
         model.canPerformShortcutAction = { [weak self] in self?.validateShortcut($0) ?? false }
         model.performShortcutAction = { [weak self] in self?.perform($0) }
@@ -100,6 +119,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let library = hosts.library, gate = LocalAuthenticationGate()
             hosts.userPresence = gate
             model.savedPassword = { id, revision in await library.password(hostID: id, connectionRevision: revision, gate: gate) }
+            hosts.remote?.askpass = model.askpass
+            hosts.remote?.savedPassword = model.savedPassword
+        }
+        model.remoteHosts = hosts.remote
+        model.remoteReconnector.startSystemMonitoring()
+        hosts.onOpenRemoteWorkspace = { [weak self] host in
+            guard let self else { return }
+            window?.makeKeyAndOrderFront(nil)
+            Task { await self.model.openRemoteWorkspace(host: host) }
         }
         hosts.onConnect = { [weak self] host, placement in
             guard let self else { return }
@@ -125,14 +153,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             window.setFrame(NSRectFromString(frame), display: true)
             constrainWindow()
         }
+        // Scripted, isolated runs (qualification, benchmarks) must not leave sessions behind when they quit the app.
+        model.endSessionsAtQuitForThisLaunch = CommandLine.arguments.contains("--fixture")
         startupTask = Task {
             // Saved-host panes resolve their host when started, so load hosts first.
             await hosts.load()
+            await model.loadDirectoryHistory(hosts: hosts.loadFailed ? nil : hosts.hosts)
             let restored = await model.loadWorkspace()
             await model.refresh()
             guard !Task.isCancelled else { return }
             if !restored, model.snapshot.windows.isEmpty {
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
+            }
+            // MAC-15: scripted and isolated launches never ask, and recovery comes first.
+            if identity.stateDirectory == nil, !CommandLine.arguments.contains("--fixture"), model.recoveryMessage == nil, !terminationPending {
+                await cliInstall?.offerIfNeeded(window: window)
             }
         }
         // Local automation is optional: an unsafe endpoint leaves the app
@@ -141,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles() }
+    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles(); model.stopAgentHooks() }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
     static func helperPath(_ name: String) -> String? {
@@ -151,6 +186,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             executable.deletingLastPathComponent().appendingPathComponent(name)
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }?.path
+    }
+
+    /// Data, not code: it lives in Resources, because codesign refuses unsigned files under Contents/Helpers.
+    static func helperDirectory(_ name: String) -> URL? {
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let candidates = [
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/\(name)"), executable.deletingLastPathComponent().appendingPathComponent(name)
+        ]
+        return candidates.first { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
     }
 
     @objc private func activateExistingInstance() {
@@ -184,6 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let about = app.submenu?.addItem(withTitle: "About Trellis", action: #selector(aboutAction), keyEquivalent: "")
         about?.target = self
         if updater != nil { app.submenu?.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesAction), keyEquivalent: "").target = self }
+        if cliInstall != nil { app.submenu?.addItem(withTitle: "Install Command Line Tool…", action: #selector(installCommandLineToolAction), keyEquivalent: "").target = self }
         app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
         app.submenu?.addItem(.separator())
@@ -191,14 +236,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         app.submenu?.addItem(withTitle: "Quit Trellis", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(app)
         menu.addItem(
-            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showHosts, .saveWorkspace]))
+            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showProjects, .showHosts, .saveWorkspace]))
         if let file = menu.items.last?.submenu {
             file.addItem(.separator())
             file.addItem(withTitle: "Export Windows & Hosts…", action: #selector(exportWindowsAndHosts), keyEquivalent: "")
             file.addItem(withTitle: "Import Windows & Hosts…", action: #selector(importWindowsAndHosts), keyEquivalent: "")
-            file.addItem(.separator())
-            file.addItem(item(.openProjectFile))
-            file.addItem(withTitle: "Save Window as Project…", action: #selector(saveProjectFile), keyEquivalent: "")
         }
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
@@ -219,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.commandPalette, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -282,7 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
-        case .openProjectFile: openProjectFile()
+        case .showProjects: showProjects()
         case .findInPane: if !performTextFinderAction(.showFindInterface) { model.activeTerminal?.showSearch() }
         case .findNext: if !performTextFinderAction(.nextMatch) { model.activeTerminal?.findInPane() }
         case .findPrevious: if !performTextFinderAction(.previousMatch) { model.activeTerminal?.findInPane(forward: false) }
@@ -295,6 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .toggleSidebar: model.toggleSidebar()
         case .toggleScratchpad: Task { await model.toggleScratchpad() }
         case .commandPalette: model.toggleCommandPalette()
+        case .jumpToDirectory: model.openDirectoryJump()
         case .splitLeftRight, .splitTopBottom:
             if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
         case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
@@ -328,12 +371,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
         if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if action == .openProjectFile { return !model.isRestoring && model.recoveryMessage == nil }
-        if [.newWindow, .saveWorkspace, .showHosts, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if [.newWindow, .saveWorkspace, .showHosts, .showProjects, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
-        if action == .commandPalette { return !model.isRestoring && model.recoveryMessage == nil }
+        if action == .commandPalette || action == .jumpToDirectory { return !model.isRestoring && model.recoveryMessage == nil }
         if action == .toggleScratchpad { return !model.presentation.isEmpty }
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
@@ -369,7 +411,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if action == .toggleScratchpad { menuItem.title = model.scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad" }
             return validateShortcut(action)
         }
-        if menuItem.action == #selector(saveProjectFile) { return model.snapshot.activeWindowID != nil }
         if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
@@ -420,6 +461,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func settingsAction() { showSettings() }
     @objc private func checkForUpdatesAction() { updates?.checkNow() }
+    @objc private func installCommandLineToolAction() { Task { await cliInstall?.install(window: window) } }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {
         let exporter = DiagnosticsExporter(model: model, hosts: hosts, grants: grants) { [control] in control.isRunning }
@@ -465,26 +507,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.nameFieldStringValue = "Trellis Windows & Hosts.trellis.json"
         panel.message = "Exports windows, tabs, splits, and saved hosts. No output, passwords, keys, or tokens are included."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let transfer = PortableTransfer(model: model, hosts: hosts)
+        let transfer = PortableTransfer(model: model, hosts: hosts, projects: projects)
         Task {
             let (data, converted) = await transfer.exportData()
             do {
                 try data.write(to: url, options: .atomic)
                 // Exports hold no secrets, but stay owner-only like other Trellis files.
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-                if converted > 0 { model.errorMessage = "\(converted) custom command pane(s) were exported as plain shells; their commands are never exported." }
+                if converted > 0 {
+                    model.errorMessage =
+                        "\(converted) pane(s) were exported as plain local shells: custom commands are never exported, and a remote workspace pane whose saved host is gone loses its host."
+                }
             } catch { model.errorMessage = "The export could not be written. Check the location and try again." }
         }
-    }
-
-    /// A project's `.trellis/project.json` (FR-WF04); commands wait for review unless that exact file is trusted.
-    @objc private func openProjectFile() {
-        Task { await model.beginOpenProjectFile() }
-    }
-
-    @objc private func saveProjectFile() {
-        guard let id = model.snapshot.activeWindowID else { return }
-        model.beginSaveProjectFile(windowID: id)
     }
 
     @objc private func importWindowsAndHosts() {
@@ -492,8 +527,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.allowedContentTypes = [.json]
         panel.message = "Choose a Trellis export to review before importing."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let transfer = PortableTransfer(model: model, hosts: hosts)
-        Task {
+        let transfer = PortableTransfer(model: model, hosts: hosts, projects: projects)
+        let parent: NSWindow? = window
+        Task { [weak parent] in
             guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { model.errorMessage = "The file could not be read."; return }
             switch await transfer.preview(data) {
             case .failure(let error): model.errorMessage = error.message
@@ -501,11 +537,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320), styleMask: [.titled], backing: .buffered, defer: false)
                 sheet.isReleasedWhenClosed = false
                 sheet.contentView = NSHostingView(
-                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak window, weak sheet] in
+                    rootView: ImportPreviewView(transfer: transfer, parsed: parsed, preview: preview) { [weak parent, weak sheet] in
                         guard let sheet else { return }
-                        window?.endSheet(sheet)
+                        parent?.endSheet(sheet)
                     })
-                window.beginSheet(sheet, completionHandler: nil)
+                parent?.beginSheet(sheet, completionHandler: nil)
             }
         }
     }
@@ -521,6 +557,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         hostsWindow?.makeKeyAndOrderFront(nil)
     }
+    /// The project library (FR-PL01). Closing it with unsaved changes asks first.
+    private func showProjects() {
+        if projectsWindow == nil {
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 700), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            panel.title = "Projects"
+            panel.contentMinSize = NSSize(width: 900, height: 600)
+            panel.isReleasedWhenClosed = false
+            panel.delegate = self
+            panel.contentView = NSHostingView(rootView: ProjectLibraryView(model: projects, workspace: model))
+            panel.center()
+            projectsWindow = panel
+        }
+        projectsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     private func showSettings() {
         if settingsWindow == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -547,8 +598,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             })
         window.setFrame(NSRect(x: clamped.x, y: clamped.y, width: clamped.width, height: clamped.height), display: true)
     }
-    func windowDidMove(_ notification: Notification) { saveGeometry() }
-    func windowDidResize(_ notification: Notification) { saveGeometry() }
+    // The projects window shares this delegate; only the workspace window's frame is saved.
+    func windowDidMove(_ notification: Notification) { if notification.object as? NSWindow === window { saveGeometry() } }
+    func windowDidResize(_ notification: Notification) { if notification.object as? NSWindow === window { saveGeometry() } }
     private func saveGeometry() { if let window { model.updateWindowFrame(NSStringFromRect(window.frame)) } }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window?.deminiaturize(nil)
@@ -556,7 +608,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return true
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if sender === projectsWindow {
+            guard projects.editorDirty else { return true }
+            let alert = NSAlert()
+            alert.messageText = "Save changes to the project?"
+            alert.informativeText = "Your changes to the project aren't saved."
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Discard Changes")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn: projects.requestSave { [weak sender] in sender?.close() }; return false
+            case .alertThirdButtonReturn: projects.discardEditor(); return true
+            default: return false
+            }
+        }
         guard !closingWindow, !terminationPending else { return false }
+        // MAC-04: sessions are kept by default, so closing the window just hides it; the Dock icon reopens it.
+        if model.windowCloseAction == .hide { sender.orderOut(nil); return false }
         guard confirmSessionClosure() else { return false }
         closingWindow = true
         startupTask?.cancel()
@@ -667,7 +735,17 @@ struct TrellisMain {
             if let helper = AppDelegate.helperPath(BrokerSessionClient.helperName), let client = BrokerSessionClient.currentExecutable() {
                 model.sessionBroker = BrokerSessionClient(stateDirectory: directory, helperPath: helper, clientPath: client)
             }
+            // FR-AG01: the user's own agent definitions sit beside the theme library.
+            model.agentsDirectory = directory.appendingPathComponent("Agents", isDirectory: true)
+            model.reloadAgentCatalog()
+            model.directoryHistory = DirectoryHistory(stateDirectory: directory)  // FR-DJ09
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
+            // FR-RW17: the Linux helpers ship in Resources/remote (scripts/build-remote-helpers.sh); macOS hosts get the bundled broker.
+            hosts.remote = RemoteHostsModel(
+                settings: RemoteHostSettings(stateDirectory: directory),
+                catalog: RemoteArtifactCatalog.load(
+                    remoteDirectory: AppDelegate.helperDirectory("remote"), macHelper: AppDelegate.helperPath(BrokerSessionClient.helperName)),
+                clientID: try? RemoteClientIdentity.load(stateDirectory: directory))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
             let events = EventHub(instanceID: instanceID, grants: grantStore)
@@ -709,7 +787,9 @@ struct TrellisMain {
                     }
                 }
             }
-            let delegate = AppDelegate(model: model, hosts: hosts, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
+            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
+            let delegate = AppDelegate(
+                model: model, hosts: hosts, projects: projects, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}

@@ -31,7 +31,20 @@ final class PTYProcess: TerminalProcessTransport {
     var onPasswordPromptChanged: ((Bool) -> Void)?
     var survivesQuit: Bool { false }
     func setKeepAlive(_ on: Bool) {}
-    func beginDelivery() {}
+    /// Starts I/O for a child attached with `prepareAttach`; nothing for a launched one.
+    func beginDelivery() {
+        guard let (child, fd) = pendingAttach else { return }
+        pendingAttach = nil
+        begin(pid: child, fd: fd)
+    }
+    private var pendingAttach: (pid: Int32, fd: Int32)?
+
+    /// A child spawned elsewhere with this PTY master as its terminal: a remote link's ssh, whose console this is
+    /// (FR-RW03). Our own unreaped child, so signals and reaping work as for a launch; I/O starts at `beginDelivery`.
+    func prepareAttach(pid child: Int32, descriptor fd: Int32) {
+        guard !preparing, !isRunning, ioClosed, pendingAttach == nil else { return }
+        pendingAttach = (child, fd)
+    }
     static let inputQueueLimit = 1_048_576
     private(set) var pendingInputCount = 0
     private var io: DispatchIO?
@@ -77,6 +90,12 @@ final class PTYProcess: TerminalProcessTransport {
         let child = try await Task.detached(priority: .userInitiated) {
             try Self.spawn(configuration, size: size)
         }.value
+        begin(pid: child.pid, fd: child.fd)
+        return child.pid
+    }
+
+    private func begin(pid childPID: Int32, fd childFD: Int32) {
+        let child = (pid: childPID, fd: childFD)
         generation = UUID()
         let current = generation
         pid = child.pid
@@ -115,7 +134,6 @@ final class PTYProcess: TerminalProcessTransport {
         reaper.activate()
         readNext()
         reapChild()  // also handles a child that exited before the monitor armed
-        return child.pid
     }
 
     // Compatibility for the isolated feasibility fixtures; production uses validated launch.

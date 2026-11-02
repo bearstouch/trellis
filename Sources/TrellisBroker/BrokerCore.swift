@@ -1,5 +1,16 @@
-import Darwin
-import Foundation
+#if canImport(Darwin)
+    import Darwin
+#elseif canImport(Glibc)
+    import Glibc
+#elseif canImport(Musl)
+    import Musl
+#endif
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
+import TrellisPOSIX
 
 /// The broker's decisions, apart from its sockets and PTYs so they are unit-tested with an injected clock.
 public struct BrokerCore: Sendable {
@@ -23,13 +34,26 @@ public struct BrokerCore: Sendable {
 
     public mutating func clientDisconnected() { clientConnected = false }
 
-    public static func hello(_ protocolVersion: Int, brokerPID: Int32) -> BrokerMessage {
-        protocolVersion == BrokerProtocol.version
-            ? .welcome(protocolVersion: BrokerProtocol.version, brokerPID: brokerPID)
-            : .refused(reason: "PROTOCOL_VERSION_MISMATCH")
+    /// `protocolVersion` is the lowest version the client speaks and `maximumVersion` the highest (absent from v1
+    /// clients). The broker answers with the highest version both speak. A v1 broker compares `protocolVersion` only,
+    /// so a newer client that still speaks v1 keeps working with it.
+    public static func negotiate(_ protocolVersion: Int, maximumVersion: Int?) -> Int? {
+        let version = min(max(maximumVersion ?? protocolVersion, protocolVersion), BrokerProtocol.version)
+        return version >= max(protocolVersion, BrokerProtocol.minimumVersion) ? version : nil
+    }
+
+    public static func hello(_ protocolVersion: Int, maximumVersion: Int? = nil, brokerPID: Int32, info: BrokerHostInfo? = nil) -> BrokerMessage {
+        guard let version = negotiate(protocolVersion, maximumVersion: maximumVersion) else { return .refused(reason: "PROTOCOL_VERSION_MISMATCH") }
+        return .welcome(protocolVersion: version, brokerPID: brokerPID, info: version >= 2 ? info : nil)
     }
 
     public static func permitsSignal(_ signal: Int32) -> Bool { allowedSignals.contains(signal) }
+
+    /// Variables only Trellis sets (`LocalLaunchValidator` uses the same rule); a request never supplies them.
+    public static func isControlKey(_ key: String) -> Bool {
+        let name = key.uppercased()
+        return name.hasPrefix("TRELLIS_") || name.hasPrefix("__TRELLIS_") || name.hasPrefix("UTERM_") || name.hasPrefix("__UTERM_")
+    }
 
     /// Idle means nothing running and no client; the clock restarts whenever that stops being true.
     public mutating func update(runningSessions: Int, now: Date) {
@@ -59,16 +83,58 @@ public enum BrokerFiles {
     /// `sockaddr_un.sun_path` holds 104 bytes including the terminator.
     public static let socketPathLimit = 103
 
-    public static func isOwnerOnlyDirectory(_ path: String, uid: uid_t = geteuid()) -> Bool {
+    public enum Kind: Equatable, Sendable { case file, directory, symlink, socket, other }
+
+    /// The entry itself, never a symlink's target.
+    public static func entry(_ path: String) -> (kind: Kind, uid: uid_t, mode: mode_t, size: Int64)? {
         var info = stat()
-        guard lstat(path, &info) == 0 else { return false }
-        return info.st_mode & S_IFMT == S_IFDIR && info.st_uid == uid && info.st_mode & 0o077 == 0
+        guard lstat(path, &info) == 0 else { return nil }
+        return (kind(info.st_mode), info.st_uid, info.st_mode, Int64(info.st_size))
+    }
+
+    static func kind(_ mode: mode_t) -> Kind {
+        switch mode & mode_t(S_IFMT) {
+        case mode_t(S_IFREG): .file
+        case mode_t(S_IFDIR): .directory
+        case mode_t(S_IFLNK): .symlink
+        case mode_t(S_IFSOCK): .socket
+        default: .other
+        }
+    }
+
+    public static func isOwnerOnlyDirectory(_ path: String, uid: uid_t = geteuid()) -> Bool {
+        guard let entry = entry(path) else { return false }
+        return entry.kind == .directory && entry.uid == uid && entry.mode & 0o077 == 0
     }
 
     public static func isOwnedSocket(_ path: String, uid: uid_t = geteuid()) -> Bool {
-        var info = stat()
-        guard lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK, info.st_uid == uid else { return false }
-        return isOwnerOnlyDirectory((path as NSString).deletingLastPathComponent, uid: uid)
+        guard let entry = entry(path), entry.kind == .socket, entry.uid == uid else { return false }
+        return isOwnerOnlyDirectory(parent(path), uid: uid)
+    }
+
+    /// The containing directory of an absolute path, without Foundation's path APIs (absent from FoundationEssentials).
+    public static func parent(_ path: String) -> String {
+        var trimmed = Substring(path)
+        while trimmed.count > 1, trimmed.hasSuffix("/") { trimmed = trimmed.dropLast() }
+        guard let slash = trimmed.lastIndex(of: "/") else { return "." }
+        return slash == trimmed.startIndex ? "/" : String(trimmed[..<slash])
+    }
+
+    public static func lastComponent(_ path: String) -> String {
+        path.split(separator: "/").last.map(String.init) ?? path
+    }
+
+    public static func hex(_ bytes: some Sequence<UInt8>) -> String {
+        let digits = Array("0123456789abcdef".utf8)
+        var text: [UInt8] = []
+        for byte in bytes { text.append(digits[Int(byte >> 4)]); text.append(digits[Int(byte & 0xf)]) }
+        return String(decoding: text, as: UTF8.self)
+    }
+
+    public static func randomHex(_ count: Int) -> String? {
+        var bytes = [UInt8](repeating: 0, count: count)
+        guard trellis_random_bytes(&bytes, count) == 0 else { return nil }
+        return hex(bytes)
     }
 
     public static func address(_ path: String) -> sockaddr_un? {
@@ -92,24 +158,50 @@ public enum BrokerFiles {
 
     /// A live process's resolved executable path.
     public static func executablePath(pid: pid_t) -> String? {
-        var buffer = [UInt8](repeating: 0, count: 4 * Int(MAXPATHLEN))
-        let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let length = trellis_executable_path(pid, &buffer, buffer.count)
         guard length > 0 else { return nil }
-        return realPath(String(decoding: buffer.prefix(Int(length)), as: UTF8.self))
+        return realPath(String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self))
     }
 
     /// The connected peer's pid when it runs as `uid`; nil otherwise.
     public static func peerPID(_ fd: Int32, uid: uid_t = geteuid()) -> pid_t? {
-        var peerUID: uid_t = 0, peerGID: gid_t = 0, pid: pid_t = 0
-        var length = socklen_t(MemoryLayout<pid_t>.size)
-        guard getpeereid(fd, &peerUID, &peerGID) == 0, peerUID == uid, getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &length) == 0, pid > 0 else { return nil }
+        var peerUID: uid_t = 0, pid: pid_t = 0
+        guard trellis_peer_credentials(fd, &peerUID, &pid) == 0, peerUID == uid, pid > 0 else { return nil }
         return pid
     }
 
     /// True when the peer is our user running exactly `executable` (resolved).
     public static func peerRuns(_ fd: Int32, executable: String) -> Bool {
-        guard let pid = peerPID(fd), let path = executablePath(pid: pid), let expected = realPath(executable) else { return false }
+        guard let path = peerExecutable(fd), let expected = realPath(executable) else { return false }
         return path == expected
+    }
+
+    /// The resolved executable of a peer running as our user.
+    public static func peerExecutable(_ fd: Int32) -> String? { peerPID(fd).flatMap { executablePath(pid: $0) } }
+
+    /// A connected, close-on-exec socket to `path`, or nil.
+    public static func connect(_ path: String) -> Int32? {
+        guard var address = address(path) else { return nil }
+        let fd = trellis_unix_socket()
+        guard fd >= 0 else { return nil }
+        guard preventSigPipe(fd) else { close(fd); return nil }
+        let connected = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { systemConnect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
+        guard connected == 0 else { close(fd); return nil }
+        return fd
+    }
+
+    /// Writes everything or fails; for small control writes on blocking descriptors.
+    @discardableResult
+    public static func writeAll(_ fd: Int32, _ data: Data) -> Bool {
+        data.withUnsafeBytes { raw in
+            var offset = 0
+            while offset < raw.count {
+                let n = systemWrite(fd, raw.baseAddress! + offset, raw.count - offset)
+                if n > 0 { offset += n } else if n < 0, errno == EINTR { continue } else { return false }
+            }
+            return true
+        }
     }
 
     public static func configure(_ fd: Int32) {
@@ -120,10 +212,7 @@ public enum BrokerFiles {
 
     /// Must run before the socket can be disconnected: Darwin refuses `setsockopt` on a socket whose peer already
     /// closed, and a write to it would then raise SIGPIPE in the app (or the test runner) instead of failing.
-    public static func preventSigPipe(_ fd: Int32) -> Bool {
-        var one: Int32 = 1
-        return setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size)) == 0
-    }
+    public static func preventSigPipe(_ fd: Int32) -> Bool { trellis_prevent_sigpipe(fd) == 0 }
 
     /// Reads a small owner-only regular file without following symlinks.
     public static func readOwnerFile(_ path: String, limit: Int = 4096) -> Data? {
@@ -140,8 +229,7 @@ public enum BrokerFiles {
 
     /// Owner-only atomic replace in the target's directory.
     public static func writeOwnerFile(_ data: Data, to path: String) -> Bool {
-        let directory = (path as NSString).deletingLastPathComponent
-        let temporary = directory + "/.broker.\(UUID().uuidString).tmp"
+        let temporary = parent(path) + "/.broker.\(UUID().uuidString).tmp"
         let fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { return false }
         let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
@@ -151,3 +239,8 @@ public enum BrokerFiles {
         return true
     }
 }
+
+// Module-qualified names differ between Darwin, Glibc and Musl; these keep call sites that shadow them portable.
+private func systemConnect(_ fd: Int32, _ address: UnsafePointer<sockaddr>, _ length: socklen_t) -> Int32 { connect(fd, address, length) }
+func systemWrite(_ fd: Int32, _ bytes: UnsafeRawPointer, _ count: Int) -> Int { write(fd, bytes, count) }
+func systemClose(_ fd: Int32) { _ = close(fd) }

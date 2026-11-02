@@ -27,7 +27,7 @@ let package = Package(
     targets: [
         .target(name: "TrellisAskpass"),
         .executableTarget(name: "TrellisAskpassMain", dependencies: ["TrellisAskpass"]),
-        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon")]),
+        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon"), .copy("Resources/Agents")]),
         .target(name: "TrellisPOSIX"),
         // The broker's resident code depends only on the POSIX shim: no Core resources, no engine.
         .target(name: "TrellisBroker", dependencies: ["TrellisPOSIX"]),
@@ -37,7 +37,7 @@ let package = Package(
         .target(name: "TrellisMCP", dependencies: ["TrellisControl", "TrellisCore"]),
         .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
         .executableTarget(
-            name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl", "TrellisMCP", .product(name: "Sparkle", package: "Sparkle")],
+            name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl", "TrellisMCP", "TrellisRelease", .product(name: "Sparkle", package: "Sparkle")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .target(name: "TrellisRelease"),
@@ -54,3 +54,11 @@ let package = Package(
     ],
     swiftLanguageModes: [.v6]
 )
+
+#if os(Linux)
+// Linux builds only the remote helper (FR-RW02) and its tests (`scripts/test-linux.sh`).
+let linuxTargets: Set<String> = ["TrellisPOSIX", "TrellisBroker", "TrellisBrokerMain", "TrellisBrokerTests"]
+package.products = [.executable(name: "trellis-broker", targets: ["TrellisBrokerMain"])]
+package.dependencies = []
+package.targets = package.targets.filter { linuxTargets.contains($0.name) }
+#endif

@@ -339,6 +339,23 @@ final class CLITests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
     }
 
+    func testCLILinkRefusesARelativeDirectoryThatDoesNotExist() {
+        // Used to spin forever in the real path resolver, before any validation ran.
+        let h = CLIHarness()
+        var environment = h.environment
+        var touched: [String] = []
+        environment.home = "/Users/fixture"
+        environment.executablePath = "/Applications/Trellis.app/Contents/Helpers/trellis"
+        environment.createLink = { link, _ in touched.append(link) }
+        environment.removeLink = { touched.append($0) }
+        let directory = "no-such-dir-\(UUID().uuidString.prefix(8))/bin"
+        for verb in ["install-link", "remove-link", "uninstall-plan"] {
+            XCTAssertEqual(CLI.run(["cli", verb, "--dir", directory, "--json"], environment: environment), 2, verb)
+        }
+        XCTAssertEqual(touched, [])
+        XCTAssertTrue(CLILinkEffects.live.resolvePath(directory).hasSuffix(directory), "The live resolver returns for a relative path too")
+    }
+
     func testRealSocketRoundTripThroughDiscovery() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tcli-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }

@@ -21,7 +21,7 @@ public struct ImportPreviewView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Import Windows & Hosts").font(.headline)
-            Text("\(preview.windows) window(s), \(preview.tabs) tab(s), \(preview.panes) pane(s), \(preview.hosts) saved host(s)")
+            Text("\(preview.windows) window(s), \(preview.tabs) tab(s), \(preview.panes) pane(s), \(preview.hosts) saved host(s)" + (preview.projects > 0 ? ", \(preview.projects) project(s)" : ""))
             Text("Everything imports with new IDs. Panes start stopped; nothing runs until you start it.").font(.caption).foregroundStyle(.secondary)
             if !preview.directories.isEmpty {
                 Text("Directories: " + preview.directories.joined(separator: ", ")).font(.caption).lineLimit(3)

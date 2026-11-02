@@ -86,16 +86,74 @@ final class SessionKeepAliveTests: XCTestCase {
     }
 
     @MainActor
-    func testSettingOffNeverStartsABroker() async throws {
+    func testSessionsRunInTheBrokerByDefault() async throws {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
-        XCTAssertFalse(model.keepSessionsRunning, "Off by default")
-        await model.createWindow(startSession: false)
+        XCTAssertTrue(model.keepSessionsRunning, "On by default (FR-R07)")
+        XCTAssertEqual(model.windowCloseAction, .hide, "Closing the window only hides it")
+        await model.createWindow()
+        await model.waitForUpdates()
         let terminal = try XCTUnwrap(model.activeTerminal)
-        XCTAssertFalse(terminal.survivesQuit)
-        XCTAssertEqual(broker.prepared, 0)
+        XCTAssertEqual(broker.prepared, 1)
+        XCTAssertTrue(terminal.survivesQuit)
+    }
+
+    @MainActor
+    func testStopOnQuitStillRunsSessionsInTheBrokerAndAsksToClose() async throws {
+        let broker = FakeSessionBroker()
+        let model = try makeModel(broker: broker)
+        model.setKeepSessionsRunning(false)
+        XCTAssertEqual(model.windowCloseAction, .endSessions)
+        await model.createWindow()
+        await model.waitForUpdates()
+        let terminal = try XCTUnwrap(model.activeTerminal)
+        XCTAssertTrue(terminal.survivesQuit, "A crash or force quit still never ends the session")
+        var keepAsked = false
+        model.confirmKeepRunning = { _, _ in
+            keepAsked = true; return .keepRunning
+        }
         model.confirmCloseSessions = { _ in true }
-        XCTAssertEqual(model.confirmQuit(), .stopSessions, "Without the setting, quitting asks only to close")
+        XCTAssertEqual(model.confirmQuit(), .stopSessions, "With the setting off, quitting asks only to close")
+        XCTAssertFalse(keepAsked)
+    }
+
+    @MainActor
+    func testFixtureLaunchesEndSessionsAtQuitWithoutChangingTheSetting() async throws {
+        let broker = FakeSessionBroker()
+        let model = try makeModel(broker: broker)
+        model.endSessionsAtQuitForThisLaunch = true
+        await model.createWindow()
+        await model.waitForUpdates()
+        XCTAssertTrue(try XCTUnwrap(model.activeTerminal).survivesQuit, "Still in the broker, so a crash keeps it")
+        XCTAssertTrue(model.keepSessionsRunning, "The saved setting is untouched")
+        XCTAssertEqual(model.windowCloseAction, .endSessions)
+        model.confirmCloseSessions = { _ in true }
+        XCTAssertEqual(model.confirmQuit(), .stopSessions)
+        model.stopAll()
+        _ = await model.shutdown()
+    }
+
+    @MainActor
+    func testQuittingAsksOnlyWhenASessionWouldStop() async throws {
+        let broker = FakeSessionBroker()
+        let model = try makeModel(broker: broker)
+        await model.createWindow()
+        await model.waitForUpdates()
+        // A session the broker couldn't take is an ordinary PTY and would end at quit.
+        broker.ready = false
+        _ = await model.saveLaunchSettings(shell: "/bin/sh", directory: NSTemporaryDirectory())
+        await model.createTab()
+        await model.waitForUpdates()
+        var asked: (Int, Int)?
+        model.confirmKeepRunning = {
+            asked = ($0, $1); return .cancel
+        }
+        XCTAssertEqual(model.confirmQuit(), .cancel)
+        XCTAssertEqual(asked?.0, 1)
+        XCTAssertEqual(asked?.1, 1, "The alert says one session will stop")
+        XCTAssertFalse(model.shuttingDown)
+        model.stopAll()
+        _ = await model.shutdown()
     }
 
     @MainActor
@@ -114,15 +172,12 @@ final class SessionKeepAliveTests: XCTestCase {
         XCTAssertEqual(model.snapshot.sessions[pane.sessionID]?.state, .running)
         XCTAssertEqual(model.snapshot.sessions[pane.sessionID]?.processID, transport.pid)
 
-        var asked: (Int, Int)?
-        model.confirmKeepRunning = {
-            asked = ($0, $1); return .cancel
+        var asked = false
+        model.confirmKeepRunning = { _, _ in
+            asked = true; return .cancel
         }
-        XCTAssertEqual(model.confirmQuit(), .cancel)
-        XCTAssertEqual(asked?.0, 1)
-        XCTAssertFalse(model.shuttingDown, "Cancel restores the workspace")
-        model.confirmKeepRunning = { _, _ in .keepRunning }
-        XCTAssertEqual(model.confirmQuit(), .keepRunning)
+        XCTAssertEqual(model.confirmQuit(), .keepRunning, "Every session is kept, so nothing needs confirming")
+        XCTAssertFalse(asked)
         let detached = await model.detachForQuit()
         XCTAssertTrue(detached)
         XCTAssertEqual(transport.signals, [], "Keep Running sends no signal")
@@ -136,12 +191,12 @@ final class SessionKeepAliveTests: XCTestCase {
     func testStopSessionsFromTheQuitPromptEndsBrokerSessions() async throws {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
-        model.setKeepSessionsRunning(true)
+        model.setKeepSessionsRunning(false)
         await model.createWindow()
         await model.waitForUpdates()
         let pane = try XCTUnwrap(model.presentation.activePane)
         let transport = try XCTUnwrap(broker.transports[pane.sessionID])
-        model.confirmKeepRunning = { _, _ in .stopSessions }
+        model.confirmCloseSessions = { _ in true }
         XCTAssertEqual(model.confirmQuit(), .stopSessions)
         model.stopAll()
         let closed = await model.shutdown()
@@ -251,7 +306,9 @@ final class SessionKeepAliveTests: XCTestCase {
     func testClosingTheWindowStillEndsBrokerSessions() async throws {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
-        model.setKeepSessionsRunning(true)
+        // Only with Stop sessions when Trellis quits on; by default the window just hides (MAC-04).
+        model.setKeepSessionsRunning(false)
+        XCTAssertEqual(model.windowCloseAction, .endSessions)
         await model.createWindow()
         await model.waitForUpdates()
         let pane = try XCTUnwrap(model.presentation.activePane)

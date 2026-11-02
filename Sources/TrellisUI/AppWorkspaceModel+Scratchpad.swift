@@ -185,7 +185,7 @@ extension AppWorkspaceModel {
             errorMessage = "\(ScratchpadDocument.projectDirectory)/\(document.fileName) already exists. Rename the script to save it."
             return nil
         }
-        let created = [root.appendingPathComponent(ProjectFile.directoryName), folder].filter { !manager.fileExists(atPath: $0.path) }
+        let created = [root.appendingPathComponent(ProjectText.directoryName), folder].filter { !manager.fileExists(atPath: $0.path) }
         do {
             try manager.createDirectory(at: folder, withIntermediateDirectories: true)
             try Data(document.text.utf8).write(to: url, options: .atomic)
@@ -212,7 +212,7 @@ extension AppWorkspaceModel {
     /// Through a symbolic link a script could be read from or written to outside the project.
     nonisolated static func scratchpadPathIsLinked(root: URL, file: URL? = nil) -> Bool {
         let folder = root.appendingPathComponent(ScratchpadDocument.projectDirectory, isDirectory: true)
-        return ([root.appendingPathComponent(ProjectFile.directoryName), folder] + (file.map { [$0] } ?? [])).contains {
+        return ([root.appendingPathComponent(ProjectText.directoryName), folder] + (file.map { [$0] } ?? [])).contains {
             (try? FileManager.default.destinationOfSymbolicLink(atPath: $0.path)) != nil
         }
     }
@@ -234,7 +234,7 @@ extension AppWorkspaceModel {
 
     nonisolated static func loadScratchpadFiles(directory: String, home: String) -> ScratchpadFileList? {
         let manager = FileManager.default
-        guard let found = ProjectFileLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
+        guard let found = ProjectLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) else { return nil }
         let root = canonical(found)
         let rootURL = URL(fileURLWithPath: root, isDirectory: true)
         guard !scratchpadPathIsLinked(root: rootURL) else { return ScratchpadFileList(root: root, files: []) }

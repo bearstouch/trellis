@@ -1,4 +1,8 @@
-import Foundation
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
 
 /// Tracks the DEC private modes a replay must restore: alternate screens, bracketed paste,
 /// application cursor keys, mouse reporting and cursor visibility. A streaming parser, so
@@ -59,6 +63,8 @@ public struct OutputRing: Sendable {
     public let limit: Int
     public private(set) var bytes = Data()
     public private(set) var truncated = false
+    /// Every byte ever appended, including evicted ones: the session's output position (protocol v2).
+    public private(set) var appendedTotal: UInt64 = 0
     private var baseline = ModeTracker()
 
     public init(limit: Int = OutputRing.sessionLimit) { self.limit = max(1, limit) }
@@ -67,6 +73,7 @@ public struct OutputRing: Sendable {
 
     public mutating func append(_ data: Data) {
         bytes.append(data)
+        appendedTotal += UInt64(data.count)
         // Trim in steps so a steady stream doesn't copy the whole ring on every read.
         if bytes.count > limit + limit / 8 { evict(bytes.count - limit) }
     }
@@ -97,6 +104,16 @@ public struct OutputRing: Sendable {
             tail = tail[(newline + 1)...]
         }
         return Data("\u{1b}c".utf8) + modes.assertion + Data(tail)
+    }
+}
+
+extension OutputRing {
+    /// The output after position `since` when the ring still holds all of it (`resumed`), otherwise the full `replay`.
+    /// A `since` past the end (a client that counted wrong) gets the full replay too, never a guess.
+    public func replay(since: UInt64?) -> (data: Data, resumed: Bool) {
+        let held = UInt64(bytes.count)
+        guard let since, since <= appendedTotal, appendedTotal - since <= min(held, UInt64(limit)) else { return (replay, false) }
+        return (Data(bytes.suffix(Int(appendedTotal - since))), true)
     }
 }
 

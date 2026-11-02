@@ -73,13 +73,14 @@ final class SessionAdoptionTests: XCTestCase {
         XCTAssertEqual(original.launches + kept.launches, 0)
     }
 
-    func testSessionSettingsDefaultOffAndRoundTripWithoutRuntimeState() async throws {
+    func testSessionSettingsDefaultsAndRoundTripWithoutRuntimeState() async throws {
         let old = Data(#"{"shell":"/bin/zsh","directory":"/tmp"}"#.utf8)
         let decoded = try JSONDecoder().decode(WorkspaceSettings.self, from: old)
-        XCTAssertFalse(decoded.keepSessionsRunning)
+        XCTAssertTrue(decoded.keepSessionsRunning, "Kept by default (FR-R07)")
+        XCTAssertFalse(decoded.sessionDefaultNoticePending, "Nothing changed for this file")
         XCTAssertFalse(decoded.restoreScrollback)
-        let invalid = Data(#"{"shell":"/bin/zsh","directory":"/tmp","keepSessionsRunning":"yes"}"#.utf8)
-        XCTAssertFalse(try JSONDecoder().decode(WorkspaceSettings.self, from: invalid).keepSessionsRunning, "An unusable value is off")
+        let invalid = Data(#"{"shell":"/bin/zsh","directory":"/tmp","stopSessionsOnQuit":"yes"}"#.utf8)
+        XCTAssertTrue(try JSONDecoder().decode(WorkspaceSettings.self, from: invalid).keepSessionsRunning, "An unusable value is the default")
 
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-session-settings-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -99,5 +100,27 @@ final class SessionAdoptionTests: XCTestCase {
         XCTAssertTrue(restored.settings.keepSessionsRunning)
         XCTAssertTrue(restored.settings.restoreScrollback)
         XCTAssertEqual(restored.snapshot.sessions[sessionID]?.state, .stopped)
+    }
+
+    func testTheOptInSettingMigratesToTheNewDefault() throws {
+        func decode(_ json: String) throws -> WorkspaceSettings { try JSONDecoder().decode(WorkspaceSettings.self, from: Data(json.utf8)) }
+        let off = try decode(#"{"shell":"/bin/zsh","directory":"/tmp","keepSessionsRunning":false}"#)
+        XCTAssertTrue(off.keepSessionsRunning, "The opt-in era's default adopts the new default")
+        XCTAssertTrue(off.sessionDefaultNoticePending, "Quitting used to stop these sessions, so Settings says so once")
+        let on = try decode(#"{"shell":"/bin/zsh","directory":"/tmp","keepSessionsRunning":true}"#)
+        XCTAssertTrue(on.keepSessionsRunning)
+        XCTAssertFalse(on.sessionDefaultNoticePending)
+        let stop = try decode(#"{"shell":"/bin/zsh","directory":"/tmp","keepSessionsRunning":true,"stopSessionsOnQuit":true}"#)
+        XCTAssertFalse(stop.keepSessionsRunning, "The new key wins")
+
+        var settings = WorkspaceSettings()
+        settings.keepSessionsRunning = false
+        settings.sessionDefaultNoticePending = true
+        let text = String(decoding: try JSONEncoder().encode(settings), as: UTF8.self)
+        XCTAssertTrue(text.contains(#""stopSessionsOnQuit":true"#), text)
+        XCTAssertFalse(text.contains("keepSessionsRunning"), "The old key is never written again")
+        XCTAssertEqual(try JSONDecoder().decode(WorkspaceSettings.self, from: Data(text.utf8)), settings)
+        settings.sessionDefaultNoticePending = false
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(settings), as: UTF8.self).contains("sessionDefaultNoticePending"))
     }
 }
