@@ -158,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         startupTask = Task {
             // Saved-host panes resolve their host when started, so load hosts first.
             await hosts.load()
+            await model.loadDirectoryHistory(hosts: hosts.loadFailed ? nil : hosts.hosts)
             let restored = await model.loadWorkspace()
             await model.refresh()
             guard !Task.isCancelled else { return }
@@ -260,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.commandPalette, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -336,6 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .toggleSidebar: model.toggleSidebar()
         case .toggleScratchpad: Task { await model.toggleScratchpad() }
         case .commandPalette: model.toggleCommandPalette()
+        case .jumpToDirectory: model.openDirectoryJump()
         case .splitLeftRight, .splitTopBottom:
             if let pane { Task { await model.splitPane(pane, axis: action == .splitLeftRight ? .x : .y) } }
         case .maximizePane: if let pane { Task { await model.toggleMaximize(pane) } }
@@ -373,7 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
-        if action == .commandPalette { return !model.isRestoring && model.recoveryMessage == nil }
+        if action == .commandPalette || action == .jumpToDirectory { return !model.isRestoring && model.recoveryMessage == nil }
         if action == .toggleScratchpad { return !model.presentation.isEmpty }
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
@@ -736,6 +738,7 @@ struct TrellisMain {
             // FR-AG01: the user's own agent definitions sit beside the theme library.
             model.agentsDirectory = directory.appendingPathComponent("Agents", isDirectory: true)
             model.reloadAgentCatalog()
+            model.directoryHistory = DirectoryHistory(stateDirectory: directory)  // FR-DJ09
             let hosts = HostListModel(library: HostLibrary(storage: HostFileStorage(directory: directory), secrets: KeychainHostSecretStore()))
             // FR-RW17: the Linux helpers ship in Resources/remote (scripts/build-remote-helpers.sh); macOS hosts get the bundled broker.
             hosts.remote = RemoteHostsModel(

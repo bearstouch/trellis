@@ -49,9 +49,10 @@ public enum RemoteLinkDisplay: Equatable, Sendable {
 
 /// Remote workspaces (FR-RW01–FR-RW09): windows bound to a saved host whose sessions the host's helper owns.
 extension AppWorkspaceModel {
-    /// Opens a window bound to `host` and starts its first shell there; the helper is installed first if needed and allowed.
+    /// Opens a window bound to `host` and starts its first shell there, in `directory` or home; the helper is installed
+    /// first if needed and allowed.
     @discardableResult
-    public func openRemoteWorkspace(host: SavedHost) async -> UUID? {
+    public func openRemoteWorkspace(host: SavedHost, directory: String? = nil) async -> UUID? {
         guard remoteHosts != nil, !isRestoring, recoveryMessage == nil, !shuttingDown, !Task.isCancelled else { return nil }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
@@ -62,6 +63,7 @@ extension AppWorkspaceModel {
             else { return nil }
             attachTerminal(pane)
             publish(result.snapshot)
+            if let directory { publish(try await service.execute(.configureStoppedSession(paneID: pane.id, launch: .remoteShell(hostID: host.id, directory: directory))).snapshot) }
             await start(paneID: pane.id)
             return id
         } catch { errorMessage = "The remote workspace could not be created."; return nil }

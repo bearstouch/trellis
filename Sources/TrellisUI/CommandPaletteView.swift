@@ -158,13 +158,19 @@ struct CommandPaletteView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 26)).foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
-            Text("No matches for “\(model.commandPaletteQuery)”").font(.system(size: 15, weight: .semibold))
+        // ⌘J opens this scope even before there's anything in it (FR-DJ05).
+        let noDirectories = model.commandPaletteScope == .directories && model.commandPaletteQuery.isEmpty
+        return VStack(spacing: 8) {
+            Image(systemName: noDirectories ? "folder" : "magnifyingglass").font(.system(size: 26)).foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
+            Text(noDirectories ? "No directories yet" : "No matches for “\(model.commandPaletteQuery)”").font(.system(size: 15, weight: .semibold))
             Text(
-                model.commandPaletteScope == nil
-                    ? "Search covers actions, windows, tabs, panes, saved hosts, tasks and themes. Try fewer letters."
-                    : "Press ⌫ in the empty field to search everything."
+                noDirectories
+                    ? (model.directoryHistoryEnabled
+                        ? "Directories your shells visit appear here. This needs shell integration."
+                        : "Remember directories is turned off in Settings.")
+                    : model.commandPaletteScope == nil
+                        ? "Search covers actions, windows, tabs, panes, saved hosts, tasks, themes and directories. Try fewer letters."
+                        : "Press ⌫ in the empty field to search everything."
             )
             .font(.system(size: 13)).foregroundStyle(model.themeColor(.mutedForeground)).multilineTextAlignment(.center).frame(maxWidth: 380)
         }
@@ -180,6 +186,7 @@ struct CommandPaletteView: View {
             case .host: hints += ["↩ Connect", "⌘↩ New Window", "⌥↩ Split"]
             case .remoteWorkspace: hints.append("↩ Open")
             case .project: hints.append("↩ Launch")
+            case .directory: hints += ["↩ Jump", "⌘↩ New Tab", "⌥↩ Split"]
             default: hints.append("↩ Run")
             }
         }
@@ -209,6 +216,7 @@ struct CommandPaletteView: View {
         case .task: "Run Task"
         case .theme: "Use Theme"
         case .agent: "Launch Agent"
+        case .directory: "Jump to Directory"
         }
     }
 
@@ -226,6 +234,7 @@ struct CommandPaletteView: View {
         case .task: "play"
         case .theme: "paintpalette"
         case .agent: "sparkles"
+        case .directory: "folder"
         }
     }
 

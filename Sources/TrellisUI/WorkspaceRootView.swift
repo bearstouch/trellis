@@ -1134,6 +1134,14 @@ public struct LaunchSettingsView: View {
             ).accessibilityIdentifier("settings.shellIntegration")
             caption("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions.")
             Toggle(
+                "Remember directories",
+                isOn: Binding(get: { model.directoryHistoryEnabled }, set: { model.setDirectoryHistoryEnabled($0) })
+            ).accessibilityIdentifier("settings.directoryHistory")
+            caption("Lists where your shells have been under Jump to Directory (⌘J). Kept on this Mac; system, credential and network folders are skipped.")
+            // Always enabled: a backup or set-aside copy can hold paths while the list is empty (FR-DJ08).
+            Button("Clear Directory History…") { Task { await model.clearDirectoryHistory() } }
+                .accessibilityIdentifier("settings.clearDirectoryHistory")
+            Toggle(
                 "Stop sessions when Trellis quits",
                 isOn: Binding(get: { !model.keepSessionsRunning }, set: { model.setKeepSessionsRunning(!$0) })
             ).accessibilityIdentifier("settings.stopSessionsOnQuit")
