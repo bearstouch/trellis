@@ -2,7 +2,7 @@ import Foundation
 
 /// What a palette row is, in the order equal scores are listed (FR-CP04).
 public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
-    case action, tab, window, pane, host, project, task, theme, agent
+    case action, tab, window, pane, host, project, task, theme, agent, directory
 
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -17,6 +17,7 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .task: "Tasks"
         case .theme: "Themes"
         case .agent: "Agents"
+        case .directory: "Directories"
         }
     }
 
@@ -32,13 +33,14 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         case .task: "task"
         case .theme: "theme"
         case .agent: "agent"
+        case .directory: "directory"
         }
     }
 }
 
 /// One kind listed alone (FR-CP06).
 public enum CommandPaletteScope: String, CaseIterable, Sendable {
-    case windows, tabs, panes, hosts, projects, tasks, themes, agents
+    case windows, tabs, panes, hosts, projects, tasks, themes, agents, directories
 
     public var kind: CommandPaletteKind {
         switch self {
@@ -50,6 +52,7 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .tasks: .task
         case .themes: .theme
         case .agents: .agent
+        case .directories: .directory
         }
     }
 
@@ -63,6 +66,7 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
         case .tasks: "Run Task…"
         case .themes: "Use Theme…"
         case .agents: "Launch Agent…"
+        case .directories: "Jump to Directory…"
         }
     }
 
@@ -87,6 +91,8 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     case theme(String)
     /// Launches a catalog agent beside the focused pane (FR-AG07).
     case agent(String)
+    /// Jumps to a remembered directory on its own machine (FR-DJ06); `machine` is a `ProjectTarget.key`.
+    case directory(machine: String, path: String)
 
     public var id: String {
         switch self {
@@ -102,6 +108,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .task(let name, let detected): (detected ? "task:detected:" : "task:file:") + name
         case .theme(let id): "theme:" + id
         case .agent(let id): "agent:" + id
+        case .directory(let machine, let path): "directory:" + machine + ":" + path
         }
     }
 }
@@ -117,14 +124,16 @@ public struct CommandPaletteItem: Identifiable, Equatable, Sendable {
     /// The heading inside a scope, such as a tab's window. `groupID` keeps two windows with one name apart.
     public var groupID: String?
     public var groupTitle: String?
+    /// Added to the search score, like recency: it settles similar matches without outranking a clearly better one.
+    public var boost: Int
     public var id: String { target.id }
 
     public init(
         target: CommandPaletteTarget, kind: CommandPaletteKind, title: String, subtitle: String = "", keywords: [String] = [], shortcut: KeyChord? = nil,
-        groupID: String? = nil, groupTitle: String? = nil
+        groupID: String? = nil, groupTitle: String? = nil, boost: Int = 0
     ) {
         self.target = target; self.kind = kind; self.title = title; self.subtitle = subtitle; self.keywords = keywords; self.shortcut = shortcut
-        self.groupID = groupID; self.groupTitle = groupTitle
+        self.groupID = groupID; self.groupTitle = groupTitle; self.boost = boost
     }
 }
 
@@ -230,7 +239,7 @@ public enum CommandPaletteSearch {
         }
         let recency = Dictionary(recents.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         let matches = pool.compactMap { item -> CommandPaletteMatch? in
-            let boost = recency[item.id].map { max(0, 10 - $0) } ?? 0
+            let boost = (recency[item.id].map { max(0, 10 - $0) } ?? 0) + item.boost
             if let title = FuzzyMatch.match(query, in: item.title) {
                 return CommandPaletteMatch(item: item, score: title.score + boost, titlePositions: title.positions, matchedAlias: nil)
             }

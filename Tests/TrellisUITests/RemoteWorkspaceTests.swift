@@ -136,6 +136,116 @@ final class RemoteWorkspaceTests: XCTestCase {
         try await until("both panes came back") { relaunched.terminals[split]?.remoteTransport != nil && relaunched.terminals[split]?.sessionState == .running }
     }
 
+    private func makeDirectoryHistory() -> DirectoryHistory {
+        DirectoryHistory(stateDirectory: URL(fileURLWithPath: root + "/history"), sleep: { _ in try? await Task.sleep(for: .seconds(3600)) }, mounts: { [] })
+    }
+
+    /// FR-DJ01, FR-DJ02, FR-DJ06, FR-DJ07: visits on a host are that host's, and each row acts only on its own machine.
+    func testDirectoryJumpActsOnEachRowsOwnMachine() async throws {
+        let model = try makeModel()
+        model.directoryHistory = makeDirectoryHistory()
+        _ = await model.loadWorkspace()
+        let opened = await model.openRemoteWorkspace(host: host)
+        let hostWindow = try XCTUnwrap(opened)
+        let pane = try XCTUnwrap(model.presentation.activePane)
+        let terminal = try XCTUnwrap(model.terminals[pane.id])
+        try await until("the remote shell runs") { terminal.sessionState == .running }
+        try await until("the first prompt") { model.remoteWorkingDirectory(paneID: pane.id) != nil }
+
+        // /usr passes the skip rules, where the test's temporary folders don't.
+        try terminal.adapter.send(Data("cd /usr\r".utf8))
+        try await until("the visit is remembered for the host") { model.directoryEntries.contains { $0.path == "/usr" && $0.machine == self.host.id.uuidString } }
+        XCTAssertFalse(model.directoryEntries.contains { $0.machine == "local" }, "A host's path is never this Mac's")
+
+        // Return, same machine, idle: `cd` in the same pane.
+        let work = home + "/work dir"
+        try FileManager.default.createDirectory(atPath: work, withIntermediateDirectories: true)
+        try await until("the shell is idle") { model.taskAvailability(paneID: pane.id) == .ready }
+        var tabs = model.snapshot.tabs.count
+        await model.jumpToDirectory(path: work, machine: host.id.uuidString, modifier: .none)
+        try await until("the shell moved") { model.remoteWorkingDirectory(paneID: pane.id) == work }
+        XCTAssertEqual(model.snapshot.tabs.count, tabs)
+
+        // ⌘Return: a new tab on the host, in that directory.
+        await model.jumpToDirectory(path: "/usr", machine: host.id.uuidString, modifier: .command)
+        XCTAssertEqual(model.snapshot.tabs.count, tabs + 1)
+        let tabPane = try XCTUnwrap(model.presentation.activePane?.id)
+        guard case .remoteShell(host.id, "/usr")? = model.snapshot.panes[tabPane].flatMap({ model.snapshot.sessions[$0.sessionID]?.launch }) else {
+            return XCTFail("The tab isn't on the host, in that directory")
+        }
+        try await until("the tab's shell starts there") { model.remoteWorkingDirectory(paneID: tabPane) == "/usr" }
+        tabs += 1
+
+        // A local row from a host's pane: never typed there, and with no local window, a new one.
+        let local = root + "/local folder"
+        try FileManager.default.createDirectory(atPath: local, withIntermediateDirectories: true)
+        let before = terminal.screenText
+        await model.jumpToDirectory(path: local, machine: "local", modifier: .none)
+        XCTAssertEqual(model.snapshot.windows.count, 2)
+        let localWindow = try XCTUnwrap(model.snapshot.windows.first { $0.id == model.snapshot.activeWindowID })
+        XCTAssertNil(localWindow.remoteHostID)
+        let localPane = try XCTUnwrap(model.presentation.activePane?.id)
+        XCTAssertEqual(model.directoryMachine(paneID: localPane), .local)
+        XCTAssertEqual(terminal.screenText, before)
+
+        // A host's row from a local pane: a tab in the host's window, whatever Return would type here.
+        await model.jumpToDirectory(path: work, machine: host.id.uuidString, modifier: .none)
+        XCTAssertEqual(model.snapshot.activeWindowID, hostWindow)
+        XCTAssertEqual(model.snapshot.tabs.count, tabs + 2, "The local window's tab and this one")
+        let backPane = try XCTUnwrap(model.presentation.activePane?.id)
+        XCTAssertEqual(model.directoryMachine(paneID: backPane), .host(host.id))
+        try await until("the shell starts there") { model.remoteWorkingDirectory(paneID: backPane) == work }
+
+        // ⌥Return from another machine's pane is a new tab, never a split that mixes machines.
+        await model.selectWindow(localWindow.id)
+        let panes = localWindow.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] }.count
+        await model.jumpToDirectory(path: "/usr", machine: host.id.uuidString, modifier: .option)
+        XCTAssertEqual(model.snapshot.activeWindowID, hostWindow)
+        XCTAssertEqual(model.snapshot.windows.first { $0.id == localWindow.id }.map { $0.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] }.count }, panes)
+        model.terminals[localPane]?.requestTermination(force: true)
+    }
+
+    /// FR-DJ06: with no window on the host, a row opens a remote workspace in that directory.
+    func testDirectoryJumpOpensARemoteWorkspaceWhenTheHostHasNoWindow() async throws {
+        let model = try makeModel()
+        _ = await model.loadWorkspace()
+        let work = home + "/work"
+        try FileManager.default.createDirectory(atPath: work, withIntermediateDirectories: true)
+        await model.jumpToDirectory(path: work, machine: host.id.uuidString, modifier: .none)
+        XCTAssertEqual(model.snapshot.windows.last?.remoteHostID, host.id)
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        try await until("the shell starts there") { model.remoteWorkingDirectory(paneID: pane) == work }
+    }
+
+    /// FR-DJ01: reattaching replays the session's marks, which are history, not visits. Nor is the next prompt in that directory.
+    func testReplayedPromptsAreNotVisits() async throws {
+        let history = makeDirectoryHistory()
+        let model = try makeModel()
+        model.directoryHistory = history
+        _ = await model.loadWorkspace()
+        _ = await model.openRemoteWorkspace(host: host)
+        let pane = try XCTUnwrap(model.presentation.activePane)
+        let terminal = try XCTUnwrap(model.terminals[pane.id])
+        try await until("the remote shell runs") { terminal.sessionState == .running }
+        try await until("the first prompt") { model.remoteWorkingDirectory(paneID: pane.id) != nil }
+        try terminal.adapter.send(Data("cd /usr\r".utf8))
+        try await until("the visit") { model.directoryEntries.first { $0.path == "/usr" }?.visits == 1 }
+        let detached = await model.detachForQuit()
+        XCTAssertTrue(detached)
+
+        let relaunched = try makeModel()
+        relaunched.directoryHistory = history
+        _ = await relaunched.loadWorkspace()
+        let restored = try XCTUnwrap(relaunched.terminals[pane.id])
+        try await until("the session is adopted") { restored.sessionState == .running && relaunched.remoteLinks[host.id] == .connected }
+        try await until("the replayed directory") { relaunched.remoteWorkingDirectory(paneID: pane.id) == "/usr" }
+        try restored.adapter.send(Data("true\r".utf8))
+        try await until("the shell ran the command") { relaunched.shellStates[pane.id]?.lastExitCode != nil || restored.screenText.contains("true") }
+        try await Task.sleep(for: .milliseconds(400))
+        let entries = await history.all()
+        XCTAssertEqual(entries.first { $0.path == "/usr" }?.visits, 1)
+    }
+
     /// FR-RW01: the command palette opens a saved host as a remote workspace, next to its Connect item.
     func testThePaletteOpensARemoteWorkspace() async throws {
         let model = try makeModel()

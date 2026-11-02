@@ -133,6 +133,7 @@ extension AppWorkspaceModel {
             return false
         }
         guard await finishClosure(local) else { return cancel() }
+        await directoryHistory?.flush()
         await saveScrollback()
         guard await flushWorkspaceSave() else { return cancel() }
         await sessionBroker?.detach()

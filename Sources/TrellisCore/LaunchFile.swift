@@ -112,6 +112,14 @@ public enum TaskCommand {
         }
     }
 
+    /// The line that moves a shell to `directory` (FR-DJ06); nil when it can't be typed safely. The path is absolute, so
+    /// `cd` can't read it as an option.
+    public static func changeDirectoryLine(_ directory: String, kind: ShellIntegrationKind) -> String? {
+        guard directory.hasPrefix("/"), !ProjectText.hasHiddenCharacters(directory) else { return nil }
+        let line = "cd " + shellQuote(directory, kind: kind)
+        return ProjectText.commandProblem(line) == nil ? line : nil
+    }
+
     /// `command`, after a `cd` when the shell is elsewhere, and wrapped in `env … shell -c` when it has variables so they
     /// cover the whole line. Nil when a part can't be typed safely or the line is too long.
     public static func compose(

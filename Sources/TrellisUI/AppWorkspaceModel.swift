@@ -361,6 +361,19 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Per session, outliving its shell state so Quit can still save it as the launch directory (FR-SI07).
     /// Keyed by session so a restarted or reconfigured pane never resumes a previous shell's directory.
     private var lastReportedDirectories: [UUID: String] = [:]
+    /// Injected at launch; nil keeps no history (FR-DJ09).
+    public var directoryHistory: DirectoryHistory?
+    /// A copy of the history, ranked, because palette rows are built synchronously.
+    @Published public internal(set) var directoryEntries: [DirectoryHistoryEntry] = []
+    /// New visits are recorded while on; what's already remembered stays either way (FR-DJ08).
+    @Published public internal(set) var directoryHistoryEnabled: Bool
+    /// Per session, so a new shell's first prompt counts as a visit and a repeated prompt doesn't (FR-DJ01).
+    var lastRecordedDirectories: [UUID: String] = [:]
+    /// Injected by tests.
+    public var confirmClearDirectoryHistory: () -> Bool = { false }
+    /// Injected by tests: how a local row is looked at before a jump, and how long that may take (FR-DJ06).
+    var directoryJumpFiles: any LaunchFileAccess = SystemLaunchFileAccess()
+    var directoryJumpTimeout: TimeInterval = 2
     /// Injected by tests; nil disables integration.
     var shellIntegrationDirectory: String? = BundledShellIntegration.directory()
     public var confirmCloseSessions: (Int) -> Bool = { _ in true }
@@ -464,6 +477,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the palette's field should take keyboard focus.
     @Published public internal(set) var commandPaletteFocusRequest = 0
     var commandPaletteRecents = CommandPaletteRecents()
+    var commandPaletteOpenedAt: Date?
     var commandPaletteSearchCache: (key: CommandPaletteSearchKey, sections: [CommandPaletteSection])?
     /// The actions their menus enabled when the palette opened, read before its field took focus (FR-CP03).
     var commandPaletteActions: [ShortcutAction] = []
@@ -561,12 +575,14 @@ public final class AppWorkspaceModel: ObservableObject {
         defaultShell = preferences.string(forKey: "terminal.shell") ?? LocalLaunchConfiguration.loginShell().executable
         defaultDirectory = preferences.string(forKey: "terminal.directory") ?? FileManager.default.homeDirectoryForCurrentUser.path
         shellIntegrationEnabled = preferences.object(forKey: "terminal.shellIntegration") as? Bool ?? true
+        directoryHistoryEnabled = preferences.object(forKey: "terminal.directoryHistory") as? Bool ?? true
         sidebarCollapsed = preferences.bool(forKey: "sidebar.collapsed")
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
         confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
         confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
+        confirmClearDirectoryHistory = { [weak self] in self?.showClearDirectoryHistoryConfirmation() ?? false }
     }
 
     /// Returns true for an existing document or recovery state, even if empty.
@@ -778,6 +794,7 @@ public final class AppWorkspaceModel: ObservableObject {
         markAgentsViewed()
         for id in busyTabIDs where next.tabs[id] == nil { busyTabIDs.remove(id); busySettleTasks.removeValue(forKey: id)?.cancel() }
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
+        lastRecordedDirectories = lastRecordedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
@@ -1221,6 +1238,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
             lastReportedDirectories[sessionID] = directory; scheduleWorkspaceSave()
         }
+        recordDirectoryVisit(paneID: paneID)
         pruneProjectState()
         refreshTerminalAccessibility()
     }
@@ -1869,6 +1887,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// workspaces themselves ends them.
     public func shutdown(endingRemoteSessions: Bool = false) async -> Bool {
         cancelPaste()
+        await directoryHistory?.flush()
         let remote = Set(terminals.filter { $0.value.remoteTransport != nil }.keys)
         let ending = endingRemoteSessions ? Set(terminals.keys) : Set(terminals.keys).subtracting(remote)
         if !endingRemoteSessions { remote.forEach { terminals[$0]?.prepareForKeepRunning() } }

@@ -17,6 +17,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Projects and tasks:** define projects (tabs, splits, commands and git repositories) in the **Projects** library and launch them on this Mac or a saved host, cloning what's missing; run `.trellis/launch.json` tasks from a pane header.
 - **Coding agents (preview):** an **Agent** button in each pane header opens Claude Code, pi or Codex in a new tab (or beside the pane), on this Mac or a remote workspace's host. The tab shows the agent's icon and whether it's working, needs you or is done, from the agent's own hooks. A missing agent offers its vendor's installer, and you can add your own agents as JSON. See [Coding agents](docs/features/agents.md).
 - **Command palette:** ⇧⌘P opens one searchable list of every action, window, tab, pane, saved host, task and theme.
+- **Directory jump:** ⌘J lists the directories your shells have recently and frequently been in, on this Mac and in remote workspaces. Return goes there in the current pane, or in a new tab if it's busy.
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
 - **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
 - **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.

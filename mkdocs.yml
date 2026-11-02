@@ -53,6 +53,7 @@ nav:
       - Coding agents: features/agents.md
       - Command scratchpad: features/scratchpad.md
       - Command palette: features/command-palette.md
+      - Directory jump: features/directory-jump.md
       - Terminal: features/terminal.md
       - Shell integration: features/shell-integration.md
       - SSH hosts: features/ssh-hosts.md
