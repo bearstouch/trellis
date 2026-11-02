@@ -415,7 +415,13 @@ public struct WorkspaceRootView: View {
         let label = HStack(spacing: 8) {
             // FR-AG09: a running agent's icon replaces the terminal's, in the same tint.
             Group {
-                if let agent {
+                if let agent, let agentBadge, agentBadge.state == .working {
+                    // FR-AG10: no word on the tab while working, so the tooltip names the agent that is (it can differ from the icon's).
+                    // A plain reset doesn't stop a repeating animation, so turning on Reduce Motion replaces the view (`id`).
+                    AgentBreathingMark(tint: tab.color?.swatchColor ?? model.themeColor(.accent), animated: !model.reduceMotion) {
+                        AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id])
+                    }.id(model.reduceMotion).help("\(agentBadge.agent.name): \(agentBadge.state.label)")
+                } else if let agent {
                     AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id]).help(agent.name)
                 } else {
                     Image(systemName: "terminal").font(.system(size: 10))
@@ -450,16 +456,19 @@ public struct WorkspaceRootView: View {
                     .help(WorkspaceAccessibility.commandFailureText(code))
                     .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
             }
-            if let agentBadge {
+            switch TabCapsuleKind.resolve(agentState: agentBadge?.state, waitingForInput: wait != nil) {
+            case .agent(let state):
                 // FR-AG10: the agent's state as a word and symbol; it outranks the generic Input capsule.
-                AgentTabBadge(state: agentBadge.state).help("\(agentBadge.agent.name): \(agentBadge.state.label)")
-            } else if let wait {
+                AgentTabBadge(state: state).help("\(agentBadge?.agent.name ?? ""): \(state.label)")
+            case .input:
                 // A word in a capsule, not color alone (FR-T06); the tab's value speaks it.
                 Label("Input", systemImage: "keyboard").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium)).lineLimit(1)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
                     .overlay(Capsule().strokeBorder(model.themeColor(.accent).opacity(0.6), lineWidth: 1))
-                    .fixedSize().help(wait.text).accessibilityHidden(true)
+                    .fixedSize().help(wait?.text ?? "").accessibilityHidden(true)
+            case nil:
+                EmptyView()
             }
             if let progress {
                 // The bar's state in words (FR-T09); the tab's value speaks it.
@@ -478,7 +487,7 @@ public struct WorkspaceRootView: View {
             // The tint sits above the opaque active background, so a selected tab keeps it.
             .background(tab.color.map { $0.swatchColor.opacity(selected ? 0.2 : 0.12) } ?? .clear)
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
-            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy, progress: progress) }
+            .overlay(alignment: .top) { tabTopEdge(tab, busy: busy, progress: progress, agentState: agentBadge?.state) }
             .overlay(alignment: .bottom) {
                 if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
@@ -509,22 +518,29 @@ public struct WorkspaceRootView: View {
             }
     }
 
-    /// Progress outranks the busy bar, which outranks the color label stripe.
-    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool, progress: TerminalProgress?) -> some View {
-        if let progress {
-            let fill =
-                switch progress.state {
-                case .error: Color.red
-                case .paused: Color.orange
-                default: tab.color?.swatchColor ?? model.themeColor(.accent)
-                }
-            TabProgressBar(progress: progress, fill: fill, animated: !model.reduceMotion).help("Progress: \(progress.visibleText)")
-        } else if busy {
-            let fill = tab.color?.swatchColor ?? model.themeColor(.accent)
+    /// Progress outranks a working agent's thread, then the busy bar, then the color label stripe.
+    @ViewBuilder private func tabTopEdge(_ tab: WorkspaceTab, busy: Bool, progress: TerminalProgress?, agentState: AgentState?) -> some View {
+        let fill = tab.color?.swatchColor ?? model.themeColor(.accent)
+        switch TabTopEdgeKind.resolve(hasProgress: progress != nil, agentState: agentState, busy: busy, hasLabel: tab.color != nil) {
+        case .progress:
+            if let progress {
+                let barFill =
+                    switch progress.state {
+                    case .error: Color.red
+                    case .paused: Color.orange
+                    default: fill
+                    }
+                TabProgressBar(progress: progress, fill: barFill, animated: !model.reduceMotion).help("Progress: \(progress.visibleText)")
+            }
+        case .agentWorking:
+            TabAgentThread(fill: fill, animated: !model.reduceMotion)
+        case .busy:
             TabBusyBar(fill: fill, track: tab.color?.swatchColor.opacity(0.3) ?? .clear, animated: !model.reduceMotion)
                 .help(tab.color.map { "Printing output · \($0.displayName) label" } ?? "Printing output")
-        } else if let color = tab.color {
-            Rectangle().fill(color.swatchColor).frame(height: 3).help("\(color.displayName) label")
+        case .label:
+            Rectangle().fill(fill).frame(height: 3).help(tab.color.map { "\($0.displayName) label" } ?? "")
+        case nil:
+            EmptyView()
         }
     }
 
@@ -763,6 +779,40 @@ private struct TabBusyBar: View {
         filled = false
         guard animated else { return }
         withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { filled = true }
+    }
+}
+
+/// A working agent along the tab's top edge (FR-AG10): a light sweeps over a faint track, or a full bar under Reduce Motion.
+/// Taller than the bar only so its glow shows inside the tab; it takes no clicks, and the icon carries the tooltip.
+private struct TabAgentThread: View {
+    let fill: Color
+    let animated: Bool
+    @State private var swept = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let comet = geometry.size.width * 0.4
+            ZStack(alignment: .leading) {
+                fill.opacity(0.18)
+                if animated {
+                    LinearGradient(stops: [.init(color: fill.opacity(0), location: 0), .init(color: fill, location: 0.7), .init(color: .white, location: 1)], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: comet).shadow(color: fill, radius: 3)
+                        .offset(x: swept ? geometry.size.width : -comet)
+                } else {
+                    fill
+                }
+            }
+            .frame(height: 3)
+        }
+        .frame(height: 9, alignment: .top).clipped().allowsHitTesting(false)
+        .onAppear { start(animated) }
+        .onChange(of: animated) { _, next in start(next) }
+    }
+
+    private func start(_ animated: Bool) {
+        swept = false
+        guard animated else { return }
+        withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: false)) { swept = true }
     }
 }
 
