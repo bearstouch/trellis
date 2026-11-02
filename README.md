@@ -152,4 +152,4 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workf
 
 ## License
 
-Trellis is released under the [MIT License](LICENSE). The vendored SwiftTerm is also MIT-licensed. Its license, provenance and patch set are in [`ThirdParty/SwiftTerm`](ThirdParty/SwiftTerm/PATCHES.md).
+Trellis is released under the [MIT License](LICENSE). The vendored SwiftTerm is also MIT-licensed. Its license, provenance and patch set are in [`ThirdParty/SwiftTerm`](ThirdParty/SwiftTerm/PATCHES.md). The Git icon in pane headers is the [Git logo](https://commons.wikimedia.org/wiki/File:Git_icon.svg) by Jason Long, used under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).

@@ -127,7 +127,11 @@ final class RemoteReconnectTests: XCTestCase {
         let terminal = try await openWithPendingOutput("late")
         try Data("ssh: connect to host build-box port 22: Connection refused\n".utf8).write(to: URL(fileURLWithPath: root + "/fail"))
         try await dropConnection()
-        try await until("three attempts were refused") { delays.count >= 3 }
+        // Between backoffs: the next attempt may already be `.connecting` when the third delay is recorded.
+        try await until("three attempts were refused") {
+            guard delays.count >= 3, case .reconnecting? = model.remoteLinks[host.id] else { return false }
+            return true
+        }
         guard case .reconnecting(let attempt, _)? = model.remoteLinks[host.id] else { return XCTFail("\(String(describing: model.remoteLinks[host.id]))") }
         XCTAssertGreaterThanOrEqual(attempt, 3)
         try FileManager.default.removeItem(atPath: root + "/fail")

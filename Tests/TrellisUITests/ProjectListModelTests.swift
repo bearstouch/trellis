@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 import Foundation
 import TrellisBroker
 import TrellisControl
@@ -90,6 +92,51 @@ final class GitStatusTextTests: XCTestCase {
         let detached = BrokerGitStatus(branch: nil, commit: "89abcde", changes: 1, ahead: 0, behind: 0)
         XCTAssertEqual(AppWorkspaceModel.gitStatusText(detached), "(89abcde) ●1")
         XCTAssertEqual(AppWorkspaceModel.gitStatusSpoken(detached), "Git commit 89abcde, detached, 1 change")
+    }
+}
+
+/// The pane header's Git icon (FR-PL09) fills the box it's given, scaled and in place.
+final class GitMarkTests: XCTestCase {
+    func testMarkScalesIntoItsRect() {
+        let bounds = GitMark().path(in: CGRect(x: 10, y: 20, width: 12, height: 12)).boundingRect
+        XCTAssertEqual(bounds.minX, 10 + 2.555 * 12 / 97, accuracy: 0.05)
+        XCTAssertEqual(bounds.minY, 20 + 2.558 * 12 / 97, accuracy: 0.05)
+        XCTAssertEqual(bounds.width, 92.0 * 12 / 97, accuracy: 0.1)
+        XCTAssertEqual(bounds.height, 92.0 * 12 / 97, accuracy: 0.1)
+    }
+
+    /// The card is the only place the branch is shown, so a long one must get the height it wraps to, not be clipped.
+    @MainActor func testCardIsTallEnoughForALongBranch() {
+        let short = NSHostingController(rootView: GitStatusBadge.cardText("main ●2")).view.fittingSize
+        let long = NSHostingController(rootView: GitStatusBadge.cardText(String(repeating: "feature/x ", count: 30))).view.fittingSize
+        XCTAssertLessThan(short.width, 100, "A short branch keeps a small card")
+        XCTAssertEqual(long.width, 380, accuracy: 1, "360 of text plus padding")
+        XCTAssertGreaterThan(long.height, short.height * 2, "Every wrapped line fits")
+    }
+}
+
+/// A hover card sits on what it describes, whatever its content's size (FR-PL09, FR-W06).
+@MainActor
+final class PassThroughPopoverPlacementTests: XCTestCase {
+    func testCardIsCenteredOnItsAnchorAndStaysThereWhenItsTextChanges() throws {
+        try XCTSkipIf(NSScreen.main == nil, "needs a display")
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 200, y: 300, width: 800, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let anchor = NSView(frame: NSRect(x: 600, y: 250, width: 18, height: 18))
+        window.contentView?.addSubview(anchor); window.orderFrontRegardless()
+        defer { window.close() }
+        let card = PassThroughPopover()
+        defer { card.close() }
+        let anchorMid = window.convertToScreen(anchor.convert(anchor.bounds, to: nil)).midX
+        func cardMid() -> CGFloat? {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            return card.popover.contentViewController?.view.window?.frame.midX
+        }
+        card.show(AnyView(GitStatusBadge.cardText("develop ●11")), relativeTo: anchor, edge: .minY)
+        XCTAssertEqual(try XCTUnwrap(cardMid()), anchorMid, accuracy: 2)
+        card.show(AnyView(GitStatusBadge.cardText("fix/release-per-arch-scratch-path ●3 ↑1")), relativeTo: anchor, edge: .minY)
+        XCTAssertEqual(try XCTUnwrap(cardMid()), anchorMid, accuracy: 2)
     }
 }
 

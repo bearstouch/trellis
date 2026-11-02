@@ -98,8 +98,17 @@ final class BrokerSessionClientReviewTests: XCTestCase {
         await client.detach()
 
         // Another client holding the broker's only slot shows as busy.
-        held = try BrokerConnection.connect(socketPath: try XCTUnwrap(launcher.discovery()?.socketPath), brokerExecutable: launcher.helperPath)
-        _ = try await held?.hello()
+        // The broker frees the slot when it sees the detached client's socket close, so the first tries may be turned away.
+        let socket = try XCTUnwrap(launcher.discovery()?.socketPath)
+        let deadline = Date().addingTimeInterval(3)
+        while held == nil, Date() < deadline {
+            if let connection = try? BrokerConnection.connect(socketPath: socket, brokerExecutable: launcher.helperPath), (try? await connection.hello()) != nil {
+                held = connection
+            } else {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        XCTAssertNotNil(held)
         let other = await BrokerSessionClient(launcher: launcher).status()
         XCTAssertEqual(other, .busy)
     }

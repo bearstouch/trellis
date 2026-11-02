@@ -9,6 +9,10 @@ extension Color {
     }
 }
 extension AppWorkspaceModel {
+    /// The pane header's machine name: one dark green, not a theme's success color, which is teal or yellow in some palettes.
+    /// Lighter on dark chrome, where the darker shade would be hard to read.
+    var machineLabelColor: Color { Color(themeRGB: effectiveTheme.appearance == .dark ? 0x259A4C : 0x1B7A3A) }
+
     // The original Trellis defaults retain native chrome. Bundled editor palettes
     // and imported/previewed JSON themes own their entire palette.
     var usesNativeChrome: Bool {
