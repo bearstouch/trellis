@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Agents typed in a shell:** typing `claude`, `pi` or `codex` at a shell prompt now shows the agent's icon and name on the tab and pane header while it runs. These runs have no **Working** or **Needs you** badge; opening the agent from the **Agent** button still gives you those (FR-AG15).
 
+- **Install the CLI from the app:** the first launch from Applications offers to install the `trellis` command, and **Trellis → Install Command Line Tool…** does it any time. It creates one link at `~/.local/bin/trellis`, tells you if that folder isn't on your `PATH` or another `trellis` comes first, and never edits your shell's startup files (MAC-15).
+
 ### Changed
 
 - **The pane's machine stands out:** a pane's header shows **Local**, **SSH** or the remote host's name in bold dark green (FR-RW05).
@@ -25,6 +27,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Removed
 
 - **Repository project files:** `.trellis/project.json` (and the older `workspace.json`) is no longer read. **Load Project**, **Open Project…**, **Save as Project…** and **Edit Project File** are gone; projects now live in Trellis's **Projects** library (FR-PL01–FR-PL09). ⌘O, or a shortcut you set for **Open Project…**, opens the library instead. Tasks in `.trellis/launch.json` are unchanged, and the remote helper no longer reads `project.json` on hosts.
+
+### Fixed
+
+- **`trellis cli … --dir`:** a relative directory that doesn't exist is now refused. It used to hang the command.
 
 ## [1.0.0] - 2026-10-29
 

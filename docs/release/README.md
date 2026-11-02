@@ -45,7 +45,7 @@ Trellis updates in place with Sparkle 2 (MAC-14).
 
 1. Open the DMG and drag the **Trellis** icon onto the **Applications** shortcut beside it.
 2. Launch it. A notarized build opens normally. An ad-hoc development build is rejected by Gatekeeper and is not for distribution.
-3. Optional, to use the CLI as `trellis`:
+3. Optional, to use the CLI as `trellis`: accept the offer on first launch, or choose **Trellis → Install Command Line Tool…** later (MAC-15). Both create `~/.local/bin/trellis`. From a terminal, you can also pick the directory:
 
    ```sh
    /Applications/Trellis.app/Contents/Helpers/trellis cli install-link            # creates ~/.local/bin/trellis

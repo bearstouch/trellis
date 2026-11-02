@@ -37,7 +37,7 @@ let package = Package(
         .target(name: "TrellisMCP", dependencies: ["TrellisControl", "TrellisCore"]),
         .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
         .executableTarget(
-            name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl", "TrellisMCP", .product(name: "Sparkle", package: "Sparkle")],
+            name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl", "TrellisMCP", "TrellisRelease", .product(name: "Sparkle", package: "Sparkle")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .target(name: "TrellisRelease"),
