@@ -56,6 +56,7 @@ struct UpdateSettingsView: View {
                 Button("Check Now") { updates.checkNow() }.disabled(!updates.canCheck).accessibilityIdentifier("settings.updates.checkNow")
             }
         }
+        .padding(16)
         .onAppear { updates.refresh() }
     }
     private var lastCheckText: String {
