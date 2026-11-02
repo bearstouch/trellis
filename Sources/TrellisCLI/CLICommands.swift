@@ -114,17 +114,66 @@ enum ArgumentError: Error, Equatable {
     case usage(String)
 }
 
+/// What one invocation asks for. Help and version never need the app or credentials.
+enum CLIRequest: Equatable, Sendable {
+    case help(noun: String?, verb: String?)
+    case version
+    case run(ParsedCommand)
+}
+
 enum CLIArguments {
+    private static let helpFlags: Set<String> = ["--help", "-h"]
+
+    static func request(_ arguments: [String]) throws(ArgumentError) -> CLIRequest {
+        // --json can sit anywhere; it only changes how the answer is printed.
+        let words = arguments.filter { $0 != "--json" }
+        if let first = words.first {
+            if helpFlags.contains(first) { return .help(noun: nil, verb: nil) }
+            if first == "--version" || first == "-V" { return .version }
+            if first == "help" {
+                let topic = words.dropFirst().filter { !helpFlags.contains($0) }
+                guard topic.count <= 2 else { throw .usage("help takes at most a noun and a verb.") }
+                guard let noun = topic.first else { return .help(noun: nil, verb: nil) }
+                let verbs = try verbs(of: noun)
+                guard let verb = topic.dropFirst().first else { return .help(noun: noun, verb: nil) }
+                guard verbs[verb] != nil else { throw unknown(verb, of: noun, verbs) }
+                return .help(noun: noun, verb: verb)
+            }
+            if words.count >= 2, helpFlags.contains(words[1]) {
+                _ = try verbs(of: first)
+                return .help(noun: first, verb: nil)
+            }
+        }
+        let command = try parse(words.isEmpty ? [] : arguments)
+        return command.has("help") ? .help(noun: command.noun, verb: command.verb) : .run(command)
+    }
+
+    // Unknown words aren't repeated in the message: a mistyped `--token=VALUE` can land here.
+    private static func verbs(of noun: String) throws(ArgumentError) -> [String: CommandSpec] {
+        guard let verbs = CLICommands.table[noun] else { throw .usage("Unknown command. Use one of: \(CLICommands.table.keys.sorted().joined(separator: ", ")).") }
+        return verbs
+    }
+
+    private static func unknown(_ verb: String, of noun: String, _ verbs: [String: CommandSpec]) -> ArgumentError {
+        .usage("Unknown \(noun) command. Use one of: \(verbs.keys.sorted().joined(separator: ", ")).")
+    }
+
     static func parse(_ arguments: [String]) throws(ArgumentError) -> ParsedCommand {
-        guard arguments.count >= 2 else { throw .usage("Usage: trellis <noun> <verb> [options]. Nouns: \(CLICommands.table.keys.sorted().joined(separator: ", ")).") }
-        let noun = arguments[0], verb = arguments[1]
-        guard let verbs = CLICommands.table[noun] else { throw .usage("Unknown command \(noun). Use one of: \(CLICommands.table.keys.sorted().joined(separator: ", ")).") }
-        guard let spec = verbs[verb] else { throw .usage("Unknown \(noun) command \(verb). Use one of: \(verbs.keys.sorted().joined(separator: ", ")).") }
+        guard let noun = arguments.first else { throw .usage("Missing command.") }
+        let verbs = try verbs(of: noun)
+        guard arguments.count >= 2 else { throw .usage("\(noun) needs a verb. Use one of: \(verbs.keys.sorted().joined(separator: ", ")).") }
+        let verb = arguments[1]
+        guard let spec = verbs[verb] else { throw unknown(verb, of: noun, verbs) }
         var command = ParsedCommand(noun: noun, verb: verb, spec: spec.method)
         var index = 2
         while index < arguments.count {
             let argument = arguments[index]
             index += 1
+            // Checked here rather than up front, so an option's value can be the literal text "--help".
+            if helpFlags.contains(argument) {
+                command.switches.insert("help")
+                return command
+            }
             guard argument.hasPrefix("--") else {
                 command.positionals.append(argument)
                 continue
@@ -149,7 +198,7 @@ enum CLIArguments {
             }
         }
         guard command.positionals.count == spec.positionals else {
-            throw .usage(spec.positionals == 0 ? "\(noun) \(verb) takes no bare arguments; pass values after their --option." : "\(noun) \(verb) needs exactly one layout file path.")
+            throw .usage(spec.positionals == 0 ? "\(noun) \(verb) takes no bare arguments; pass values after their --option." : "\(noun) \(verb) needs exactly one FILE argument.")
         }
         if command.has("token-stdin"), command.value("keychain-grant") != nil { throw .usage("Use either --token-stdin or --keychain-grant, not both.") }
         return command

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **CLI help:** `trellis --help`, `trellis <noun> --help` and `trellis <noun> <verb> --help` (also `-h` and `trellis help …`) now print real help to stdout and exit with 0, with no app or credentials needed. `trellis --version` (`-V`) prints the version. Argument errors go to stderr, followed by a line pointing at the help for that command.
+
 ## [1.1.0-beta.1] - 2026-11-02
 
 The first 1.1 beta. This release adds remote workspaces, a project library, coding agents and directory jump, keeps sessions running after quit by default, and replaces repository project files with the library.

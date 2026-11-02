@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Security
 import TrellisControl
+import TrellisCore
 import TrellisRelease
 
 /// A failure with the documented exit status (API-06 CLI contract).
@@ -101,10 +102,17 @@ public enum CLI {
     public static func run(_ arguments: [String], environment: CLIEnvironment) -> Int32 {
         let json = arguments.contains("--json")
         do {
-            let command: ParsedCommand
-            do { command = try CLIArguments.parse(arguments) } catch { throw CLIFailure.arguments(Self.message(error)) }
-            let result = try execute(command, environment)
-            emit(.object(["ok": .bool(true), "result": result]), json: json, environment: environment)
+            let request: CLIRequest
+            do { request = try CLIArguments.request(arguments) } catch { throw CLIFailure.arguments(Self.message(error)) }
+            switch request {
+            case .help(let noun, let verb):
+                let text = CLIHelp.text(noun: noun, verb: verb)
+                environment.stdout(json ? encode(.object(["ok": .bool(true), "result": .object(["help": .string(text)])])) : text)
+            case .version: environment.stdout(json ? encode(.object(["ok": .bool(true), "result": .object(["version": .string(AppVersion.current)])])) : CLIHelp.version)
+            case .run(let command):
+                let result = try execute(command, environment)
+                emit(.object(["ok": .bool(true), "result": result]), json: json, environment: environment)
+            }
             return 0
         } catch let failure as CLIFailure {
             var error: [String: JSONValue] = ["code": .string(failure.code), "message": .string(failure.message), "exitStatus": .number(Double(failure.exitStatus))]
@@ -113,6 +121,8 @@ public enum CLI {
                 environment.stdout(encode(.object(["ok": .bool(false), "error": .object(error)])))
             } else {
                 environment.stderr("trellis: \(failure.message) (\(failure.code))")
+                // Also for argument errors found after parsing: missing credentials, or a required option left out.
+                if failure.code == "INVALID_ARGUMENTS" { environment.stderr(CLIHelp.hint(arguments)) }
             }
             return failure.exitStatus
         } catch {

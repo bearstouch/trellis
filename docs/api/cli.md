@@ -11,8 +11,14 @@
 
 ```text
 trellis <noun> <verb> [options]
+trellis help [<noun> [<verb>]]
+trellis --version
 ```
 
+- `trellis --help` (or `-h`, or `trellis help`) lists the nouns, options and exit codes. `trellis <noun> --help` lists a noun's verbs, and `trellis <noun> <verb> --help` gives that command's synopsis and options.
+- Help and `--version` (or `-V`) print to stdout and exit with 0. They need no running app or credentials, never read standard input, and are plain text of at most 80 columns.
+- An argument error prints the message and a `Try 'trellis … --help'` line to stderr, naming the narrowest help that applies, and exits with 2. Running `trellis` with no arguments is an argument error.
+- A value that follows an option is always that option's value, so `--command --help` passes the text `--help`.
 - Options take the form `--opt VALUE`. The `--opt=value` form is rejected.
 - Every command except `cli …` needs credentials, from exactly one of:
     - `--token-stdin`: read the token from standard input.
@@ -75,6 +81,8 @@ With `--json`, stdout always gets one stable envelope. ANSI color is never used,
 ```
 
 Without `--json`, success pretty-prints the result, and a failure prints `trellis: <message> (<code>)` to stderr.
+
+With `--json`, help and version use the same envelope: `{"ok": true, "result": {"help": "…"}}` or `{"ok": true, "result": {"version": "…"}}`. The `Try …` line is left out of `--json` errors.
 
 `events subscribe` prints the subscribe envelope, then one raw notification per line until the connection closes. It then exits with 7 (`TRANSPORT`).
 

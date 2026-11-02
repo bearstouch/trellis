@@ -41,7 +41,7 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .target(name: "TrellisRelease"),
-        .target(name: "TrellisCLI", dependencies: ["TrellisControl", "TrellisRelease"]),
+        .target(name: "TrellisCLI", dependencies: ["TrellisControl", "TrellisCore", "TrellisRelease"]),
         .executableTarget(name: "TrellisCLIMain", dependencies: ["TrellisCLI"]),
         .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore", "TrellisAskpass"]),
         .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore", "TrellisControl", "TrellisMCP", "TrellisAskpass"]),
