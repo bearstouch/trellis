@@ -5,7 +5,7 @@
 | Context | How to run it |
 | --- | --- |
 | Development | `swift run trellis-cli …` |
-| Packaged app | `Trellis.app/Contents/Helpers/trellis`, optionally linked onto your `PATH` with `trellis cli install-link` (see the [release guide](../release/README.md#installing)) |
+| Packaged app | `Trellis.app/Contents/Helpers/trellis`, optionally linked onto your `PATH` from the app (**Trellis → Install Command Line Tool…**) or with `trellis cli install-link` (see the [release guide](../release/README.md#installing)) |
 
 ## Usage
 

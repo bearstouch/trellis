@@ -4,6 +4,7 @@ import SwiftUI
 import TrellisControl
 import TrellisCore
 import TrellisMCP
+import TrellisRelease
 import TrellisTerminal
 import TrellisUI
 
@@ -28,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var accessibilityObserver: NSObjectProtocol?
     private var updater: SparkleUpdater?
     private var updates: UpdateSettingsModel?
+    private var cliInstall: CLIInstallController?
 
     private let identity: AppInstanceIdentity
 
@@ -80,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.syncAccessibilityDisplayOptions() }
         }
+        cliInstall = CLIInstallController(identity: identity, shell: { [model] in model.defaultShell })
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
@@ -161,6 +164,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if !restored, model.snapshot.windows.isEmpty {
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
+            // MAC-15: scripted and isolated launches never ask, and recovery comes first.
+            if identity.stateDirectory == nil, !CommandLine.arguments.contains("--fixture"), model.recoveryMessage == nil, !terminationPending {
+                await cliInstall?.offerIfNeeded(window: window)
+            }
         }
         // Local automation is optional: an unsafe endpoint leaves the app
         // fully usable without a control socket.
@@ -220,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let about = app.submenu?.addItem(withTitle: "About Trellis", action: #selector(aboutAction), keyEquivalent: "")
         about?.target = self
         if updater != nil { app.submenu?.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesAction), keyEquivalent: "").target = self }
+        if cliInstall != nil { app.submenu?.addItem(withTitle: "Install Command Line Tool…", action: #selector(installCommandLineToolAction), keyEquivalent: "").target = self }
         app.submenu?.addItem(.separator())
         app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
         app.submenu?.addItem(.separator())
@@ -451,6 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func settingsAction() { showSettings() }
     @objc private func checkForUpdatesAction() { updates?.checkNow() }
+    @objc private func installCommandLineToolAction() { Task { await cliInstall?.install(window: window) } }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {
         let exporter = DiagnosticsExporter(model: model, hosts: hosts, grants: grants) { [control] in control.isRunning }
