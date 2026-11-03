@@ -543,6 +543,8 @@ public final class AppWorkspaceModel: ObservableObject {
     var remoteOrphansAsked: Set<UUID> = []
     /// Hosts whose panes are being re-attached now.
     var remoteReconnecting: Set<UUID> = []
+    /// Hosts whose current outage has already shown "Not sent" (FR-RW07).
+    var remoteInputNoticeShown: Set<UUID> = []
     /// The saved setting predates the new default; Settings explains the change once.
     @Published public internal(set) var sessionDefaultNoticePending = false
     /// FR-R04, saved per state directory.
@@ -954,8 +956,11 @@ public final class AppWorkspaceModel: ObservableObject {
     func installLifecycle(_ terminal: NativeTerminal, paneID: UUID, sessionID: UUID, attemptID: UUID?) {
         terminal.onInputError = { [weak self, weak terminal] _ in
             guard let self, !self.automationInputSessionIDs.contains(sessionID) else { return }
-            if let remote = terminal?.remoteTransport, remote.linkLost {
-                // Never queued, so nothing is typed later by surprise (FR-RW07).
+            // An ended session keeps `linkLost`, but nothing is reconnecting for it.
+            if let remote = terminal?.remoteTransport, remote.linkLost, remote.isRunning {
+                // Never queued, so nothing is typed later by surprise (FR-RW07). Mouse and focus reports land here too, so
+                // the modal is raised once per outage or it would come back with every move; the tab shows the rest.
+                guard self.remoteInputNoticeShown.insert(remote.hostID).inserted else { return }
                 self.errorMessage = "Not sent: reconnecting to \(self.remoteHostName(remote.hostID)). Nothing you type is kept for later."
                 return
             }

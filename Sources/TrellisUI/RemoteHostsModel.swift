@@ -170,6 +170,12 @@ public final class RemoteHostsModel: ObservableObject {
     public func checkWorkspaceLinks() { workspaceLinks.values.forEach { $0.checkNow() } }
 
     /// Quit or window close: every workspace link ends; nothing is sent to the hosts' sessions (FR-RW06).
+    /// Drops one host's link; its panes see the link go down and the caller decides what happens next.
+    public func closeWorkspaceLink(_ hostID: UUID) {
+        guard let link = workspaceLinks.removeValue(forKey: hostID) else { return }
+        link.onStateChanged = nil; link.close()
+    }
+
     public func closeWorkspaceLinks() {
         let open = workspaceLinks.values
         workspaceLinks = [:]
