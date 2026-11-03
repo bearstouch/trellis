@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Settings → Updates alignment:** **Current version** now lines up with the page title instead of sticking out to its left.
 - **Bottom bar machine:** the bottom bar always said **Local**. It now shows the focused pane's machine, in the same style as the pane header.
+- **New tabs in remote windows:** a new tab or split opened from an agent pane, or from a shell that hasn't shown its first prompt, now starts in that pane's folder on the host. It used to start in the host's home folder.
 - **Hosts named Local or SSH:** a saved host with one of these names no longer gets the wrong pane tools or the "unverified" directory hint.
 
 ## [1.1.0-beta.1] - 2026-11-02
