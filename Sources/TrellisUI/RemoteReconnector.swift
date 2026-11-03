@@ -37,9 +37,13 @@ public final class RemoteReconnector {
         let failure = await model.connectRemote(hostID: host, interactive: interactive)
         running.remove(host)
         guard let failure else {
-            forget(host)
-            // The new link can drop while panes re-attach; that loss was left to this attempt (`lost`).
-            if model.remoteHosts?.workspaceLinkState(host) != .connected { schedule(host) }
+            // A pane whose attach failed has no other way back: the link reads as connected, so neither Retry Now nor
+            // Reconnect… is offered. It retries on a new client: the helper may still be sending the unanswered attach's
+            // replay on this one, and a second attach there would show output twice (FR-RW08).
+            let stranded = model.hasLostPanes(host)
+            if stranded { model.remoteHosts?.closeWorkspaceLink(host) }
+            // The new link can also drop while panes re-attach; that loss was left to this attempt (`lost`).
+            if model.hasRemoteWorkspace(host), stranded || model.remoteHosts?.workspaceLinkState(host) != .connected { schedule(host) } else { forget(host) }
             return
         }
         handle(host, failure)
@@ -109,7 +113,9 @@ public final class RemoteReconnector {
         if online { for host in pending { retryNow(host) } }
     }
 
+    /// The outage is over: every pane is back, or nothing on this Mac needs the host any more.
     func forget(_ host: UUID) {
+        model?.remoteInputNoticeShown.remove(host)
         attempts[host] = nil
         waits.removeValue(forKey: host)?.cancel()
     }

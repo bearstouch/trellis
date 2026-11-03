@@ -181,6 +181,28 @@ extension AppWorkspaceModel {
         (Array(terminals.values) + [projectLaunch?.terminal].compactMap { $0 }).filter { $0.remoteTransport?.hostID == hostID }
     }
 
+    /// A live session on the host still waiting for its pane to re-attach. One that ended or was closed while the link
+    /// was down keeps `linkLost` but never resumes, so it doesn't count.
+    func hasLostPanes(_ hostID: UUID) -> Bool {
+        remoteTerminals(hostID).contains { $0.remoteTransport?.linkLost == true && $0.remoteTransport?.isRunning == true }
+    }
+
+    /// The host a tab's panes can't reach, from the drop until they are back (FR-RW07). `.connecting` counts as up for a
+    /// first connection, but a retry stays down, or the tab would look fine for as long as ssh is trying.
+    public func tabLinkDown(tabID: UUID) -> (hostName: String, link: RemoteLinkDisplay)? {
+        guard let tab = snapshot.tabs[tabID] else { return nil }
+        for paneID in tab.root.paneIDs {
+            guard let pane = snapshot.panes[paneID], let hostID = snapshot.sessions[pane.sessionID]?.launch.remoteHostID else { continue }
+            let link = remoteLinks[hostID] ?? .disconnected(nil)
+            let transport = terminals[paneID]?.remoteTransport
+            let lost = transport?.linkLost == true && transport?.isRunning == true
+            let retrying = link == .connecting && remoteReconnector.attemptCount(hostID) > 0
+            // The link is set to connected before panes re-attach; the tab doesn't say Connected beside a red line.
+            if lost || !link.isUp || retrying { return (remoteHostName(hostID), link == .connected ? .connecting : link) }
+        }
+        return nil
+    }
+
     /// **Reconnect…** (`interactive`: ssh may ask in the console) or **Retry Now**, through the reconnector, which
     /// schedules the next automatic attempt if this one fails for a reason a retry can fix (FR-RW07).
     public func reconnectRemote(hostID: UUID, interactive: Bool = true) async {

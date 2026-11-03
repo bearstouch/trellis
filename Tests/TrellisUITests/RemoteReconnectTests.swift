@@ -112,6 +112,115 @@ final class RemoteReconnectTests: XCTestCase {
         try await until("the link is noticed down") { model.remoteLinks[host.id] != .connected }
     }
 
+    /// Through the view, as a keystroke arrives: a refused write reports an input error.
+    private func type(into terminal: NativeTerminal) throws {
+        let view = try XCTUnwrap(terminal.view as? NSTextInputClient)
+        view.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    private func failNextAttempts() throws {
+        try Data("ssh: connect to host build-box port 22: Connection refused\n".utf8).write(to: URL(fileURLWithPath: root + "/fail"))
+    }
+
+    func testRefusedInputShowsTheNoticeOncePerOutage() async throws {
+        let terminal = try await openWithPendingOutput("once")
+        let pane = try XCTUnwrap(model.presentation.activePane)
+        let created = await model.splitPane(pane.id, axis: .x)
+        let other = try XCTUnwrap(created.flatMap { model.terminals[$0] })
+        try await until("the split runs") { other.sessionState == .running }
+
+        try failNextAttempts()
+        try await dropConnection()
+        try await until("both panes know the link is down") { terminal.remoteTransport?.linkLost == true && other.remoteTransport?.linkLost == true }
+        try type(into: terminal)
+        XCTAssertEqual(model.errorMessage, "Not sent: reconnecting to build-box. Nothing you type is kept for later.")
+        model.errorMessage = nil
+        try type(into: terminal)
+        try type(into: other)
+        XCTAssertNil(model.errorMessage, "Shown once per outage, across the host's panes (FR-RW07)")
+
+        try FileManager.default.removeItem(atPath: root + "/fail")
+        try await until("the outage ended") { model.remoteInputNoticeShown.isEmpty && model.remoteReconnector.attemptCount(host.id) == 0 }
+        try type(into: terminal)
+        XCTAssertNil(model.errorMessage, "Input works again")
+
+        try failNextAttempts()
+        try await dropConnection()
+        try await until("the pane knows the link is down again") { terminal.remoteTransport?.linkLost == true }
+        try type(into: terminal)
+        XCTAssertNotNil(model.errorMessage, "A new outage is told once more")
+    }
+
+    func testTabStaysDownUntilItsPanesAreBack() async throws {
+        let terminal = try await openWithPendingOutput("red")
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        let localWindow = await model.createWindow(name: "Local", startSession: false)
+        let localTab = try XCTUnwrap(model.snapshot.windows.first { $0.id == localWindow }?.activeTabID)
+        XCTAssertNil(model.tabLinkDown(tabID: tab), "Connected")
+
+        try failNextAttempts()
+        try await dropConnection()
+        try await until("the host is waiting to retry") {
+            if case .reconnecting? = model.remoteLinks[host.id] { model.remoteReconnector.attemptCount(host.id) > 0 } else { false }
+        }
+        XCTAssertEqual(model.tabLinkDown(tabID: tab)?.hostName, "build-box")
+        XCTAssertNil(model.tabLinkDown(tabID: localTab), "A local tab has no link to lose")
+        // As during an attempt, with nothing else running in between.
+        model.remoteLinks[host.id] = .connecting
+        XCTAssertNotNil(model.tabLinkDown(tabID: tab), "A retry in progress is still down")
+        XCTAssertNil(model.tabLinkDown(tabID: localTab))
+        // As while panes re-attach: the link is up, the pane isn't yet.
+        model.remoteLinks[host.id] = .connected
+        XCTAssertEqual(model.tabLinkDown(tabID: tab)?.link, .connecting, "Never Connected beside the red line")
+
+        try FileManager.default.removeItem(atPath: root + "/fail")
+        try await until("the panes are back") { model.remoteLinks[host.id] == .connected && terminal.remoteTransport?.linkLost == false }
+        XCTAssertNil(model.tabLinkDown(tabID: tab))
+    }
+
+    /// The broker dies with its sessions, as when the host reboots: the new one doesn't know the session.
+    func testASessionTheHelperNoLongerHasEndsInsteadOfRetrying() async throws {
+        let terminal = try await openWithPendingOutput("gone")
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        try terminal.adapter.send(Data("kill -9 $PPID\r".utf8))
+        try await until("the pane ended") { terminal.sessionState == .exited }
+        try await until("the link is back") { model.remoteLinks[host.id] == .connected && model.remoteReconnector.attemptCount(host.id) == 0 }
+        XCTAssertNil(model.tabLinkDown(tabID: tab), "Nothing is left waiting")
+        try type(into: terminal)
+        XCTAssertFalse(model.errorMessage?.contains("reconnecting") == true, "Nothing is reconnecting for an ended session")
+        XCTAssertTrue(model.remoteInputNoticeShown.isEmpty, "The next outage still gets its notice")
+    }
+
+    /// An attach that times out on a live link leaves the helper sending its replay there: the retry has to use a new link,
+    /// or the output would show twice. A frozen broker never answers; the pane is marked down to send it through `resume`.
+    func testAnAttachThatTimesOutOnALiveLinkRetriesOnANewLinkAndShowsOutputOnce() async throws {
+        let terminal = try await openWithPendingOutput("first")
+        try await until("the first command finished") { terminal.screenText.contains("first-42") }
+        try terminal.adapter.send(Data("echo broker=$PPID.\r".utf8))
+        try await until("the shell names its broker") { terminal.screenText.firstMatch(of: /broker=(\d+)\./) != nil }
+        let broker = try XCTUnwrap(terminal.screenText.firstMatch(of: /broker=(\d+)\./).flatMap { pid_t($0.1) })
+        try terminal.adapter.send(Data("sleep 1; echo slow-$((40+2))\r".utf8))
+        try await until("the command echoes") { terminal.screenText.contains("slow-$((40+2))") }
+
+        kill(broker, SIGSTOP)
+        var resumed = false
+        defer { if !resumed { kill(broker, SIGCONT) } }
+        let transport = try XCTUnwrap(terminal.remoteTransport)
+        let frozen = transport.connection
+        transport.brokerDisconnected()
+        await model.reconnectRemote(hostID: host.id, interactive: false)
+        XCTAssertTrue(transport.linkLost, "The attach timed out")
+        XCTAssertFalse(frozen.isOpen, "The link with the unanswered attach is gone")
+        guard case .reconnecting? = model.remoteLinks[host.id] else { return XCTFail("\(String(describing: model.remoteLinks[host.id]))") }
+
+        kill(broker, SIGCONT)
+        resumed = true
+        try await until("the pane is back", timeout: 30) { transport.linkLost == false && model.remoteLinks[host.id] == .connected }
+        try await until("the missed output arrives") { terminal.screenText.contains("slow-42") }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(terminal.screenText.components(separatedBy: "slow-42").count - 1, 1, "Shown once (FR-RW08)")
+    }
+
     func testALostLinkReconnectsByItselfAndResumesOnce() async throws {
         let terminal = try await openWithPendingOutput("back")
         try await dropConnection()

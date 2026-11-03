@@ -411,9 +411,10 @@ public struct WorkspaceRootView: View {
         let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
         let agentBadge = model.agentBadge(tabID: tab.id)
         let agent = model.tabAgent(tabID: tab.id)
+        let linkDown = model.tabLinkDown(tabID: tab.id)
         let parts: [String] = [
-            descriptor?.value ?? "", agentBadge.map { "\($0.agent.name) \($0.state.spokenText)" } ?? "", wait?.text.lowercased() ?? "", progress?.spokenText ?? "",
-            busy ? "output in progress" : ""
+            descriptor?.value ?? "", linkDown.map { "\($0.hostName), \($0.link.label)" } ?? "", agentBadge.map { "\($0.agent.name) \($0.state.spokenText)" } ?? "",
+            wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""
         ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
         let label = HStack(spacing: 8) {
@@ -454,6 +455,11 @@ public struct WorkspaceRootView: View {
                     .onTapGesture { Task { await model.selectTab(tab.id) } }
                     .simultaneousGesture(TapGesture(count: 2).onEnded { beginTabRename(tab) })
             }
+            if let linkDown {
+                // A symbol beside the red line, never color alone (FR-RW16); the tab's value speaks it.
+                Image(systemName: linkDown.link.symbol).font(.system(size: 10)).foregroundStyle(Color.red)
+                    .help("\(linkDown.hostName) · \(linkDown.link.label)").accessibilityHidden(true)
+            }
             if let code = tab.root.paneIDs.lazy.compactMap(model.failedCommandExit(paneID:)).first {
                 // A symbol plus spoken text; never color alone (FR-SI04).
                 Image(systemName: "exclamationmark.circle").font(.system(size: 10))
@@ -493,7 +499,8 @@ public struct WorkspaceRootView: View {
             .background(selected ? model.themeColor(.activeTabBackground) : .clear)
             .overlay(alignment: .top) { tabTopEdge(tab, busy: busy, progress: progress, agentState: agentBadge?.state) }
             .overlay(alignment: .bottom) {
-                if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
+                // Every tab on a host that's down, selected or not, until its panes are back (FR-RW07).
+                if selected || linkDown != nil { Rectangle().fill(linkDown != nil ? Color.red : model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) }
             }
             .contentShape(Rectangle())
         return

@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Bottom bar machine:** the bottom bar always said **Local**. It now shows the focused pane's machine, in the same style as the pane header.
 - **New tabs in remote windows:** a new tab or split opened from an agent pane, or from a shell that hasn't shown its first prompt, now starts in that pane's folder on the host. It used to start in the host's home folder.
 - **Hosts named Local or SSH:** a saved host with one of these names no longer gets the wrong pane tools or the "unverified" directory hint.
+- **Lost remote connections:** "Not sent: reconnecting" now appears once per outage instead of coming back with every keystroke, click or mouse move. Tabs on that host show a red indicator and a symbol until their panes are back.
+- **Panes stuck after a reconnect:** a pane that couldn't re-attach when its host came back now keeps retrying, and one whose session is gone from the host (after a reboot, say) now ends instead of waiting forever.
 
 ## [1.1.0-beta.1] - 2026-11-02
 
