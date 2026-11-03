@@ -171,6 +171,32 @@ final class RemoteWorkspaceTests: XCTestCase {
         try await until("the split's shell reports the folder") { model.remoteWorkingDirectory(paneID: splitPane) == project }
     }
 
+    /// FR-RW04: a shell with no marks yet gives the folder it started in; one that started nowhere in particular leaves home to the helper.
+    func testNewTabFromAShellWithoutMarksStartsInItsStartingFolderOrHome() async throws {
+        let project = home + "/code/keel"
+        try FileManager.default.createDirectory(atPath: project, withIntermediateDirectories: true)
+        let model = try makeModel()
+        _ = await model.loadWorkspace()
+        let opened = await model.openRemoteWorkspace(host: host)
+        let windowID = try XCTUnwrap(opened)
+        try await until("the host is connected") { model.remoteLinks[host.id] == .connected }
+
+        // Stopped, so it can't have reported a directory.
+        let created = await model.createTab(windowID: windowID, startSessions: false)
+        let source = try XCTUnwrap(created.flatMap { model.snapshot.tabs[$0]?.activePaneID })
+        let fromNoFolder = await model.createTab()
+        let homePane = try XCTUnwrap(fromNoFolder.flatMap { model.snapshot.tabs[$0]?.activePaneID })
+        guard case .remoteShell(host.id, nil)? = launch(ofPane: homePane, in: model) else { return XCTFail("A source with no folder should leave the new tab in home") }
+
+        _ = try await model.service.execute(.configureStoppedSession(paneID: source, launch: .remoteShell(hostID: host.id, directory: project)))
+        await model.refresh()
+        await model.selectTab(try XCTUnwrap(created))
+        XCTAssertNil(model.remoteWorkingDirectory(paneID: source))
+        let fromFolder = await model.createTab()
+        let folderPane = try XCTUnwrap(fromFolder.flatMap { model.snapshot.tabs[$0]?.activePaneID })
+        guard case .remoteShell(host.id, project)? = launch(ofPane: folderPane, in: model) else { return XCTFail("The new tab isn't in the shell's starting folder") }
+    }
+
     /// FR-RW04: where the shell is now wins over where it started.
     func testNewTabPrefersTheShellsAuthenticatedDirectoryOverItsStartingFolder() async throws {
         let project = home + "/code/keel", work = home + "/code/keel/sub dir"
