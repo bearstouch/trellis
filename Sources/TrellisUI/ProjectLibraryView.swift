@@ -53,7 +53,7 @@ public struct ProjectLibraryView: View {
                         Text("Form").tag(false)
                         Text("JSON").tag(true)
                     }
-                    .pickerStyle(.segmented).frame(width: 140).accessibilityLabel("Editor")
+                    .pickerStyle(.segmented).fixedSize().accessibilityLabel("Editor")
                 }
                 .padding(28)
                 Divider().padding(.horizontal, 28)
@@ -170,8 +170,8 @@ public struct ProjectLibraryView: View {
     private var form: some View {
         HStack(alignment: .top, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Layout").font(.headline)
+                HStack(spacing: 4) {
+                    Text("Layout").font(.headline).fixedSize()
                     Spacer()
                     toolButton("Add Tab", symbol: "plus.rectangle") { place = .tab(draft.addTab()) }.disabled(draft.tabs.count >= ProjectDefinition.maximumTabs)
                     toolButton("Split Right", symbol: "rectangle.split.2x1") { split(.x) }.disabled(!selectionIsPane || draft.paneCount >= ProjectDefinition.maximumPanes)

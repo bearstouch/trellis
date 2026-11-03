@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The project editor's "Layout" and "Editor" labels no longer wrap mid-word.
+
 ## [1.1.0] - 2026-11-03
 
 The stable 1.1 release. Coming from 1.0.0, you also get everything listed under 1.1.0-beta.1: remote workspaces, the project library, coding agents, directory jump and sessions that keep running after quit. Repository project files are replaced by the library.
