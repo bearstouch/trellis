@@ -306,6 +306,46 @@ final class ScratchpadTests: XCTestCase {
     }
 
     @MainActor
+    func testRulerNumbersTheVisibleLinesOfAnEditorHostedInSwiftUI() throws {
+        // SwiftUI sizes the editor after it's made, which leaves the text view's frame origin away from zero: the ruler
+        // took the clip view's bounds for the container's coordinates, and numbered only some of the visible lines or none.
+        _ = NSApplication.shared
+        let text = (1...60).map { "line \($0)" }.joined(separator: "\n")
+        let editor = ScratchpadEditor(
+            text: .constant(text), language: .json, font: .monospacedSystemFont(ofSize: 13, weight: .regular), palette: .builtIn, issueLines: [], focusRequest: 0,
+            commands: ScratchpadEditorCommands())
+        let host = NSHostingView(rootView: AnyView(Text("Form").frame(width: 600, height: 600)))
+        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 600, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        host.rootView = AnyView(editor.frame(width: 600, height: 600))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        func ruler(in view: NSView) -> ScratchpadLineRuler? {
+            if let scroll = view as? NSScrollView, let ruler = scroll.verticalRulerView as? ScratchpadLineRuler { return ruler }
+            return view.subviews.lazy.compactMap { ruler(in: $0) }.first
+        }
+        let found = try XCTUnwrap(ruler(in: host))
+        XCTAssertTrue(found.clipsToBounds, "Unclipped numbers paint over the views around the editor")
+        let numbers = try XCTUnwrap(found.visibleLines).lines.map(\.number)
+        XCTAssertEqual(numbers.first, 1)
+        XCTAssertEqual(numbers, Array(1...(numbers.last ?? 1)))
+        XCTAssertGreaterThan(numbers.count, 25, "About 35 lines fit in the window")
+        // Scrolled, the wrong range also held lines above the viewport, which painted over the views above the editor.
+        let textView = try XCTUnwrap(found.clientView as? NSTextView)
+        textView.scroll(NSPoint(x: 0, y: 400))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        let scrolled = try XCTUnwrap(found.visibleLines).lines.map(\.number)
+        XCTAssertEqual(scrolled.first.map { (20...30).contains($0) }, true, "Lines are about 16 points tall: \(scrolled)")
+        XCTAssertGreaterThan(scrolled.count, 25, "The viewport stays full: \(scrolled)")
+        textView.scrollToEndOfDocument(nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(try XCTUnwrap(found.visibleLines).lines.last?.number, 60)
+    }
+
+    @MainActor
     func testUndoAfterClearOrOpenNeverReachesIntoTheOldText() throws {
         // Typing's undo steps named ranges past the end of the new, shorter text: ⌘Z after Clear raised.
         _ = NSApplication.shared
