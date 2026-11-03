@@ -41,7 +41,8 @@ public struct WorkspaceRootView: View {
                 if let notice = model.themeNotice { Text(notice).lineLimit(1).help(notice) }
                 if let notice = model.appearanceNotice { Text(notice).lineLimit(1).help(notice) }
                 Text(model.accessibility.status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(model.accessibility.status)")
-                Text("·  UTF-8  ·  Local")
+                Text("·  UTF-8  ·")
+                PaneMachineLabel(machine: model.focusedMachine, model: model)
                 if let name = model.presentation.selectedWindow?.name {
                     Text("·").accessibilityHidden(true)
                     Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Window \(name)")
