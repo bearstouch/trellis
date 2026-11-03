@@ -222,6 +222,8 @@ final class ScratchpadLineRuler: NSRulerView {
         super.init(scrollView: nil, orientation: .verticalRuler)
         clientView = textView
         ruleThickness = 40
+        // Views don't clip by default since the macOS 14 SDK; unclipped, numbers paint over the views around the editor.
+        clipsToBounds = true
     }
 
     required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -243,12 +245,7 @@ final class ScratchpadLineRuler: NSRulerView {
     override func drawHashMarksAndLabels(in rect: NSRect) {
         background.setFill()
         bounds.fill()
-        guard let textView, let layout = textView.layoutManager, let container = textView.textContainer, let scrollView else { return }
-        let string = textView.string as NSString
-        let visible = scrollView.contentView.bounds
-        let glyphs = layout.glyphRange(forBoundingRect: visible, in: container)
-        let characters = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        let (lines, next) = Self.lines(in: string, visible: characters)
+        guard let textView, let layout = textView.layoutManager, let (lines, next) = visibleLines else { return }
         func draw(_ number: Int, fragment: NSRect) {
             let y = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView).y
             let flagged = issueLines.contains(number)
@@ -267,6 +264,16 @@ final class ScratchpadLineRuler: NSRulerView {
         for line in lines { draw(line.number, fragment: layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: line.location), effectiveRange: nil)) }
         // The empty last line after a final newline, or an empty buffer.
         if layout.extraLineFragmentTextContainer != nil { draw(next, fragment: layout.extraLineFragmentRect) }
+    }
+
+    /// The lines the text view is showing now.
+    var visibleLines: (lines: [(number: Int, location: Int)], next: Int)? {
+        guard let textView, let layout = textView.layoutManager, let container = textView.textContainer else { return nil }
+        // In the container's coordinates: the clip view's bounds only match them while the text view's frame origin is zero.
+        let origin = textView.textContainerOrigin
+        let visible = textView.visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
+        let glyphs = layout.glyphRange(forBoundingRect: visible, in: container)
+        return Self.lines(in: textView.string as NSString, visible: layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil))
     }
 
     /// The lines starting in, or wrapping into, `visible`, numbered by `\n` alone as validation counts them, and the number

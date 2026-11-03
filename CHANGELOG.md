@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Editor line numbers:** in the project JSON editor and the command scratchpad, numbers could be missing for some or all of the visible lines, or be drawn over the title above the editor. Every visible line now has its number, lined up with its text.
 - **Settings → Updates alignment:** **Current version** now lines up with the page title instead of sticking out to its left.
 - **Bottom bar machine:** the bottom bar always said **Local**. It now shows the focused pane's machine, in the same style as the pane header.
 - **New tabs in remote windows:** a new tab or split opened from an agent pane, or from a shell that hasn't shown its first prompt, now starts in that pane's folder on the host. It used to start in the host's home folder.
