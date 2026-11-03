@@ -1264,10 +1264,10 @@ public final class AppWorkspaceModel: ObservableObject {
 
     /// New panes start in the source pane's reported directory when it is still accessible.
     private func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
-        // A remote workspace pane starts where the source pane's shell is on the host; the helper falls back to home
-        // when the directory is gone, so nothing is checked here (FR-RW04).
+        // A remote workspace pane starts where the source pane's shell is on the host, or where that pane started; the
+        // helper falls back to home when the directory is gone, so nothing is checked here (FR-RW04).
         if let pane = snapshot.panes[paneID], case .remoteShell(let host, nil)? = snapshot.sessions[pane.sessionID]?.launch {
-            guard let directory = sourcePaneID.flatMap(remoteWorkingDirectory(paneID:)),
+            guard let directory = sourcePaneID.flatMap({ inheritedDirectory(from: $0, remote: true) }),
                 let result = try? await service.execute(.configureStoppedSession(paneID: paneID, launch: .remoteShell(hostID: host, directory: directory)))
             else { return }
             publish(result.snapshot)

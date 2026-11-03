@@ -136,6 +136,59 @@ final class RemoteWorkspaceTests: XCTestCase {
         try await until("both panes came back") { relaunched.terminals[split]?.remoteTransport != nil && relaunched.terminals[split]?.sessionState == .running }
     }
 
+    private func launch(ofPane id: UUID, in model: AppWorkspaceModel) -> SessionLaunch? {
+        model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
+    }
+
+    /// FR-RW04: a source pane without integration marks (an agent, a shell before its first prompt) still gives its folder on the host.
+    func testNewTabAndSplitFromAPaneWithoutMarksStartInItsFolderOnTheHost() async throws {
+        let project = home + "/code/keel"
+        try FileManager.default.createDirectory(atPath: project, withIntermediateDirectories: true)
+        let model = try makeModel()
+        _ = await model.loadWorkspace()
+        let opened = await model.openRemoteWorkspace(host: host)
+        let windowID = try XCTUnwrap(opened)
+        try await until("the host is connected") { model.remoteLinks[host.id] == .connected }
+
+        // A project's agent pane, stopped so nothing depends on an agent being installed; it never has marks.
+        let created = await model.createTab(windowID: windowID, startSessions: false)
+        let agentTab = try XCTUnwrap(created)
+        let agentPane = try XCTUnwrap(model.snapshot.tabs[agentTab]?.activePaneID)
+        _ = try await model.service.execute(.configureStoppedSession(paneID: agentPane, launch: .agent(AgentLaunch(agentID: "fake", directory: project, hostID: host.id))))
+        await model.refresh()
+        XCTAssertNil(model.remoteWorkingDirectory(paneID: agentPane))
+
+        let newTab = await model.createTab()
+        let tabPane = try XCTUnwrap(newTab.flatMap { model.snapshot.tabs[$0]?.activePaneID })
+        guard case .remoteShell(host.id, project)? = launch(ofPane: tabPane, in: model) else { return XCTFail("The new tab isn't on the host in the project folder") }
+        XCTAssertEqual(model.focusedMachine, .host(host.name, link: .connected), "The bottom bar names the host")
+        try await until("the new tab's shell reports the folder") { model.remoteWorkingDirectory(paneID: tabPane) == project }
+
+        await model.selectTab(agentTab)
+        let newSplit = await model.splitPane(agentPane, axis: .x)
+        let splitPane = try XCTUnwrap(newSplit)
+        guard case .remoteShell(host.id, project)? = launch(ofPane: splitPane, in: model) else { return XCTFail("The split isn't on the host in the project folder") }
+        try await until("the split's shell reports the folder") { model.remoteWorkingDirectory(paneID: splitPane) == project }
+    }
+
+    /// FR-RW04: where the shell is now wins over where it started.
+    func testNewTabPrefersTheShellsAuthenticatedDirectoryOverItsStartingFolder() async throws {
+        let project = home + "/code/keel", work = home + "/code/keel/sub dir"
+        try FileManager.default.createDirectory(atPath: work, withIntermediateDirectories: true)
+        let model = try makeModel()
+        _ = await model.loadWorkspace()
+        _ = await model.openRemoteWorkspace(host: host, directory: project)
+        let pane = try XCTUnwrap(model.presentation.activePane)
+        let terminal = try XCTUnwrap(model.terminals[pane.id])
+        try await until("the shell reports its starting folder") { model.remoteWorkingDirectory(paneID: pane.id) == project }
+        try terminal.adapter.send(Data("cd 'sub dir'\r".utf8))
+        try await until("the shell reports its new directory") { model.remoteWorkingDirectory(paneID: pane.id) == work }
+
+        let newTab = await model.createTab()
+        let tabPane = try XCTUnwrap(newTab.flatMap { model.snapshot.tabs[$0]?.activePaneID })
+        guard case .remoteShell(host.id, work)? = launch(ofPane: tabPane, in: model) else { return XCTFail("The new tab didn't follow the shell") }
+    }
+
     private func makeDirectoryHistory() -> DirectoryHistory {
         DirectoryHistory(stateDirectory: URL(fileURLWithPath: root + "/history"), sleep: { _ in try? await Task.sleep(for: .seconds(3600)) }, mounts: { [] })
     }
