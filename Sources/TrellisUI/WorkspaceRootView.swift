@@ -45,7 +45,10 @@ public struct WorkspaceRootView: View {
                 PaneMachineLabel(machine: model.focusedMachine, model: model)
                 if let name = model.presentation.selectedWindow?.name {
                     Text("·").accessibilityHidden(true)
-                    Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Window \(name)")
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder").accessibilityHidden(true)
+                        Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Window \(name)")
+                    }
                 }
             }
             .font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 12).frame(height: 28)

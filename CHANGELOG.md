@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Working agents on tabs:** while an agent works, a light now moves along the tab's top edge and the agent's icon breathes, in place of the **Working** capsule and the busy bar, which leaves more room for the title. **Needs you**, **Done** and **Error** keep their capsules. With Reduce Motion on, the bar and icon are static. The tooltip, pane header, hover card and VoiceOver still say Working.
 - **Settings sidebar icons:** each section now has a larger, more detailed Liquid Glass icon.
-- **Machine name:** pane headers now show the machine as a symbol and a name (a laptop for **Local**, a globe for **SSH**, a server for a host) in place of bold green text. A connection problem changes the symbol and its color, and is still named in words.
+- **Machine name:** pane headers now show the machine as a symbol and a name (a laptop for **Local**, a globe for **SSH**, a server for a host) in place of bold green text. A connection problem changes the symbol and its color, and is still named in words. The bottom bar's window name also gets a small folder icon.
 
 ### Fixed
 
