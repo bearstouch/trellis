@@ -4,7 +4,7 @@ A remote workspace is a sidebar window bound to a [saved SSH host](ssh-hosts.md)
 
 Remote hosts can run Linux (x86_64, aarch64) or macOS (arm64, x86_64). Trellis itself still runs only on macOS.
 
-All requirements here are P1. **Status: draft.** The contract is agreed before code, and checks stay unchecked until observed (see [Status](../overview/status.md)).
+All requirements here are P1. **Status: preview,** shipped in 1.1.0. Checks stay unchecked until observed (see [Status](../overview/status.md)).
 
 ## How it works
 

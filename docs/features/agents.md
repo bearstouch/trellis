@@ -4,7 +4,7 @@ Trellis treats coding agents as first-class panes. Each pane header has an **Age
 
 Agents are data: each is an `<id>.agent.json` definition. Trellis ships three, and you can add your own in the Agents folder. A shared agent registry is planned (see [Roadmap](../project/roadmap.md)) and will use the same format.
 
-All requirements here are P1 (draft).
+All requirements here are P1. **Status: preview,** shipped in 1.1.0. Checks stay unchecked until observed (see [Status](../overview/status.md)).
 
 Library projects can name an agent per pane (`"agent": "trellis-claude-code"`), so launching a project opens its agents too ([FR-PL10](project-library.md)).
 

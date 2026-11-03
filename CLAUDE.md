@@ -4,7 +4,7 @@ Guidance for Claude Code working in this repository.
 
 ## Project
 
-**Trellis** (formerly uTerm) is a native Swift terminal for macOS: light "Native calm" chrome,
+**Trellis** (formerly uTerm) is a native Swift terminal for macOS: "Native calm" chrome (dark by default, with Light and System modes),
 dark terminal panes, bundled JetBrains Mono terminal font, managed windows in a left sidebar, per-window renameable tabs,
 and nested splits, plus saved SSH hosts and a local CLI/automation API. The MVP is implemented;
 remaining qualification work is tracked in `docs/overview/status.md`.
@@ -52,7 +52,7 @@ Always run format + lint + build + test before committing.
 | --- | --- |
 | `TrellisCore` | Engine-independent domain: `WorkspaceStore` (actor, authoritative model), `WorkspaceCommandService` (single mutation path), persistence (`WorkspacePersistence` actor), session lifecycle/closure policy, paste review, themes (`ThemeDocument`, `ThemeJSON`, `ThemeLibrary` actor), appearance settings. Bundled `Resources/Themes`. |
 | `TrellisPOSIX` | Small C target (`spawn.c`) for PTY/process-group spawning. |
-| `TrellisBroker` / `TrellisBrokerMain` | Opt-in `trellis-broker` helper (FR-R03): owns the PTYs of sessions kept after quit, their replay ring and the owner-only AF_UNIX protocol. Depends only on `TrellisPOSIX`. |
+| `TrellisBroker` / `TrellisBrokerMain` | `trellis-broker` helper (FR-R03, FR-R07), on by default: owns the PTYs of sessions kept after quit, their replay ring and the owner-only AF_UNIX protocol. Depends only on `TrellisPOSIX`. |
 | `TrellisTerminal` | SwiftTerm-specific code only: `NativeTerminal`, `AccessibleTerminalView`, `PTYProcess`, scrollback, search, selection bookmarks, terminal appearance. |
 | `TrellisUI` | SwiftUI/AppKit views and `AppWorkspaceModel` (`@MainActor` `ObservableObject` bridging store ↔ views ↔ terminals). |
 | `TrellisControl` | Local automation: AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, auth-gated `ControlHandler`. |
