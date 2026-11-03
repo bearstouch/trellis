@@ -27,7 +27,7 @@ let package = Package(
     targets: [
         .target(name: "TrellisAskpass"),
         .executableTarget(name: "TrellisAskpassMain", dependencies: ["TrellisAskpass"]),
-        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon"), .copy("Resources/Agents")]),
+        .target(name: "TrellisCore", dependencies: ["TrellisAskpass"], resources: [.copy("Resources/Themes"), .copy("Resources/Fonts"), .copy("Resources/ShellIntegration"), .copy("Resources/AppIcon"), .copy("Resources/SettingsIcons"), .copy("Resources/Agents")]),
         .target(name: "TrellisPOSIX"),
         // The broker's resident code depends only on the POSIX shim: no Core resources, no engine.
         .target(name: "TrellisBroker", dependencies: ["TrellisPOSIX"]),
@@ -41,7 +41,7 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .target(name: "TrellisRelease"),
-        .target(name: "TrellisCLI", dependencies: ["TrellisControl", "TrellisRelease"]),
+        .target(name: "TrellisCLI", dependencies: ["TrellisControl", "TrellisCore", "TrellisRelease"]),
         .executableTarget(name: "TrellisCLIMain", dependencies: ["TrellisCLI"]),
         .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore", "TrellisAskpass"]),
         .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore", "TrellisControl", "TrellisMCP", "TrellisAskpass"]),

@@ -47,7 +47,7 @@ struct PaneTreeView: View {
         if let terminal = model.terminals[id] {
             let focused = activePaneID == id
             let descriptor = model.accessibility.panes.first { $0.id == id }
-            let context = sessionContext(id)
+            let context = model.paneContext(id)
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Button(model.paneTitle(id)) { Task { await model.selectPane(id) } }
@@ -60,8 +60,8 @@ struct PaneTreeView: View {
                         Image(systemName: "folder").accessibilityHidden(true)
                         // The first thing to give way in a narrow pane: a title cut to "…" says nothing at all.
                         Text(directory).lineLimit(1).truncationMode(.middle).layoutPriority(-1)
-                            .help(context.kind == "SSH" ? "\(directory) — reported by the remote shell, unverified" : directory)
-                            .accessibilityHint(context.kind == "SSH" ? "Reported by the remote shell, unverified" : "")
+                            .help(context.machine == .ssh ? "\(directory) — reported by the remote shell, unverified" : directory)
+                            .accessibilityHint(context.machine == .ssh ? "Reported by the remote shell, unverified" : "")
                     }
                     Spacer(minLength: 0)
                     if let code = model.failedCommandExit(paneID: id) {
@@ -89,7 +89,7 @@ struct PaneTreeView: View {
                             agent: agent, state: terminal.sessionState == .running ? model.agentStates[id]?.state ?? .ready : .ready,
                             directory: model.agentCatalog.iconDirectories[agent.id])
                         AgentDropdownButton(model: model, paneID: id)
-                    } else if context.kind == "Local" {
+                    } else if context.machine == .local {
                         scratchpadButton(id, pressed: model.scratchpadVisible && focused)
                         TaskDropdownButton(model: model, paneID: id)
                         AgentDropdownButton(model: model, paneID: id)
@@ -104,13 +104,7 @@ struct PaneTreeView: View {
                             text: AppWorkspaceModel.gitStatusText(git), spoken: AppWorkspaceModel.gitStatusSpoken(git),
                             foreground: model.themeColor(.foreground), background: model.themeColor(.surface))
                     }
-                    // The machine this pane runs on stands out (Local, SSH or the host's name); a link's state stays in plain words beside it.
-                    let machine = context.host ?? context.kind
-                    HStack(spacing: 0) {
-                        Text(machine).fontWeight(.bold).foregroundStyle(model.machineLabelColor).lineLimit(1)
-                        // A narrow pane shortens the name, never the link's state (FR-RW07).
-                        Text(context.kind.dropFirst(machine.count)).lineLimit(1).fixedSize()
-                    }.accessibilityElement(children: .combine)
+                    PaneMachineLabel(machine: context.machine, model: model)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.
                         Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)
@@ -202,35 +196,6 @@ struct PaneTreeView: View {
         }
         .help(model.keyboard.shortcuts[.toggleScratchpad].map { "\(title) (\($0))" } ?? title)
         .accessibilityLabel("Scratchpad").accessibilityAddTraits(pressed ? [.isSelected] : [])
-    }
-
-    private func sessionContext(_ id: UUID) -> (directory: String?, kind: String, host: String?) {
-        let launch = model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID]?.launch }
-        let directory: String
-        // A remote workspace pane: its authenticated directory on the host, named after the host (FR-RW05).
-        if case .remoteShell(let hostID, let path)? = launch {
-            // FR-RW07: a pane on a host that isn't connected says so, in words.
-            let link = model.remoteLinks[hostID] ?? .disconnected(nil)
-            let host = model.remoteHostName(hostID)
-            return (model.remoteWorkingDirectory(paneID: id) ?? path, host + (link == .connected ? "" : " · " + link.label), host)
-        }
-        if case .agent(let agent)? = launch, let hostID = agent.hostID {
-            let link = model.remoteLinks[hostID] ?? .disconnected(nil)
-            let host = model.remoteHostName(hostID)
-            return (agent.directory, host + (link == .connected ? "" : " · " + link.label), host)
-        }
-        // A remote shell's own report, unverified and display-only (FR-SI09).
-        if let launch, AppWorkspaceModel.isRemote(launch) { return (model.remoteDirectory(paneID: id), "SSH", nil) }
-        switch launch {
-        case .host, .remoteShell: return (nil, "SSH", nil)
-        // Shell integration reports the live directory; otherwise show where the session started (INT-01).
-        case .shell(let path), .process(_, _, let path): directory = model.currentDirectory(paneID: id) ?? path ?? model.defaultDirectory
-        case .agent(let agent): directory = agent.directory ?? model.defaultDirectory
-        case nil: directory = model.defaultDirectory
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let display = directory == home ? "~" : directory.hasPrefix(home + "/") ? "~" + directory.dropFirst(home.count) : directory
-        return (display, "Local", nil)
     }
 
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {

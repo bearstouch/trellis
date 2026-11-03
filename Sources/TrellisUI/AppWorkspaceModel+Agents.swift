@@ -125,8 +125,8 @@ extension AppWorkspaceModel {
         return badges.min { rank[$0.state, default: 9] < rank[$1.state, default: 9] }
     }
 
-    /// Where an agent opened from this pane starts: the shell's authenticated directory, else where the pane started.
-    private func agentDirectory(from paneID: UUID, remote: Bool) -> String? {
+    /// Where a pane opened from this one starts: the shell's authenticated directory, else where the pane started.
+    func inheritedDirectory(from paneID: UUID, remote: Bool) -> String? {
         let launch = snapshot.panes[paneID].flatMap { snapshot.sessions[$0.sessionID]?.launch }
         if remote {
             if let directory = remoteWorkingDirectory(paneID: paneID) { return directory }
@@ -152,7 +152,7 @@ extension AppWorkspaceModel {
             let window = snapshot.windows.first(where: { $0.id == tab.windowID })
         else { return }
         let hostID = window.remoteHostID
-        let launch = AgentLaunch(agentID: agentID, directory: agentDirectory(from: sourcePaneID, remote: hostID != nil), hostID: hostID, resume: resume)
+        let launch = AgentLaunch(agentID: agentID, directory: inheritedDirectory(from: sourcePaneID, remote: hostID != nil), hostID: hostID, resume: resume)
         let paneID: UUID?
         switch placement {
         case .split:

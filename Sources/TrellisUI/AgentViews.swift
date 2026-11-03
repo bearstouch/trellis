@@ -170,6 +170,57 @@ enum AgentStateStyle {
     }
 }
 
+/// Which capsule a tab shows (FR-AG10). Working has none, and still outranks the generic Input capsule.
+enum TabCapsuleKind: Equatable {
+    case agent(AgentState), input
+
+    static func resolve(agentState: AgentState?, waitingForInput: Bool) -> TabCapsuleKind? {
+        if let agentState { return agentState == .working ? nil : .agent(agentState) }
+        return waitingForInput ? .input : nil
+    }
+}
+
+/// What a tab's top edge shows; only one at a time. Agents print constantly, so the thread stands in for their busy bar.
+enum TabTopEdgeKind: Equatable {
+    case progress, agentWorking, busy, label
+
+    static func resolve(hasProgress: Bool, agentState: AgentState?, busy: Bool, hasLabel: Bool) -> TabTopEdgeKind? {
+        if hasProgress { return .progress }
+        if agentState == .working { return .agentWorking }
+        if busy { return .busy }
+        return hasLabel ? .label : nil
+    }
+}
+
+/// A working agent's icon (FR-AG10): it breathes on the same 2.4 s cycle as the tab's thread. Only scales, so it suits symbols,
+/// monograms and images alike; a steady halo with Reduce Motion on. Inserted only while working, so no animation lingers.
+struct AgentBreathingMark<Content: View>: View {
+    let tint: Color
+    let animated: Bool
+    @ViewBuilder let content: Content
+    @State private var inhaled = false
+
+    var body: some View {
+        content
+            .scaleEffect(animated && inhaled ? 1.14 : 1)
+            .background {
+                Circle().fill(RadialGradient(colors: [tint.opacity(0.6), tint.opacity(0)], center: .center, startRadius: 0, endRadius: 13))
+                    .frame(width: 26, height: 26)
+                    .scaleEffect(animated ? (inhaled ? 1.15 : 0.8) : 1)
+                    .opacity(animated ? (inhaled ? 0.95 : 0.25) : 0.7)
+                    .allowsHitTesting(false)
+            }
+            .onAppear { start(animated) }
+            .onChange(of: animated) { _, next in start(next) }
+    }
+
+    private func start(_ animated: Bool) {
+        inhaled = false
+        guard animated else { return }
+        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { inhaled = true }
+    }
+}
+
 /// The tab's capsule for an agent's state (FR-AG10): a word and a symbol, never color alone.
 struct AgentTabBadge: View {
     let state: AgentState

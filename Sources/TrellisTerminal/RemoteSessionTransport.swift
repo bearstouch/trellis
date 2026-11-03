@@ -40,6 +40,7 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
     private var arrivedWhileAttaching: UInt64 = 0
     private var resuming = false
     private var ended = false
+    private var sessionGone = false
     private var replay = Data()
 
     public init(sessionID: UUID, hostID: UUID, connection: BrokerConnection) {
@@ -94,7 +95,12 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
         let prompt = passwordPromptActive
         // Live output can arrive before this continues; it is held so it follows the missed output.
         delivering = false
-        guard let attachment = await requestAttach(size: size, since: received, timeout: timeout) else { beginDelivery(); return false }
+        guard let attachment = await requestAttach(size: size, since: received, timeout: timeout) else {
+            beginDelivery()
+            // The helper no longer has it (the host rebooted, say): an exit, or the pane would wait for it forever.
+            if sessionGone, !ended { ended = true; isRunning = false; reportExit(nil) }
+            return false
+        }
         let missed = replay
         replay = Data()
         linkLost = false
@@ -137,7 +143,9 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
         arrivedWhileAttaching = 0
         defer { awaitingStart = false }
         let request = BrokerMessage.attach(sessionID: sessionID, columns: UInt16(size.columns), rows: UInt16(size.rows), since: since)
-        guard case .attached(let attachment)? = try? await connection.request(request, timeout: timeout) else {
+        let reply = try? await connection.request(request, timeout: timeout)
+        guard case .attached(let attachment)? = reply else {
+            if case .failed("NOT_FOUND", _)? = reply { sessionGone = true }
             connection.unregister(sessionID: sessionID)
             return nil
         }
