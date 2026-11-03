@@ -109,6 +109,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         }
         surface.describeLink = { [weak self] in self?.describeLink($0) }
         surface.onOpenLink = { [weak self] in self?.openLink($0) }
+        surface.onRevealLink = { [weak self] in self?.revealLink($0) }
         observeNotifications()
         observeInlineImages()
         session.onOutput = { [weak self] data in
@@ -587,14 +588,23 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         }
     }
 
+    func revealLink(_ click: TerminalLinkClick) {
+        guard LinkPolicy.gestureIsFresh(lastGesture: terminalView.lastUserGesture, now: now()), let resolved = resolve(click) else { return }
+        terminalView.lastUserGesture = nil
+        switch resolved.link {
+        case .web: return
+        case .file(_, .open(let url)), .file(_, .reveal(let url)): revealURL(url)
+        }
+    }
+
     /// The menu keeps the text it described, so output arriving while it is open can't change what Open opens.
     func describeLink(_ click: TerminalLinkClick) -> TerminalLinkMenu? {
         guard let resolved = resolve(click) else { return nil }
         let frozen = TerminalLinkClick(link: resolved.candidate, explicit: click.explicit, position: nil)
         switch resolved.link {
         case .web(let url): return TerminalLinkMenu(openTitle: "Open Link", copyTitle: "Copy Link", copyText: url.absoluteString, click: frozen)
-        case .file(let path, .open): return TerminalLinkMenu(openTitle: "Open", copyTitle: "Copy Path", copyText: path, click: frozen)
-        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Reveal in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
+        case .file(let path, .open): return TerminalLinkMenu(openTitle: "Open", copyTitle: "Copy Path", copyText: path, click: frozen, canReveal: true)
+        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Show in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
         }
     }
     public func bell(source: TerminalView) { if !isReplaying { playBell() } }

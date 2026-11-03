@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Show in Finder:** right-clicking a file path in a terminal pane now offers **Show in Finder**. Select a file name first and right-click inside the selection to get the same actions for bare names such as `README.md` and names with spaces. **Reveal in Finder** on launchable files is now also called **Show in Finder**.
 - **CLI help:** `trellis --help`, `trellis <noun> --help` and `trellis <noun> <verb> --help` (also `-h` and `trellis help …`) now print real help to stdout and exit with 0, with no app or credentials needed. `trellis --version` (`-V`) prints the version. Argument errors go to stderr, followed by a line pointing at the help for that command.
 
 ### Changed

@@ -9,6 +9,8 @@ struct TerminalLinkMenu: Equatable {
     var copyText: String
     /// What Open re-resolves: the described link text, without its cell.
     var click: TerminalLinkClick
+    /// Adds Show in Finder beside Open; false when Open already reveals (FR-L03) or the link isn't a file.
+    var canReveal = false
 }
 
 /// A clicked link: the engine's text (nil if it found none), whether it is an OSC 8
@@ -32,6 +34,8 @@ final class AccessibleTerminalView: TerminalView {
     var describeLink: ((TerminalLinkClick) -> TerminalLinkMenu?)?
     /// Opens a link chosen from the context menu, under the same rules as ⌘-click.
     var onOpenLink: ((TerminalLinkClick) -> Void)?
+    /// Shows a file link chosen from the context menu in Finder.
+    var onRevealLink: ((TerminalLinkClick) -> Void)?
     var scrollback = TerminalScrollback(budget: .standard)
     /// The configurable Find chord; other ⌘ chords reach the menu bar.
     var searchChord: KeyChord? = ShortcutMap.defaults[.findInPane]
@@ -267,7 +271,7 @@ final class AccessibleTerminalView: TerminalView {
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
         if item.action == #selector(pasteEscapedPath(_:)) { return true }
         if item.action == #selector(showPaneSearch(_:)) || item.action == #selector(clearTerminal(_:)) { return true }
-        if item.action == #selector(openContextLink(_:)) || item.action == #selector(copyContextLink(_:)) { return contextLink != nil }
+        if item.action == #selector(openContextLink(_:)) || item.action == #selector(revealContextLink(_:)) || item.action == #selector(copyContextLink(_:)) { return contextLink != nil }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
     }
@@ -281,9 +285,12 @@ final class AccessibleTerminalView: TerminalView {
         let click = TerminalLinkClick(
             link: terminal.link(at: .buffer(position), mode: .explicitAndImplicit), explicit: terminal.linkIsExplicit(at: .buffer(position)), position: position)
         contextLink = nil
-        if let described = describeLink?(click) {
+        if let described = selectionLinkClick(at: position).flatMap({ describeLink?($0) }) ?? describeLink?(click) {
             contextLink = (described.click, described.copyText)
-            for (title, action) in [(described.openTitle, #selector(openContextLink(_:))), (described.copyTitle, #selector(copyContextLink(_:)))] {
+            var actions = [(described.openTitle, #selector(openContextLink(_:)))]
+            if described.canReveal { actions.append(("Show in Finder", #selector(revealContextLink(_:)))) }
+            actions.append((described.copyTitle, #selector(copyContextLink(_:))))
+            for (title, action) in actions {
                 let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
                 item.target = self
                 menu.addItem(item)
@@ -306,6 +313,17 @@ final class AccessibleTerminalView: TerminalView {
         return menu
     }
 
+    /// A click inside the selection means the selected text, which can name what detection can't: `README.md`, or a name with spaces (FR-L06).
+    private func selectionLinkClick(at position: Position) -> TerminalLinkClick? {
+        guard selection.active else { return nil }
+        let (first, last) = Position.compare(selection.start, selection.end) == .after ? (selection.end, selection.start) : (selection.start, selection.end)
+        // The engine's end is half-open: its cell is neither highlighted nor copied.
+        let inside = selection.selectingRows ? (first.row...last.row).contains(position.row) : Position.compare(position, first) != .before && Position.compare(position, last) == .before
+        guard inside else { return nil }
+        let text = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : TerminalLinkClick(link: text, explicit: false, position: nil)
+    }
+
     private var contextLink: (click: TerminalLinkClick, copyText: String)?
 
     @objc func openContextLink(_ sender: Any?) {
@@ -314,6 +332,13 @@ final class AccessibleTerminalView: TerminalView {
         lastUserGesture = Date()
         defer { lastUserGesture = nil }
         onOpenLink?(contextLink.click)
+    }
+
+    @objc func revealContextLink(_ sender: Any?) {
+        guard let contextLink else { return }
+        lastUserGesture = Date()
+        defer { lastUserGesture = nil }
+        onRevealLink?(contextLink.click)
     }
 
     @objc func copyContextLink(_ sender: Any?) {
