@@ -52,3 +52,49 @@ final class BundledFontsTests: XCTestCase {
         XCTAssertTrue(BundledFonts.faces.contains(AppearanceSettings.defaultFontName))
     }
 }
+
+final class FocusedPaneHeaderTests: XCTestCase {
+    func testEveryBundledThemeKeepsHeaderContentReadableOnTheTint() {
+        for theme in BundledThemes.all {
+            let tint = theme.focusedPaneHeader
+            for field in [UIColorField.foreground, .mutedForeground] {
+                XCTAssertGreaterThanOrEqual(theme[field].contrast(against: tint), 4.5, "\(theme.id) \(field)")
+            }
+            for field in [UIColorField.accent, .focusRing, .warning] {
+                XCTAssertGreaterThanOrEqual(theme[field].contrast(against: tint), 3, "\(theme.id) \(field)")
+            }
+        }
+    }
+
+    func testBuiltInThemesActuallyTint() {
+        for appearance in ThemeAppearance.allCases {
+            let theme = ResolvedTheme.builtIn(appearance)
+            XCTAssertNotEqual(theme.focusedPaneHeader, theme[.surface], appearance.rawValue)
+        }
+    }
+
+    func testAThemeWithNoRoomForATintKeepsItsSurface() throws {
+        let theme = try XCTUnwrap(BundledThemes.all.first { $0.id == "trellis-solarized-dark" })
+        XCTAssertEqual(theme.focusedPaneHeader, theme[.surface])
+    }
+
+    func testAThemeWithLittleRoomGetsAWeakerTint() throws {
+        let theme = try XCTUnwrap(BundledThemes.all.first { $0.id == "trellis-nord-dark" })
+        XCTAssertEqual(theme.focusedPaneHeader, theme[.surface].mixed(with: theme[.accent], fraction: 0.08))
+    }
+
+    func testMixingClampsItsFraction() throws {
+        let black = try XCTUnwrap(ThemeColor(hex: "#000000")), white = try XCTUnwrap(ThemeColor(hex: "#FFFFFF"))
+        XCTAssertEqual(black.mixed(with: white, fraction: -1), black)
+        XCTAssertEqual(black.mixed(with: white, fraction: 2), white)
+        XCTAssertEqual(white.mixed(with: black, fraction: .nan), white)
+    }
+
+    func testMixingMovesTowardTheOtherColorAndStaysInRange() throws {
+        let black = try XCTUnwrap(ThemeColor(hex: "#000000")), white = try XCTUnwrap(ThemeColor(hex: "#FFFFFF"))
+        XCTAssertEqual(black.mixed(with: white, fraction: 0), black)
+        XCTAssertEqual(black.mixed(with: white, fraction: 1), white)
+        XCTAssertEqual(white.mixed(with: black, fraction: 1), black)
+        XCTAssertEqual(black.mixed(with: white, fraction: 0.5).hex, "#808080")
+    }
+}

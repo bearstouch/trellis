@@ -40,6 +40,8 @@ struct SearchableTerminalSurface: View {
     @ObservedObject var terminal: NativeTerminal
     let isFocused: Bool
     let background: Color
+    var dim = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         VStack(spacing: 0) {
             // Keyed by terminal: a reused surface (another tab of the same shape) must not keep the previous
@@ -51,6 +53,11 @@ struct SearchableTerminalSurface: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
                 .background(background)
+                // FR-P05: the terminal only, not the find bar, and never in the way of its clicks and scrolling.
+                .overlay {
+                    background.opacity(dim).allowsHitTesting(false).accessibilityHidden(true)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: dim)
+                }
         }
     }
 }
