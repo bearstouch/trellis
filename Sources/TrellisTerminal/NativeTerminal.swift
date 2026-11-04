@@ -69,6 +69,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// True while a native text field (such as tab renaming) owns editing keys.
     /// Keyboard and mouse-report bytes are dropped instead of reaching the PTY.
     public var inputSuspended = false
+    /// Whether a dropped file's path can be inserted now (FR-C08).
+    public var acceptsFileDrop: Bool { !inputSuspended && sessionState == .running }
     /// Option composes characters unless the user opts into Meta.
     public var optionAsMeta: Bool {
         get { terminalView.optionAsMetaKey }
@@ -100,6 +102,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.terminalDelegate = self
         surface.onFocused = { [weak self] in self?.onFocused?() }
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
+        surface.canAcceptFileDrop = { [weak self] in self?.acceptsFileDrop == true }
+        surface.registerForDraggedTypes([.fileURL])
         surface.onSearchRequested = { [weak self] in self?.showSearch() }
         surface.onContentsChanged = { [weak self] in self?.invalidateSearchForOutput() }
         surface.onBell = { [weak self] in if self?.isReplaying == false { self?.onAttentionRequested?() } }
