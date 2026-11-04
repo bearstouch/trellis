@@ -8,6 +8,8 @@ struct PaneTreeView: View {
     let activePaneID: UUID
     let tabID: UUID
     @State private var dragStartRatio: Double?
+    @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         GeometryReader { geometry in
@@ -48,10 +50,12 @@ struct PaneTreeView: View {
             let focused = activePaneID == id
             let descriptor = model.accessibility.panes.first { $0.id == id }
             let context = model.paneContext(id)
+            let focusStyle = model.paneFocusStyle(paneID: id, tabID: tabID, windowActive: controlActiveState != .inactive, increasedContrast: colorSchemeContrast == .increased)
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Button(model.paneTitle(id)) { Task { await model.selectPane(id) } }
                         .buttonStyle(.plain).lineLimit(1).fontWeight(focused ? .semibold : .regular)
+                        .foregroundStyle(focusStyle.header == .focused ? model.themeColor(.foreground) : model.themeColor(.mutedForeground))
                         .accessibilityLabel(descriptor?.label ?? "Terminal")
                         .accessibilityValue(descriptor?.value ?? "")
                         .accessibilityHint("Focuses this pane")
@@ -151,12 +155,17 @@ struct PaneTreeView: View {
                     }
                     .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
-                    .padding(.horizontal, 9).frame(height: 30).background(model.themeColor(.surface))
+                    // The surface under it: the native tint is translucent, and the terminal canvas behind a pane tree is dark.
+                    .padding(.horizontal, 9).frame(height: 30).background(headerBackground(focusStyle.header)).background(model.themeColor(.surface))
+                    // On the bottom edge: along the top it would stack against the selected tab's underline.
+                    .overlay(alignment: .bottom) {
+                        if focusStyle.header == .focused { model.themeColor(.focusRing).frame(height: 3).allowsHitTesting(false).accessibilityHidden(true) }
+                    }
                 // A tab rename may select another tab first; its terminal host must not
                 // take first responder from the name field (its input is suspended).
                 SearchableTerminalSurface(
                     terminal: terminal, isFocused: focused && model.editingTabID == nil,
-                    background: model.terminalBackground
+                    background: model.terminalBackground, dim: focusStyle.dim
                 )
                 .overlay {
                     if terminal.sessionState == .stopped {
@@ -179,6 +188,14 @@ struct PaneTreeView: View {
             }
         } else {
             model.terminalBackground
+        }
+    }
+
+    private func headerBackground(_ header: PaneFocusStyle.Header) -> Color {
+        switch header {
+        case .plain: return model.themeColor(.surface)
+        case .focused: return model.focusedPaneHeaderBackground
+        case .receded: return model.themeColor(.background)
         }
     }
 

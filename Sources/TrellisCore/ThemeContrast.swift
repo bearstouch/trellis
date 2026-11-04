@@ -11,6 +11,19 @@ public struct ThemeContrastWarning: Equatable, Sendable {
 }
 
 extension ResolvedTheme {
+    /// The focused pane's header (FR-P05): the strongest accent tint of the surface that keeps the header's content
+    /// readable. The accent is what the tint moves toward, so a theme with a close call gets less of it, or plain surface.
+    public var focusedPaneHeader: ThemeColor {
+        let surface = self[.surface], accent = self[.accent]
+        for fraction in [0.16, 0.12, 0.08, 0.04] {
+            let tint = surface.mixed(with: accent, fraction: fraction)
+            let text = [UIColorField.foreground, .mutedForeground].allSatisfy { self[$0].contrast(against: tint) >= 4.5 }
+            let marks = [UIColorField.accent, .focusRing, .warning].allSatisfy { self[$0].contrast(against: tint) >= 3 }
+            if text && marks { return tint }
+        }
+        return surface
+    }
+
     public var contrastWarnings: [ThemeContrastWarning] {
         var warnings: [ThemeContrastWarning] = []
         func check(_ a: ThemeColor, _ b: ThemeColor, _ first: String, _ second: String, minimum: Double = 4.5) {

@@ -32,6 +32,15 @@ public struct ThemeColor: Equatable, Hashable, Sendable {
         let a = relativeLuminance, b = other.relativeLuminance
         return (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
+    /// This color moved `fraction` (clamped to 0...1) of the way to `other`, per sRGB channel.
+    public func mixed(with other: Self, fraction: Double) -> Self {
+        let fraction = fraction.isFinite ? min(max(fraction, 0), 1) : 0
+        func channel(_ shift: UInt32) -> UInt32 {
+            let from = Double((rgb >> shift) & 255), to = Double((other.rgb >> shift) & 255)
+            return UInt32((from + (to - from) * fraction).rounded()) << shift
+        }
+        return Self(channel(16) | channel(8) | channel(0))
+    }
 }
 
 /// Only the validator creates documents, so resolution always has known fields,
