@@ -88,8 +88,8 @@ final class PaneFocusStyleTests: XCTestCase {
             .frame(width: 800, height: 400).background(model.terminalBackground).environment(\.colorScheme, .light)
         let image = try XCTUnwrap(ImageRenderer(content: tree).cgImage)
         let bitmap = NSBitmapImageRep(cgImage: image)
-        // Near the bottom of each 30-point header, below its text and clear of the top line.
-        func headerBrightness(x: Int) throws -> CGFloat { try XCTUnwrap(bitmap.colorAt(x: x, y: 28)?.usingColorSpace(.sRGB)).brightnessComponent }
+        // Low in each 30-point header, below its text and clear of the line on its bottom edge.
+        func headerBrightness(x: Int) throws -> CGFloat { try XCTUnwrap(bitmap.colorAt(x: x, y: 24)?.usingColorSpace(.sRGB)).brightnessComponent }
         XCTAssertNotNil(model.terminals[right])
         XCTAssertGreaterThan(try headerBrightness(x: 200), 0.7, "focused header")
         XCTAssertGreaterThan(try headerBrightness(x: 600), 0.7, "receded header")

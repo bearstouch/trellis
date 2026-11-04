@@ -157,8 +157,9 @@ struct PaneTreeView: View {
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
                     // The surface under it: the native tint is translucent, and the terminal canvas behind a pane tree is dark.
                     .padding(.horizontal, 9).frame(height: 30).background(headerBackground(focusStyle.header)).background(model.themeColor(.surface))
-                    .overlay(alignment: .top) {
-                        if focusStyle.header == .focused { model.themeColor(.focusRing).frame(height: 2).allowsHitTesting(false).accessibilityHidden(true) }
+                    // On the bottom edge: along the top it would stack against the selected tab's underline.
+                    .overlay(alignment: .bottom) {
+                        if focusStyle.header == .focused { model.themeColor(.focusRing).frame(height: 3).allowsHitTesting(false).accessibilityHidden(true) }
                     }
                 // A tab rename may select another tab first; its terminal host must not
                 // take first responder from the name field (its input is suspended).
