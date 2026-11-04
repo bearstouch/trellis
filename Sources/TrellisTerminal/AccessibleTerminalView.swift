@@ -146,6 +146,39 @@ final class AccessibleTerminalView: TerminalView {
         return board.string(forType: .string).map { [$0] } ?? []
     }
 
+    /// False while the pane can't take input (FR-C08): it isn't running, or a native field owns the keyboard.
+    var canAcceptFileDrop: () -> Bool = { true }
+    // No string fallback, unlike the clipboard: a drop only ever carries files.
+    var readDropPaths: (NSPasteboard) -> [String] = { board in
+        let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.map(\.path)
+    }
+
+    private func dropOperation(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard canAcceptFileDrop(), window?.attachedSheet == nil, sender.draggingSourceOperationMask.contains(.copy),
+            sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        else { return [] }
+        return .copy
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { dropOperation(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { dropOperation(sender) }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard acceptDroppedPaths(readDropPaths(sender.draggingPasteboard)) else { return false }
+        // The drag leaves its source app in front; come forward so typing continues in this pane.
+        NSApp.activate()
+        window?.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    /// Focuses this pane first, because a paste only ever goes to the focused pane (FR-C03). A pending review keeps its target.
+    func acceptDroppedPaths(_ paths: [String]) -> Bool {
+        guard !paths.isEmpty, canAcceptFileDrop(), window?.attachedSheet == nil, window?.makeFirstResponder(self) == true else { return false }
+        onPasteRequested?(.paths(paths))
+        return true
+    }
+
     override func paste(_ sender: Any) {
         guard window?.firstResponder === self, let text = readClipboardText() else { return }
         onPasteRequested?(.text(text))

@@ -45,6 +45,69 @@ final class NativeTerminalPasteTests: XCTestCase {
     }
 
     @MainActor
+    func testDroppedPathsFocusThePaneAndArriveInOrder() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
+        XCTAssertTrue(view.registeredDraggedTypes.contains(.fileURL))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = view
+        window.makeFirstResponder(nil)
+        var received: [[String]] = []
+        view.onPasteRequested = { input in
+            if case .paths(let paths) = input { received.append(paths) } else { XCTFail("A drop must arrive as paths") }
+        }
+        view.canAcceptFileDrop = { true }
+        XCTAssertTrue(view.acceptDroppedPaths(["/tmp/b b.png", "/tmp/a.txt"]))
+        XCTAssertTrue(window.firstResponder === view)
+        XCTAssertEqual(received, [["/tmp/b b.png", "/tmp/a.txt"]])
+    }
+
+    @MainActor
+    func testRefusedDropSendsNothingAndKeepsFocus() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = view
+        window.makeFirstResponder(nil)
+        var received = 0
+        view.onPasteRequested = { _ in received += 1 }
+        // Not started, so the real gate refuses it.
+        XCTAssertFalse(native.acceptsFileDrop)
+        XCTAssertFalse(view.acceptDroppedPaths(["/tmp/a"]))
+        view.canAcceptFileDrop = { true }
+        XCTAssertFalse(view.acceptDroppedPaths([]))
+        XCTAssertEqual(received, 0)
+        XCTAssertFalse(window.firstResponder === view)
+    }
+
+    @MainActor
+    func testDropPathsComeOnlyFromFileURLs() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString("/tmp/not-a-drop", forType: .string)
+        XCTAssertEqual(view.readDropPaths(board), [])
+        board.clearContents()
+        board.writeObjects([NSURL(string: "https://example.com/a.png")!])
+        XCTAssertEqual(view.readDropPaths(board), [])
+        board.clearContents()
+        board.writeObjects([NSURL(fileURLWithPath: "/tmp/a b.png")])
+        XCTAssertEqual(view.readDropPaths(board), ["/tmp/a b.png"])
+    }
+
+    @MainActor
     func testRealPTYPasteUsesNegotiatedFramingAndExactBytes() async throws {
         _ = NSApplication.shared
         for bracketed in [false, true] {
