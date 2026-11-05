@@ -13,6 +13,10 @@ public struct WorkspaceRootView: View {
     /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
     @State private var scratchpadCursorPushed = false
     static let scratchpadWidths: ClosedRange<CGFloat> = 280...640
+    /// The tool dock's drag and resize cursor (FR-TD03); its width lives in the tab's dock state.
+    @State private var dockDragStart: Double?
+    @State private var dockCursorPushed = false
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var draggedTabID: UUID?
@@ -369,6 +373,32 @@ public struct WorkspaceRootView: View {
                     .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
                 Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
+                toolDockLayout
+            }
+        }
+    }
+
+    /// The panes and scratchpad, with the tool rail and dock on the chosen side (FR-TD02). The dock docks beside the
+    /// panes, which keep their split ratios, unless that would push a pane below its minimum; then it floats over them
+    /// so no terminal is resized (FR-TD03, FR-TD04).
+    private var toolDockLayout: some View {
+        GeometryReader { geometry in
+            let side = model.appearance.toolDockSide
+            let tab = model.presentation.selectedTab
+            let state = tab.map { model.toolDock($0.id) } ?? ToolDockState()
+            let scratch = model.scratchpadVisible ? scratchpadWidth + 7 : 0
+            let available = Double(geometry.size.width) - 38 - scratch
+            let width = dockWidth(state, available: available)
+            let visible = tab.map { model.maximizedPanes[$0.id].map(PaneLayout.pane) ?? $0.root }
+            let minimum = visible.map { Double(CanvasDimensions.minimum(for: $0).width) } ?? 0
+            let floating = state.isOpen && ToolDockLayout.floats(availableWidth: available, dockWidth: width, minimumCanvasWidth: minimum)
+            let docked = state.isOpen && !floating
+            HStack(spacing: 0) {
+                if side == .left {
+                    ToolRail(model: model)
+                    Divider().overlay(model.separatorOverlay)
+                    if docked, let tab { dock(tab.id, width: width, floating: false, side: side) }
+                }
                 HStack(spacing: 0) {
                     terminalCanvas
                     if model.scratchpadVisible {
@@ -376,8 +406,59 @@ public struct WorkspaceRootView: View {
                         ScratchpadPanel(model: model, buffer: model.scratchpadBuffer).frame(width: scratchpadWidth)
                     }
                 }
+                .overlay(alignment: side == .left ? .leading : .trailing) {
+                    if floating, let tab {
+                        dock(tab.id, width: width, floating: true, side: side)
+                            .shadow(color: .black.opacity(contrast == .increased ? 0.6 : 0.35), radius: 16, x: side == .left ? 6 : -6)
+                            .transition(model.reduceMotion ? .identity : .move(edge: side == .left ? .leading : .trailing))
+                    }
+                }
+                if side == .right {
+                    if docked, let tab { dock(tab.id, width: width, floating: false, side: side) }
+                    Divider().overlay(model.separatorOverlay)
+                    ToolRail(model: model)
+                }
             }
         }
+    }
+
+    /// What the dock shows sets its default width; a dragged width wins while a file is open (FR-TD03).
+    private func dockWidth(_ state: ToolDockState, available: Double) -> Double {
+        guard state.activeFile != nil else { return ToolDockLayout.treeOnlyWidth }
+        let base = state.width ?? ToolDockLayout.editorWidth
+        let shown = state.treeHidden && state.width == nil ? base - ToolDockLayout.treeOnlyWidth : base
+        return ToolDockLayout.clamped(shown, availableWidth: available)
+    }
+
+    @ViewBuilder private func dock(_ tabID: UUID, width: Double, floating: Bool, side: ToolDockSide) -> some View {
+        HStack(spacing: 0) {
+            if side == .right { dockResizeHandle(tabID, width: width, side: side) }
+            ToolDockView(model: model, tabID: tabID, floating: floating).frame(width: CGFloat(width))
+            if side == .left { dockResizeHandle(tabID, width: width, side: side) }
+        }
+    }
+
+    /// Drag the dock's inner edge; VoiceOver adjusts it in 20-point steps (FR-TD03).
+    private func dockResizeHandle(_ tabID: UUID, width: Double, side: ToolDockSide) -> some View {
+        Color.clear.frame(width: 7).overlay(model.themeColor(.border).frame(width: 1)).contentShape(Rectangle()).padding(.horizontal, -3).zIndex(1)
+            .onHover { inside in
+                guard inside != dockCursorPushed else { return }
+                dockCursorPushed = inside
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .onDisappear { if dockCursorPushed { dockCursorPushed = false; NSCursor.pop() } }
+            .gesture(
+                DragGesture(minimumDistance: 1).onChanged { value in
+                    let start = dockDragStart ?? width
+                    dockDragStart = start
+                    let delta = Double(value.translation.width) * (side == .right ? -1 : 1)
+                    model.setToolDockWidth(max(ToolDockLayout.minimumWidth, start + delta), tabID: tabID)
+                }.onEnded { _ in dockDragStart = nil }
+            )
+            .accessibilityElement().accessibilityLabel("Dock width").accessibilityValue("\(Int(width)) points")
+            .accessibilityAdjustableAction { direction in
+                model.setToolDockWidth(max(ToolDockLayout.minimumWidth, width + (direction == .increment ? 20 : -20)), tabID: tabID)
+            }
     }
 
     /// Drag to resize the scratchpad; the canvas takes the rest, so split minimums follow (FR-SP01).

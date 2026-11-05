@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, .toggleScratchpad, .toggleFiles, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -353,6 +353,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
         case .toggleSidebar: model.toggleSidebar()
         case .toggleScratchpad: Task { await model.toggleScratchpad() }
+        case .toggleFiles: model.toggleToolDock(.files)
         case .commandPalette: model.toggleCommandPalette()
         case .jumpToDirectory: model.openDirectoryJump()
         case .splitLeftRight, .splitTopBottom:
@@ -395,7 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
         if action == .commandPalette || action == .jumpToDirectory { return !model.isRestoring && model.recoveryMessage == nil }
-        if action == .toggleScratchpad { return !model.presentation.isEmpty }
+        if action == .toggleScratchpad || action == .toggleFiles { return !model.presentation.isEmpty }
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
@@ -428,6 +429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
             if action == .toggleScratchpad { menuItem.title = model.scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad" }
+            if action == .toggleFiles { menuItem.title = model.selectedToolDock.isOpen ? "Hide Files" : "Show Files" }
             return validateShortcut(action)
         }
         if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }

@@ -208,6 +208,14 @@ struct AppearanceSettingsView: View {
             Toggle("Use italic fonts", isOn: $draft.allowItalicFont)
             Toggle("Allow blinking text", isOn: $draft.blinkingText)
             Text("Blinking text stays steady while Reduce Motion is on.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
+            Picker("Tool dock", selection: $draft.toolDockSide) {
+                ForEach(ToolDockSide.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }.pickerStyle(.segmented).accessibilityIdentifier("settings.toolDockSide")
+            Picker("Open file links in", selection: $draft.fileLinkTarget) {
+                ForEach(FileLinkTarget.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }.accessibilityIdentifier("settings.fileLinkTarget")
+            Text("⌘-clicking a text file's path in a pane opens it in the tool dock, or in its default app.")
+                .font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             if let notice = model.appearanceNotice { Text(notice).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption() }
             if let message { Text(message).font(.caption).wrappingSettingsCaption() }
             HStack {

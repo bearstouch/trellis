@@ -289,6 +289,7 @@ extension ShortcutAction {
         case .saveWorkspace: ["layout"]
         case .toggleSidebar: ["windows list"]
         case .toggleScratchpad: ["script editor"]
+        case .toggleFiles: ["file browser", "editor", "tool dock", "tree"]
         case .zoomIn, .zoomOut, .actualSize: ["font size"]
         default: []
         }

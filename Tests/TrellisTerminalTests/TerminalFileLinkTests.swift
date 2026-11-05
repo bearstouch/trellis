@@ -24,6 +24,38 @@ final class TerminalFileLinkTests: XCTestCase {
         return (native, surface, { recorder })
     }
 
+    func testFileLinksAreOfferedToTheEditorWithTheirLineBeforeTheDefaultApp() throws {
+        let files = [
+            "/work/src/a.swift": FileFacts(resolvedPath: "/work/src/a.swift", kind: .regular),
+            "/work/run.sh": FileFacts(resolvedPath: "/work/run.sh", kind: .regular, isExecutable: true)
+        ]
+        let (native, surface, recorder) = makeTerminal(files: files)
+        defer { native.adapter.detach() }
+        let clock = Date(timeIntervalSince1970: 1_800_000_000)
+        native.now = { clock }
+        var offered: [(String, Int?)] = []
+        var accept = true
+        native.openFile = { path, line in
+            offered.append((path, line)); return accept
+        }
+
+        surface.lastUserGesture = clock
+        native.requestOpenLink(source: surface, link: "src/a.swift:17:3", params: [:])
+        XCTAssertEqual(offered.map(\.0), ["/work/src/a.swift"])
+        XCTAssertEqual(offered.first?.1, 17, "FR-TD09: the line reaches the editor")
+        XCTAssertEqual(recorder().opened, [], "Opened in Trellis, so not in the default app")
+
+        accept = false
+        surface.lastUserGesture = clock
+        native.requestOpenLink(source: surface, link: "src/a.swift", params: [:])
+        XCTAssertEqual(recorder().opened, ["/work/src/a.swift"], "Declined files still open in the default app")
+
+        surface.lastUserGesture = clock
+        native.requestOpenLink(source: surface, link: "./run.sh", params: [:])
+        XCTAssertEqual(offered.count, 2, "FR-L03: an executable is only revealed, never offered to the editor")
+        XCTAssertEqual(recorder().revealed, ["/work/run.sh"])
+    }
+
     func testCmdClickFileLinkOpensOrRevealsOnlyWithContextAndGesture() throws {
         let files = [
             "/work/src/a.swift": FileFacts(resolvedPath: "/work/src/a.swift", kind: .regular),

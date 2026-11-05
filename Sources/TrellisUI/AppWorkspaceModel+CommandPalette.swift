@@ -306,6 +306,7 @@ extension AppWorkspaceModel {
         switch action {
         case .toggleSidebar: sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
         case .toggleScratchpad: scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad"
+        case .toggleFiles: selectedToolDock.isOpen ? "Hide Files" : "Show Files"
         default: action.title
         }
     }

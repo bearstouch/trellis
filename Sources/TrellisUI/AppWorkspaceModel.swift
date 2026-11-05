@@ -456,6 +456,16 @@ public final class AppWorkspaceModel: ObservableObject {
     var launchTrust: ProjectTrustList?
     /// How long after Stop the button offers Force Stop (FR-TK08).
     var taskStopEscalation: TimeInterval = 2
+    /// The tool dock, per tab (FR-TD05): memory only, never saved with the workspace.
+    @Published public internal(set) var toolDocks: [UUID: ToolDockState] = [:]
+    /// Open files' buffers, per tab and path. Each publishes its own edits, so typing doesn't re-render the workspace.
+    var editorBuffers: [UUID: [String: EditorBuffer]] = [:]
+    /// Asked before unsaved edits would be lost (FR-TD14), with the files' names; tests inject the answer.
+    public var confirmUnsavedEdits: ([String]) -> UnsavedEditsChoice = { _ in .cancel }
+    /// Watches open files for changes made elsewhere (FR-TD13); tests inject their own.
+    var editorFileWatcher: (String, @escaping @MainActor () -> Void) -> AnyObject? = { path, changed in EditorFileWatch(path: path, changed: changed) }
+    var editorWatches: [UUID: [String: AnyObject]] = [:]
+    @Published public internal(set) var toolDockFocusRequest = 0
     /// The command scratchpad (FR-SP01–FR-SP10): runtime only, never persisted or logged. Run and Save write the
     /// buffer to a file; nothing else does.
     @Published public internal(set) var scratchpadVisible = false
@@ -613,6 +623,7 @@ public final class AppWorkspaceModel: ObservableObject {
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
+        confirmUnsavedEdits = { Self.showUnsavedEditsConfirmation(names: $0) }
         confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
         confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
         confirmClearDirectoryHistory = { [weak self] in self?.showClearDirectoryHistoryConfirmation() ?? false }
@@ -816,6 +827,11 @@ public final class AppWorkspaceModel: ObservableObject {
         if let pendingPaste, pendingPaste.target != currentPasteTarget { cancelPaste() }
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
+        if toolDocks.keys.contains(where: { next.tabs[$0] == nil }) || editorBuffers.keys.contains(where: { next.tabs[$0] == nil }) {
+            toolDocks = toolDocks.filter { next.tabs[$0.key] != nil }
+            editorBuffers = editorBuffers.filter { next.tabs[$0.key] != nil }
+            editorWatches = editorWatches.filter { next.tabs[$0.key] != nil }
+        }
         if shellStates.keys.contains(where: { next.panes[$0] == nil }) { shellStates = shellStates.filter { next.panes[$0.key] != nil } }
         outputActivity.retain(Set(next.panes.keys))
         notificationLimiter.retain(Set(next.panes.keys))
@@ -1427,6 +1443,7 @@ public final class AppWorkspaceModel: ObservableObject {
             self.applyShellEvent(event, paneID: pane.id)
         }
         terminal.fileLinkContext = { [weak self] in self?.fileLinkContext(paneID: pane.id) }
+        terminal.openFile = { [weak self] path, line in self?.openLinkedFile(path, line: line, paneID: pane.id) ?? false }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.
             guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }
@@ -1757,6 +1774,22 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
 
+    /// FR-TD14: Save (Save All for several), Don't Save, Cancel, naming the files.
+    static func showUnsavedEditsConfirmation(names: [String]) -> UnsavedEditsChoice {
+        let alert = NSAlert()
+        alert.messageText = names.count == 1 ? "Save changes to \(names[0])?" : "Save changes to \(names.count) files?"
+        let listed = names.prefix(8).joined(separator: "\n") + (names.count > 8 ? "\n…and \(names.count - 8) more" : "")
+        alert.informativeText = (names.count == 1 ? "" : listed + "\n\n") + "Your changes are lost if you don't save them."
+        alert.addButton(withTitle: names.count == 1 ? "Save" : "Save All")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Don't Save")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .save
+        case .alertThirdButtonReturn: return .discard
+        default: return .cancel
+        }
+    }
+
     private func showClosureConfirmation(count: Int, force: Bool) -> Bool {
         guard count > 0 else { return true }
         let alert = NSAlert()
@@ -1773,6 +1806,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func confirmAllSessionClosure() -> Bool {
         guard !shuttingDown, !closureInProgress else { return false }
+        guard confirmClosingEdits(tabs: Array(snapshot.tabs.keys)) else { return false }
         // Freeze creation before entering the native modal loop. Cancel restores
         // the gate without sending any signal or changing the workspace.
         cancelPaste()
@@ -1829,6 +1863,9 @@ public final class AppWorkspaceModel: ObservableObject {
         case .deleteTab(let id): panes = Set(snapshot.tabs[id]?.root.paneIDs ?? [])
         default: panes = initialPanes
         }
+        // FR-TD14: a tab that closes takes its dock's unsaved edits with it.
+        let closingTabs = snapshot.tabs.values.filter { !$0.root.paneIDs.isEmpty && Set($0.root.paneIDs).isSubset(of: panes) }.map(\.id)
+        guard confirmClosingEdits(tabs: closingTabs) else { return }
         prepareCloseSummary(panes)
         let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
         guard live.isEmpty || confirmCloseSessions(live.count) else { return }

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import TrellisCore
+import TrellisTerminal
 
 /// The panel's commands, also reachable from the keyboard while the editor has focus.
 struct ScratchpadEditorCommands {
@@ -35,6 +36,16 @@ struct ScratchpadEditor: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
+        let (scroll, textView, ruler) = Self.makeCodeView(accessibilityName: accessibilityName, delegate: context.coordinator)
+        textView.string = text
+        context.coordinator.textView = textView
+        context.coordinator.ruler = ruler
+        context.coordinator.apply(self, force: true)
+        return scroll
+    }
+
+    /// The text view, scroll view and line ruler shared by the scratchpad and the tool dock's editor.
+    static func makeCodeView(accessibilityName: String, delegate: NSTextViewDelegate) -> (NSScrollView, ScratchpadTextView, ScratchpadLineRuler) {
         let scroll = NSScrollView()
         let storage = NSTextStorage(), layout = NSLayoutManager()
         storage.addLayoutManager(layout)
@@ -62,8 +73,7 @@ struct ScratchpadEditor: NSViewRepresentable {
         textView.smartInsertDeleteEnabled = false
         textView.textContainerInset = NSSize(width: 4, height: 10)
         textView.setAccessibilityLabel(accessibilityName)
-        textView.delegate = context.coordinator
-        textView.string = text
+        textView.delegate = delegate
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -72,10 +82,19 @@ struct ScratchpadEditor: NSViewRepresentable {
         scroll.verticalRulerView = ruler
         scroll.hasVerticalRuler = true
         scroll.rulersVisible = true
-        context.coordinator.textView = textView
-        context.coordinator.ruler = ruler
-        context.coordinator.apply(self, force: true)
-        return scroll
+        return (scroll, textView, ruler)
+    }
+
+    /// The terminal font and theme colors, so code reads like the panes beside it (FR-SP02, FR-TD11).
+    @MainActor static func style(_ textView: NSTextView, ruler: ScratchpadLineRuler?, font: NSFont, palette: TerminalPalette) {
+        let foreground = NSColor(rgb: palette.foreground)
+        textView.font = font
+        textView.textColor = foreground
+        textView.typingAttributes = [.font: font, .foregroundColor: foreground]
+        textView.backgroundColor = NSColor(rgb: palette.background)
+        textView.insertionPointColor = NSColor(rgb: palette.cursor)
+        textView.selectedTextAttributes = [.backgroundColor: NSColor(rgb: palette.selectionBackground), .foregroundColor: NSColor(rgb: palette.selectionForeground)]
+        ruler?.style(font: font, palette: palette)
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
@@ -110,16 +129,7 @@ struct ScratchpadEditor: NSViewRepresentable {
             }
             if force || styled?.font != editor.font || styled?.palette != editor.palette || styled?.language != editor.language {
                 styled = (editor.font, editor.palette, editor.language)
-                let foreground = NSColor(rgb: editor.palette.foreground)
-                textView.font = editor.font
-                textView.textColor = foreground
-                textView.typingAttributes = [.font: editor.font, .foregroundColor: foreground]
-                textView.backgroundColor = NSColor(rgb: editor.palette.background)
-                textView.insertionPointColor = NSColor(rgb: editor.palette.cursor)
-                textView.selectedTextAttributes = [
-                    .backgroundColor: NSColor(rgb: editor.palette.selectionBackground), .foregroundColor: NSColor(rgb: editor.palette.selectionForeground)
-                ]
-                ruler?.style(font: editor.font, palette: editor.palette)
+                ScratchpadEditor.style(textView, ruler: ruler, font: editor.font, palette: editor.palette)
                 restyle = true
             }
             if restyle { highlight(); ruler?.needsDisplay = true }
@@ -189,13 +199,18 @@ struct ScratchpadEditor: NSViewRepresentable {
     }
 }
 
-/// Handles the scratchpad's shortcuts only while it has focus, before the menus see them: ⌘Return runs,
-/// ⌥⌘V validates and ⌥⌘S saves.
+/// Handles the editor's shortcuts only while it has focus, before the menus see them: for the scratchpad ⌘Return
+/// runs, ⌥⌘V validates and ⌥⌘S saves.
 final class ScratchpadTextView: NSTextView {
     var commands = ScratchpadEditorCommands()
+    /// The tool dock's editor saves its file with whatever Save Workspace is bound to (⌘S by default) while it has
+    /// focus (FR-TD12); the scratchpad leaves it nil.
+    var saveChord: KeyChord?
+    var saveFile: () -> Void = {}
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+        if let saveChord, KeyChord(event: event) == saveChord { saveFile(); return true }
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
         let isReturn = event.keyCode == 36 || event.keyCode == 76
         switch (flags, isReturn, event.charactersIgnoringModifiers?.lowercased()) {
@@ -212,6 +227,9 @@ final class ScratchpadTextView: NSTextView {
 final class ScratchpadLineRuler: NSRulerView {
     private weak var textView: NSTextView?
     var issueLines: Set<Int> = [] { didSet { needsDisplay = true } }
+    /// The line a `file:line` link opened at (FR-TD09), drawn bold with an accent bar.
+    var markedLine: Int? { didSet { needsDisplay = true } }
+    private var accentColor = NSColor.controlAccentColor
     private var font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
     private var numberColor = NSColor.secondaryLabelColor
     private var background = NSColor.textBackgroundColor
@@ -239,6 +257,7 @@ final class ScratchpadLineRuler: NSRulerView {
         let foreground = NSColor(rgb: palette.foreground)
         numberColor = foreground.withAlphaComponent(0.55)
         errorColor = NSColor(rgb: palette.ansi.indices.contains(9) ? palette.ansi[9] : 0xFF5F57)
+        accentColor = NSColor(rgb: palette.cursor)
         needsDisplay = true
     }
 
@@ -248,16 +267,16 @@ final class ScratchpadLineRuler: NSRulerView {
         guard let textView, let layout = textView.layoutManager, let (lines, next) = visibleLines else { return }
         func draw(_ number: Int, fragment: NSRect) {
             let y = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView).y
-            let flagged = issueLines.contains(number)
+            let flagged = issueLines.contains(number), marked = markedLine == number
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: flagged ? NSFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .bold) : font,
-                .foregroundColor: flagged ? errorColor : numberColor
+                .font: flagged || marked ? NSFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .bold) : font,
+                .foregroundColor: flagged ? errorColor : marked ? textView.textColor ?? numberColor : numberColor
             ]
             let label = "\(number)" as NSString
             let size = label.size(withAttributes: attributes)
             label.draw(at: NSPoint(x: ruleThickness - size.width - 8, y: y + (fragment.height - size.height) / 2), withAttributes: attributes)
-            if flagged {
-                errorColor.setFill()
+            if flagged || marked {
+                (flagged ? errorColor : accentColor).setFill()
                 NSRect(x: ruleThickness - 3, y: y, width: 3, height: fragment.height).fill()
             }
         }

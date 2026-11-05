@@ -109,6 +109,7 @@ extension AppWorkspaceModel {
         let running = runningTerminals
         let kept = running.filter(\.survivesQuit).count
         guard keepsSessionsAtQuit, kept > 0 else { return confirmAllSessionClosure() ? .stopSessions : .cancel }
+        guard confirmClosingEdits(tabs: Array(snapshot.tabs.keys)) else { return .cancel }
         cancelPaste()
         shuttingDown = true
         if kept == running.count { return .keepRunning }
