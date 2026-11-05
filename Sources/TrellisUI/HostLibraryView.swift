@@ -397,7 +397,11 @@ private struct RemoteHelperSection: View {
             Text("The helper keeps sessions running on the host. It lives in ~/.trellis there and needs no administrator rights.")
                 .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
         }
-        .sheet(item: $remote.console) { console in RemoteConsoleSheet(console: console, background: workspace.terminalBackground, close: { remote.console = nil }) }
+        .sheet(item: $remote.console) { console in
+            RemoteConsoleSheet(console: console, background: workspace.terminalBackground, close: { remote.console = nil })
+                // A later link for the same host swaps the terminal in an open sheet, which onAppear would miss.
+                .onChange(of: ObjectIdentifier(console.terminal), initial: true) { console.terminal.applyPalette(workspace.effectiveTheme.terminal) }
+        }
     }
 
     private func symbol(_ state: RemoteHelperRecord.State?) -> String {

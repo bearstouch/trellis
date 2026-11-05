@@ -1055,6 +1055,12 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         didSet { if allowItalicFont != oldValue { textStyleChanged() } }
     }
 
+    /// Lowest contrast for text whose color pair involves a 256-color index (16...255); 0 is off.
+    /// True-color foregrounds and pairs of only ANSI 0-15 and default colors are never adjusted.
+    public var minimumPaletteContrast: Double = 0 {
+        didSet { if minimumPaletteContrast != oldValue { colorsChanged() } }
+    }
+
     /// When true (and `useBrightColors` is on), bold text in ANSI colors 0-7 uses
     /// the bright colors 8-15. Explicit bright colors are unaffected.
     public var boldIsBright: Bool = true {

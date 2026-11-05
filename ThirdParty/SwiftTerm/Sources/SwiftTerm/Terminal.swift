@@ -808,10 +808,17 @@ open class Terminal {
     /// to call the `installColors` method on `TerminalView`, which will
     /// both call this method, and update the display appropriately.
     ///
-    /// - Parameter colors: this should be an array of 16 values that correspond to the 16 ANSI colors,
-    /// if the array does not contain 16 elements, it will not do anything
+    /// - Parameter colors: 16 values for the ANSI colors, or a full 256-color palette; any other count does nothing
     public func installPalette (colors: [Color])
     {
+        if colors.count == 256 {
+            // A host-derived full palette: indexes 16...255 come from the host. Later base-color
+            // changes (OSC 10/11) only rebuild under a non-xterm strategy, so it stays installed.
+            installedColors = Array(colors.prefix(16))
+            defaultAnsiColors = colors
+            ansiColors = colors
+            return
+        }
         if colors.count != 16 {
             return
         }
@@ -3723,7 +3730,7 @@ open class Terminal {
             
             for row in buffer.scrollTop...buffer.scrollBottom {
                 let line = buffer.lines [row+buffer.yBase]
-                line.insertCells(pos: buffer.x, n: n, rightMargin: marginMode ? buffer.marginRight : cols-1, fillData: buffer.getNullCell())
+                line.insertCells(pos: buffer.x, n: n, rightMargin: marginMode ? buffer.marginRight : cols-1, fillData: buffer.getNullCell(attribute: eraseAttr()))
                 line.isWrapped = false
             }
             return
@@ -6476,7 +6483,7 @@ open class Terminal {
         for y in buffer.scrollTop...buffer.scrollBottom {
             let line = buffer.lines [buffer.yBase + y]
             if back {
-                line.insertCells(pos: at, n: 1, rightMargin: marginMode ? buffer.marginRight : cols-1, fillData: buffer.getNullCell())
+                line.insertCells(pos: at, n: 1, rightMargin: marginMode ? buffer.marginRight : cols-1, fillData: buffer.getNullCell(attribute: eraseAttr()))
             } else {
                 line.deleteCells(pos: at, n: 1, rightMargin: marginMode ? buffer.marginRight : cols-1, fillData: buffer.getNullCell(attribute: eraseAttr()))
             }

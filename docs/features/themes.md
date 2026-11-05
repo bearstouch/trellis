@@ -54,7 +54,12 @@ Loading a sample doesn't install it or touch running sessions. Previewing in the
 
 **Resolution.** Missing fields are filled from the matching built-in theme, and then the supplied values are applied. Built-in themes ship complete palettes.
 
-A theme controls only the terminal's default colors and ANSI indexes 0–15. Explicit 256-color and true-color values from applications are never recolored. If an application temporarily overrides the palette, that override belongs to its session; reapplying a theme resets it.
+A theme sets the terminal's default colors and ANSI indexes 0–15. Indexes 16–255 depend on the terminal background:
+
+- **Dark terminal:** they keep their exact xterm values.
+- **Light terminal** (background lighter than foreground, whatever the theme's `appearance`): they are derived from the theme (FR-TH09), because xterm's values assume a dark terminal and a prompt's "dark panel" would draw as a near-black block. The cube runs from `background` (16) to `foreground` (231) through ANSI 1–6, and the grey ramp from `background` to `foreground`, both with xterm's steps. Text whose color pair uses one of these indexes is lifted to at least 4.5:1, except when it uses one index for both colors (hidden on purpose) and on Powerline separators, box-drawing and block characters, whose color belongs to a neighboring segment. Dim text (SGR 2) is dimmed after the lift, so it can fall below that.
+
+True-color values are never recolored, so a program that sends 24-bit colors keeps them on every theme. If an application temporarily overrides the palette, that override belongs to its session; reapplying a theme resets it.
 
 ## Installation and persistence
 
@@ -89,3 +94,4 @@ For custom themes, contrast warnings are advisory and name the fields involved, 
 | FR-TH06 | Keep the terminal palette and the application chrome consistent. | Check ANSI 0–15, default text, selection, cursor, focused panes, active and inactive tabs, and status indicators under both themes. |
 | FR-TH07 | Make theme authoring accessible. | Preview shows normal text, muted labels, selection, cursor text and status examples, and warns about low-contrast pairs by field name. |
 | FR-TH08 | Support scripted theme setup through the control API. | A client with theme permission imports and selects a theme, and a layout-only grant is denied. See [Methods](../api/methods.md#theme-automation). |
+| FR-TH09 | Follow the theme in 256-color output on light terminals. | With a light terminal on either renderer, `48;5;234` draws as a soft tint of the background, not `#1C1C1C`; `38;5;76` on it and `38;5;254` on ANSI blue reach 4.5:1. True color is unchanged, and a Powerline glyph keeps its raw color. Switching to a dark theme live restores exact xterm values. OSC 4 overrides survive OSC 10/11, and OSC 104 restores the derived palette. |
