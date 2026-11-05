@@ -78,6 +78,8 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
 public enum CommandPaletteTarget: Hashable, Sendable {
     case action(ShortcutAction)
     case settings
+    /// Replays the welcome tour (FR-ON03).
+    case welcomeTour
     case scope(CommandPaletteScope)
     case window(UUID)
     case tab(windowID: UUID, tabID: UUID)
@@ -98,6 +100,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         switch self {
         case .action(let action): "action:" + action.rawValue
         case .settings: "settings"
+        case .welcomeTour: "welcome-tour"
         case .scope(let scope): "scope:" + scope.rawValue
         case .window(let id): "window:" + id.uuidString
         case .tab(_, let id): "tab:" + id.uuidString

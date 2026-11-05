@@ -83,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             MainActor.assumeIsolated { self?.syncAccessibilityDisplayOptions() }
         }
         cliInstall = CLIInstallController(identity: identity, shell: { [model] in model.defaultShell })
+        if let cliInstall {
+            model.welcomeTourCLIProbe = { cliInstall.tourStatus() }
+            model.welcomeTourInstallCLI = { [weak self] in await cliInstall.install(window: self?.window) }
+        }
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
@@ -165,9 +169,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if !restored, model.snapshot.windows.isEmpty {
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
-            // MAC-15: scripted and isolated launches never ask, and recovery comes first.
+            // MAC-15, FR-ON02: scripted and isolated launches never ask, and recovery comes first.
             if identity.stateDirectory == nil, !CommandLine.arguments.contains("--fixture"), model.recoveryMessage == nil, !terminationPending {
-                await cliInstall?.offerIfNeeded(window: window)
+                // The tour's last step makes the same offer, so it replaces the sheet unless skipped before that step.
+                model.onWelcomeTourReachedSetup = { [self] in cliInstall?.recordOfferAnswered() }
+                model.onWelcomeTourClosed = { [self] reachedSetup in
+                    if !reachedSetup, !terminationPending { Task { await cliInstall?.offerIfNeeded(window: window) } }
+                }
+                if !model.offerWelcomeTour(workspaceExisted: restored) {
+                    model.onWelcomeTourReachedSetup = nil
+                    model.onWelcomeTourClosed = nil
+                    await cliInstall?.offerIfNeeded(window: window)
+                }
             }
         }
         // Local automation is optional: an unsafe endpoint leaves the app
@@ -289,6 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         windows.submenu?.insertItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m", at: 0)
         menu.addItem(windows)
         let help = NSMenuItem(); help.submenu = NSMenu(title: "Help")
+        help.submenu?.addItem(withTitle: "Welcome Tour", action: #selector(welcomeTourAction), keyEquivalent: "").target = self
         help.submenu?.addItem(withTitle: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: "")
         menu.addItem(help)
         NSApp.helpMenu = help.submenu
@@ -368,6 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
+        // FR-ON04: the tour is modal, with no shortcut of its own. ⌘W can still close an auxiliary window such as Settings.
+        if model.welcomeTourVisible { return [.closePane, .closeTab].contains(action) && NSApp.keyWindow != nil && NSApp.keyWindow !== window }
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
         if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
@@ -412,6 +428,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return validateShortcut(action)
         }
         if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
+        if menuItem.action == #selector(welcomeTourAction) { return model.canOpenWelcomeTour && !model.welcomeTourVisible }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
@@ -461,6 +478,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func settingsAction() { showSettings() }
     @objc private func checkForUpdatesAction() { updates?.checkNow() }
+    @objc private func welcomeTourAction() {
+        window?.deminiaturize(nil)
+        window?.makeKeyAndOrderFront(nil)
+        model.openWelcomeTour()
+    }
+
     @objc private func installCommandLineToolAction() { Task { await cliInstall?.install(window: window) } }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {

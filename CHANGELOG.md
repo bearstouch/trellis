@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Welcome tour:** a fresh install opens with a short eight-step tour of windows, sessions, projects, remote work, agents and shortcuts. Its last step sets the appearance, the command line tool and whether sessions keep running after quit. Replay it from **Help → Welcome Tour** or the command palette.
 - **Drop files on a pane:** dragging files from Finder onto a terminal pane inserts their escaped paths at the prompt, for every file type.
 
 ### Changed

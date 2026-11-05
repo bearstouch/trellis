@@ -59,6 +59,7 @@ public struct WorkspaceRootView: View {
         .tint(model.chromeTint)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
         .modifier(CommandPaletteHost(model: model))
+        .modifier(WelcomeTourHost(model: model))
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
@@ -346,8 +347,8 @@ public struct WorkspaceRootView: View {
             VStack(spacing: 14) {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
-                // A view's key equivalent runs before the menu's, which the open palette disables (FR-CP02).
-                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible)
+                // A view's key equivalent runs before the menu's, which the open palette or tour disables (FR-CP02, FR-ON04).
+                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
         } else {
             VStack(spacing: 0) {

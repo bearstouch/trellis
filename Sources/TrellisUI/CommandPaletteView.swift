@@ -205,7 +205,7 @@ struct CommandPaletteView: View {
 
     static func verb(_ item: CommandPaletteItem) -> String {
         switch item.target {
-        case .action, .settings: item.title
+        case .action, .settings, .welcomeTour: item.title
         case .scope(let scope): scope.title
         case .window: "Go to Window"
         case .tab: "Go to Tab"
@@ -224,6 +224,7 @@ struct CommandPaletteView: View {
         switch item.target {
         case .action: "command"
         case .settings: "gearshape"
+        case .welcomeTour: "sparkles"
         case .scope: "arrow.forward.square"
         case .window: "macwindow"
         case .tab: "menubar.rectangle"
