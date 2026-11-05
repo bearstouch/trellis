@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import TrellisCore
@@ -52,20 +53,38 @@ public final class EditorBuffer: ObservableObject, Identifiable {
     }
     public nonisolated var id: String { path }
     public nonisolated let path: String
-    @Published public var text: String
-    @Published public internal(set) var file: EditorFile
+    @Published public var text: String { didSet { dirtyMayHaveChanged() } }
+    @Published public internal(set) var file: EditorFile { didSet { dirtyMayHaveChanged() } }
     @Published public internal(set) var conflict: Conflict?
     @Published public internal(set) var missingOnDisk = false
     /// A failed save's reason, until the next edit or save.
     @Published public internal(set) var message: String?
-    public var isDirty: Bool { text != file.text }
+    /// What the file holds as this buffer last read or wrote it. Compared with `text`, not `file.text`: a CRLF file reads
+    /// back with CRLF while typed lines hold LF, and reading it back must neither mark it Edited nor replace the text.
+    public private(set) var savedText: String { didSet { dirtyMayHaveChanged() } }
+    public var isDirty: Bool { text != savedText }
     public var name: String { (path as NSString).lastPathComponent }
+    /// Called when `isDirty` flips: the rail and the tree watch the model, not each buffer, and mark Edited (FR-TD14).
+    var dirtyChanged: () -> Void = {}
+    private var wasDirty = false
+
+    private func dirtyMayHaveChanged() {
+        let dirty = isDirty
+        if dirty != wasDirty { wasDirty = dirty; dirtyChanged() }
+    }
 
     init(path: String, file: EditorFile) {
         self.path = path
         self.file = file
+        savedText = file.text
         text = file.text
     }
+
+    /// After a save: the text stays as typed, so undo and the selection survive.
+    func markSaved(_ saved: EditorFile, text written: String) { file = saved; savedText = written }
+
+    /// After a reload from disk: the file's text replaces the buffer.
+    func load(_ file: EditorFile) { self.file = file; savedText = file.text; text = file.text }
 }
 
 /// Watches one file, re-arming after an atomic replace (a rename over the path) so later changes are still seen.
@@ -185,7 +204,9 @@ extension AppWorkspaceModel {
                 }
                 return false
             case .success(let file):
-                editorBuffers[tabID, default: [:]][path] = EditorBuffer(path: path, file: file)
+                let buffer = EditorBuffer(path: path, file: file)
+                buffer.dirtyChanged = { [weak self] in self?.objectWillChange.send() }
+                editorBuffers[tabID, default: [:]][path] = buffer
                 if let watch = editorFileWatcher(path, { [weak self] in self?.checkFileOnDisk(path, tabID: tabID) }) {
                     editorWatches[tabID, default: [:]][path] = watch
                 }
@@ -214,6 +235,24 @@ extension AppWorkspaceModel {
     public func selectFile(_ path: String, tabID: UUID) { updateToolDock(tabID) { $0.activeFile = path } }
 
     public func dismissOpenFailure(tabID: UUID) { updateToolDock(tabID) { $0.openFailure = nil } }
+
+    /// What Open in Default App does with a file the editor refused (FR-TD10): FR-L03 and FR-L04 still apply, so an
+    /// executable or app is only revealed and a network path is left alone.
+    nonisolated static func defaultAppAction(for path: String, probe: FileProbe = .live) -> FileLinkAction? {
+        let root = URL(fileURLWithPath: path).standardized.path.split(separator: "/").first?.lowercased()
+        guard root != "net", root != "network" else { return nil }
+        return FileLinkPolicy.action(path: path, probe: probe)
+    }
+
+    public func openRefusedFileInDefaultApp(tabID: UUID) {
+        guard let failure = toolDock(tabID).openFailure else { return }
+        dismissOpenFailure(tabID: tabID)
+        switch Self.defaultAppAction(for: failure.path) {
+        case .open(let url): NSWorkspace.shared.open(url)
+        case .reveal(let url): NSWorkspace.shared.activateFileViewerSelecting([url])
+        case nil: break
+        }
+    }
 
     /// Closes a file tab; unsaved edits ask first (FR-TD14). False when cancelled or a save failed.
     @discardableResult
@@ -244,8 +283,7 @@ extension AppWorkspaceModel {
         guard let buffer = buffer(tabID, path) else { return false }
         switch buffer.file.save(buffer.text, overwrite: overwrite) {
         case .success(let saved):
-            buffer.file = saved
-            buffer.text = saved.text
+            buffer.markSaved(saved, text: buffer.text)
             (buffer.conflict, buffer.missingOnDisk, buffer.message) = (nil, false, nil)
             // An atomic save replaces the inode; watch the new file.
             if let watch = editorFileWatcher(path, { [weak self] in self?.checkFileOnDisk(path, tabID: tabID) }) { editorWatches[tabID, default: [:]][path] = watch }
@@ -264,8 +302,7 @@ extension AppWorkspaceModel {
         guard let buffer = buffer(tabID, path) else { return }
         switch EditorFile.open(path) {
         case .success(let file):
-            buffer.file = file
-            buffer.text = file.text
+            buffer.load(file)
             (buffer.conflict, buffer.missingOnDisk, buffer.message) = (nil, false, nil)
         case .failure(let error):
             buffer.message = error.message
@@ -325,6 +362,11 @@ extension AppWorkspaceModel {
         guard insertPathBlockedReason == nil, let paneID = presentation.selectedTab?.activePaneID, let terminal = terminals[paneID],
             let directory = currentDirectory(paneID: paneID)
         else { return false }
+        // Quoting doesn't neutralize a control character: typed, a name's Ctrl-U or Return would edit or run the line.
+        guard !path.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) else {
+            errorMessage = "This path has control characters, so it isn't typed at the prompt."
+            return false
+        }
         let text = Self.insertedPath(path, directory: directory, home: NSHomeDirectory())
         do { try terminal.adapter.send(Data((text + " ").utf8)) } catch {
             errorMessage = "The path could not be typed. The session may have stopped."

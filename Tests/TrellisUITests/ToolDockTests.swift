@@ -133,6 +133,22 @@ final class ToolDockTests: XCTestCase {
     }
 
     @MainActor
+    func testSavingACRLFFileKeepsTheTypedTextAndIsntEditedAfterwards() async throws {
+        let (model, _) = try await makeModel()
+        defer { cleanUp(model) }
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        let path = project + "/windows.txt"
+        try Data("one\r\ntwo\r\n".utf8).write(to: URL(fileURLWithPath: path))
+        model.openFileInToolDock(path)
+        let buffer = try XCTUnwrap(model.buffer(tab, path))
+        buffer.text += "three\n"
+        XCTAssertTrue(model.saveFile(path, tabID: tab))
+        XCTAssertEqual(buffer.text, "one\r\ntwo\r\nthree\n", "The typed text stays, so undo survives")
+        XCTAssertFalse(buffer.isDirty, "Reading back CRLF doesn't count as an edit")
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: path)), Data("one\r\ntwo\r\nthree\r\n".utf8))
+    }
+
+    @MainActor
     func testAFileTheEditorCantOpenSaysWhyAndChangesNothing() async throws {
         let (model, _) = try await makeModel()
         defer { cleanUp(model) }
@@ -203,7 +219,7 @@ final class ToolDockTests: XCTestCase {
     func testTheDockFloatsOnlyWhenDockingWouldShrinkAPaneBelowItsMinimum() {
         XCTAssertFalse(ToolDockLayout.floats(availableWidth: 1278, dockWidth: 760, minimumCanvasWidth: 321))
         XCTAssertTrue(ToolDockLayout.floats(availableWidth: 1278, dockWidth: 760, minimumCanvasWidth: 643))
-        XCTAssertEqual(ToolDockLayout.clamped(100, availableWidth: 1000), 260)
+        XCTAssertEqual(ToolDockLayout.clamped(100, availableWidth: 1000), 225)
         XCTAssertEqual(ToolDockLayout.clamped(900, availableWidth: 1000), 700)
     }
 }

@@ -48,6 +48,8 @@ struct ToolDockView: View {
                 VStack(spacing: 0) {
                     header
                     Divider().overlay(model.separatorOverlay)
+                    // With a file open, the editor shows it instead.
+                    if state.activeFile.flatMap({ model.buffer(tabID, $0) }) == nil { OpenFailureBanner(model: model, tabID: tabID) }
                     treeArea
                 }
                 .frame(width: state.activeFile == nil ? nil : ToolDockLayout.treeOnlyWidth)
@@ -75,8 +77,8 @@ struct ToolDockView: View {
             }
             Spacer(minLength: 4)
             if let title = followedPane {
-                Text("Follows \(title)").font(.system(size: 10.5)).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
-                    .help("The tree shows the focused pane's project")
+                Image(systemName: "scope").font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground))
+                    .help("Follows \(title): the tree shows the focused pane's project").accessibilityLabel("Follows \(title)")
             }
             let side = model.appearance.toolDockSide.other
             Button {
@@ -115,6 +117,25 @@ struct ToolDockView: View {
             DockMessage(model: model, symbol: "house", title: "Not a project folder", detail: "Your home folder and / aren't shown. cd into a project to browse it.")
         case .noPane:
             DockMessage(model: model, symbol: "rectangle.dashed", title: "No pane is focused", detail: "")
+        }
+    }
+}
+
+/// Why a file didn't open, with Open in Default App (FR-TD10); shown above the tree or the editor.
+struct OpenFailureBanner: View {
+    @ObservedObject var model: AppWorkspaceModel
+    let tabID: UUID
+    var body: some View {
+        if let failure = model.toolDock(tabID).openFailure {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(model.themeColor(.warning)).accessibilityHidden(true)
+                Text("\((failure.path as NSString).lastPathComponent) didn't open: \(failure.message)").lineLimit(2)
+                Spacer(minLength: 4)
+                Button("Open in Default App") { model.openRefusedFileInDefaultApp(tabID: tabID) }
+                Button("Dismiss") { model.dismissOpenFailure(tabID: tabID) }
+            }
+            .controlSize(.small).font(.system(size: 12)).foregroundStyle(model.themeColor(.foreground)).padding(.horizontal, 10).padding(.vertical, 6)
+            .background(model.themeColor(.surface)).accessibilityElement(children: .contain)
         }
     }
 }
@@ -386,14 +407,7 @@ struct EditorArea: View {
     }
 
     @ViewBuilder private var banners: some View {
-        if let failure = state.openFailure {
-            banner("\((failure.path as NSString).lastPathComponent) didn't open: \(failure.message)") {
-                Button("Open in Default App") {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: failure.path)); model.dismissOpenFailure(tabID: tabID)
-                }
-                Button("Dismiss") { model.dismissOpenFailure(tabID: tabID) }
-            }
-        }
+        OpenFailureBanner(model: model, tabID: tabID)
         switch buffer.conflict {
         case .changedWhileEditing:
             banner("\(buffer.name) changed on disk while you were editing it.") {

@@ -106,7 +106,9 @@ public final class CodeHighlighter: NSObject, NSTextStorageDelegate {
         guard editedMask.contains(.editedCharacters) else { return }
         MainActor.assumeIsolated {
             buffer.beginBuffering()
-            client.willChangeContent(in: editedRange)
+            // The replaced range in the old text: the line table still describes it here, so tree-sitter's old end
+            // point is right (the edited range is in the new text).
+            client.willChangeContent(in: NSRange(location: editedRange.location, length: editedRange.length - delta))
         }
     }
 

@@ -102,6 +102,11 @@ extension AppWorkspaceModel {
             guard let id = paneGate, current.panes[id] != nil else { throw .store(.notFound) }
             panes = [id]
         }
+        // FR-TD14: only the person, when Trellis asks, can drop a tool dock's unsaved edits; names stay private (FR-TD16).
+        let closingTabs = current.tabs.values.filter { !$0.root.paneIDs.isEmpty && Set($0.root.paneIDs).isSubset(of: panes) }.map(\.id)
+        guard dirtyBuffers(tabs: closingTabs).isEmpty else {
+            throw .store(.invalidState("The tab has unsaved edits in its tool dock. Save or close them in Trellis first."))
+        }
         let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
         let liveIDs = live.map(\.sessionID).sorted { $0.uuidString < $1.uuidString }
         guard live.isEmpty || allowRunning else { return .confirmationRequired(sessionIDs: liveIDs) }

@@ -26,9 +26,9 @@ public struct ToolDockTool: Hashable, Identifiable, Sendable {
 
 /// Whether the dock docks beside the panes or floats over them (FR-TD03, FR-TD04).
 public enum ToolDockLayout {
-    public static let treeOnlyWidth = 300.0
+    public static let treeOnlyWidth = 225.0
     public static let editorWidth = 760.0
-    public static let minimumWidth = 260.0
+    public static let minimumWidth = 225.0
     public static let maximumShare = 0.7
 
     /// Floats when docking at `dockWidth` would leave the panes less than the split tree's minimum width (FR-P02's
