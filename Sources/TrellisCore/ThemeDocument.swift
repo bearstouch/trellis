@@ -67,7 +67,19 @@ public struct ThemeDocument: Equatable, Sendable {
 
     public func resolved() -> ResolvedTheme {
         let base = ResolvedTheme.builtIn(appearance)
-        let inherited = base.terminal
+        // Trellis Light's terminal used to be dark, so a light theme that sets terminal colors
+        // without saying otherwise was written for dark panes and would be unreadable on white.
+        let keepsDarkPanes: Bool
+        if appearance != .light {
+            keepsDarkPanes = false
+        } else if let background = terminal[.background] {
+            keepsDarkPanes = background.relativeLuminance < 0.18
+        } else if let foreground = terminal[.foreground] {
+            keepsDarkPanes = foreground.relativeLuminance >= 0.18
+        } else {
+            keepsDarkPanes = !terminal.isEmpty || ansi != nil
+        }
+        let inherited = keepsDarkPanes ? TerminalPalette.builtIn : base.terminal
         func color(_ field: TerminalColorField, _ fallback: UInt32) -> UInt32 { terminal[field]?.rgb ?? fallback }
         let palette = TerminalPalette(
             background: color(.background, inherited.background), foreground: color(.foreground, inherited.foreground),
@@ -116,7 +128,7 @@ public struct ResolvedTheme: Equatable, Sendable {
         let values = appearance == .light ? light : dark
         return Self(
             id: "trellis-\(appearance.rawValue)", name: "Trellis \(appearance.rawValue.capitalized)", appearance: appearance,
-            terminal: .builtIn, ui: Dictionary(uniqueKeysWithValues: zip(UIColorField.allCases, values.map(ThemeColor.init))))
+            terminal: appearance == .light ? .builtInLight : .builtIn, ui: Dictionary(uniqueKeysWithValues: zip(UIColorField.allCases, values.map(ThemeColor.init))))
     }
 }
 

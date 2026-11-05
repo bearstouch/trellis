@@ -15,7 +15,7 @@ The three examples are also bundled in `Sources/TrellisCore/Resources/Themes`. `
 - Trellis ships **Trellis Dark** (`trellis-dark`) and **Trellis Light** (`trellis-light`), plus 10 editor-inspired families with dark and light variants: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox, and Rose Pine. These are Trellis adaptations with complete app and terminal palettes, available immediately without importing files.
 - **Settings → Appearance** offers **System**, **Dark** and **Light** chrome modes. Dark is the first-launch default; settings saved by an earlier version keep their mode. System follows macOS, and an explicit Dark or Light stays fixed.
 - Users pick a theme separately for each appearance, so a custom dark theme can be paired with the built-in light one.
-- The original **Trellis Light** and **Trellis Dark** defaults keep terminal panes dark. The additional families use light terminal backgrounds in their light variants and dark backgrounds in their dark variants.
+- **Trellis Light** has a white terminal and **Trellis Dark** a dark one. The additional families also use light terminal backgrounds in their light variants and dark backgrounds in their dark variants.
 - The font isn't part of a theme. **Settings → Appearance → Terminal font** lists locally installed monospace typefaces and the bundled ones (JetBrains Mono, Roboto Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono; one entry per family) and previews the selected font. JetBrains Mono is the default; if a saved font is missing or isn't monospaced, Trellis uses Menlo or the system monospace font and shows a notice. Choose **Apply Appearance** to save font changes.
 - The resolved theme colors the sidebar, tabs, split dividers, focus indicators, terminal background and foreground, cursor, selection and ANSI palette. System dialogs and standard controls follow the native appearance.
 - Changing the appearance updates every window and pane without restarting shells, changing terminal contents, or losing focus or selection.
@@ -52,7 +52,7 @@ Loading a sample doesn't install it or touch running sessions. Previewing in the
 - Unknown fields, unsupported versions, invalid colors, wrong types and malformed JSON are errors. The error message gives the field path and reason, and nothing is installed or changed.
 - v1 doesn't support inheritance chains, includes, remote downloads, fonts, images or scripts.
 
-**Resolution.** Missing fields are filled from the matching built-in theme, and then the supplied values are applied. Built-in themes ship complete palettes.
+**Resolution.** Missing fields are filled from the matching built-in theme, and then the supplied values are applied. Terminal colors are the exception for light themes. Trellis Light's terminal used to be dark, so a theme that sets a dark `terminal.background`, or sets terminal colors without a background unless its `foreground` is dark, inherits from Trellis Dark's terminal and stays readable. Set a light `terminal.background` to get a light terminal. Built-in themes ship complete palettes.
 
 A theme sets the terminal's default colors and ANSI indexes 0–15. Indexes 16–255 depend on the terminal background:
 
@@ -88,7 +88,7 @@ For custom themes, contrast warnings are advisory and name the fields involved, 
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| FR-TH01 | Built-in dark and light themes, plus System, Dark and Light modes. Dark is the first-launch default. | Launch with an empty state directory: the chrome is dark. In System mode, change the macOS appearance: the chrome follows while default terminal panes stay dark. Explicit modes stay fixed. |
+| FR-TH01 | Built-in dark and light themes, plus System, Dark and Light modes. Dark is the first-launch default. | Launch with an empty state directory: the chrome is dark. In System mode, change the macOS appearance: the chrome and the terminal panes follow, white under Trellis Light and dark under Trellis Dark. Explicit modes stay fixed. |
 | FR-TH02 | Simple, versioned JSON themes with per-field defaults. | Import the minimal example; colors it doesn't specify come from the matching built-in theme. |
 | FR-TH03 | Import, preview, select, export, replace, delete and reload custom themes. | Complete the whole flow without restarting the app or any session. Cancelling restores the previous theme. |
 | FR-TH04 | Validate themes before activating them, and recover from invalid edits. | Invalid hex, an unsupported version, unknown fields, duplicate keys, an oversized file and a wrong-length ANSI array are all rejected, and the previous theme keeps working. |

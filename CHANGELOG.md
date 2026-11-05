@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Trellis Light:** the terminal is now white, with black text and a matching palette, instead of dark. Custom light themes with no terminal colors follow it; those that set terminal colors keep a dark terminal unless they set a light background or dark text. Use another theme, such as My Light from the examples, for dark panes under light chrome.
 - **Focused pane:** with several panes visible, the focused pane's header gets an accent line and tint, and the other panes are slightly dimmed. Nothing is dimmed while the window is inactive or with Increase Contrast on.
 
 ### Fixed
