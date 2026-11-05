@@ -136,4 +136,12 @@ public struct TerminalPalette: Equatable, Sendable {
         self.selectionBackground = selectionBackground; self.selectionForeground = selectionForeground; self.ansi = ansi
     }
     public static let builtIn = Self()
+    /// Trellis Light's terminal. Like the other light families, ANSI black holds a light color and
+    /// ANSI white a dark one, so `\e[40m` stays a light background and `\e[37m` stays readable.
+    public static let builtInLight = Self(
+        background: 0xFFFFFF, foreground: 0x000000, cursor: 0x185AA8, cursorText: 0xFFFFFF, selectionBackground: 0xC8DDF5, selectionForeground: 0x000000,
+        ansi: [
+            0xECECEC, 0xD32F2F, 0x007A33, 0x8A6A00, 0x0B5FC1, 0x8E3DB8, 0x007C89, 0x000000,
+            0x6E6E73, 0xA8201F, 0x00662A, 0x745900, 0x094FA3, 0x78339C, 0x006873, 0x000000
+        ])
 }

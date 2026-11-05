@@ -5,7 +5,7 @@ Guidance for Claude Code working in this repository.
 ## Project
 
 **Trellis** (formerly uTerm) is a native Swift terminal for macOS: "Native calm" chrome (dark by default, with Light and System modes),
-dark terminal panes, bundled JetBrains Mono terminal font, managed windows in a left sidebar, per-window renameable tabs,
+themed terminal panes, bundled JetBrains Mono terminal font, managed windows in a left sidebar, per-window renameable tabs,
 and nested splits, plus saved SSH hosts and a local CLI/automation API. The MVP is implemented;
 remaining qualification work is tracked in `docs/overview/status.md`.
 

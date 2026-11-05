@@ -13,7 +13,7 @@ final class ThemeValidationTests: XCTestCase {
         XCTAssertEqual(resolved[.accent].rgb, 0x7CC7FF)
         XCTAssertEqual(resolved[.sidebarBackground], base[.sidebarBackground])
         let empty = try ThemeValidator.validate(Data(minimal.utf8)).resolved()
-        XCTAssertEqual(empty.terminal, TerminalPalette.builtIn)
+        XCTAssertEqual(empty.terminal, TerminalPalette.builtInLight)
         XCTAssertEqual(empty[.sidebarBackground], ResolvedTheme.builtIn(.light)[.sidebarBackground])
         let lightTerminal = minimal.dropLast() + ",\"terminal\":{\"background\":\"#FFFFFF\",\"foreground\":\"#123456\"}}"
         XCTAssertEqual(try ThemeValidator.validate(Data(lightTerminal.utf8)).resolved().terminal.background, 0xFFFFFF)

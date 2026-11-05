@@ -62,7 +62,7 @@ public enum NativeTerminalFont {
 
 extension TerminalPalette {
     @MainActor func apply(to view: AccessibleTerminalView) {
-        // Theme indexes 0–15 must not derive new 256-color cube values.
+        // The engine's generated palettes are off: dark terminals keep exact xterm values, and light ones install ours (FR-TH09).
         view.getTerminal().ansi256PaletteStrategy = .xterm
         func color(_ rgb: UInt32) -> NSColor {
             NSColor(
@@ -76,6 +76,8 @@ extension TerminalPalette {
         view.caretTextColor = color(cursorText)
         view.selectedTextBackgroundColor = color(selectionBackground)
         view.selectedTextForegroundColor = color(selectionForeground)
-        view.installColors(ansi.map { Color(red8: UInt16(($0 >> 16) & 255), green8: UInt16(($0 >> 8) & 255), blue8: UInt16($0 & 255)) })
+        view.minimumPaletteContrast = hasLightTerminal ? Self.lightTerminalMinimumContrast : 0
+        let colors = hasLightTerminal ? ansi + extendedColors() : ansi
+        view.installColors(colors.map { Color(red8: UInt16(($0 >> 16) & 255), green8: UInt16(($0 >> 8) & 255), blue8: UInt16($0 & 255)) })
     }
 }
