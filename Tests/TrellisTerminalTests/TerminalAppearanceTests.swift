@@ -91,6 +91,57 @@ final class TerminalAppearanceTests: XCTestCase {
             XCTAssertEqual(attention, 1, "\(style)")
         }
     }
+    /// FR-TH10: the layer paints a translucent default background once; the CoreGraphics pass must not paint it again
+    /// under rows, or they composite twice and differ from the margins.
+    @MainActor
+    func testTranslucentDefaultBackgroundIsPaintedOnlyByTheLayer() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
+        view.frame = NSRect(x: 0, y: 0, width: 400, height: 205)
+        var settings = AppearanceSettings()
+        settings.backgroundOpacity = 0.5
+        native.applyAppearance(settings)
+        native.applyPalette(.builtIn)
+        native.adapter.receive(Data("hello\r\n\u{1b}[44m blue \u{1b}[0m\r\n".utf8))
+        let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        func alpha(_ x: Int, _ y: Int) -> CGFloat { rep.colorAt(x: x, y: y)?.alphaComponent ?? -1 }
+        let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+        let rowHeight = view.bounds.height / CGFloat(view.getTerminal().rows)
+        // Empty cells right of "hello" and a blank row: nothing but the layer's background.
+        for (x, y) in [(300.0, 5.0), (300.0, rowHeight * 3.5)] {
+            XCTAssertEqual(alpha(Int(x * scale), Int(y * scale)), 0, accuracy: 0.01, "default background painted at \(x),\(y)")
+        }
+        // An explicit background stays opaque.
+        XCTAssertEqual(alpha(Int(4 * scale), Int(rowHeight * 1.5 * scale)), 1, accuracy: 0.01)
+    }
+    @MainActor
+    func testBackgroundOpacitySurvivesPalettesAndProgramColorChanges() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
+        XCTAssertEqual(view.backgroundOpacity, 1, accuracy: 0.001)
+        var settings = AppearanceSettings()
+        settings.backgroundOpacity = 0.8
+        native.applyAppearance(settings)
+        XCTAssertEqual(native.backgroundOpacity, 0.8)
+        XCTAssertEqual(view.backgroundOpacity, 0.8, accuracy: 0.001)
+        // A theme change or preview installs an opaque palette; the appearance's opacity stays (FR-TH10).
+        native.applyPalette(.builtInLight)
+        XCTAssertEqual(view.backgroundOpacity, 0.8, accuracy: 0.001)
+        let white = try XCTUnwrap(view.nativeBackgroundColor.usingColorSpace(.sRGB))
+        XCTAssertEqual(white.redComponent, 1, accuracy: 0.001)
+        // A program setting the background color (OSC 11) keeps it translucent too.
+        native.adapter.receive(Data("\u{1b}]11;rgb:00/00/ff\u{1b}\\".utf8))
+        let blue = try XCTUnwrap(view.nativeBackgroundColor.usingColorSpace(.sRGB))
+        XCTAssertEqual(blue.blueComponent, 1, accuracy: 0.001)
+        XCTAssertEqual(blue.redComponent, 0, accuracy: 0.001)
+        XCTAssertEqual(view.backgroundOpacity, 0.8, accuracy: 0.001)
+        native.applyAppearance(AppearanceSettings())
+        native.applyPalette(.builtIn)
+        XCTAssertEqual(view.backgroundOpacity, 1, accuracy: 0.001)
+    }
 }
 
 @MainActor

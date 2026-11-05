@@ -764,7 +764,10 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         return .object([
             "mode": .string(settings.chromeMode.rawValue), "lightThemeId": .string(settings.lightThemeID), "darkThemeId": .string(settings.darkThemeID),
             "effectiveThemeId": .string(model.effectiveTheme.id), "revision": revision(model.appearanceRevision),
-            "rendering": renderingJSON()
+            "rendering": renderingJSON(),
+            // FR-TH10: the saved setting and what panes show after Reduce Transparency / Increase Contrast.
+            "backgroundOpacity": .number(settings.backgroundOpacity), "backgroundBlur": .bool(settings.backgroundBlur),
+            "effectiveBackgroundOpacity": .number(model.effectiveBackgroundOpacity)
         ])
     }
 

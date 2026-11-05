@@ -50,11 +50,16 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     /// Notifies when a command that ran at least this long finishes out of view (FR-SI08); 0 is Off.
     public var commandFinishedNotificationSeconds = 10
     public static let commandFinishedNotificationChoices = [0, 5, 10, 30, 60]
+    /// Opacity of the terminal panes' default background (FR-TH10); text, colored cells and the chrome stay opaque.
+    public var backgroundOpacity: Double = 1
+    public static let backgroundOpacityRange = 0.3...1.0
+    /// Frosts what shows through a translucent pane background (FR-TH10).
+    public var backgroundBlur = true
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
-        case commandFinishedNotificationSeconds, gpuRendering
+        case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur
     }
     /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
@@ -79,13 +84,18 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         // A threshold this build doesn't offer falls back to the default instead of discarding every appearance setting.
         let seconds = (try? c.decodeIfPresent(Int.self, forKey: .commandFinishedNotificationSeconds)) ?? 10
         commandFinishedNotificationSeconds = Self.commandFinishedNotificationChoices.contains(seconds) ? seconds : 10
+        // Settings saved before FR-TH10 load opaque; an opacity this build doesn't accept falls back to opaque too.
+        let opacity = (try? c.decodeIfPresent(Double.self, forKey: .backgroundOpacity)) ?? 1
+        backgroundOpacity = opacity.isFinite && Self.backgroundOpacityRange.contains(opacity) ? opacity : 1
+        backgroundBlur = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundBlur)) ?? true
     }
-    /// True when terminals must be updated: everything except chrome mode, theme selection and notifications.
+    /// True when terminals must be updated: everything except chrome mode, theme selection, notifications and blur.
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
         normalized.desktopNotifications = other.desktopNotifications
         normalized.commandFinishedNotificationSeconds = other.commandFinishedNotificationSeconds
+        normalized.backgroundBlur = other.backgroundBlur
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {
@@ -95,6 +105,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var isValid: Bool {
         fontSize.isFinite && (8...48).contains(fontSize) && (0...50_000).contains(scrollbackLines)
             && Self.commandFinishedNotificationChoices.contains(commandFinishedNotificationSeconds)
+            && backgroundOpacity.isFinite && Self.backgroundOpacityRange.contains(backgroundOpacity)
             && [fontName, lightThemeID, darkThemeID].allSatisfy {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.utf8.count <= 256
             }

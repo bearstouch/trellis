@@ -11,7 +11,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Workspace:** managed windows in a sidebar, renameable color-labeled tabs and nested splits, with busy and input indicators and desktop notifications. Sessions can optionally keep running after quit.
 - **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md), with search, safe paste review, links, ligatures, inline images and an optional Metal renderer.
 - **Shell integration:** zsh, bash and fish report their directory and exit status with no dotfile edits; jump between prompts with ⌘↑/⌘↓.
-- **Themes:** 10 editor-inspired families plus a JSON theme library, with separate light and dark slots and live preview.
+- **Themes:** 10 editor-inspired families plus a JSON theme library, with separate light and dark slots and live preview, and an optional translucent, blurred pane background.
 - **SSH hosts:** a saved host library and `~/.ssh/config` discovery, using `/usr/bin/ssh` and optional Keychain-stored passwords.
 - **Remote workspaces (preview):** open a saved Linux or macOS host as a sidebar window whose sessions run under a small Trellis helper on the host. They keep running when you quit or lose the connection, reconnect on their own, and splits open where you are on the host; tasks work there too. See [Remote workspaces](docs/features/remote-workspaces.md).
 - **Projects and tasks:** define projects (tabs, splits, commands and git repositories) in the **Projects** library and launch them on this Mac or a saved host, cloning what's missing; run `.trellis/launch.json` tasks from a pane header.

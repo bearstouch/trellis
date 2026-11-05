@@ -26,10 +26,10 @@ public struct WorkspaceRootView: View {
             HStack(spacing: 0) {
                 sidebar.frame(width: model.sidebarCollapsed ? 52 : 205).animation(.easeInOut(duration: 0.15), value: model.sidebarCollapsed)
                     .disabled(model.isRestoring || model.recoveryMessage != nil)
-                Divider().overlay(model.separatorOverlay)
+                Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
                 mainArea
             }
-            Divider().overlay(model.separatorOverlay)
+            Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
             HStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
@@ -55,7 +55,7 @@ public struct WorkspaceRootView: View {
             .background(model.themeColor(.surface))
         }
         .foregroundStyle(model.themeColor(.foreground))
-        .background(model.usesNativeChrome ? model.themeColor(.surface) : model.themeColor(.background))
+        .background(model.panesTranslucent ? .clear : model.chromeBackground)
         .tint(model.chromeTint)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
         .modifier(CommandPaletteHost(model: model))
@@ -333,7 +333,7 @@ public struct WorkspaceRootView: View {
 
     @ViewBuilder private var mainArea: some View {
         if model.isRestoring {
-            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeBackground)
         } else if let message = model.recoveryMessage {
             VStack(spacing: 16) {
                 Text("Recover Workspace").font(.title2)
@@ -342,7 +342,7 @@ public struct WorkspaceRootView: View {
                     Button("Use Backup") { Task { await model.recoverWorkspace(useBackup: true) } }
                 }
                 Button("Start Empty") { Task { await model.recoverWorkspace(useBackup: false) } }
-            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeBackground)
         } else if model.presentation.isEmpty {
             VStack(spacing: 14) {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
@@ -368,7 +368,7 @@ public struct WorkspaceRootView: View {
                     }
                     .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
                 }.frame(height: 40).background(model.themeColor(.surface))
-                Divider().overlay(model.separatorOverlay)
+                Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
                 HStack(spacing: 0) {
                     terminalCanvas
                     if model.scratchpadVisible {
@@ -576,13 +576,23 @@ public struct WorkspaceRootView: View {
                 ScrollView([.horizontal, .vertical]) {
                     PaneTreeView(model: model, layout: visible, activePaneID: tab.activePaneID, tabID: tab.id)
                         .frame(width: size.width, height: size.height)
-                }.background(model.terminalBackground)
+                }.background(canvasBackground)
                     .onAppear { model.setCanvasSize(fullSize, tabID: tab.id) }
                     .onChange(of: tab.id) { _, _ in model.setCanvasSize(fullSize, tabID: tab.id) }
                     .onChange(of: fullSize) { _, next in model.setCanvasSize(next, tabID: tab.id) }
             } else {
-                model.terminalBackground
+                canvasBackground
             }
+        }
+    }
+    /// Translucent panes paint their own margins and background (FR-TH10); under them only the optional blur.
+    @ViewBuilder private var canvasBackground: some View {
+        if !model.panesTranslucent {
+            model.terminalBackground
+        } else if model.effectiveBackgroundBlur {
+            BehindWindowBlur()
+        } else {
+            Color.clear
         }
     }
 }
@@ -1058,18 +1068,50 @@ struct NativeTerminalSurface: NSViewRepresentable {
 final class TerminalContainerView: NSView {
     private var wasFocused = false
     private var desiredTerminal: NSView?
+    /// The strips above and below the rows, painted with the terminal's background: under a translucent background
+    /// (FR-TH10) nothing else paints them, so they would show as lighter bands.
+    let gapAbove = NSView(), gapBelow = NSView()
+    private var gaps: [NSView] { [gapAbove, gapBelow] }
+    private var backgroundObservation: NSKeyValueObservation?
+    private var hostedTerminal: NSView? { subviews.first { view in !gaps.contains { $0 === view } } }
 
     override func layout() {
         super.layout()
-        guard let terminal = subviews.first else { return }
+        gaps.forEach { $0.isHidden = true }
+        guard let terminal = hostedTerminal else { return }
         terminal.frame = bounds
         guard let grid = terminal as? TerminalView else { return }
         let gridHeight = grid.getOptimalFrameSize().height
         guard gridHeight > 0, gridHeight <= bounds.height else { return }
-        // Keep whole terminal rows against the bottom. A tiny rounding allowance
-        // prevents floating-point division from dropping the final row.
+        // Whole rows only, with the remainder of a row split evenly above and below them, so the top and bottom
+        // padding always match. A tiny rounding allowance prevents floating-point division from dropping the final row.
         let height = min(bounds.height, gridHeight + 0.001)
-        terminal.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: height)
+        let below = ((bounds.height - height) / 2).rounded(.down)
+        terminal.frame = NSRect(x: bounds.minX, y: bounds.minY + below, width: bounds.width, height: height)
+        gapBelow.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: below)
+        gapAbove.frame = NSRect(x: bounds.minX, y: terminal.frame.maxY, width: bounds.width, height: max(0, bounds.maxY - terminal.frame.maxY))
+        gaps.forEach { $0.isHidden = $0.frame.height <= 0 }
+        paintRowGaps()
+    }
+    private func attach(_ terminal: NSView) {
+        subviews.forEach { $0.removeFromSuperview() }
+        terminal.frame = bounds
+        terminal.autoresizingMask = [.width, .height]
+        addSubview(terminal)
+        gaps.forEach { addSubview($0) }
+        // Themes, previews, opacity and OSC 11 all set the grid's layer background; follow them.
+        terminal.wantsLayer = true
+        backgroundObservation = terminal.layer?.observe(\.backgroundColor) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.paintRowGaps() }
+        }
+    }
+    private func paintRowGaps() {
+        guard let grid = hostedTerminal as? TerminalView else { return }
+        for gap in gaps {
+            gap.wantsLayer = true
+            // The native color carries the opacity; the grid's own layer is clear while Metal draws.
+            gap.layer?.backgroundColor = grid.nativeBackgroundColor.cgColor
+        }
     }
 
     override func viewDidMoveToWindow() {
@@ -1080,12 +1122,7 @@ final class TerminalContainerView: NSView {
     func display(_ terminal: NSView, focused: Bool = true) {
         desiredTerminal = terminal
         let changed = subviews.first !== terminal
-        if changed {
-            subviews.forEach { $0.removeFromSuperview() }
-            terminal.frame = bounds
-            terminal.autoresizingMask = [.width, .height]
-            addSubview(terminal)
-        }
+        if changed { attach(terminal) }
         if focused && (changed || !wasFocused) {
             DispatchQueue.main.async { [weak self, weak terminal] in
                 guard let self, let terminal, self.wasFocused, terminal.superview === self,
@@ -1107,10 +1144,7 @@ final class TerminalContainerView: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window != nil, let terminal = self.desiredTerminal else { return }
             if terminal.superview !== self {
-                self.subviews.forEach { $0.removeFromSuperview() }
-                terminal.frame = self.bounds
-                terminal.autoresizingMask = [.width, .height]
-                self.addSubview(terminal)
+                self.attach(terminal)
                 self.needsLayout = true
                 if self.wasFocused, self.window?.isKeyWindow == true {
                     self.window?.makeFirstResponder(terminal)

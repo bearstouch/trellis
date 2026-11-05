@@ -62,6 +62,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// The audible half of the bell (FR-T07); injected so tests stay silent.
     var playBell: () -> Void = { NSSound.beep() }
     public private(set) var passwordPromptActive = false
+    /// The default background's opacity from the last appearance (FR-TH10); palettes keep it.
+    public private(set) var backgroundOpacity: Double = 1
     private var passwordCheck: Task<Void, Never>?
     private var imageTransfer = MultipartImageTransfer()
     /// Delay before re-reading the PTY modes after I/O; prompts change them just before or after writing.
@@ -238,7 +240,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             terminalView.scrollback.enforce(on: terminalView)
         }
         bookmark?.restore(in: terminalView)
+        backgroundOpacity = settings.backgroundOpacity
         TerminalPalette.builtIn.apply(to: terminalView)
+        terminalView.backgroundOpacity = backgroundOpacity
         let style: CursorStyle
         switch (settings.cursorShape, settings.cursorBlinks) {
         case (.block, false): style = .steadyBlock
@@ -264,6 +268,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     /// input, font, selection, or process lifecycle operation is performed.
     public func applyPalette(_ palette: TerminalPalette) {
         palette.apply(to: terminalView)
+        // A palette sets an opaque background color; the appearance's opacity stays (FR-TH10).
+        terminalView.backgroundOpacity = backgroundOpacity
         terminalView.needsDisplay = true
     }
     public func paste(_ plan: TerminalPastePlan) throws {

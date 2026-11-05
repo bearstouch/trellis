@@ -164,6 +164,20 @@ struct AppearanceSettingsView: View {
             Picker("Dark theme", selection: $draft.darkThemeID) {
                 ForEach(model.availableThemes(for: .dark), id: \.id) { Text($0.name).tag($0.id) }
             }
+            LabeledContent("Background opacity") {
+                HStack {
+                    Slider(value: $draft.backgroundOpacity, in: AppearanceSettings.backgroundOpacityRange, step: 0.05)
+                        .accessibilityLabel("Background opacity").accessibilityValue("\(Int((draft.backgroundOpacity * 100).rounded())) percent")
+                        .accessibilityIdentifier("settings.backgroundOpacity")
+                    Text("\(Int((draft.backgroundOpacity * 100).rounded())) %").monospacedDigit().frame(width: 44, alignment: .trailing).accessibilityHidden(true)
+                }
+            }
+            Toggle("Blur behind background", isOn: $draft.backgroundBlur).disabled(draft.backgroundOpacity >= 1).accessibilityIdentifier("settings.backgroundBlur")
+            Text(
+                model.increaseContrast || model.reduceTransparency
+                    ? "Panes stay opaque while Reduce Transparency or Increase Contrast is on."
+                    : "Only the terminal background shows the desktop; text, colors and selections stay opaque."
+            ).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker("Terminal font", selection: $draft.fontName) {
                 if !fontNames.contains(draft.fontName) {
                     Text("\(draft.fontName) (unavailable)").tag(draft.fontName)

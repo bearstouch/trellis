@@ -41,6 +41,8 @@ struct SearchableTerminalSurface: View {
     let isFocused: Bool
     let background: Color
     var dim = 0.0
+    /// The terminal draws its own translucent background (FR-TH10), so only the margins are painted under it.
+    var opacity = 1.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         VStack(spacing: 0) {
@@ -50,9 +52,14 @@ struct SearchableTerminalSurface: View {
             // Opening/selecting a pane with an active find field must not let
             // the native terminal host steal that field's first responder.
             NativeTerminalSurface(terminal: terminal, isFocused: isFocused && !terminal.searchVisible)
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-                .background(background)
+                .padding(8)
+                .background {
+                    if opacity < 1 {
+                        MarginFrame(insets: EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)).fill(background.opacity(opacity), style: FillStyle(eoFill: true))
+                    } else {
+                        background
+                    }
+                }
                 // FR-P05: the terminal only, not the find bar, and never in the way of its clicks and scrolling.
                 .overlay {
                     background.opacity(dim).allowsHitTesting(false).accessibilityHidden(true)

@@ -146,6 +146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: WorkspaceRootView(model: model))
+        // FR-TH10: a translucent pane background needs a window that composites what's behind it.
+        model.onWindowTranslucencyChanged = { [weak self] translucent in self?.setWindowTranslucent(translucent) }
+        setWindowTranslucent(model.effectiveBackgroundOpacity < 1)
         if let saved = UserDefaults.standard.string(forKey: "app.windowFrame") { window.setFrame(NSRectFromString(saved), display: false) } else { window.center() }
         constrainWindow()
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -446,10 +449,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         Task { await model.selectTab(next) }
     }
 
+    private func setWindowTranslucent(_ translucent: Bool) {
+        window.isOpaque = !translucent
+        window.backgroundColor = translucent ? .clear : .windowBackgroundColor
+        // A clear window draws the title bar's separator as a solid black seam.
+        window.titlebarSeparatorStyle = translucent ? .none : .automatic
+        window.invalidateShadow()
+    }
     private func syncAccessibilityDisplayOptions() {
         let workspace = NSWorkspace.shared
         model.accessibilityDisplayOptionsDidChange(
-            increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
+            increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion,
+            reduceTransparency: workspace.accessibilityDisplayShouldReduceTransparency)
     }
     @objc private func aboutAction() {
         let credits = NSMutableAttributedString(string: "Released under the ", attributes: [.font: NSFont.systemFont(ofSize: 12)])

@@ -34,7 +34,7 @@ struct PaneTreeView: View {
                     }
                 }
             }
-        }.background(model.themeColor(.border))
+        }.background(model.panesTranslucent ? .clear : model.themeColor(.border))
             .coordinateSpace(name: layoutCoordinateSpace)
     }
 
@@ -165,7 +165,7 @@ struct PaneTreeView: View {
                 // take first responder from the name field (its input is suspended).
                 SearchableTerminalSurface(
                     terminal: terminal, isFocused: focused && model.editingTabID == nil && !model.welcomeTourVisible,
-                    background: model.terminalBackground, dim: focusStyle.dim
+                    background: model.terminalBackground, dim: focusStyle.dim, opacity: model.effectiveBackgroundOpacity
                 )
                 .overlay {
                     if terminal.sessionState == .stopped {
@@ -187,7 +187,7 @@ struct PaneTreeView: View {
                 }
             }
         } else {
-            model.terminalBackground
+            model.terminalBackground.opacity(model.effectiveBackgroundOpacity)
         }
     }
 

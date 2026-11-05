@@ -63,4 +63,32 @@ extension AppWorkspaceModel {
         usesNativeChrome ? .white : effectiveTheme[.accent].relativeLuminance > 0.179 ? .black : .white
     }
     var terminalBackground: Color { Color(themeRGB: effectiveTheme.terminal.background) }
+    /// The window's own fill behind the chrome; clear while panes are translucent, so only the chrome paints it (FR-TH10).
+    var chromeBackground: Color { usesNativeChrome ? themeColor(.surface) : themeColor(.background) }
+    var panesTranslucent: Bool { effectiveBackgroundOpacity < 1 }
+}
+
+/// Frosts what shows through translucent panes (FR-TH10), with the public behind-window material.
+struct BehindWindowBlur: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        (view.material, view.blendingMode, view.state) = (.underWindowBackground, .behindWindow, .active)
+        view.setAccessibilityElement(false)
+        return view
+    }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+/// A rectangle minus its inset interior: paints a terminal's margins without painting under the terminal,
+/// whose own translucent background would otherwise composite twice (FR-TH10).
+struct MarginFrame: Shape {
+    let insets: EdgeInsets
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        path.addRect(
+            CGRect(
+                x: rect.minX + insets.leading, y: rect.minY + insets.top, width: max(0, rect.width - insets.leading - insets.trailing),
+                height: max(0, rect.height - insets.top - insets.bottom)))
+        return path
+    }
 }

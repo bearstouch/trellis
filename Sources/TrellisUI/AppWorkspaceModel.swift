@@ -84,6 +84,7 @@ public final class AppWorkspaceModel: ObservableObject {
         effectiveTheme = previewedTheme?.resolved() ?? committed
         onChromeModeChanged?(effectiveChromeMode)
         for terminal in terminals.values { terminal.applyPalette(effectiveTheme.terminal) }
+        syncBackgroundOpacity()
         // Every commit path ends here, so intermediate reconciliation writes never emit.
         guard appearance != committedAppearance.settings || committed.id != committedAppearance.themeID else { return }
         if appearance != committedAppearance.settings { appearanceRevision &+= 1 }
@@ -220,7 +221,21 @@ public final class AppWorkspaceModel: ObservableObject {
         var settings = appearance
         if reduceMotion { settings.cursorBlinks = false }
         if let rendererOverride { settings.gpuRendering = rendererOverride }
+        // FR-TH10: Reduce Transparency and Increase Contrast keep panes opaque without changing the saved preference.
+        if increaseContrast || reduceTransparency { settings.backgroundOpacity = 1 }
         return settings
+    }
+    /// The pane background's opacity after accessibility overrides (FR-TH10); 1 is opaque.
+    @Published public private(set) var effectiveBackgroundOpacity: Double = 1
+    public var effectiveBackgroundBlur: Bool { effectiveBackgroundOpacity < 1 && appearance.backgroundBlur }
+    /// Called with true when panes turn translucent and false when they turn opaque; the app configures its window.
+    public var onWindowTranslucencyChanged: ((Bool) -> Void)?
+    func syncBackgroundOpacity() {
+        let opacity = terminalAppearance.backgroundOpacity
+        guard opacity != effectiveBackgroundOpacity else { return }
+        let wasTranslucent = effectiveBackgroundOpacity < 1
+        effectiveBackgroundOpacity = opacity
+        if wasTranslucent != (opacity < 1) { onWindowTranslucencyChanged?(opacity < 1) }
     }
     /// How many panes each renderer draws, and the frames they have drawn (FR-TX05).
     public var renderingStats: (metalPanes: Int, coreGraphicsPanes: Int, metalFrames: Int, coreGraphicsFrames: Int) {
@@ -233,10 +248,13 @@ public final class AppWorkspaceModel: ObservableObject {
         return stats
     }
 
-    public func accessibilityDisplayOptionsDidChange(increaseContrast: Bool, reduceMotion: Bool) {
+    public func accessibilityDisplayOptionsDidChange(increaseContrast: Bool, reduceMotion: Bool, reduceTransparency: Bool = false) {
+        let before = terminalAppearance
         if self.increaseContrast != increaseContrast { self.increaseContrast = increaseContrast }
-        guard self.reduceMotion != reduceMotion else { return }
-        self.reduceMotion = reduceMotion
+        if self.reduceTransparency != reduceTransparency { self.reduceTransparency = reduceTransparency }
+        if self.reduceMotion != reduceMotion { self.reduceMotion = reduceMotion }
+        syncBackgroundOpacity()
+        guard terminalAppearance != before else { return }
         // applyAppearance resets the built-in palette; restore the selected theme colors.
         for terminal in terminals.values {
             terminal.applyAppearance(terminalAppearance)
@@ -399,6 +417,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public var onKeyboardSettingsChanged: (() -> Void)?
     @Published public private(set) var increaseContrast = false
     @Published public private(set) var reduceMotion = false
+    @Published public private(set) var reduceTransparency = false
     @Published public private(set) var isRestoring: Bool
     @Published public private(set) var recoveryMessage: String?
     @Published public private(set) var backupAvailable = false
