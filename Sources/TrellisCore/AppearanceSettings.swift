@@ -55,11 +55,15 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public static let backgroundOpacityRange = 0.3...1.0
     /// Frosts what shows through a translucent pane background (FR-TH10).
     public var backgroundBlur = true
+    /// Which side the tool rail and dock sit on (FR-TD02).
+    public var toolDockSide: ToolDockSide = .right
+    /// Where ⌘-clicked text files open (FR-TD09).
+    public var fileLinkTarget: FileLinkTarget = .toolDock
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
-        case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur
+        case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, toolDockSide, fileLinkTarget
     }
     /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
@@ -88,14 +92,18 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         let opacity = (try? c.decodeIfPresent(Double.self, forKey: .backgroundOpacity)) ?? 1
         backgroundOpacity = opacity.isFinite && Self.backgroundOpacityRange.contains(opacity) ? opacity : 1
         backgroundBlur = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundBlur)) ?? true
+        // Settings saved before the tool dock, or naming a choice this build doesn't know, use the defaults.
+        toolDockSide = (try? c.decodeIfPresent(ToolDockSide.self, forKey: .toolDockSide)) ?? .right
+        fileLinkTarget = (try? c.decodeIfPresent(FileLinkTarget.self, forKey: .fileLinkTarget)) ?? .toolDock
     }
-    /// True when terminals must be updated: everything except chrome mode, theme selection, notifications and blur.
+    /// True when terminals must be updated: everything except chrome mode, theme selection, notifications, blur and the tool dock.
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
         normalized.desktopNotifications = other.desktopNotifications
         normalized.commandFinishedNotificationSeconds = other.commandFinishedNotificationSeconds
         normalized.backgroundBlur = other.backgroundBlur
+        (normalized.toolDockSide, normalized.fileLinkTarget) = (other.toolDockSide, other.fileLinkTarget)
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {
