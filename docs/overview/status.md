@@ -85,7 +85,7 @@ Only these combinations have been run.
 
 ## Known limits
 
-- **Light terminal colors (FR-TH09):** 24-bit colors stay as sent, so a program that sends them can still draw dark blocks on a light theme. In the bundled light themes ANSI black is light and ANSI white is dark, so `\e[30m` on the default background and `\e[47m`/`\e[107m` under default text are nearly invisible.
+- **Light terminal colors (FR-TH09):** 24-bit colors stay as sent, so a program that sends them can still draw dark blocks on a light theme. In the bundled light themes ANSI black is light and ANSI white is dark, so `\e[47m` and `\e[107m` draw dark backgrounds, with the text on them lifted to stay readable. Pairs at 1.5:1 or above aren't lifted, so `\e[100m` under default text stays faint on the lower-contrast themes (about 1.8:1 on Solarized Light).
 - **Project library:** launching, setup and opening work on this Mac and on hosts (FR-PL06–FR-PL08), verified with fake `git` and fake `ssh` end to end; git status in pane headers (FR-PL09) works locally and through a host's helper (unit and helper tests; not yet seen in the running app); **Export/Import Windows & Hosts** carries projects without their launch history. Setup on a host needs its helper at protocol 3 (this version); an older helper is asked to update. A repository already cloned is used whatever its `origin`.
 
 - **Signing:** release CI builds are signed with Developer ID and notarized. Local builds, and packages made without `TRELLIS_SIGN_IDENTITY`, are ad-hoc signed, and Gatekeeper rejects them on other Macs.

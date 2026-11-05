@@ -943,7 +943,8 @@ extension TerminalView {
         return nsattr
     }
     
-    /// `foreground` moved towards black or white until it reaches `minimumPaletteContrast` on `background`.
+    /// `foreground` moved towards black or white until it reaches `minimumPaletteContrast` on `background`,
+    /// for pairs using a 256-color index, and for other pairs without true color only when nearly invisible.
     /// A pair using one index twice is left alone: that hides text on purpose.
     func paletteContrastForeground(_ foreground: TTColor, on background: TTColor, fg: Attribute.Color, bg: Attribute.Color) -> TTColor {
         #if os(macOS)
@@ -953,9 +954,9 @@ extension TerminalView {
             return false
         }
         if case .trueColor = fg { return foreground }
-        guard isExtended(fg) || isExtended(bg),
-            let from = foreground.usingColorSpace(.sRGB), let on = background.usingColorSpace(.sRGB)
-        else { return foreground }
+        let extended = isExtended(fg) || isExtended(bg)
+        if case .trueColor = bg, !extended { return foreground }
+        guard let from = foreground.usingColorSpace(.sRGB), let on = background.usingColorSpace(.sRGB) else { return foreground }
         func linear(_ value: CGFloat) -> Double {
             let value = Double(value)
             return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
@@ -967,7 +968,10 @@ extension TerminalView {
             (from.redComponent + (target - from.redComponent) * fraction, from.greenComponent + (target - from.greenComponent) * fraction,
              from.blueComponent + (target - from.blueComponent) * fraction)
         }
-        if contrast(luminance(from.redComponent, from.greenComponent, from.blueComponent)) >= minimumPaletteContrast { return foreground }
+        // ANSI 0-15 keep the theme's exact colors unless the pair is nearly invisible: light themes
+        // store a light color in black and a dark one in white, so `30` on the background vanishes.
+        let trigger = extended ? minimumPaletteContrast : min(minimumPaletteContrast, 1.5)
+        if contrast(luminance(from.redComponent, from.greenComponent, from.blueComponent)) >= trigger { return foreground }
         let target: CGFloat = contrast(1) > contrast(0) ? 1 : 0
         // The smallest move that reaches the floor keeps as much of the color as it can.
         var low: CGFloat = 0, high: CGFloat = 1
@@ -985,8 +989,15 @@ extension TerminalView {
     /// Powerline separators, box-drawing and block cells are shapes, not text: their foreground is a
     /// neighbouring segment's color, and lifting it would paint marks where the shapes must blend in.
     /// U+E0A0...U+E0A3 (branch, line number, lock) are icons read like text, so they're lifted.
-    static func isPaletteContrastExempt(codePoint: UInt32) -> Bool {
-        (0xE0B0...0xE0D4).contains(codePoint) || (0x2500...0x259F).contains(codePoint)
+    static func isPaletteContrastExempt(codePoint: UInt32, attribute: Attribute) -> Bool {
+        if (0xE0B0...0xE0D4).contains(codePoint) || (0x2580...0x259F).contains(codePoint) { return true }
+        // Box lines frame text, so in a pair of base colors they stay as readable as that text.
+        guard (0x2500...0x257F).contains(codePoint) else { return false }
+        func isExtended(_ color: Attribute.Color) -> Bool {
+            if case .ansi256(let code) = color { return code >= 16 }
+            return false
+        }
+        return isExtended(attribute.fg) || isExtended(attribute.bg)
     }
 
     /// The foreground of `attribute` without `minimumPaletteContrast`, for exempt cells.
@@ -1292,7 +1303,7 @@ extension TerminalView {
             // Flush batch when attributes change; the batch dictionary is only
             // rebuilt at these boundaries, so unchanged cells append without
             // copying it.
-            let contrastExempt = minimumPaletteContrast > 0 && Self.isPaletteContrastExempt(codePoint: UInt32(ch.code))
+            let contrastExempt = minimumPaletteContrast > 0 && Self.isPaletteContrastExempt(codePoint: UInt32(ch.code), attribute: attr)
             if attr != lastAttr || hasUrl != lastHasUrl || isSelected != lastIsSelected
                 || textHidden != lastTextHidden || contrastExempt != lastContrastExempt
                 || pendingAttrs == nil {

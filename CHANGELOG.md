@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Light themes:** programs using 256-color indexes, like Powerlevel10k prompts, no longer draw near-black blocks on light terminals. Those colors now follow the theme and stay readable; dark terminals keep exact xterm values, and 24-bit colors are never changed.
+- **Light themes:** text that would be nearly invisible no longer vanishes, such as `\e[30m` text and default text on `\e[47m` and `\e[107m` backgrounds. Readable ANSI colors keep the theme's exact values.
 - The project setup terminal and the ssh connection console now use the current theme instead of the dark default.
 - Inserting columns (DECIC) no longer fills them with reverse video.
 - The project editor's "Layout" and "Editor" labels no longer wrap mid-word.

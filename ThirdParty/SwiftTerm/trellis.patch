@@ -225,11 +225,12 @@
              nsattr [.underlineColor] = underlineColor
              nsattr [.underlineStyle] = nsUnderlineStyle(underlineVariant).rawValue
              nsattr [SwiftTermUnderlineStyleKey] = Int(underlineVariant.rawValue)
-@@ -853,6 +943,64 @@ extension TerminalView {
+@@ -853,6 +943,75 @@ extension TerminalView {
          return nsattr
      }
      
-+    /// `foreground` moved towards black or white until it reaches `minimumPaletteContrast` on `background`.
++    /// `foreground` moved towards black or white until it reaches `minimumPaletteContrast` on `background`,
++    /// for pairs using a 256-color index, and for other pairs without true color only when nearly invisible.
 +    /// A pair using one index twice is left alone: that hides text on purpose.
 +    func paletteContrastForeground(_ foreground: TTColor, on background: TTColor, fg: Attribute.Color, bg: Attribute.Color) -> TTColor {
 +        #if os(macOS)
@@ -239,9 +240,9 @@
 +            return false
 +        }
 +        if case .trueColor = fg { return foreground }
-+        guard isExtended(fg) || isExtended(bg),
-+            let from = foreground.usingColorSpace(.sRGB), let on = background.usingColorSpace(.sRGB)
-+        else { return foreground }
++        let extended = isExtended(fg) || isExtended(bg)
++        if case .trueColor = bg, !extended { return foreground }
++        guard let from = foreground.usingColorSpace(.sRGB), let on = background.usingColorSpace(.sRGB) else { return foreground }
 +        func linear(_ value: CGFloat) -> Double {
 +            let value = Double(value)
 +            return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
@@ -253,7 +254,10 @@
 +            (from.redComponent + (target - from.redComponent) * fraction, from.greenComponent + (target - from.greenComponent) * fraction,
 +             from.blueComponent + (target - from.blueComponent) * fraction)
 +        }
-+        if contrast(luminance(from.redComponent, from.greenComponent, from.blueComponent)) >= minimumPaletteContrast { return foreground }
++        // ANSI 0-15 keep the theme's exact colors unless the pair is nearly invisible: light themes
++        // store a light color in black and a dark one in white, so `30` on the background vanishes.
++        let trigger = extended ? minimumPaletteContrast : min(minimumPaletteContrast, 1.5)
++        if contrast(luminance(from.redComponent, from.greenComponent, from.blueComponent)) >= trigger { return foreground }
 +        let target: CGFloat = contrast(1) > contrast(0) ? 1 : 0
 +        // The smallest move that reaches the floor keeps as much of the color as it can.
 +        var low: CGFloat = 0, high: CGFloat = 1
@@ -271,8 +275,15 @@
 +    /// Powerline separators, box-drawing and block cells are shapes, not text: their foreground is a
 +    /// neighbouring segment's color, and lifting it would paint marks where the shapes must blend in.
 +    /// U+E0A0...U+E0A3 (branch, line number, lock) are icons read like text, so they're lifted.
-+    static func isPaletteContrastExempt(codePoint: UInt32) -> Bool {
-+        (0xE0B0...0xE0D4).contains(codePoint) || (0x2500...0x259F).contains(codePoint)
++    static func isPaletteContrastExempt(codePoint: UInt32, attribute: Attribute) -> Bool {
++        if (0xE0B0...0xE0D4).contains(codePoint) || (0x2580...0x259F).contains(codePoint) { return true }
++        // Box lines frame text, so in a pair of base colors they stay as readable as that text.
++        guard (0x2500...0x257F).contains(codePoint) else { return false }
++        func isExtended(_ color: Attribute.Color) -> Bool {
++            if case .ansi256(let code) = color { return code >= 16 }
++            return false
++        }
++        return isExtended(attribute.fg) || isExtended(attribute.bg)
 +    }
 +
 +    /// The foreground of `attribute` without `minimumPaletteContrast`, for exempt cells.
@@ -290,7 +301,7 @@
      //
      // Given a vt100 attribute, return the NSAttributedString attributes used to render it
      //
-@@ -882,23 +1030,12 @@ extension TerminalView {
+@@ -882,23 +1041,12 @@ extension TerminalView {
          if case .ansi256(let code) = fg, code > 7, !useBrightColors {
              useBoldForBrightColor = true
          }
@@ -316,7 +327,7 @@
          // Apply dim/faint attribute (SGR 2)
          if flags.contains (.dim) {
              fgColor = fgColor.dimmedColor (towards: bgColor)
-@@ -912,7 +1049,7 @@ extension TerminalView {
+@@ -912,7 +1060,7 @@ extension TerminalView {
              let underlineColor = attribute.underlineColor.map {
                  mapColor(color: $0, isFg: true, isBold: isBold, useBrightColors: useBrightColors)
              } ?? fgColor
@@ -325,7 +336,7 @@
              nsattr [.underlineColor] = underlineColor
              nsattr [.underlineStyle] = nsUnderlineStyle(underlineVariant).rawValue
              nsattr [SwiftTermUnderlineStyleKey] = Int(underlineVariant.rawValue)
-@@ -921,11 +1058,21 @@ extension TerminalView {
+@@ -921,11 +1069,21 @@ extension TerminalView {
              nsattr [.strikethroughColor] = fgColor
              nsattr [.strikethroughStyle] = NSUnderlineStyle.single.rawValue
          }
@@ -348,7 +359,7 @@
  
              // Add to cache; truecolor attributes are unbounded, so cap it
              if urlAttributes.count >= 4096 {
-@@ -1074,6 +1221,9 @@ extension TerminalView {
+@@ -1074,6 +1232,9 @@ extension TerminalView {
          var blockElements: [BlockElementRenderItem] = []
          var boxDrawings: [BoxDrawingRenderItem] = []
          var powerlineGlyphs: [PowerlineRenderItem] = []
@@ -358,7 +369,7 @@
          
          // Batching state: accumulate consecutive characters with the same attributes
          var pendingText = ""
-@@ -1082,7 +1232,9 @@ extension TerminalView {
+@@ -1082,7 +1243,9 @@ extension TerminalView {
          var lastAttr: Attribute? = nil
          var lastHasUrl = false
          var lastIsSelected = false
@@ -369,7 +380,7 @@
  
          func flushPending() {
              if !pendingText.isEmpty, let attrs = pendingAttrs {
-@@ -1132,20 +1284,37 @@ extension TerminalView {
+@@ -1132,20 +1295,37 @@ extension TerminalView {
              }
  
              let isSelected = isColumnSelected(selectionColumns, column: col, width: width)
@@ -382,7 +393,7 @@
              // Flush batch when attributes change; the batch dictionary is only
              // rebuilt at these boundaries, so unchanged cells append without
              // copying it.
-+            let contrastExempt = minimumPaletteContrast > 0 && Self.isPaletteContrastExempt(codePoint: UInt32(ch.code))
++            let contrastExempt = minimumPaletteContrast > 0 && Self.isPaletteContrastExempt(codePoint: UInt32(ch.code), attribute: attr)
              if attr != lastAttr || hasUrl != lastHasUrl || isSelected != lastIsSelected
 -                || blinkHidden != lastBlinkHidden
 +                || textHidden != lastTextHidden || contrastExempt != lastContrastExempt
@@ -410,7 +421,7 @@
                  if isSelected {
                      batchAttributes[.selectionBackgroundColor] = selectedTextBackgroundColor
                      batchAttributes[.foregroundColor] = selectedTextForegroundColor
-@@ -1156,13 +1325,14 @@ extension TerminalView {
+@@ -1156,13 +1336,14 @@ extension TerminalView {
                          batchAttributes[.strikethroughColor] = selectedTextForegroundColor
                      }
                  }
@@ -426,7 +437,7 @@
                  }
                  if needsDirectionOverride {
                      // SwiftTerm owns cell placement. A BiDi layout is already in
-@@ -1182,7 +1352,7 @@ extension TerminalView {
+@@ -1182,7 +1363,7 @@ extension TerminalView {
  
              // Render Powerline separators independently of the font so their
              // joining edge shares the background's exact pixel boundary.
@@ -435,7 +446,7 @@
                                                customGlyphsEnabled: customBlockGlyphs) {
                  flushPending()
                  let fgColor = (currentAttributes[.foregroundColor] as? TTColor) ?? effectiveNativeForegroundColor
-@@ -1196,7 +1366,7 @@ extension TerminalView {
+@@ -1196,7 +1377,7 @@ extension TerminalView {
                  previousPlaceholderAttribute = nil
              // Renders box drawing characters independently of the font
              // U+2500...U+257F
@@ -444,7 +455,7 @@
                 renderCodePoint >= UInt32(BoxDrawingRenderer.lowerBoundary),
                 renderCodePoint <= UInt32(BoxDrawingRenderer.upperBoundary) {
                  flushPending()
-@@ -1210,7 +1380,7 @@ extension TerminalView {
+@@ -1210,7 +1391,7 @@ extension TerminalView {
                  previousPlaceholderAttribute = nil
              // Renders block elements independently of the font
              // U+2580...U+259F
@@ -453,7 +464,7 @@
                        (renderCodePoint >= UInt32(BlockElementMapping.lowerBoundary)
                         && renderCodePoint <= UInt32(BlockElementMapping.upperBoundary)),
                        let rects = BlockElementMapping.rects(for: renderCodePoint) {
-@@ -1235,7 +1405,7 @@ extension TerminalView {
+@@ -1235,7 +1416,7 @@ extension TerminalView {
                  builder?.append(text: " ", attributes: currentAttributes, cellUTF16Lengths: [1])
                  previousPlaceholder = placeholder
                  previousPlaceholderAttribute = attr
@@ -462,7 +473,7 @@
                  // In BiDi rows, Arabic-script cells and cells holding combining
                  // sequences or emoji are isolated into their own column-anchored
                  // segment so that font-side ligation or extra mark glyphs cannot
-@@ -1259,12 +1429,28 @@ extension TerminalView {
+@@ -1259,12 +1440,28 @@ extension TerminalView {
                  builder = nil
                  previousPlaceholder = nil
                  previousPlaceholderAttribute = nil
@@ -493,7 +504,7 @@
                      // Steer font fallback away from Apple Color Emoji for
                      // default-text-presentation symbols (see prefersTextPresentation).
                      pendingText.append("\u{FE0E}")
-@@ -1294,6 +1480,32 @@ extension TerminalView {
+@@ -1294,6 +1491,32 @@ extension TerminalView {
                              powerlineGlyphs: powerlineGlyphs)
      }
  
@@ -526,7 +537,7 @@
      func shouldUnderlineLink(row: Int, column: Int, width: Int, cell: CharData) -> Bool
      {
          switch linkHighlightMode {
-@@ -1325,7 +1537,8 @@ extension TerminalView {
+@@ -1325,7 +1548,8 @@ extension TerminalView {
      // "k=v:k2=v2;URL"
      func urlAndParamsFrom(payload: String) -> (String, [String:String])?
      {
@@ -536,7 +547,7 @@
          if split.count > 1 {
              let pairs = split[0].split(separator: ":")
              var params: [String:String] = [:]
-@@ -1507,10 +1720,18 @@ extension TerminalView {
+@@ -1507,10 +1731,18 @@ extension TerminalView {
          return selectionRange.lowerBound < endColumn && column < selectionRange.upperBound
      }
  
@@ -556,7 +567,7 @@
  
          if attributes.keys.contains(.underlineStyle) {
              // draw underline at font.normal.underlinePosition baseline
-@@ -1547,11 +1768,11 @@ extension TerminalView {
+@@ -1547,11 +1779,11 @@ extension TerminalView {
                  switch style {
                  case .dashed:
                      let pattern: [CGFloat] = [dashLength]
@@ -570,7 +581,7 @@
                  default:
                      break
                  }
-@@ -1564,13 +1785,14 @@ extension TerminalView {
+@@ -1564,13 +1796,14 @@ extension TerminalView {
                  let step = max(thickness, 1)
                  let path = TTBezierPath()
                  path.lineWidth = thickness
@@ -591,7 +602,7 @@
                  }
                  path.stroke()
              }
-@@ -1580,23 +1802,20 @@ extension TerminalView {
+@@ -1580,23 +1813,20 @@ extension TerminalView {
              currentContext.setShouldAntialias(false)
              currentContext.setStrokeColor(cachedCGColor(underlineColor))
  
@@ -629,7 +640,7 @@
              }
          }
  
-@@ -1611,32 +1830,44 @@ extension TerminalView {
+@@ -1611,32 +1841,44 @@ extension TerminalView {
              currentContext.setShouldAntialias(false)
              currentContext.setStrokeColor(cachedCGColor(strikeColor))
  
@@ -694,7 +705,7 @@
          currentContext.restoreGState()
      }
  
-@@ -1760,7 +1991,117 @@ extension TerminalView {
+@@ -1760,7 +2002,117 @@ extension TerminalView {
          }
      }
  
@@ -813,7 +824,7 @@
      // TODO: this should not render any lines outside the dirtyRect
      func drawTerminalContents (dirtyRect: TTRect, context: CGContext, bufferOffset: Int)
      {
-@@ -1903,31 +2244,7 @@ extension TerminalView {
+@@ -1903,31 +2255,7 @@ extension TerminalView {
                  overTextKittyImages.sort(by: sortKitty)
              }
  
@@ -846,7 +857,7 @@
  
              // Background fill loop — uses cached CTLines
              context.saveGState()
-@@ -1936,36 +2253,12 @@ extension TerminalView {
+@@ -1936,36 +2264,12 @@ extension TerminalView {
              context.setLineWidth(0)
  
              for prepared in preparedSegments {
@@ -886,7 +897,7 @@
  
                      // Runs carrying the default background are not filled: the
                      // view's layer background already paints that color, and
-@@ -2038,7 +2331,6 @@ extension TerminalView {
+@@ -2038,7 +2342,6 @@ extension TerminalView {
  
              // Glyph drawing loop — reuses cached CTLines
              for prepared in preparedSegments {
@@ -894,7 +905,7 @@
                  for preparedRun in prepared.runs {
                      let run = preparedRun.run
                      let runGlyphsCount = CTRunGetGlyphCount(run)
-@@ -2052,50 +2344,8 @@ extension TerminalView {
+@@ -2052,50 +2355,8 @@ extension TerminalView {
                          count = runGlyphsCount
                      }
  
@@ -947,7 +958,7 @@
  
                      context.setFillColor(
                          cachedCGColor(preparedRun.foregroundColor ?? effectiveNativeForegroundColor))
-@@ -2141,7 +2391,8 @@ extension TerminalView {
+@@ -2141,7 +2402,8 @@ extension TerminalView {
                      // runs; undecorated runs skip the call entirely.
                      if preparedRun.hasDecorations {
                          let runAttributes = preparedRun.attributes as? [NSAttributedString.Key: Any] ?? [:]
@@ -957,7 +968,7 @@
                      }
                  }
              }
-@@ -2304,6 +2555,7 @@ extension TerminalView {
+@@ -2304,6 +2566,7 @@ extension TerminalView {
              return
          }
          updateCursorPosition()
@@ -965,7 +976,7 @@
          guard let (rowStart, rowEnd) = terminal.getUpdateRange () else {
              if notifyUpdateChanges {
                  let buffer = terminal.displayBuffer
-@@ -2538,6 +2790,11 @@ extension TerminalView {
+@@ -2538,6 +2801,11 @@ extension TerminalView {
      }
  
  #if canImport(MetalKit)
@@ -977,7 +988,7 @@
      func requestMetalDisplay() {
          guard let metalView = metalView else {
              return
-@@ -3015,7 +3272,7 @@ extension TerminalView {
+@@ -3015,7 +3283,7 @@ extension TerminalView {
      // Inserts the specified image at the current buffer position (x, y) using the specified size requests
      // and aspect ratio request.   The insertion is done by adding slices of the image, one per line
      // to the buffer.
@@ -1864,7 +1875,7 @@
      open override func viewDidUnhide() {
          super.viewDidUnhide()
  #if canImport(MetalKit)
-@@ -983,6 +1036,46 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -983,6 +1036,47 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      /// Controls weather to use high ansi colors, if false terminal will use bold text instead of high ansi colors
      public var useBrightColors: Bool = true
  
@@ -1888,7 +1899,8 @@
 +    }
 +
 +    /// Lowest contrast for text whose color pair involves a 256-color index (16...255); 0 is off.
-+    /// True-color foregrounds and pairs of only ANSI 0-15 and default colors are never adjusted.
++    /// True-color foregrounds are never adjusted. Pairs of only ANSI 0-15 and default colors
++    /// are adjusted only below 1.5:1, where the text would be nearly invisible.
 +    public var minimumPaletteContrast: Double = 0 {
 +        didSet { if minimumPaletteContrast != oldValue { colorsChanged() } }
 +    }
@@ -1911,7 +1923,7 @@
      /// Controls whether this view applies the terminal's BiDi presentation state.
      public var bidiHostPolicy: BidiHostPolicy = .respectTerminal {
          didSet {
-@@ -1014,6 +1107,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1014,6 +1108,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          set {
              cursorColorIsDefault = false
              caretView.caretColor = newValue
@@ -1922,7 +1934,7 @@
          }
      }
  
-@@ -1024,6 +1121,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1024,6 +1122,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          set {
              cursorTextColorIsDefault = newValue == nil
              caretView.caretTextColor = newValue
@@ -1932,7 +1944,7 @@
          }
      }
  
-@@ -1189,6 +1289,17 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1189,6 +1290,17 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      /// `.explicit` = OSC 8 only, `.implicit` = explicit + implicit fallback, `.none` = off.
      public var linkReporting: LinkReporting = .implicit
  
@@ -1950,7 +1962,7 @@
      /// Controls link highlighting and link activation behavior.
      public var linkHighlightMode: LinkHighlightMode = .hoverWithModifier {
          didSet {
-@@ -1241,6 +1352,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1241,6 +1353,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          NSGraphicsContext.current?.cgContext
      }
      
@@ -1960,7 +1972,7 @@
      override public func draw (_ dirtyRect: NSRect) {
  #if canImport(MetalKit)
          if metalView != nil {
-@@ -1250,6 +1364,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1250,6 +1365,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          guard let currentContext = getCurrentGraphicsContext() else {
              return
          }
@@ -1968,7 +1980,7 @@
          drawTerminalContents (dirtyRect: dirtyRect, context: currentContext, bufferOffset: terminal.displayBuffer.yDisp)
      }
      
-@@ -1524,7 +1639,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1524,7 +1640,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          super.flagsChanged(with: event)
      }
      
@@ -1977,7 +1989,7 @@
          turnOffUrlPreview()
          if linkHighlightMode == .hover || linkHighlightMode == .hoverWithModifier {
              let oldRange = linkHighlightRange
-@@ -2903,7 +3018,11 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -2903,7 +3019,11 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
              }
          case 2:
              let displayBuffer = terminal.displayBuffer
@@ -1990,7 +2002,7 @@
  
          default:
              // 3 and higher
-@@ -3190,7 +3309,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -3190,7 +3310,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          didSet { scrollSensitivity = max(0.05, scrollSensitivity) }
      }
  
@@ -1999,7 +2011,7 @@
          // Preserves the previous `deltaY == 0` early exit, restated against the
          // delta this method now reads. Without it a zero delta would fall into
          // the non-precise branch below and be turned into a spurious -1 line.
-@@ -3276,13 +3395,19 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -3276,13 +3396,19 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      {
          // Recompute metrics and redraw, but unlike the font setter do not
          // clear the active selection

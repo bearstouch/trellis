@@ -1056,7 +1056,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     }
 
     /// Lowest contrast for text whose color pair involves a 256-color index (16...255); 0 is off.
-    /// True-color foregrounds and pairs of only ANSI 0-15 and default colors are never adjusted.
+    /// True-color foregrounds are never adjusted. Pairs of only ANSI 0-15 and default colors
+    /// are adjusted only below 1.5:1, where the text would be nearly invisible.
     public var minimumPaletteContrast: Double = 0 {
         didSet { if minimumPaletteContrast != oldValue { colorsChanged() } }
     }

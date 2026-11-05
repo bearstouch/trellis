@@ -53,14 +53,79 @@ final class LightThemePaletteTests: XCTestCase {
     }
 
     @MainActor
-    func testTrueColorAndBaseColorPairsAreNeverAdjusted() throws {
+    func testTrueColorIsNeverAdjusted() throws {
         let theme = try palette("trellis-github-light")
-        let (native, view) = try terminal(theme, "\u{1b}[38;2;250;250;250;48;5;234mT\u{1b}[0m\u{1b}[48;2;28;28;28;38;2;30;30;30mU\u{1b}[0m\u{1b}[30mB\u{1b}[0m")
+        let (native, view) = try terminal(theme, "\u{1b}[38;2;250;250;250;48;5;234mT\u{1b}[0m\u{1b}[48;2;28;28;28;38;2;30;30;30mU\u{1b}[0m")
         defer { native.adapter.detach() }
         XCTAssertEqual(try rgb(run(at: 0, in: view).foregroundColor), 0xFAFAFA)
         XCTAssertEqual(try rgb(run(at: 1, in: view).backgroundColor), 0x1C1C1C)
         XCTAssertEqual(try rgb(run(at: 1, in: view).foregroundColor), 0x1E1E1E)
-        XCTAssertEqual(try rgb(run(at: 2, in: view).foregroundColor), theme.ansi[0], "ANSI 0-15 are the theme's own")
+    }
+
+    @MainActor
+    func testNearlyInvisibleBaseColorPairsAreLiftedOnEveryLightTheme() throws {
+        for family in BundledThemes.families {
+            let theme = try palette("trellis-\(family)-light")
+            // Black on default, default on white, default on bright white, bright white on white.
+            let (native, view) = try terminal(theme, "\u{1b}[30mA\u{1b}[0m\u{1b}[47mB\u{1b}[0m\u{1b}[107mC\u{1b}[0m\u{1b}[97;47mD\u{1b}[0m")
+            defer { native.adapter.detach() }
+            XCTAssertGreaterThanOrEqual(try contrast(rgb(run(at: 0, in: view).foregroundColor), theme.background), 4.45, "\(family): 30 on default")
+            for column in 1...3 {
+                let cell = try run(at: column, in: view)
+                XCTAssertGreaterThanOrEqual(try contrast(rgb(cell.foregroundColor), rgb(cell.backgroundColor)), 4.45, "\(family): column \(column)")
+            }
+        }
+    }
+
+    @MainActor
+    func testReadableBaseColorsAndSameIndexPairsKeepTheThemesExactValues() throws {
+        for family in BundledThemes.families {
+            let theme = try palette("trellis-\(family)-light")
+            let (native, view) = try terminal(theme, "\u{1b}[31mA\u{1b}[0m\u{1b}[94mB\u{1b}[0m\u{1b}[37;47mC\u{1b}[0m\u{1b}[30;40mD\u{1b}[0mE")
+            defer { native.adapter.detach() }
+            XCTAssertEqual(try rgb(run(at: 0, in: view).foregroundColor), theme.ansi[1], family)
+            XCTAssertEqual(try rgb(run(at: 1, in: view).foregroundColor), theme.ansi[12], family)
+            XCTAssertEqual(try rgb(run(at: 2, in: view).foregroundColor), theme.ansi[7], "\(family): hidden on purpose")
+            XCTAssertEqual(try rgb(run(at: 3, in: view).foregroundColor), theme.ansi[0], "\(family): hidden on purpose")
+            XCTAssertEqual(try rgb(run(at: 4, in: view).foregroundColor), theme.foreground, family)
+        }
+    }
+
+    @MainActor
+    func testDarkTerminalsAndTrueColorBackgroundsKeepBaseColors() throws {
+        let dark = try palette("trellis-github-dark")
+        let (darkNative, darkView) = try terminal(dark, "\u{1b}[30mA\u{1b}[0m")
+        defer { darkNative.adapter.detach() }
+        XCTAssertEqual(try rgb(run(at: 0, in: darkView).foregroundColor), dark.ansi[0], "no lift on dark terminals")
+        let light = try palette("trellis-github-light")
+        let (native, view) = try terminal(light, "\u{1b}[48;2;28;28;28mA\u{1b}[0m")
+        defer { native.adapter.detach() }
+        XCTAssertEqual(try rgb(run(at: 0, in: view).foregroundColor), light.foreground, "a true-color pair stays as sent")
+    }
+
+    @MainActor
+    func testBoxLinesFollowBaseColorTextButOtherShapesKeepTheirColor() throws {
+        let theme = try palette("trellis-github-light")
+        // Box line, Powerline separator and half block, each in default text on ANSI white.
+        let (native, view) = try terminal(theme, "\u{1b}[47m\u{2502}\u{E0B0}\u{2580}\u{1b}[0m")
+        defer { native.adapter.detach() }
+        let line = try run(at: 0, in: view)
+        XCTAssertGreaterThanOrEqual(try contrast(rgb(line.foregroundColor), rgb(line.backgroundColor)), 4.45, "a frame stays visible")
+        XCTAssertEqual(try rgb(run(at: 2, in: view).foregroundColor), theme.foreground, "a block keeps its color")
+    }
+
+    @MainActor
+    func testBaseColorLiftFollowsInverseAndScreenReverse() throws {
+        let theme = try palette("trellis-github-light")
+        let (native, view) = try terminal(theme, "\u{1b}[7;30mA\u{1b}[0m\u{1b}[7mB\u{1b}[0m")
+        defer { native.adapter.detach() }
+        let lifted = try run(at: 0, in: view), plain = try run(at: 1, in: view)
+        XCTAssertGreaterThanOrEqual(try contrast(rgb(lifted.foregroundColor), rgb(lifted.backgroundColor)), 4.45, "reversed black")
+        XCTAssertEqual(try rgb(plain.backgroundColor), theme.foreground, "plain reverse video keeps the swapped pair")
+        XCTAssertEqual(try rgb(plain.foregroundColor), theme.background)
+        native.adapter.receive(Data("\u{1b}[?5h".utf8))
+        let screen = try run(at: 0, in: view)
+        XCTAssertGreaterThanOrEqual(try contrast(rgb(screen.foregroundColor), rgb(screen.backgroundColor)), 4.45, "DECSCNM doesn't reuse stale colors")
     }
 
     @MainActor
