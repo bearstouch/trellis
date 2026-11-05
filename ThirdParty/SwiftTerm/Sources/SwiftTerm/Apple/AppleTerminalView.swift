@@ -876,7 +876,13 @@ extension TerminalView {
 
     public func setBackgroundColor(source: Terminal, color: Color) {
         // Can not implement this until I change the color to not be this struct
+        // Trellis: keep the host's background opacity when a program sets the color (OSC 11).
+        // macOS only: iOS parks a clear nativeBackgroundColor in setupOptions, whose alpha must not carry over.
+        #if os(macOS)
+        nativeBackgroundColor = TTColor.make (color: color).withAlphaComponent (_nativeBg?.cgColor.alpha ?? 1)
+        #else
         nativeBackgroundColor = TTColor.make (color: color)
+        #endif
         colorsChanged()
     }
     

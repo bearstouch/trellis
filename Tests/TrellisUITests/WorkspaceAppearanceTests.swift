@@ -34,4 +34,54 @@ final class WorkspaceAppearanceTests: XCTestCase {
         restored.zoomTerminalFont(by: 0, reset: true)
         XCTAssertEqual(restored.appearance.fontSize, 13)
     }
+    @MainActor
+    func testTranslucentBackgroundFollowsAccessibilityAndConfiguresTheWindow() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-translucency-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
+        _ = await model.loadWorkspace()
+        await model.createWindow(startSession: false)
+        let native = try XCTUnwrap(model.activeTerminal)
+        var windowStates: [Bool] = []
+        model.onWindowTranslucencyChanged = { windowStates.append($0) }
+        var settings = model.appearance
+        settings.backgroundOpacity = 0.3
+        XCTAssertFalse(
+            model.applyAppearance(
+                {
+                    var bad = settings; bad.backgroundOpacity = 0.1; return bad
+                }()))
+        XCTAssertEqual(model.effectiveBackgroundOpacity, 1, "A rejected opacity changes nothing")
+        XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertEqual(model.effectiveBackgroundOpacity, 0.3)
+        XCTAssertTrue(model.effectiveBackgroundBlur)
+        XCTAssertEqual(native.backgroundOpacity, 0.3)
+        settings.backgroundOpacity = 0.7
+        XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertEqual(native.backgroundOpacity, 0.7)
+        XCTAssertEqual(windowStates, [true], "Only the opaque/translucent switch reconfigures the window")
+        // Reduce Transparency and Increase Contrast keep panes opaque without changing the saved setting.
+        model.accessibilityDisplayOptionsDidChange(increaseContrast: false, reduceMotion: false, reduceTransparency: true)
+        XCTAssertEqual(model.effectiveBackgroundOpacity, 1)
+        XCTAssertFalse(model.effectiveBackgroundBlur)
+        XCTAssertEqual(native.backgroundOpacity, 1)
+        XCTAssertEqual(model.appearance.backgroundOpacity, 0.7)
+        model.accessibilityDisplayOptionsDidChange(increaseContrast: true, reduceMotion: false, reduceTransparency: false)
+        XCTAssertEqual(native.backgroundOpacity, 1)
+        model.accessibilityDisplayOptionsDidChange(increaseContrast: false, reduceMotion: false, reduceTransparency: false)
+        XCTAssertEqual(model.effectiveBackgroundOpacity, 0.7)
+        XCTAssertEqual(native.backgroundOpacity, 0.7)
+        XCTAssertEqual(windowStates, [true, false, true])
+        settings.backgroundBlur = false
+        XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertFalse(model.effectiveBackgroundBlur)
+        let saved = await model.flushWorkspaceSave()
+        XCTAssertTrue(saved)
+        let restored = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
+        _ = await restored.loadWorkspace()
+        XCTAssertEqual(restored.appearance.backgroundOpacity, 0.7)
+        XCTAssertEqual(restored.effectiveBackgroundOpacity, 0.7)
+        XCTAssertEqual(try XCTUnwrap(restored.activeTerminal).backgroundOpacity, 0.7)
+    }
 }

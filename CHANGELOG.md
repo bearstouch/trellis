@@ -9,11 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Welcome tour:** a fresh install opens with a short eight-step tour of windows, sessions, projects, remote work, agents and shortcuts. Its last step sets the appearance, the command line tool and whether sessions keep running after quit. Replay it from **Help → Welcome Tour** or the command palette.
+- **Translucent panes:** Settings → Appearance → **Background opacity** (30–100 %) lets the desktop show through the terminal background, with an optional **Blur behind background**. Text, colors, selections and the sidebar and tabs stay opaque, and panes stay opaque while Reduce Transparency or Increase Contrast is on.
 - **Drop files on a pane:** dragging files from Finder onto a terminal pane inserts their escaped paths at the prompt, for every file type.
 
 ### Changed
 
 - **Trellis Light:** the terminal is now white, with black text and a matching palette, instead of dark. Custom light themes with no terminal colors follow it; those that set terminal colors keep a dark terminal unless they set a light background or dark text. Use another theme, such as My Light from the examples, for dark panes under light chrome.
+- **Pane padding:** terminals now have an 8 pt margin on every side, and the part of a row that doesn't fit is split evenly above and below the rows, so the top and bottom padding always match. Rows were pinned to the bottom before, leaving a varying gap under the pane header.
 - **Focused pane:** with several panes visible, the focused pane's header gets an accent line and tint, and the other panes are slightly dimmed. Nothing is dimmed while the window is inactive or with Increase Contrast on.
 
 ### Fixed

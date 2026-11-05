@@ -7,7 +7,7 @@ import SwiftTerm
 
 final class AppShellTests: XCTestCase {
     @MainActor
-    func testTerminalGridStaysAgainstBottomAcrossResizeAndFontChanges() throws {
+    func testTerminalGridIsCenteredAcrossResizeAndFontChanges() throws {
         _ = NSApplication.shared
         let native = NativeTerminal()
         let terminal = try XCTUnwrap(native.view as? TerminalView)
@@ -22,7 +22,9 @@ final class AppShellTests: XCTestCase {
                 terminal.frame = container.bounds
                 let rows = terminal.getTerminal().rows
                 container.layout()
-                XCTAssertEqual(terminal.frame.minY, container.bounds.minY)
+                let above = container.bounds.maxY - terminal.frame.maxY, below = terminal.frame.minY - container.bounds.minY
+                XCTAssertGreaterThanOrEqual(below, 0)
+                XCTAssertEqual(above, below, accuracy: 1.01, "the remainder of a row is split evenly")
                 XCTAssertEqual(terminal.frame.height, terminal.getOptimalFrameSize().height, accuracy: 0.002)
                 XCTAssertEqual(terminal.getTerminal().rows, rows)
                 container.layout()
@@ -135,11 +137,43 @@ final class AppShellTests: XCTestCase {
         container.display(second.view)
         XCTAssertNil(first.view.superview)
         XCTAssertTrue(second.view.superview === container)
-        XCTAssertEqual(container.subviews.count, 1)
+        XCTAssertEqual(container.subviews.filter { $0 !== container.gapAbove && $0 !== container.gapBelow }.count, 1)
         XCTAssertEqual(second.view.frame, container.bounds)
         container.display(first.view)
         XCTAssertTrue(first.view.superview === container)
         XCTAssertNil(second.view.superview)
+    }
+
+    /// FR-TH10: the strips above and below the rows take the terminal's background, opacity included,
+    /// and follows palette changes, so a translucent pane shows no band at the top.
+    @MainActor
+    func testStripsAroundTerminalRowsFollowTheTerminalBackground() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        var settings = AppearanceSettings()
+        settings.backgroundOpacity = 0.5
+        native.applyAppearance(settings)
+        native.applyPalette(.builtIn)
+        let grid = try XCTUnwrap(native.view as? TerminalView)
+        let rowHeight = grid.getOptimalFrameSize().height / CGFloat(grid.getTerminal().rows)
+        let container = TerminalContainerView(frame: NSRect(x: 0, y: 0, width: 600, height: (rowHeight * 10).rounded(.down) + rowHeight / 2))
+        container.display(native.view)
+        container.layout()
+        let (above, below) = (container.gapAbove, container.gapBelow)
+        XCTAssertFalse(above.isHidden)
+        XCTAssertFalse(below.isHidden)
+        XCTAssertEqual(below.frame.minY, container.bounds.minY, accuracy: 0.01)
+        XCTAssertEqual(below.frame.maxY, native.view.frame.minY, accuracy: 0.01)
+        XCTAssertEqual(above.frame.minY, native.view.frame.maxY, accuracy: 0.01)
+        XCTAssertEqual(above.frame.maxY, container.bounds.maxY, accuracy: 0.01)
+        XCTAssertEqual(above.frame.height, below.frame.height, accuracy: 1.01)
+        func color(_ gap: NSView) throws -> NSColor { try XCTUnwrap(gap.layer?.backgroundColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) }) }
+        for gap in [above, below] { XCTAssertEqual(try color(gap).alphaComponent, 0.5, accuracy: 0.01) }
+        native.applyPalette(.builtInLight)
+        for gap in [above, below] {
+            XCTAssertEqual(try color(gap).redComponent, 1, accuracy: 0.01, "follows a theme change without a relayout")
+            XCTAssertEqual(try color(gap).alphaComponent, 0.5, accuracy: 0.01)
+        }
     }
 
     @MainActor
