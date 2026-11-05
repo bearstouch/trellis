@@ -22,7 +22,19 @@ let package = Package(
     dependencies: [
         .package(path: "ThirdParty/SwiftTerm"),
         // MAC-14: in-place updates. Linked only by the app target; packaging embeds Sparkle.framework.
-        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+        // FR-TD11: tree-sitter highlighting for the tool dock's editor, used only by TrellisHighlight. Neon has no
+        // recent tag and pulls SwiftTreeSitter's main branch, so both are pinned by revision; the Swift grammar's
+        // generated parser exists only on its with-generated-files branch.
+        .package(url: "https://github.com/ChimeHQ/Neon", revision: "38cf4a6a05a6aa1e038b65a16f773c77d4145efc"),
+        .package(url: "https://github.com/alex-pinkus/tree-sitter-swift", revision: "82bb3a533e0801fd2bbaa11dc49676e10bf41948"),
+        .package(url: "https://github.com/tree-sitter/tree-sitter-json", exact: "0.24.8"),
+        .package(url: "https://github.com/tree-sitter-grammars/tree-sitter-markdown", exact: "0.5.4"),
+        .package(url: "https://github.com/tree-sitter/tree-sitter-bash", exact: "0.25.1"),
+        .package(url: "https://github.com/tree-sitter/tree-sitter-typescript", exact: "0.23.2"),
+        .package(url: "https://github.com/tree-sitter/tree-sitter-html", exact: "0.23.2"),
+        // JavaScript and YAML, vendored because their manifests drop scanner.c (see its README).
+        .package(path: "ThirdParty/TreeSitterGrammars")
     ],
     targets: [
         .target(name: "TrellisAskpass"),
@@ -35,7 +47,17 @@ let package = Package(
         .target(name: "TrellisTerminal", dependencies: ["TrellisCore", "TrellisPOSIX", "TrellisBroker", "SwiftTerm"]),
         .target(name: "TrellisControl", dependencies: ["TrellisCore"]),
         .target(name: "TrellisMCP", dependencies: ["TrellisControl", "TrellisCore"]),
-        .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl"]),
+        // The only module that imports Neon, SwiftTreeSitter and the grammars.
+        .target(
+            name: "TrellisHighlight",
+            dependencies: [
+                "TrellisCore", .product(name: "Neon", package: "Neon"),
+                .product(name: "TreeSitterSwift", package: "tree-sitter-swift"), .product(name: "TreeSitterJSON", package: "tree-sitter-json"),
+                .product(name: "TreeSitterMarkdown", package: "tree-sitter-markdown"), .product(name: "TreeSitterBash", package: "tree-sitter-bash"),
+                .product(name: "TreeSitterTypeScript", package: "tree-sitter-typescript"), .product(name: "TreeSitterHTML", package: "tree-sitter-html"),
+                .product(name: "TreeSitterJavaScript", package: "TreeSitterGrammars"), .product(name: "TreeSitterYAML", package: "TreeSitterGrammars"),
+            ]),
+        .target(name: "TrellisUI", dependencies: ["TrellisCore", "TrellisTerminal", "TrellisControl", "TrellisHighlight"]),
         .executableTarget(
             name: "TrellisApp", dependencies: ["TrellisUI", "TrellisTerminal", "TrellisControl", "TrellisMCP", "TrellisRelease", .product(name: "Sparkle", package: "Sparkle")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
@@ -45,6 +67,7 @@ let package = Package(
         .executableTarget(name: "TrellisCLIMain", dependencies: ["TrellisCLI"]),
         .testTarget(name: "TrellisCoreTests", dependencies: ["TrellisCore", "TrellisAskpass"]),
         .testTarget(name: "TrellisUITests", dependencies: ["TrellisUI", "TrellisCore", "TrellisControl", "TrellisMCP", "TrellisAskpass"]),
+        .testTarget(name: "TrellisHighlightTests", dependencies: ["TrellisHighlight", "TrellisCore"]),
         .testTarget(name: "TrellisTerminalTests", dependencies: ["TrellisTerminal"]),
         .testTarget(name: "TrellisControlTests", dependencies: ["TrellisControl", "TrellisCore"]),
         .testTarget(name: "TrellisMCPTests", dependencies: ["TrellisMCP", "TrellisControl", "TrellisCore"]),
