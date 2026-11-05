@@ -14,7 +14,7 @@ swift --version        # Apple Swift version 6.2 or later
 swift format --version
 ```
 
-You don't need an Apple Developer account, Homebrew packages or a package-manager bootstrap. SwiftTerm is vendored. The first `swift build` fetches Sparkle, the one remote package (pinned in `Package.resolved`); after that, builds work offline.
+You don't need an Apple Developer account, Homebrew packages or a package-manager bootstrap. SwiftTerm is vendored. The first `swift build` fetches the remote packages (Sparkle, Neon, SwiftTreeSitter and the tree-sitter grammars, pinned in `Package.resolved`); after that, builds work offline.
 
 ## Clone, build, run
 

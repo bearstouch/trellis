@@ -49,8 +49,8 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .build
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'ThirdParty/SwiftTerm/Package.swift') }}-${{ github.sha }}
-          restore-keys: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'ThirdParty/SwiftTerm/Package.swift') }}-
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved', 'ThirdParty/SwiftTerm/Package.swift', 'ThirdParty/TreeSitterGrammars/Package.swift') }}-${{ github.sha }}
+          restore-keys: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved', 'ThirdParty/SwiftTerm/Package.swift', 'ThirdParty/TreeSitterGrammars/Package.swift') }}-
 
       - name: Lint
         run: |
@@ -60,8 +60,8 @@ jobs:
       - name: Build
         run: |
           swift build 2>&1 | tee build.log
-          # Project sources must stay warning-free; the vendored engine is excluded.
-          if grep -E '/Sources/[^ ]*: warning:' build.log | grep -v '/ThirdParty/'; then
+          # Project sources must stay warning-free; vendored code and fetched packages (.build/checkouts) are excluded.
+          if grep -E '/Sources/[^ ]*: warning:' build.log | grep -v -e '/ThirdParty/' -e '/.build/checkouts/'; then
             echo "::error::Build produced warnings in project sources"; exit 1
           fi
 

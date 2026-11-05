@@ -53,6 +53,7 @@ Always run format + lint + build + test before committing.
 | `TrellisCore` | Engine-independent domain: `WorkspaceStore` (actor, authoritative model), `WorkspaceCommandService` (single mutation path), persistence (`WorkspacePersistence` actor), session lifecycle/closure policy, paste review, themes (`ThemeDocument`, `ThemeJSON`, `ThemeLibrary` actor), appearance settings. Bundled `Resources/Themes`. |
 | `TrellisPOSIX` | Small C target (`spawn.c`) for PTY/process-group spawning. |
 | `TrellisBroker` / `TrellisBrokerMain` | `trellis-broker` helper (FR-R03, FR-R07), on by default: owns the PTYs of sessions kept after quit, their replay ring and the owner-only AF_UNIX protocol. Depends only on `TrellisPOSIX`. |
+| `TrellisHighlight` | Tree-sitter highlighting for the tool dock's editor (`CodeHighlighter`); the only module that imports Neon, SwiftTreeSitter and the grammars. |
 | `TrellisTerminal` | SwiftTerm-specific code only: `NativeTerminal`, `AccessibleTerminalView`, `PTYProcess`, scrollback, search, selection bookmarks, terminal appearance. |
 | `TrellisUI` | SwiftUI/AppKit views and `AppWorkspaceModel` (`@MainActor` `ObservableObject` bridging store ↔ views ↔ terminals). |
 | `TrellisControl` | Local automation: AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, auth-gated `ControlHandler`. |
@@ -127,7 +128,7 @@ are recorded as **pending**, never as passed. Document blockers instead of fakin
 - `--fixture` runs a fixed shell that exits with code 7; the window stays inspectable.
 - `scripts/run-feasibility.sh` copies the SwiftPM resource bundles (`SwiftTerm_SwiftTerm`,
   `Trellis_TrellisCore`) into the app; a new target with resources must be added there too.
-  It also copies and signs the bundled helpers (`trellis-askpass`, `trellis-broker`); a new helper
+  It also copies the tree-sitter grammar bundles (`TreeSitter*.bundle`, highlight queries). It also copies and signs the bundled helpers (`trellis-askpass`, `trellis-broker`); a new helper
   goes there, in both packaging scripts and in `release/manifest.json`.
 - `trellis-broker` also runs on remote Linux/macOS hosts (remote workspaces, FR-RW): keep `TrellisPOSIX` and
   `TrellisBroker` portable (`#if canImport(Darwin)`/`Glibc`/`Musl`, FoundationEssentials, no NSString paths) and check

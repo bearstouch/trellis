@@ -45,6 +45,11 @@ def main():
         shutil.copytree(products / "SwiftTerm_SwiftTerm.bundle", resources)
         theme_resources = built / "Trellis_TrellisCore.bundle"
         shutil.copytree(products / "Trellis_TrellisCore.bundle", theme_resources)
+        # The tool dock's tree-sitter grammar bundles (FR-TD11).
+        grammars = sorted(path.name for path in products.glob("TreeSitter*.bundle"))
+        assert grammars, "the build has no tree-sitter grammar bundles"
+        for name in grammars:
+            shutil.copytree(products / name, built / name)
         sparkle = built / "Sparkle.framework"
         shutil.copytree(products / "Sparkle.framework", sparkle, symlinks=True)
         shader = resources / "Shaders.metal"
@@ -88,6 +93,8 @@ def main():
                 assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/Fonts/{face}.ttf").is_file(), f"assembled app has no bundled {face}"
             for script in ("zsh/.zshenv", "bash/trellis.bash", "fish/vendor_conf.d/trellis-shell-integration.fish"):
                 assert (destination / f"Contents/Resources/Trellis_TrellisCore.bundle/ShellIntegration/{script}").is_file(), f"assembled app has no {script}"
+            for name in grammars:
+                assert (destination / "Contents/Resources" / name).is_dir(), f"assembled app has no {name}"
             assert digest(destination / "Contents/Resources/AppIcon.icns") == digest(icon)
             framework = destination / "Contents/Frameworks/Sparkle.framework"
             assert (framework / "Versions/B/Sparkle").is_file(), "assembled app has no Sparkle.framework"

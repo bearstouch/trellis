@@ -47,7 +47,7 @@ for product in Trellis trellis-cli trellis-askpass trellis-broker; do
     /usr/bin/lipo -create "$arm/$product" "$intel/$product" -output "$bin/$product"
 done
 # Resource bundles are architecture-independent; Sparkle's framework is already Universal 2.
-cp -R "$arm/SwiftTerm_SwiftTerm.bundle" "$arm/Trellis_TrellisCore.bundle" "$bin/"
+cp -R "$arm/SwiftTerm_SwiftTerm.bundle" "$arm/Trellis_TrellisCore.bundle" "$arm"/TreeSitter*.bundle "$bin/"
 /usr/bin/ditto "$arm/Sparkle.framework" "$bin/Sparkle.framework"
 
 app="$dist/Trellis.app"
@@ -64,12 +64,13 @@ if [ -f "$remote_helpers/remote-helpers.json" ]; then
 else
     echo "package-release: no Linux remote helpers in $remote_helpers; this build supports only macOS remote hosts" >&2
 fi
-cp -R "$bin/SwiftTerm_SwiftTerm.bundle" "$bin/Trellis_TrellisCore.bundle" "$app/Contents/Resources/"
+# The tool dock's grammar bundles hold the highlight queries (FR-TD11).
+cp -R "$bin/SwiftTerm_SwiftTerm.bundle" "$bin/Trellis_TrellisCore.bundle" "$bin"/TreeSitter*.bundle "$app/Contents/Resources/"
 /usr/bin/ditto "$bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
 rm -rf "$bin"
 cp Design/AppIcon/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
-cp ThirdParty/SwiftTerm-LICENSE.txt "$app/Contents/Resources/SwiftTerm-LICENSE.txt"
-cp ThirdParty/Sparkle-LICENSE.txt "$app/Contents/Resources/Sparkle-LICENSE.txt"
+# Every dependency's license (SwiftTerm, Sparkle, Neon, SwiftTreeSitter, tree-sitter and its grammars), as recorded in release/manifest.json.
+cp ThirdParty/*-LICENSE.txt "$app/Contents/Resources/"
 if [ -n "$sparkle_key" ]; then
     updates="<key>SUFeedURL</key><string>$feed_url</string>
 <key>SUPublicEDKey</key><string>$sparkle_key</string>

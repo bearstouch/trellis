@@ -1,6 +1,6 @@
 # Architecture
 
-Trellis is native Swift: SwiftUI draws the application chrome, and AppKit hosts the terminal surface and the native responder chain. There's no webview. The package targets macOS 14 and builds in Swift 6 language mode with strict concurrency. Its external dependencies are the vendored `ThirdParty/SwiftTerm` and Sparkle (automatic updates, pinned exactly and fetched by SwiftPM, used only by the app target).
+Trellis is native Swift: SwiftUI draws the application chrome, and AppKit hosts the terminal surface and the native responder chain. There's no webview. The package targets macOS 14 and builds in Swift 6 language mode with strict concurrency. Its external dependencies are the vendored `ThirdParty/SwiftTerm`; Sparkle (automatic updates, pinned exactly and fetched by SwiftPM, used only by the app target); and Neon, SwiftTreeSitter and tree-sitter grammars (the tool dock's highlighting, used only by `TrellisHighlight`; two grammars are vendored in `ThirdParty/TreeSitterGrammars`).
 
 ## Modules
 
@@ -11,6 +11,8 @@ flowchart TD
     UI[TrellisUI<br/>views, AppWorkspaceModel, AutomationService] --> Terminal
     UI --> Control
     UI --> Core
+    UI --> Highlight[TrellisHighlight<br/>tree-sitter highlighting]
+    Highlight --> Neon[(Neon, SwiftTreeSitter,<br/>grammars)]
     Terminal[TrellisTerminal<br/>SwiftTerm adapter, PTYProcess] --> Core
     Terminal --> POSIX[TrellisPOSIX<br/>spawn.c]
     Terminal --> SwiftTerm[(SwiftTerm 1.20.0<br/>vendored)]
@@ -28,6 +30,7 @@ flowchart TD
 | `TrellisCore` | Domain logic that doesn't depend on the terminal engine. Bundles `Resources/Themes`. | `WorkspaceStore` (actor), `WorkspaceCommand`, `WorkspaceCommandService`, `WorkspacePersistence`, `LocalSessionController`, `LocalLaunchValidator`, `SessionClosureCoordinator`, `HostLibrary`, `SavedHost`, `LayoutPlanner`, `ThemeLibrary`, `ThemeValidator`, `LinkPolicy`, `SecretRedactor`, `OutputJournal`, `ScrollbackBudget` |
 | `TrellisPOSIX` | A small C target for PTY spawning and process identity | `trellis_spawn_pty`, `trellis_read_process_identity` |
 | `TrellisTerminal` | All SwiftTerm-specific code. **The only module that imports SwiftTerm.** | `NativeTerminal`, `PTYProcess`, `AccessibleTerminalView`, `TerminalScrollback`, `PaneTextSearch`, `TerminalSelectionBookmark`, `TerminalAppearance` |
+| `TrellisHighlight` | Tree-sitter highlighting for the tool dock's editor. **The only module that imports Neon, SwiftTreeSitter and the grammars.** | `CodeHighlighter`, `CaptureColors` |
 | `TrellisControl` | The local automation server | `ControlServer`, `ControlEndpoint`, `ControlSession`, `ControlFramer`, `AuthorizingControlHandler`, `AuthorizationPolicy`, `GrantStore`, `KeychainGrantSecretStore`, `EventHub`, `LayoutJSON`, `PortableDocument` |
 | `TrellisMCP` | The optional MCP server: an HTTP transport over the same authorizer ([MCP server](../api/mcp.md)) | `MCPServer`, `MCPListener`, `MCPEndpoint`, `MCPTools`, `HTTPRequestParser` |
 | `TrellisUI` | SwiftUI and AppKit views, and the bridge between the store, the views and the terminals | `AppWorkspaceModel` (`@MainActor ObservableObject`), `AutomationService`, `WorkspaceRootView`, `PaneTreeView`, `HostListModel`, `DiagnosticsExporter`, `PortableTransfer`, settings views |

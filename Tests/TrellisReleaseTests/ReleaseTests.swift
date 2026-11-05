@@ -17,7 +17,13 @@ final class ReleaseTests: XCTestCase {
         XCTAssertTrue(manifest.artifacts.contains("Trellis.app/Contents/Helpers/trellis-broker"), "The keep-running session broker is bundled")
         XCTAssertTrue(UninstallPlanner.firstStep.contains("trellis-broker"), "Uninstalling first ends kept sessions")
         XCTAssertEqual(UninstallPlanner.keychainServices, ["Trellis Automation", "Trellis SSH Host"], "Uninstall lists every Keychain service")
-        XCTAssertEqual(manifest.dependencies.map(\.license), ["MIT", "MIT"] + Array(repeating: "OFL-1.1", count: 6) + ["MIT", "MIT", "BSD-3-Clause"], "Plus musl, mimalloc and musl-fts in the Linux remote helpers")
+        XCTAssertEqual(
+            manifest.dependencies.map(\.license),
+            ["MIT", "MIT"]
+                // The tool dock's highlighting: Neon, SwiftTreeSitter, Rearrange, then tree-sitter and its eight grammars (FR-TD11).
+                + Array(repeating: "BSD-3-Clause", count: 3) + Array(repeating: "MIT", count: 9)
+                + Array(repeating: "OFL-1.1", count: 6) + ["MIT", "MIT", "BSD-3-Clause"],
+            "Plus musl, mimalloc and musl-fts in the Linux remote helpers")
         // Package.swift's deployment target must match the release policy.
         let package = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)
         let packageMinimum = package.contains(".macOS(.v14)") ? "14.0" : "unknown"

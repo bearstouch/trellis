@@ -4,7 +4,7 @@ The tool dock is a panel beside the panes where you browse the focused pane's pr
 
 The dock sits on the right by default, or on the left, and it belongs to a tab: each tab keeps its own dock. When docking it would make the panes too small, it floats over them instead.
 
-All requirements here are P2 (draft). Nothing on this page is implemented yet. The interactive prototype these requirements came from has frames for editing, browsing, Quick Git, a file changed on disk, splits, a cramped tab and the dock on the left.
+All requirements here are P2 (preview). The Files tool is implemented; what has been verified, and what is still pending in the running app, is in [Status](../overview/status.md). The interactive prototype these requirements came from has frames for editing, browsing, Quick Git, a file changed on disk, splits, a cramped tab and the dock on the left.
 
 ## Layout
 
@@ -59,25 +59,28 @@ The editor is the scratchpad's `NSTextView`-based editor (`ScratchpadEditor`), g
 - **Licenses:** Neon and SwiftTreeSitter are BSD-3-Clause, the tree-sitter runtime is MIT, and each grammar carries its own license (most are MIT). All fit MIT-licensed Trellis; their notices ship in `Trellis.app/Contents/Resources` and are recorded in `release/manifest.json`, like SwiftTerm's and Sparkle's.
 - **Grammars:** the FR-TD11 languages (Swift, JSON, Markdown, shell, JavaScript, TypeScript, YAML and HTML). Their C sources and highlight queries are vendored into one local package under `ThirdParty/`, with their provenance and licenses, so the build stays reproducible and they ship as one resource bundle.
 - **Pins:** SwiftTreeSitter is pinned to an exact release. Neon's last tagged release is from January 2024 while its main branch is maintained, so it's pinned to an exact revision.
+- **Highlighting only what's shown:** Neon's ready-made `TextViewHighlighter` restyles the whole document after every change. On a 2 MiB Swift file in a spike it took 3.2 s to show the first colors and styled 886,170 tokens, with a 1.5 s pause on one keystroke. Trellis's `CodeHighlighter` uses the same Neon parts but styles only the visible range: 61 ms and 943 tokens on the same file, with highlighting costing about 3 ms a keystroke. Tree-sitter's line and column points come from a line table updated edit by edit.
+- **Packaging:** most grammars are remote SwiftPM packages pinned to exact tags (the Swift grammar by revision, since its generated parser is only on a branch). JavaScript and YAML are vendored in `ThirdParty/TreeSitterGrammars`, because their manifests leave out `scanner.c` and fail to link. All grammars add roughly 10 MB per architecture to the app.
 - **Not chosen:**
     - **CodeEditSourceEditor** (MIT): the richest set of features, but its README says it isn't ready for production, its last release was in September 2025, its grammar package has no licence file and ships as a 33 MB prebuilt framework, and it adds a SwiftLint build plugin.
     - **STTextView** (GPL v3 or a commercial licence): TextKit 2 and actively maintained, with explicit VoiceOver work, but its licence doesn't fit MIT-licensed Trellis without buying the commercial licence, it has one maintainer, and its highlighting plugin pins a forked Neon.
 
 ## Decisions still open
 
-- **Remaining editor checks.** A spike must confirm that Neon and SwiftTreeSitter build warning-free in Swift 6 language mode, that a 2 MiB file stays responsive, and that VoiceOver reads the editor, before the feature is built (see *Editor engine* above).
 - **The scratchpad as a dock tool.** The [scratchpad](scratchpad.md) keeps its own panel (FR-SP01) for now; with the dock on the right, the order is panes, scratchpad, dock, rail. Moving it into the dock as a tool changes FR-SP01 and needs its own change.
 - **Git.** The Git tool (status, staging, commit, push and diffs for the focused pane's repository) gets its own requirements before it's built.
 - **Remote files.** Opening and saving files on a host would need new helper commands and an update to FR-RW12 and the remote known limits.
 
-## Changes to other pages when this ships
+## Related pages
 
-- [Terminal](terminal.md): FR-L02 names the dock as where text files open by default (FR-TD09).
-- [Keyboard and accessibility](keyboard-accessibility.md): the Show Files shortcut, and ⌘S saving the file while the editor has focus.
-- [Status](../overview/status.md): what was verified, with VoiceOver, IME and the native app checks recorded as pending until observed.
+- [Terminal](terminal.md): FR-L02 opens text files in the dock by default (FR-TD09).
+- [Keyboard and accessibility](keyboard-accessibility.md): the Show Files shortcut, and Save while the editor has focus.
 
 ## Known limits
 
 - Unsaved edits are lost if Trellis crashes (FR-TD14 keeps them in memory only).
 - Saving by moving a new file into place gives it a new inode, so a hard link to the old file keeps the old contents, and extended attributes other than the permission bits aren't carried over.
 - One editor per file per tab: the same file open in two tabs has two buffers, and each warns when the other saves (FR-TD13).
+- The tree shows no git letters yet (FR-TD08): FR-PL09's status keeps only counts, never file names.
+- A library project folder isn't used as a root yet (FR-TD06); the work tree, then the pane's directory, are.
+- The tree refreshes open folders once a second while it's shown, rather than through file system events.

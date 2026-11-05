@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Tool dock with Files:** a dock beside the panes, per tab, on the right or left (Settings → Appearance or its ⇄ button), with a file tree that follows the focused pane's project and a quick editor with tree-sitter highlighting. ⌘-clicking a text file's path opens it there at its line; files changed on disk reload or ask, unsaved edits ask before closing, and **Insert Path** types the path at the prompt. When the panes are too narrow it floats over them instead of resizing them. View → **Show Files** (⌥⌘1). Local files only for now.
 - **Welcome tour:** a fresh install opens with a short eight-step tour of windows, sessions, projects, remote work, agents and shortcuts. Its last step sets the appearance, the command line tool and whether sessions keep running after quit. Replay it from **Help → Welcome Tour** or the command palette.
 - **Translucent panes:** Settings → Appearance → **Background opacity** (30–100 %) lets the desktop show through the terminal background, with an optional **Blur behind background**. Text, colors, selections and the sidebar and tabs stay opaque, and panes stay opaque while Reduce Transparency or Increase Contrast is on.
 - **Drop files on a pane:** dragging files from Finder onto a terminal pane inserts their escaped paths at the prompt, for every file type.

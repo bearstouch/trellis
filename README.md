@@ -19,6 +19,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Command palette:** ⇧⌘P opens one searchable list of every action, window, tab, pane, saved host, task and theme.
 - **Directory jump:** ⌘J lists the directories your shells have recently and frequently been in, on this Mac and in remote workspaces. Return goes there in the current pane, or in a new tab if it's busy.
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
+- **Tool dock:** browse the focused pane's project and edit its files with syntax highlighting, without leaving Trellis; ⌘-click a path an agent printed to open it at that line.
 - **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
 - **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.
 - **Updates:** **Trellis → Check for Updates…** installs signed updates in place. Automatic checks and beta versions are opt-in.

@@ -54,6 +54,8 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 PLIST
 cp -R "$bin_path/SwiftTerm_SwiftTerm.bundle" "$bundle/Contents/Resources/"
 cp -R "$bin_path/Trellis_TrellisCore.bundle" "$bundle/Contents/Resources/"
+# Tree-sitter grammar bundles with the tool dock's highlight queries (FR-TD11).
+cp -R "$bin_path"/TreeSitter*.bundle "$bundle/Contents/Resources/"
 cp Design/AppIcon/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 # The app links Sparkle; the Info.plist has no SUFeedURL, so a development bundle never checks for updates (MAC-14).
 /usr/bin/ditto "$bin_path/Sparkle.framework" "$bundle/Contents/Frameworks/Sparkle.framework"

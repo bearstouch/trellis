@@ -30,6 +30,8 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Projects ([FR-PL01](project-library.md)) | ⌘O |
 | Hide / show sidebar | ⌃⌘S |
 | Show / hide the [command scratchpad](scratchpad.md) | ⌥⌘E |
+| Show / hide Files in the [tool dock](tool-dock.md) | ⌥⌘1 |
+| Save the file in the tool dock's editor, while it has focus | ⌘S (whatever Save Workspace is bound to) |
 | Open / close the [command palette](command-palette.md) | ⇧⌘P |
 | [Jump to Directory…](directory-jump.md) | ⌘J |
 | Rename tab, rename window, delete window, show hosts | Unbound by default |

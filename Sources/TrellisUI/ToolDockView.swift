@@ -22,7 +22,7 @@ struct ToolRail: View {
                         }
                 }
                 .buttonStyle(.plain).foregroundStyle(pressed ? model.themeColor(.accent) : model.themeColor(.mutedForeground))
-                .help(model.keyboard.shortcuts[.toggleFiles].map { "\(tool.title) (\($0.description))" } ?? tool.title)
+                .help((model.keyboard.shortcuts[.toggleFiles].map { "\(tool.title) (\($0.description))" } ?? tool.title) + (edited ? " · Edited" : ""))
                 .accessibilityLabel(tool.title).accessibilityValue(edited ? "Edited" : "")
                 .accessibilityAddTraits(pressed ? [.isSelected] : [])
             }
@@ -176,6 +176,7 @@ struct FileTreeView: View {
     let tabID: UUID
     let root: String
     @StateObject private var tree: FileTreeModel
+    @FocusState private var filterFocused: Bool
 
     init(model: AppWorkspaceModel, tabID: UUID, root: String) {
         self.model = model; self.tabID = tabID; self.root = root
@@ -189,7 +190,7 @@ struct FileTreeView: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
                 TextField("Filter files", text: Binding(get: { state.filter }, set: { model.setToolDockFilter($0, tabID: tabID) }))
-                    .textFieldStyle(.plain).accessibilityLabel("Filter files")
+                    .textFieldStyle(.plain).accessibilityLabel("Filter files").focused($filterFocused)
             }
             .font(.system(size: 12)).padding(.horizontal, 8).padding(.vertical, 4)
             .background(RoundedRectangle(cornerRadius: 6).strokeBorder(model.themeColor(.border)))
@@ -210,9 +211,13 @@ struct FileTreeView: View {
         }
         .onAppear {
             tree.start(); tree.applyFilter(state.filter)
+            if state.activeFile == nil { filterFocused = true }
         }
         .onDisappear { tree.stop() }
         .onChange(of: state.filter) { _, next in tree.applyFilter(next) }
+        // FR-TD01: opening the dock without a file puts focus in the tree; Esc there closes the dock.
+        .onChange(of: model.toolDockFocusRequest) { _, _ in if state.activeFile == nil { filterFocused = true } }
+        .onExitCommand { model.closeToolDock() }
     }
 
     private var truncatedNote: some View {
@@ -227,9 +232,12 @@ struct FileTreeView: View {
     private func rows(in directory: String, depth: Int) -> AnyView {
         let listing = tree.listing(directory)
         return AnyView(
-            ForEach(listing.entries, id: \.path) { entry in
-                row(entry, depth: depth, subtitle: nil)
-                if entry.isDirectory, state.expanded.contains(entry.path) { rows(in: entry.path, depth: depth + 1) }
+            Group {
+                ForEach(listing.entries, id: \.path) { entry in
+                    row(entry, depth: depth, subtitle: nil)
+                    if entry.isDirectory, state.expanded.contains(entry.path) { rows(in: entry.path, depth: depth + 1) }
+                }
+                if listing.truncated { truncatedNote.padding(.leading, CGFloat(depth * 13)) }
             }
         )
     }
