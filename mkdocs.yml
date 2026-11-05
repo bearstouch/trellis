@@ -52,6 +52,7 @@ nav:
       - Tasks: features/tasks.md
       - Coding agents: features/agents.md
       - Command scratchpad: features/scratchpad.md
+      - Tool dock: features/tool-dock.md
       - Command palette: features/command-palette.md
       - Directory jump: features/directory-jump.md
       - Terminal: features/terminal.md

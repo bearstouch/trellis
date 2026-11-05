@@ -1,6 +1,6 @@
 # Architecture
 
-Trellis is native Swift: SwiftUI draws the application chrome, and AppKit hosts the terminal surface and the native responder chain. There's no webview. The package targets macOS 14 and builds in Swift 6 language mode with strict concurrency. Its only external dependency is the vendored `ThirdParty/SwiftTerm`.
+Trellis is native Swift: SwiftUI draws the application chrome, and AppKit hosts the terminal surface and the native responder chain. There's no webview. The package targets macOS 14 and builds in Swift 6 language mode with strict concurrency. Its external dependencies are the vendored `ThirdParty/SwiftTerm` and Sparkle (automatic updates, pinned exactly and fetched by SwiftPM, used only by the app target).
 
 ## Modules
 

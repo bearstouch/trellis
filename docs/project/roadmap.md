@@ -37,6 +37,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Keychain-enforced Touch ID for saved host passwords (`SecAccessControl` with a keychain-access-group entitlement, Developer ID builds) | `FR-H07`, [Saved passwords](../features/ssh-hosts.md#saved-passwords) |
 | P1 | Clipboard API (`clipboard.read`/`clipboard.write` are reserved) | [Authorization](../api/authorization.md#capabilities) |
 | P1 | Per-window, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
+| P2 | Tool dock: a per-tab dock beside the panes, on the left or right, floating over them when they'd get too small, with a file tree that follows the focused pane and a quick editor for local files; Git and other tools join it later (draft, not implemented) | `FR-TD01`–`FR-TD18`, [Tool dock](../features/tool-dock.md) |
 | P2 | Mobile connect: an iPhone and iPad companion paired with the Mac, end-to-end encrypted over the local network or a relay, with agent notifications and answers (draft, not implemented) | `FR-MC01`–`FR-MC16`, [Mobile connect](../features/mobile-connect.md) |
 | P2 | Agent registry: a signed, hosted index of agent definitions in the same schema, browsed and installed from Settings → Agents; automation `agent.list`, `launch.kind: "agent"` and an `agent.state` event; per-agent extra arguments | [Coding agents](../features/agents.md#known-limits) |
 | P2 | tmux awareness, richer terminal protocols, plugins | |

@@ -84,5 +84,6 @@ See [SSH hosts](features/ssh-hosts.md).
 ## Dependencies
 
 - **SwiftTerm** is pinned and vendored, MIT-licensed, and its patches are recorded. See [Terminal engine](architecture/terminal-engine.md).
+- **Sparkle** (automatic updates) is pinned to an exact version, MIT-licensed, and linked only by the app target.
 - **OpenSSH** is the system's own. Use local manual pages and controlled test hosts for integration checks.
 - **Never** test against a user's production hosts or existing sessions during development without explicit instruction.

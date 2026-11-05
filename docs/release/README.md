@@ -116,6 +116,8 @@ Only these combinations have been run. Nothing else is claimed.
 
 SwiftTerm is MIT-licensed. Its license ships as `Trellis.app/Contents/Resources/SwiftTerm-LICENSE.txt`. Its provenance and Trellis's changes to it are in `ThirdParty/SwiftTerm/`.
 
+Sparkle is MIT-licensed. Its license ships as `Trellis.app/Contents/Resources/Sparkle-LICENSE.txt`, and its version and revision are pinned in `release/manifest.json`.
+
 The static Linux remote helpers contain musl libc and mimalloc (both MIT) and musl-fts (BSD-3-Clause); their notices ship beside the helpers in `Trellis.app/Contents/Resources/remote/` (sources and versions in `ThirdParty/RemoteHelpers/`). The Swift runtime, FoundationEssentials and Dispatch they also contain are Apache-2.0 with the Runtime Library Exception, which needs no notice.
 
 The bundled terminal fonts are all licensed under the SIL Open Font License 1.1. Each family's license ships as `Trellis.app/Contents/Resources/<Family>-OFL.txt`, and the font files and a second copy of each license are in `Trellis.app/Contents/Resources/Trellis_TrellisCore.bundle/Fonts`. Exact revisions are pinned in `release/manifest.json`.
