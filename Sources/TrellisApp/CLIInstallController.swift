@@ -1,6 +1,7 @@
 import AppKit
 import TrellisCore
 import TrellisRelease
+import TrellisUI
 
 /// The app's way to install the `trellis` command (MAC-15): one offer after install, and a menu item.
 /// Both only ever create the one user-local link, after the user chooses to.
@@ -40,6 +41,20 @@ final class CLIInstallController {
         let response = await alert.beginSheetModal(for: window)
         defaults.set(true, forKey: Self.answeredKey)
         if response == .alertFirstButtonReturn { await install(window: window) }
+    }
+
+    /// How the tour's last step shows the offer (FR-ON07): only where the sheet would ask, or as already done.
+    func tourStatus() -> WelcomeTourCLIStatus {
+        switch CLILinkInstaller.offer(bundlePath: bundlePath, home: home, isReadOnlyVolume: isReadOnlyVolume, effects: .live) {
+        case .ask: .available
+        case .alreadyInstalled: .installed
+        case .skip: .unavailable
+        }
+    }
+
+    /// The tour showed the same offer. A launch where it couldn't (the DMG) leaves the question for a later one.
+    func recordOfferAnswered() {
+        if tourStatus() == .available { defaults.set(true, forKey: Self.answeredKey) }
     }
 
     func install(window: NSWindow?) async {

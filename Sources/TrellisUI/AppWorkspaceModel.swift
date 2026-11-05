@@ -477,6 +477,18 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the palette's field should take keyboard focus.
     @Published public internal(set) var commandPaletteFocusRequest = 0
     var commandPaletteRecents = CommandPaletteRecents()
+    /// The welcome tour (FR-ON01–FR-ON09): the open step, runtime only.
+    @Published public internal(set) var welcomeTourStep: WelcomeTourStep?
+    @Published public internal(set) var welcomeTourCLIStatus = WelcomeTourCLIStatus.unavailable
+    @Published public internal(set) var welcomeTourCLIInstalling = false
+    var welcomeTourReachedSetup = false
+    /// The launch's tour closed; true when it reached the step that offers the command line tool (MAC-15).
+    public var onWelcomeTourClosed: ((Bool) -> Void)?
+    /// The launch's tour reached that step, which already counts as an answer if Trellis quits there.
+    public var onWelcomeTourReachedSetup: (() -> Void)?
+    /// Injected by the app, which owns the MAC-15 rules; nil leaves the row out (FR-ON07).
+    public var welcomeTourCLIProbe: (() -> WelcomeTourCLIStatus)?
+    public var welcomeTourInstallCLI: (() async -> Void)?
     var commandPaletteOpenedAt: Date?
     var commandPaletteSearchCache: (key: CommandPaletteSearchKey, sections: [CommandPaletteSection])?
     /// The actions their menus enabled when the palette opened, read before its field took focus (FR-CP03).
@@ -1354,7 +1366,7 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyAppearance(terminalAppearance)
         terminal.optionAsMeta = keyboard.optionAsMeta
         terminal.searchShortcut = keyboard.shortcuts[.findInPane]
-        terminal.inputSuspended = editingTabID != nil || commandPaletteVisible
+        terminal.inputSuspended = terminalInputBlocked
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self, weak terminal] in
@@ -1657,7 +1669,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func endTabRenameEditing() {
         editingTabID = nil
-        terminals.values.forEach { $0.inputSuspended = commandPaletteVisible }
+        terminals.values.forEach { $0.inputSuspended = terminalInputBlocked }
     }
 
     public func renameTab(_ id: UUID, title: String) async {
@@ -1848,7 +1860,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func requestPaste(_ input: TerminalPasteInput, paneID: UUID) {
-        guard let target = currentPasteTarget, target.paneID == paneID,
+        // `paste` writes to the PTY directly, past the terminal's own input suspension.
+        guard !terminalInputBlocked, let target = currentPasteTarget, target.paneID == paneID,
             let session = snapshot.sessions[target.sessionID], let terminal = terminals[paneID]
         else { return }
         let shell: String?

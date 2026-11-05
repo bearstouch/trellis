@@ -60,6 +60,7 @@ nav:
       - Remote workspaces: features/remote-workspaces.md
       - Themes: features/themes.md
       - Keyboard and accessibility: features/keyboard-accessibility.md
+      - Welcome tour: features/welcome-tour.md
   - Automation API:
       - Overview and transport: api/index.md
       - Authorization: api/authorization.md
