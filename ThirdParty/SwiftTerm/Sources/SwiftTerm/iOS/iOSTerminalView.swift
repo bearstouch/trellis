@@ -1599,6 +1599,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     public var allowBoldFont: Bool = true
     public var allowItalicFont: Bool = true
     public var boldIsBright: Bool = true
+    public var minimumPaletteContrast: Double = 0
     public var textBlinkEnabled: Bool = true
 
     /// Controls whether this view applies the terminal's BiDi presentation state.

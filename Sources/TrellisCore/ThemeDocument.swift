@@ -32,6 +32,15 @@ public struct ThemeColor: Equatable, Hashable, Sendable {
         let a = relativeLuminance, b = other.relativeLuminance
         return (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
+    /// This color moved `fraction` (clamped to 0...1) of the way to `other`, per sRGB channel.
+    public func mixed(with other: Self, fraction: Double) -> Self {
+        let fraction = fraction.isFinite ? min(max(fraction, 0), 1) : 0
+        func channel(_ shift: UInt32) -> UInt32 {
+            let from = Double((rgb >> shift) & 255), to = Double((other.rgb >> shift) & 255)
+            return UInt32((from + (to - from) * fraction).rounded()) << shift
+        }
+        return Self(channel(16) | channel(8) | channel(0))
+    }
 }
 
 /// Only the validator creates documents, so resolution always has known fields,
@@ -58,7 +67,19 @@ public struct ThemeDocument: Equatable, Sendable {
 
     public func resolved() -> ResolvedTheme {
         let base = ResolvedTheme.builtIn(appearance)
-        let inherited = base.terminal
+        // Trellis Light's terminal used to be dark, so a light theme that sets terminal colors
+        // without saying otherwise was written for dark panes and would be unreadable on white.
+        let keepsDarkPanes: Bool
+        if appearance != .light {
+            keepsDarkPanes = false
+        } else if let background = terminal[.background] {
+            keepsDarkPanes = background.relativeLuminance < 0.18
+        } else if let foreground = terminal[.foreground] {
+            keepsDarkPanes = foreground.relativeLuminance >= 0.18
+        } else {
+            keepsDarkPanes = !terminal.isEmpty || ansi != nil
+        }
+        let inherited = keepsDarkPanes ? TerminalPalette.builtIn : base.terminal
         func color(_ field: TerminalColorField, _ fallback: UInt32) -> UInt32 { terminal[field]?.rgb ?? fallback }
         let palette = TerminalPalette(
             background: color(.background, inherited.background), foreground: color(.foreground, inherited.foreground),
@@ -107,7 +128,7 @@ public struct ResolvedTheme: Equatable, Sendable {
         let values = appearance == .light ? light : dark
         return Self(
             id: "trellis-\(appearance.rawValue)", name: "Trellis \(appearance.rawValue.capitalized)", appearance: appearance,
-            terminal: .builtIn, ui: Dictionary(uniqueKeysWithValues: zip(UIColorField.allCases, values.map(ThemeColor.init))))
+            terminal: appearance == .light ? .builtInLight : .builtIn, ui: Dictionary(uniqueKeysWithValues: zip(UIColorField.allCases, values.map(ThemeColor.init))))
     }
 }
 

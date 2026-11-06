@@ -43,7 +43,12 @@ struct UpdateSettingsView: View {
     @ObservedObject var updates: UpdateSettingsModel
     var body: some View {
         Form {
-            LabeledContent("Current version", value: updates.version).accessibilityIdentifier("settings.updates.version")
+            // Not LabeledContent: a Form puts its label in a column of its own, left of the toggles below.
+            HStack(spacing: 8) {
+                Text("Current version")
+                Text(updates.version)
+            }
+            .accessibilityElement(children: .combine).accessibilityIdentifier("settings.updates.version")
             Toggle("Automatically check for updates", isOn: Binding(get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
                 .accessibilityIdentifier("settings.updates.automatic")
             caption("Checks once a day. Trellis only downloads the update list; it sends no usage data.")

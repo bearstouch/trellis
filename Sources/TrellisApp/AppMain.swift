@@ -83,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             MainActor.assumeIsolated { self?.syncAccessibilityDisplayOptions() }
         }
         cliInstall = CLIInstallController(identity: identity, shell: { [model] in model.defaultShell })
+        if let cliInstall {
+            model.welcomeTourCLIProbe = { cliInstall.tourStatus() }
+            model.welcomeTourInstallCLI = { [weak self] in await cliInstall.install(window: self?.window) }
+        }
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
         model.openSettings = { [weak self] in self?.showSettings() }
@@ -142,6 +146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: WorkspaceRootView(model: model))
+        // FR-TH10: a translucent pane background needs a window that composites what's behind it.
+        model.onWindowTranslucencyChanged = { [weak self] translucent in self?.setWindowTranslucent(translucent) }
+        setWindowTranslucent(model.effectiveBackgroundOpacity < 1)
         if let saved = UserDefaults.standard.string(forKey: "app.windowFrame") { window.setFrame(NSRectFromString(saved), display: false) } else { window.center() }
         constrainWindow()
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -165,9 +172,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if !restored, model.snapshot.windows.isEmpty {
                 await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
-            // MAC-15: scripted and isolated launches never ask, and recovery comes first.
+            // MAC-15, FR-ON02: scripted and isolated launches never ask, and recovery comes first.
             if identity.stateDirectory == nil, !CommandLine.arguments.contains("--fixture"), model.recoveryMessage == nil, !terminationPending {
-                await cliInstall?.offerIfNeeded(window: window)
+                // The tour's last step makes the same offer, so it replaces the sheet unless skipped before that step.
+                model.onWelcomeTourReachedSetup = { [self] in cliInstall?.recordOfferAnswered() }
+                model.onWelcomeTourClosed = { [self] reachedSetup in
+                    if !reachedSetup, !terminationPending { Task { await cliInstall?.offerIfNeeded(window: window) } }
+                }
+                if !model.offerWelcomeTour(workspaceExisted: restored) {
+                    model.onWelcomeTourReachedSetup = nil
+                    model.onWelcomeTourClosed = nil
+                    await cliInstall?.offerIfNeeded(window: window)
+                }
             }
         }
         // Local automation is optional: an unsafe endpoint leaves the app
@@ -261,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, .toggleScratchpad, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, nil, .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -289,6 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         windows.submenu?.insertItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m", at: 0)
         menu.addItem(windows)
         let help = NSMenuItem(); help.submenu = NSMenu(title: "Help")
+        help.submenu?.addItem(withTitle: "Welcome Tour", action: #selector(welcomeTourAction), keyEquivalent: "").target = self
         help.submenu?.addItem(withTitle: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: "")
         menu.addItem(help)
         NSApp.helpMenu = help.submenu
@@ -314,11 +331,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
         let pane = presentation.activePane?.id
+        model.revealTerminalsForPaneAction(action)
         switch action {
         case .newWindow: newWindow()
         case .newTab: Task { await model.createTab() }
         case .renameTab: model.tabRenameRequest = UUID()
         case .renameWindow: model.windowRenameRequest = UUID()
+        // The Review tab hides the terminals, so closing acts on what is shown, never on a pane out of sight (FR-GC05).
+        case .closePane where model.reviewVisible, .closeTab where model.reviewVisible: model.closeReview()
         case .closePane: if let pane { Task { await model.closePane(pane) } }
         case .closeTab: if let tab = presentation.selectedTab?.id { Task { await model.closeTab(tab) } }
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
@@ -335,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
         case .toggleSidebar: model.toggleSidebar()
-        case .toggleScratchpad: Task { await model.toggleScratchpad() }
+        case .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents: if let view = SidebarView(shortcut: action) { model.toggleSidebarView(view) }
         case .commandPalette: model.toggleCommandPalette()
         case .jumpToDirectory: model.openDirectoryJump()
         case .splitLeftRight, .splitTopBottom:
@@ -368,6 +388,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
+        // FR-ON04: the tour is modal, with no shortcut of its own. ⌘W can still close an auxiliary window such as Settings.
+        if model.welcomeTourVisible { return [.closePane, .closeTab].contains(action) && NSApp.keyWindow != nil && NSApp.keyWindow !== window }
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
         if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
@@ -376,7 +398,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
         if action == .commandPalette || action == .jumpToDirectory { return !model.isRestoring && model.recoveryMessage == nil }
-        if action == .toggleScratchpad { return !model.presentation.isEmpty }
+        // FR-SB04: a view the focused pane can't use does nothing.
+        if let view = SidebarView(shortcut: action) { return !model.presentation.isEmpty && model.sidebarUnavailableReason(view) == nil }
         guard !model.isRestoring, model.recoveryMessage == nil else { return false }
         if let index = action.tabIndex { return presentation.visibleTabs.indices.contains(index) }
         switch action {
@@ -408,10 +431,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if menuItem.action == #selector(performShortcut(_:)) {
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
-            if action == .toggleScratchpad { menuItem.title = model.scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad" }
+            if let view = SidebarView(shortcut: action) { menuItem.title = model.visibleSidebarView == view ? "Hide \(view.title)" : "Show \(view.title)" }
             return validateShortcut(action)
         }
         if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
+        if menuItem.action == #selector(welcomeTourAction) { return model.canOpenWelcomeTour && !model.welcomeTourVisible }
         guard menuItem.action == #selector(selectAllText(_:)) else { return true }
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
@@ -429,10 +453,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         Task { await model.selectTab(next) }
     }
 
+    private func setWindowTranslucent(_ translucent: Bool) {
+        window.isOpaque = !translucent
+        window.backgroundColor = translucent ? .clear : .windowBackgroundColor
+        // A clear window draws the title bar's separator as a solid black seam.
+        window.titlebarSeparatorStyle = translucent ? .none : .automatic
+        window.invalidateShadow()
+    }
     private func syncAccessibilityDisplayOptions() {
         let workspace = NSWorkspace.shared
         model.accessibilityDisplayOptionsDidChange(
-            increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion)
+            increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast, reduceMotion: workspace.accessibilityDisplayShouldReduceMotion,
+            reduceTransparency: workspace.accessibilityDisplayShouldReduceTransparency)
     }
     @objc private func aboutAction() {
         let credits = NSMutableAttributedString(string: "Released under the ", attributes: [.font: NSFont.systemFont(ofSize: 12)])
@@ -461,6 +493,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func settingsAction() { showSettings() }
     @objc private func checkForUpdatesAction() { updates?.checkNow() }
+    @objc private func welcomeTourAction() {
+        window?.deminiaturize(nil)
+        window?.makeKeyAndOrderFront(nil)
+        model.openWelcomeTour()
+    }
+
     @objc private func installCommandLineToolAction() { Task { await cliInstall?.install(window: window) } }
     /// Explicit, previewed diagnostics; nothing is written on Cancel.
     @objc private func exportDiagnostics() {

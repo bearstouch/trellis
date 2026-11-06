@@ -84,6 +84,7 @@ public final class AppWorkspaceModel: ObservableObject {
         effectiveTheme = previewedTheme?.resolved() ?? committed
         onChromeModeChanged?(effectiveChromeMode)
         for terminal in terminals.values { terminal.applyPalette(effectiveTheme.terminal) }
+        syncBackgroundOpacity()
         // Every commit path ends here, so intermediate reconciliation writes never emit.
         guard appearance != committedAppearance.settings || committed.id != committedAppearance.themeID else { return }
         if appearance != committedAppearance.settings { appearanceRevision &+= 1 }
@@ -220,7 +221,21 @@ public final class AppWorkspaceModel: ObservableObject {
         var settings = appearance
         if reduceMotion { settings.cursorBlinks = false }
         if let rendererOverride { settings.gpuRendering = rendererOverride }
+        // FR-TH10: Reduce Transparency and Increase Contrast keep panes opaque without changing the saved preference.
+        if increaseContrast || reduceTransparency { settings.backgroundOpacity = 1 }
         return settings
+    }
+    /// The pane background's opacity after accessibility overrides (FR-TH10); 1 is opaque.
+    @Published public private(set) var effectiveBackgroundOpacity: Double = 1
+    public var effectiveBackgroundBlur: Bool { effectiveBackgroundOpacity < 1 && appearance.backgroundBlur }
+    /// Called with true when panes turn translucent and false when they turn opaque; the app configures its window.
+    public var onWindowTranslucencyChanged: ((Bool) -> Void)?
+    func syncBackgroundOpacity() {
+        let opacity = terminalAppearance.backgroundOpacity
+        guard opacity != effectiveBackgroundOpacity else { return }
+        let wasTranslucent = effectiveBackgroundOpacity < 1
+        effectiveBackgroundOpacity = opacity
+        if wasTranslucent != (opacity < 1) { onWindowTranslucencyChanged?(opacity < 1) }
     }
     /// How many panes each renderer draws, and the frames they have drawn (FR-TX05).
     public var renderingStats: (metalPanes: Int, coreGraphicsPanes: Int, metalFrames: Int, coreGraphicsFrames: Int) {
@@ -233,10 +248,13 @@ public final class AppWorkspaceModel: ObservableObject {
         return stats
     }
 
-    public func accessibilityDisplayOptionsDidChange(increaseContrast: Bool, reduceMotion: Bool) {
+    public func accessibilityDisplayOptionsDidChange(increaseContrast: Bool, reduceMotion: Bool, reduceTransparency: Bool = false) {
+        let before = terminalAppearance
         if self.increaseContrast != increaseContrast { self.increaseContrast = increaseContrast }
-        guard self.reduceMotion != reduceMotion else { return }
-        self.reduceMotion = reduceMotion
+        if self.reduceTransparency != reduceTransparency { self.reduceTransparency = reduceTransparency }
+        if self.reduceMotion != reduceMotion { self.reduceMotion = reduceMotion }
+        syncBackgroundOpacity()
+        guard terminalAppearance != before else { return }
         // applyAppearance resets the built-in palette; restore the selected theme colors.
         for terminal in terminals.values {
             terminal.applyAppearance(terminalAppearance)
@@ -377,6 +395,8 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Injected by tests; nil disables integration.
     var shellIntegrationDirectory: String? = BundledShellIntegration.directory()
     public var confirmCloseSessions: (Int) -> Bool = { _ in true }
+    /// Asked before staging a conflicted file, which marks it resolved (FR-GC06); the app shows an alert.
+    public var confirmStageConflict: (String) -> Bool = { _ in false }
     public var confirmForceSessions: (Int) -> Bool = { _ in false }
     private var closeSummary: [String] = []
     let closureCoordinator = SessionClosureCoordinator()
@@ -399,6 +419,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public var onKeyboardSettingsChanged: (() -> Void)?
     @Published public private(set) var increaseContrast = false
     @Published public private(set) var reduceMotion = false
+    @Published public private(set) var reduceTransparency = false
     @Published public private(set) var isRestoring: Bool
     @Published public private(set) var recoveryMessage: String?
     @Published public private(set) var backupAvailable = false
@@ -430,7 +451,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public var commandPaletteProjects: () -> [ProjectDefinition] = { [] }
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
     @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
-    /// The Tasks menu's project, read when the menu opens (FR-TK02); nil when the active pane has none.
+    /// The Tasks view's project, read when the view opens or focus moves (FR-TK02); nil when the active pane has none.
     @Published public internal(set) var taskCatalog: TaskCatalog?
     @Published public internal(set) var pendingTaskReview: TaskReview?
     var taskCatalogGeneration: UInt64 = 0
@@ -439,7 +460,10 @@ public final class AppWorkspaceModel: ObservableObject {
     var taskStopEscalation: TimeInterval = 2
     /// The command scratchpad (FR-SP01–FR-SP10): runtime only, never persisted or logged. Run and Save write the
     /// buffer to a file; nothing else does.
-    @Published public internal(set) var scratchpadVisible = false
+    /// The right sidebar's chosen view (FR-SB02). Runtime only; shown while the focused pane can use it (FR-SB04).
+    @Published public internal(set) var sidebarView: SidebarView?
+    /// Where the Agents view opens an agent (FR-AG07): kept while Trellis runs, never saved.
+    @Published public var agentPlacement: AgentPlacement = .tab
     /// Published apart from the model, so typing re-renders only the scratchpad panel, not every workspace view.
     public let scratchpadBuffer = ScratchpadBuffer()
     public var scratchpad: ScratchpadDocument {
@@ -469,6 +493,36 @@ public final class AppWorkspaceModel: ObservableObject {
     public var scratchpadProcessRunner: ScratchpadProcessRunner = ScratchpadValidator.runProcess
     /// Opens launch.json in the user's editor; injected by tests.
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// The Files view's tree, search and copy status (FR-FB02–FR-FB06): runtime only, never saved with the workspace.
+    @Published public internal(set) var files = FilesBrowserState()
+    /// Bumped when the Files view's search field should take keyboard focus.
+    @Published public internal(set) var filesFocusRequest = 0
+    var filesSearchTask: Task<Void, Never>?
+    var filesGeneration = 0
+    var filesStatusTask: Task<Void, Never>?
+    /// The Changes view's list, filter and folds (FR-GC02–FR-GC04): runtime only, never saved with the workspace.
+    @Published public internal(set) var gitChanges = GitChangesState()
+    /// Each window's Review tab (FR-GC05), and the windows showing it in place of their terminal tabs. Never saved.
+    @Published public internal(set) var reviewTabs: [UUID: ReviewTab] = [:]
+    @Published public internal(set) var reviewShownWindows: Set<UUID> = []
+    /// Bumped when the Changes view's filter field should take keyboard focus.
+    @Published public internal(set) var gitChangesFocusRequest = 0
+    var gitChangesGeneration = 0
+    var gitChangesStatusTask: Task<Void, Never>?
+    /// Runs git for the Changes view; injected by tests.
+    public var gitChangesClient = GitChangesClient.local
+    /// The Files view's dependencies; injected by tests so nothing opens an app or touches the pasteboard.
+    public var fileListing: any FileListing = LocalFileListing()
+    public var openFileInApp: (URL, URL?) -> Void = { url, app in
+        guard let app else { NSWorkspace.shared.open(url); return }
+        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+    public var revealFiles: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
+    public var applicationURL: (String) -> URL? = { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+    public var copyToPasteboard: (String) -> Void = { text in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
     /// The command palette (FR-CP01–FR-CP08): runtime only; the query is never persisted or logged.
     @Published public internal(set) var commandPaletteVisible = false
     @Published public internal(set) var commandPaletteQuery = ""
@@ -477,6 +531,18 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the palette's field should take keyboard focus.
     @Published public internal(set) var commandPaletteFocusRequest = 0
     var commandPaletteRecents = CommandPaletteRecents()
+    /// The welcome tour (FR-ON01–FR-ON10): the open step, runtime only.
+    @Published public internal(set) var welcomeTourStep: WelcomeTourStep?
+    @Published public internal(set) var welcomeTourCLIStatus = WelcomeTourCLIStatus.unavailable
+    @Published public internal(set) var welcomeTourCLIInstalling = false
+    var welcomeTourReachedSetup = false
+    /// The launch's tour closed; true when it reached the step that offers the command line tool (MAC-15).
+    public var onWelcomeTourClosed: ((Bool) -> Void)?
+    /// The launch's tour reached that step, which already counts as an answer if Trellis quits there.
+    public var onWelcomeTourReachedSetup: (() -> Void)?
+    /// Injected by the app, which owns the MAC-15 rules; nil leaves the row out (FR-ON07).
+    public var welcomeTourCLIProbe: (() -> WelcomeTourCLIStatus)?
+    public var welcomeTourInstallCLI: (() async -> Void)?
     var commandPaletteOpenedAt: Date?
     var commandPaletteSearchCache: (key: CommandPaletteSearchKey, sections: [CommandPaletteSection])?
     /// The actions their menus enabled when the palette opened, read before its field took focus (FR-CP03).
@@ -585,6 +651,16 @@ public final class AppWorkspaceModel: ObservableObject {
         confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
         confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
         confirmClearDirectoryHistory = { [weak self] in self?.showClearDirectoryHistoryConfirmation() ?? false }
+        confirmStageConflict = { Self.showStageConflictConfirmation(name: $0) }
+    }
+
+    private static func showStageConflictConfirmation(name: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Mark \(name) as resolved?"
+        alert.informativeText = "Staging a conflicted file tells git the conflict is resolved, with the file as it is now. Check that no conflict markers (<<<<<<<, =======, >>>>>>>) are left."
+        alert.addButton(withTitle: "Stage as Resolved")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// Returns true for an existing document or recovery state, even if empty.
@@ -798,6 +874,7 @@ public final class AppWorkspaceModel: ObservableObject {
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         lastRecordedDirectories = lastRecordedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
+        if !reviewTabs.isEmpty || !reviewShownWindows.isEmpty { pruneReviews(previous: previous, next: next) }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
         refreshTerminalAccessibility()
@@ -1220,7 +1297,12 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
         // After a cd or a command the work tree may have changed (FR-PL09); looked at once the prompt's directory is applied.
-        defer { if case .promptStart = event { refreshGitStatus(paneID: paneID) } }
+        defer {
+            if case .promptStart = event {
+                refreshGitStatus(paneID: paneID)
+                refreshGitChangesAtPrompt(paneID: paneID)
+            }
+        }
         switch event {
         case .commandFinished, .promptStart: settleOutput(paneID: paneID)
         case .commandInputStart, .commandStart, .reportedDirectory, .reportedHost: break
@@ -1354,7 +1436,7 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyAppearance(terminalAppearance)
         terminal.optionAsMeta = keyboard.optionAsMeta
         terminal.searchShortcut = keyboard.shortcuts[.findInPane]
-        terminal.inputSuspended = editingTabID != nil || commandPaletteVisible
+        terminal.inputSuspended = terminalInputBlocked
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
         terminal.onOutput = { [weak self, weak terminal] in
@@ -1635,6 +1717,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func selectTab(_ id: UUID) async {
+        // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
+        if let windowID = snapshot.tabs[id]?.windowID { reviewShownWindows.remove(windowID) }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = "The tab could not be selected." }
     }
@@ -1657,7 +1741,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func endTabRenameEditing() {
         editingTabID = nil
-        terminals.values.forEach { $0.inputSuspended = commandPaletteVisible }
+        terminals.values.forEach { $0.inputSuspended = terminalInputBlocked }
     }
 
     public func renameTab(_ id: UUID, title: String) async {
@@ -1848,7 +1932,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func requestPaste(_ input: TerminalPasteInput, paneID: UUID) {
-        guard let target = currentPasteTarget, target.paneID == paneID,
+        // `paste` writes to the PTY directly, past the terminal's own input suspension.
+        guard !terminalInputBlocked, let target = currentPasteTarget, target.paneID == paneID,
             let session = snapshot.sessions[target.sessionID], let terminal = terminals[paneID]
         else { return }
         let shell: String?

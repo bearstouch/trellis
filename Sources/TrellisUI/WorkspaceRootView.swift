@@ -8,11 +8,11 @@ public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
     @State private var windowToRename: ManagedWindow?
     /// The scratchpad's width; layout only, never persisted.
-    @State private var scratchpadWidth: CGFloat = 380
-    @State private var scratchpadDragStart: CGFloat?
+    @State private var sidebarWidth: CGFloat = 380
+    @State private var sidebarDragStart: CGFloat?
     /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
-    @State private var scratchpadCursorPushed = false
-    static let scratchpadWidths: ClosedRange<CGFloat> = 280...640
+    @State private var sidebarCursorPushed = false
+    static let sidebarWidths: ClosedRange<CGFloat> = 280...640
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var draggedTabID: UUID?
@@ -26,10 +26,10 @@ public struct WorkspaceRootView: View {
             HStack(spacing: 0) {
                 sidebar.frame(width: model.sidebarCollapsed ? 52 : 205).animation(.easeInOut(duration: 0.15), value: model.sidebarCollapsed)
                     .disabled(model.isRestoring || model.recoveryMessage != nil)
-                Divider().overlay(model.separatorOverlay)
+                Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
                 mainArea
             }
-            Divider().overlay(model.separatorOverlay)
+            Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
             HStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
@@ -55,10 +55,11 @@ public struct WorkspaceRootView: View {
             .background(model.themeColor(.surface))
         }
         .foregroundStyle(model.themeColor(.foreground))
-        .background(model.usesNativeChrome ? model.themeColor(.surface) : model.themeColor(.background))
+        .background(model.panesTranslucent ? .clear : model.chromeBackground)
         .tint(model.chromeTint)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
         .modifier(CommandPaletteHost(model: model))
+        .modifier(WelcomeTourHost(model: model))
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
@@ -332,7 +333,7 @@ public struct WorkspaceRootView: View {
 
     @ViewBuilder private var mainArea: some View {
         if model.isRestoring {
-            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeBackground)
         } else if let message = model.recoveryMessage {
             VStack(spacing: 16) {
                 Text("Recover Workspace").font(.title2)
@@ -341,70 +342,112 @@ public struct WorkspaceRootView: View {
                     Button("Use Backup") { Task { await model.recoverWorkspace(useBackup: true) } }
                 }
                 Button("Start Empty") { Task { await model.recoverWorkspace(useBackup: false) } }
-            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeBackground)
         } else if model.presentation.isEmpty {
             VStack(spacing: 14) {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
-                // A view's key equivalent runs before the menu's, which the open palette disables (FR-CP02).
-                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible)
+                // A view's key equivalent runs before the menu's, which the open palette or tour disables (FR-CP02, FR-ON04).
+                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
         } else {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 0) {
-                            ForEach(model.presentation.visibleTabs) { tab in
-                                tabLabel(tab)
-                                Divider().overlay(model.separatorOverlay).frame(height: 20)
-                            }
-                        }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
-                    }.scrollIndicators(.hidden)
-                    Button {
-                        Task { await model.createTab() }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
-                }.frame(height: 40).background(model.themeColor(.surface))
-                Divider().overlay(model.separatorOverlay)
-                HStack(spacing: 0) {
-                    terminalCanvas
-                    if model.scratchpadVisible {
-                        scratchpadResizeHandle
-                        ScratchpadPanel(model: model, buffer: model.scratchpadBuffer).frame(width: scratchpadWidth)
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    tabBar
+                    Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
+                    HStack(spacing: 0) {
+                        if model.reviewVisible, let review = model.currentReview {
+                            ReviewTabView(model: model, review: review).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            terminalCanvas
+                        }
+                        if let view = model.visibleSidebarView {
+                            sidebarResizeHandle
+                            RightSidebarPanel(model: model, view: view).frame(width: sidebarWidth)
+                        }
                     }
                 }
+                SidebarDock(model: model)
             }
         }
     }
 
-    /// Drag to resize the scratchpad; the canvas takes the rest, so split minimums follow (FR-SP01).
-    private var scratchpadResizeHandle: some View {
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(model.presentation.visibleTabs) { tab in
+                        tabLabel(tab)
+                        Divider().overlay(model.separatorOverlay).frame(height: 20)
+                    }
+                    if let review = model.currentReview {
+                        reviewTabLabel(review)
+                        Divider().overlay(model.separatorOverlay).frame(height: 20)
+                    }
+                }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
+            }.scrollIndicators(.hidden)
+            Button {
+                Task { await model.createTab() }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
+        }.frame(height: 40).background(model.themeColor(.surface))
+    }
+
+    /// Drag to resize the sidebar, whichever view it shows; the canvas takes the rest, so split minimums follow (FR-SB03).
+    private var sidebarResizeHandle: some View {
         // A 1-point line, like the other dividers, with a wider invisible grab area over its neighbors.
         Color.clear.frame(width: 7).overlay(model.themeColor(.border).frame(width: 1)).contentShape(Rectangle()).padding(.horizontal, -3).zIndex(1)
             .onHover { inside in
-                guard inside != scratchpadCursorPushed else { return }
-                scratchpadCursorPushed = inside
+                guard inside != sidebarCursorPushed else { return }
+                sidebarCursorPushed = inside
                 if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
             }
-            .onDisappear { if scratchpadCursorPushed { scratchpadCursorPushed = false; NSCursor.pop() } }
+            .onDisappear { if sidebarCursorPushed { sidebarCursorPushed = false; NSCursor.pop() } }
             .gesture(
                 DragGesture(minimumDistance: 1).onChanged { value in
-                    let start = scratchpadDragStart ?? scratchpadWidth
-                    scratchpadDragStart = start
-                    scratchpadWidth = min(max(start - value.translation.width, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
-                }.onEnded { _ in scratchpadDragStart = nil }
+                    let start = sidebarDragStart ?? sidebarWidth
+                    sidebarDragStart = start
+                    sidebarWidth = min(max(start - value.translation.width, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
+                }.onEnded { _ in sidebarDragStart = nil }
             )
-            .accessibilityElement().accessibilityLabel("Scratchpad width").accessibilityValue("\(Int(scratchpadWidth)) points")
+            .accessibilityElement().accessibilityLabel("Sidebar width").accessibilityValue("\(Int(sidebarWidth)) points")
             .accessibilityAdjustableAction { direction in
-                let next = scratchpadWidth + (direction == .increment ? 20 : -20)
-                scratchpadWidth = min(max(next, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
+                let next = sidebarWidth + (direction == .increment ? 20 : -20)
+                sidebarWidth = min(max(next, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
             }
     }
 
+    /// The window's Review tab (FR-GC05): after the terminal tabs, never saved, not reorderable.
+    private func reviewTabLabel(_ review: ReviewTab) -> some View {
+        let selected = model.reviewVisible
+        return HStack(spacing: 8) {
+            Image(systemName: "plus.forwardslash.minus").font(.system(size: 10)).accessibilityHidden(true)
+            Text(review.file.name).lineLimit(1).truncationMode(.middle)
+            Button {
+                model.closeReview()
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9))
+            }
+            .buttonStyle(.plain).help("Close Review").accessibilityLabel("Close Review of \(review.file.name)")
+        }
+        .foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
+        .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 240).frame(height: 40)
+        .background(selected ? model.themeColor(.activeTabBackground) : .clear)
+        .overlay(alignment: .bottom) { if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) } }
+        .contentShape(Rectangle())
+        .onTapGesture { model.showReview() }
+        .help("Review: \(review.file.path)")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Review \(review.file.name)")
+        .accessibilityValue("diff of \(review.file.path)")
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
+        .accessibilityAction { model.showReview() }
+    }
+
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
-        let selected = tab.id == model.presentation.selectedTab?.id
+        let selected = tab.id == model.presentation.selectedTab?.id && !model.reviewVisible
         let busy = model.busyTabIDs.contains(tab.id)
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)
@@ -575,13 +618,23 @@ public struct WorkspaceRootView: View {
                 ScrollView([.horizontal, .vertical]) {
                     PaneTreeView(model: model, layout: visible, activePaneID: tab.activePaneID, tabID: tab.id)
                         .frame(width: size.width, height: size.height)
-                }.background(model.terminalBackground)
+                }.background(canvasBackground)
                     .onAppear { model.setCanvasSize(fullSize, tabID: tab.id) }
                     .onChange(of: tab.id) { _, _ in model.setCanvasSize(fullSize, tabID: tab.id) }
                     .onChange(of: fullSize) { _, next in model.setCanvasSize(next, tabID: tab.id) }
             } else {
-                model.terminalBackground
+                canvasBackground
             }
+        }
+    }
+    /// Translucent panes paint their own margins and background (FR-TH10); under them only the optional blur.
+    @ViewBuilder private var canvasBackground: some View {
+        if !model.panesTranslucent {
+            model.terminalBackground
+        } else if model.effectiveBackgroundBlur {
+            BehindWindowBlur()
+        } else {
+            Color.clear
         }
     }
 }
@@ -1057,18 +1110,50 @@ struct NativeTerminalSurface: NSViewRepresentable {
 final class TerminalContainerView: NSView {
     private var wasFocused = false
     private var desiredTerminal: NSView?
+    /// The strips above and below the rows, painted with the terminal's background: under a translucent background
+    /// (FR-TH10) nothing else paints them, so they would show as lighter bands.
+    let gapAbove = NSView(), gapBelow = NSView()
+    private var gaps: [NSView] { [gapAbove, gapBelow] }
+    private var backgroundObservation: NSKeyValueObservation?
+    private var hostedTerminal: NSView? { subviews.first { view in !gaps.contains { $0 === view } } }
 
     override func layout() {
         super.layout()
-        guard let terminal = subviews.first else { return }
+        gaps.forEach { $0.isHidden = true }
+        guard let terminal = hostedTerminal else { return }
         terminal.frame = bounds
         guard let grid = terminal as? TerminalView else { return }
         let gridHeight = grid.getOptimalFrameSize().height
         guard gridHeight > 0, gridHeight <= bounds.height else { return }
-        // Keep whole terminal rows against the bottom. A tiny rounding allowance
-        // prevents floating-point division from dropping the final row.
+        // Whole rows only, with the remainder of a row split evenly above and below them, so the top and bottom
+        // padding always match. A tiny rounding allowance prevents floating-point division from dropping the final row.
         let height = min(bounds.height, gridHeight + 0.001)
-        terminal.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: height)
+        let below = ((bounds.height - height) / 2).rounded(.down)
+        terminal.frame = NSRect(x: bounds.minX, y: bounds.minY + below, width: bounds.width, height: height)
+        gapBelow.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: below)
+        gapAbove.frame = NSRect(x: bounds.minX, y: terminal.frame.maxY, width: bounds.width, height: max(0, bounds.maxY - terminal.frame.maxY))
+        gaps.forEach { $0.isHidden = $0.frame.height <= 0 }
+        paintRowGaps()
+    }
+    private func attach(_ terminal: NSView) {
+        subviews.forEach { $0.removeFromSuperview() }
+        terminal.frame = bounds
+        terminal.autoresizingMask = [.width, .height]
+        addSubview(terminal)
+        gaps.forEach { addSubview($0) }
+        // Themes, previews, opacity and OSC 11 all set the grid's layer background; follow them.
+        terminal.wantsLayer = true
+        backgroundObservation = terminal.layer?.observe(\.backgroundColor) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.paintRowGaps() }
+        }
+    }
+    private func paintRowGaps() {
+        guard let grid = hostedTerminal as? TerminalView else { return }
+        for gap in gaps {
+            gap.wantsLayer = true
+            // The native color carries the opacity; the grid's own layer is clear while Metal draws.
+            gap.layer?.backgroundColor = grid.nativeBackgroundColor.cgColor
+        }
     }
 
     override func viewDidMoveToWindow() {
@@ -1079,12 +1164,7 @@ final class TerminalContainerView: NSView {
     func display(_ terminal: NSView, focused: Bool = true) {
         desiredTerminal = terminal
         let changed = subviews.first !== terminal
-        if changed {
-            subviews.forEach { $0.removeFromSuperview() }
-            terminal.frame = bounds
-            terminal.autoresizingMask = [.width, .height]
-            addSubview(terminal)
-        }
+        if changed { attach(terminal) }
         if focused && (changed || !wasFocused) {
             DispatchQueue.main.async { [weak self, weak terminal] in
                 guard let self, let terminal, self.wasFocused, terminal.superview === self,
@@ -1106,10 +1186,7 @@ final class TerminalContainerView: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window != nil, let terminal = self.desiredTerminal else { return }
             if terminal.superview !== self {
-                self.subviews.forEach { $0.removeFromSuperview() }
-                terminal.frame = self.bounds
-                terminal.autoresizingMask = [.width, .height]
-                self.addSubview(terminal)
+                self.attach(terminal)
                 self.needsLayout = true
                 if self.wasFocused, self.window?.isKeyWindow == true {
                     self.window?.makeFirstResponder(terminal)

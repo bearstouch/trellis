@@ -78,6 +78,8 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
 public enum CommandPaletteTarget: Hashable, Sendable {
     case action(ShortcutAction)
     case settings
+    /// Replays the welcome tour (FR-ON03).
+    case welcomeTour
     case scope(CommandPaletteScope)
     case window(UUID)
     case tab(windowID: UUID, tabID: UUID)
@@ -98,6 +100,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         switch self {
         case .action(let action): "action:" + action.rawValue
         case .settings: "settings"
+        case .welcomeTour: "welcome-tour"
         case .scope(let scope): "scope:" + scope.rawValue
         case .window(let id): "window:" + id.uuidString
         case .tab(_, let id): "tab:" + id.uuidString
@@ -285,7 +288,11 @@ extension ShortcutAction {
         case .showProjects: ["folder", "workspace", "library"]
         case .saveWorkspace: ["layout"]
         case .toggleSidebar: ["windows list"]
-        case .toggleScratchpad: ["script editor"]
+        case .toggleFiles: ["file browser explorer tree open in editor copy path", "right sidebar"]
+        case .toggleChanges: ["git diff review stage unstage status modified", "right sidebar"]
+        case .toggleScratchpad: ["script editor", "right sidebar"]
+        case .toggleTasks: ["launch.json run build test", "right sidebar"]
+        case .toggleAgents: ["claude codex pi coding", "right sidebar"]
         case .zoomIn, .zoomOut, .actualSize: ["font size"]
         default: []
         }

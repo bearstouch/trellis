@@ -19,7 +19,7 @@ extension AppWorkspaceModel {
     public func toggleCommandPalette() { commandPaletteVisible ? closeCommandPalette() : openCommandPalette() }
 
     public func openCommandPalette() {
-        guard !commandPaletteVisible, !isRestoring, recoveryMessage == nil, !shuttingDown else { return }
+        guard !commandPaletteVisible, !welcomeTourVisible, !isRestoring, recoveryMessage == nil, !shuttingDown else { return }
         // Read now: some actions are enabled only while a terminal, not the palette's field, has focus.
         // Jump to Directory is listed as its scope, whose row only needs a remembered directory.
         commandPaletteActions = ShortcutAction.allCases.filter { $0 != .commandPalette && $0 != .jumpToDirectory && $0.tabIndex == nil && canPerformShortcutAction?($0) == true }
@@ -46,7 +46,7 @@ extension AppWorkspaceModel {
         endCommandPalettePreview()
         commandPaletteVisible = false
         commandPaletteSelection = nil
-        terminals.values.forEach { $0.inputSuspended = editingTabID != nil }
+        terminals.values.forEach { $0.inputSuspended = terminalInputBlocked }
         let previous = commandPaletteReturnFocus
         commandPaletteReturnFocus = nil
         guard let previous, previous.window != nil else {
@@ -133,6 +133,7 @@ extension AppWorkspaceModel {
         // Listed when the palette opened; the workspace may have changed since, so ask the menu again.
         case .action(let action): if canPerformShortcutAction?(action) ?? true { performShortcutAction?(action) }
         case .settings: openSettings?()
+        case .welcomeTour: openWelcomeTour()
         case .scope: break
         case .window(let id):
             await selectWindow(id)
@@ -176,7 +177,7 @@ extension AppWorkspaceModel {
         selectCommandPaletteItem(commandPaletteSections.first?.matches.first?.item.id)
     }
 
-    private func focusActiveTerminal() {
+    func focusActiveTerminal() {
         guard let terminal = activeTerminal else { return }
         DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
     }
@@ -216,6 +217,7 @@ extension AppWorkspaceModel {
         if openSettings != nil {
             actions.append(CommandPaletteItem(target: .settings, kind: .action, title: "Settings…", subtitle: "Trellis", keywords: ["preferences"], shortcut: KeyChord(",")))
         }
+        actions.append(CommandPaletteItem(target: .welcomeTour, kind: .action, title: "Welcome Tour", subtitle: "Help", keywords: ["onboarding", "introduction", "getting started"]))
         let windowItems = windows.map { window in
             let current = window.id == snapshot.activeWindowID ? " · current" : ""
             return CommandPaletteItem(target: .window(window.id), kind: .window, title: window.name, subtitle: Self.count(window.tabIDs.count, "tab") + current)
@@ -269,7 +271,7 @@ extension AppWorkspaceModel {
                 target: .theme(theme.id), kind: .theme, title: "Theme: " + theme.name,
                 subtitle: theme.appearance.rawValue.capitalized + (theme.id == currentTheme ? " · current" : ""), keywords: ["appearance colors"])
         }
-        // FR-AG07: the same agents as the pane's Agent button, opened beside the focused pane.
+        // FR-AG07: the same agents as the Agents view, opened beside the focused pane.
         let agentItems =
             presentation.activePane == nil
             ? []
@@ -303,7 +305,7 @@ extension AppWorkspaceModel {
     private func commandPaletteTitle(_ action: ShortcutAction) -> String {
         switch action {
         case .toggleSidebar: sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
-        case .toggleScratchpad: scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad"
+        case .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents: SidebarView(shortcut: action).map { visibleSidebarView == $0 ? "Hide \($0.title)" : "Show \($0.title)" } ?? action.title
         default: action.title
         }
     }

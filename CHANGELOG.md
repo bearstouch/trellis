@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0-beta.1] - 2026-11-06
+
+The first 1.2 beta.
+
+### Added
+
+- **Changes view:** a new branch icon in the right sidebar's dock (⌥⌘G) lists the focused pane's uncommitted git changes as a tree, with lines added and removed per file and folder, status letters (M, A, D, U, C), a filter, and **Stage**/**Unstage** for each file. Clicking a file opens its diff in a **Review** tab with line numbers, `n`/`p` to jump between changes and `]`/`[` between files. Git runs with hooks and filters off while reading. Panes on this Mac only. See [Changes](docs/features/changes.md).
+- **Files view:** a new folder icon at the top of the right sidebar's dock (⌥⌘F) shows the focused pane's project as a tree, with a search across every file name, an **Open in** button for Finder and the editors you have installed (Cursor, VS Code, Zed, Xcode, Sublime Text, JetBrains IDEs…) that remembers your choice, and Copy Path, Copy Relative Path and Insert Path in Terminal. It leaves out `.git`, build folders and what `.gitignore` ignores. Panes on this Mac only. See [Files](docs/features/files.md).
+- **Welcome tour:** a fresh install opens with a short eight-step tour of windows, sessions, projects, remote work, agents and shortcuts. Its last step sets the appearance, the command line tool and whether sessions keep running after quit. Replay it from **Help → Welcome Tour** or the command palette. It shows the right sidebar and dock: step 2 introduces them, the agents step shows the Agents view, and the keyboard step lists ⌥⌘F for Files with the other sidebar shortcuts.
+- **Translucent panes:** Settings → Appearance → **Background opacity** (30–100 %) lets the desktop show through the terminal background, with an optional **Blur behind background**. Text, colors, selections and the sidebar and tabs stay opaque, and panes stay opaque while Reduce Transparency or Increase Contrast is on.
+- **Drop files on a pane:** dragging files from Finder onto a terminal pane inserts their escaped paths at the prompt, for every file type.
+
+### Changed
+
+- **Right sidebar and dock:** the scratchpad, tasks and agents now share one sidebar on the right, switched from a dock on the window's right edge (⌥⌘E, ⌥⌘T, ⌥⌘A). Each view works with the focused pane; icons that don't apply to it, such as all three in an SSH pane, are dimmed. The dock badges count running tasks and agents that need you, and the Agents view lists every running agent across windows. Pane headers no longer have Scratchpad, Tasks or Agent buttons.
+- **Agent icons:** Claude Code and Codex now show their vendors' logos, Claude Code's in its own orange. Agent definitions can set `"fullColor": true` on an image icon to keep its colors.
+- **Trellis Light:** the terminal is now white, with black text and a matching palette, instead of dark. Custom light themes with no terminal colors follow it; those that set terminal colors keep a dark terminal unless they set a light background or dark text. Use another theme, such as My Light from the examples, for dark panes under light chrome.
+- **Pane padding:** terminals now have an 8 pt margin on every side, and the part of a row that doesn't fit is split evenly above and below the rows, so the top and bottom padding always match. Rows were pinned to the bottom before, leaving a varying gap under the pane header.
+- **Focused pane:** with several panes visible, the focused pane's header gets an accent line and tint, and the other panes are slightly dimmed. Nothing is dimmed while the window is inactive or with Increase Contrast on.
+
+### Fixed
+
+- **Light themes:** programs using 256-color indexes, like Powerlevel10k prompts, no longer draw near-black blocks on light terminals. Those colors now follow the theme and stay readable; dark terminals keep exact xterm values, and 24-bit colors are never changed.
+- **Light themes:** text that would be nearly invisible no longer vanishes, such as `\e[30m` text and default text on `\e[47m` and `\e[107m` backgrounds. Readable ANSI colors keep the theme's exact values.
+- The project setup terminal and the ssh connection console now use the current theme instead of the dark default.
+- Inserting columns (DECIC) no longer fills them with reverse video.
+- The project editor's "Layout" and "Editor" labels no longer wrap mid-word.
+- In Settings → Updates, "Current version" now lines up with the toggles below it.
+
 ## [1.1.0] - 2026-11-03
 
 The stable 1.1 release. Coming from 1.0.0, you also get everything listed under 1.1.0-beta.1: remote workspaces, the project library, coding agents, directory jump and sessions that keep running after quit. Repository project files are replaced by the library.
@@ -300,7 +329,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...HEAD
+[1.2.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.1.0...v1.2.0-beta.1
 [1.1.0]: https://github.com/bearstouch/trellis/compare/v1.1.0-beta.1...v1.1.0
 [1.1.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.0.0...v1.1.0-beta.1
 [1.0.0]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...v1.0.0

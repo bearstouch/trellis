@@ -110,6 +110,48 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
     }
 
+    func testSidebarViewTogglesDefaultToOptionCommandAndYieldToSavedChords() throws {
+        let map = ShortcutMap.defaults
+        XCTAssertEqual(map[.toggleTasks], KeyChord("t", [.command, .option]))
+        XCTAssertEqual(map[.toggleAgents], KeyChord("a", [.command, .option]))
+        XCTAssertEqual(ShortcutAction.toggleTasks.menu, .view)
+        XCTAssertEqual(ShortcutAction.toggleAgents.title, "Toggle Agents")
+        // Saved before the sidebar had these defaults: the user's choices win and the new toggles start unbound.
+        let tasksChord = String(decoding: try JSONEncoder().encode(KeyChord("t", [.command, .option])), as: UTF8.self)
+        let agentsChord = String(decoding: try JSONEncoder().encode(KeyChord("a", [.command, .option])), as: UTF8.self)
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"renameTab":{"chord":\#(tasksChord)},"renameWindow":{"chord":\#(agentsChord)}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.renameTab], KeyChord("t", [.command, .option]))
+        XCTAssertEqual(loaded.shortcuts[.renameWindow], KeyChord("a", [.command, .option]))
+        XCTAssertNil(loaded.shortcuts[.toggleTasks])
+        XCTAssertNil(loaded.shortcuts[.toggleAgents])
+        XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
+    }
+
+    func testToggleFilesDefaultsToOptionCommandFAndYieldsToASavedChord() throws {
+        XCTAssertEqual(ShortcutMap.defaults[.toggleFiles], KeyChord("f", [.command, .option]))
+        XCTAssertEqual(ShortcutAction.toggleFiles.menu, .view)
+        XCTAssertEqual(ShortcutAction.toggleFiles.title, "Toggle Files")
+        XCTAssertTrue(ShortcutMap.defaults.issues().isEmpty, "⌥⌘F clashes with no other default")
+        let chord = String(decoding: try JSONEncoder().encode(KeyChord("f", [.command, .option])), as: UTF8.self)
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"renameTab":{"chord":\#(chord)}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.renameTab], KeyChord("f", [.command, .option]))
+        XCTAssertNil(loaded.shortcuts[.toggleFiles], "A chord the user already chose keeps working; Toggle Files starts unbound")
+    }
+
+    func testToggleChangesDefaultsToOptionCommandGAndYieldsToASavedChord() throws {
+        XCTAssertEqual(ShortcutMap.defaults[.toggleChanges], KeyChord("g", [.command, .option]))
+        XCTAssertEqual(ShortcutAction.toggleChanges.menu, .view)
+        XCTAssertEqual(ShortcutAction.toggleChanges.title, "Toggle Changes")
+        XCTAssertTrue(ShortcutMap.defaults.issues().isEmpty, "⌥⌘G clashes with no other default")
+        let chord = String(decoding: try JSONEncoder().encode(KeyChord("g", [.command, .option])), as: UTF8.self)
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"renameTab":{"chord":\#(chord)}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.renameTab], KeyChord("g", [.command, .option]))
+        XCTAssertNil(loaded.shortcuts[.toggleChanges], "A chord the user already chose keeps working; Toggle Changes starts unbound")
+    }
+
     func testOpenWorkspaceFileDefaultsToCommandOAndYieldsToASavedChord() throws {
         XCTAssertEqual(ShortcutMap.defaults[.showProjects], KeyChord("o"))
         XCTAssertEqual(ShortcutAction.showProjects.menu, .file)

@@ -140,4 +140,38 @@ final class AppearanceSettingsTests: XCTestCase {
             XCTAssertTrue(base.terminalRenderingDiffers(from: changed), "change \(index)")
         }
     }
+    func testBackgroundOpacityDefaultsValidationAndDecoding() throws {
+        let base = AppearanceSettings()
+        XCTAssertEqual(base.backgroundOpacity, 1)
+        XCTAssertTrue(base.backgroundBlur)
+        for (opacity, valid) in [(0.3, true), (0.75, true), (1, true), (0.2, false), (1.1, false), (.nan, false), (.infinity, false)] {
+            var settings = base
+            settings.backgroundOpacity = opacity
+            XCTAssertEqual(settings.isValid, valid, "\(opacity)")
+        }
+        var translucent = base
+        translucent.backgroundOpacity = 0.6; translucent.backgroundBlur = false
+        XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(translucent)), translucent)
+        // Saved before FR-TH10: opaque with blur on.
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(base)) as? [String: Any])
+        object.removeValue(forKey: "backgroundOpacity"); object.removeValue(forKey: "backgroundBlur")
+        XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: object)), base)
+        // An opacity this build doesn't accept falls back to opaque instead of discarding every setting.
+        for bad: Any in [0.05, 7, "half"] {
+            object["backgroundOpacity"] = bad; object["backgroundBlur"] = false
+            let decoded = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: object))
+            XCTAssertEqual(decoded.backgroundOpacity, 1)
+            XCTAssertFalse(decoded.backgroundBlur)
+            XCTAssertTrue(decoded.isValid)
+        }
+    }
+    func testBlurIsChromeOnlyButOpacityTouchesTerminals() {
+        let base = AppearanceSettings()
+        var blur = base
+        blur.backgroundBlur = false
+        XCTAssertFalse(base.terminalRenderingDiffers(from: blur))
+        var opacity = base
+        opacity.backgroundOpacity = 0.8
+        XCTAssertTrue(base.terminalRenderingDiffers(from: opacity))
+    }
 }

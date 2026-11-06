@@ -177,7 +177,7 @@ extension AppWorkspaceModel {
     }
 
     /// In the window that runs on the row's machine, never one whose new panes would start elsewhere (FR-DJ07).
-    private func openTabForDirectory(_ path: String, target: ProjectTarget) async {
+    func openTabForDirectory(_ path: String, target: ProjectTarget) async {
         let hostID: UUID? = if case .host(let id) = target { id } else { nil }
         let matching = snapshot.windows.filter { $0.remoteHostID == hostID && !closingWindowIDs.contains($0.id) }
         guard let window = matching.first(where: { $0.id == snapshot.activeWindowID }) ?? matching.first else {

@@ -52,6 +52,9 @@ nav:
       - Tasks: features/tasks.md
       - Coding agents: features/agents.md
       - Command scratchpad: features/scratchpad.md
+      - Right sidebar and dock: features/sidebar.md
+      - Files: features/files.md
+      - Changes: features/changes.md
       - Command palette: features/command-palette.md
       - Directory jump: features/directory-jump.md
       - Terminal: features/terminal.md
@@ -60,6 +63,7 @@ nav:
       - Remote workspaces: features/remote-workspaces.md
       - Themes: features/themes.md
       - Keyboard and accessibility: features/keyboard-accessibility.md
+      - Welcome tour: features/welcome-tour.md
   - Automation API:
       - Overview and transport: api/index.md
       - Authorization: api/authorization.md

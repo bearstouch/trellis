@@ -139,7 +139,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .broker: "The helpers that keep sessions running, on this Mac and on your hosts."
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
-        case .agents: "The coding agents the Agent button launches, and how they report their state."
+        case .agents: "The coding agents the Agents view launches, and how they report their state."
         case .automation: "Manage access for scripts and agents."
         case .remoteControl: "Let agents connect over the Model Context Protocol (MCP)."
         case .updates: "Check for new versions of Trellis and install them."
@@ -164,6 +164,20 @@ struct AppearanceSettingsView: View {
             Picker("Dark theme", selection: $draft.darkThemeID) {
                 ForEach(model.availableThemes(for: .dark), id: \.id) { Text($0.name).tag($0.id) }
             }
+            LabeledContent("Background opacity") {
+                HStack {
+                    Slider(value: $draft.backgroundOpacity, in: AppearanceSettings.backgroundOpacityRange, step: 0.05)
+                        .accessibilityLabel("Background opacity").accessibilityValue("\(Int((draft.backgroundOpacity * 100).rounded())) percent")
+                        .accessibilityIdentifier("settings.backgroundOpacity")
+                    Text("\(Int((draft.backgroundOpacity * 100).rounded())) %").monospacedDigit().frame(width: 44, alignment: .trailing).accessibilityHidden(true)
+                }
+            }
+            Toggle("Blur behind background", isOn: $draft.backgroundBlur).disabled(draft.backgroundOpacity >= 1).accessibilityIdentifier("settings.backgroundBlur")
+            Text(
+                model.increaseContrast || model.reduceTransparency
+                    ? "Panes stay opaque while Reduce Transparency or Increase Contrast is on."
+                    : "Only the terminal background shows the desktop; text, colors and selections stay opaque."
+            ).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker("Terminal font", selection: $draft.fontName) {
                 if !fontNames.contains(draft.fontName) {
                     Text("\(draft.fontName) (unavailable)").tag(draft.fontName)

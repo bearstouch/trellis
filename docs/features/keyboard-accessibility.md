@@ -5,7 +5,7 @@
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
 | FR-U01 | Discoverable, configurable keyboard shortcuts with conflict warnings. | Menus show the shortcuts. A conflict can't silently disable a critical command. |
-| FR-U02 | Readable terminal settings. | JetBrains Mono, bundled with the app, is the default terminal font; Roboto Mono, Cascadia Mono NF (with Nerd Font prompt glyphs), IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled alternatives. A missing or non-monospaced saved font falls back to Menlo or the system monospace font with a visible notice. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds stay dark by default under both application themes. |
+| FR-U02 | Readable terminal settings. | JetBrains Mono, bundled with the app, is the default terminal font; Roboto Mono, Cascadia Mono NF (with Nerd Font prompt glyphs), IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled alternatives. A missing or non-monospaced saved font falls back to Menlo or the system monospace font with a visible notice. Font family and size, the light/dark application theme, cursor style and scrollback limit all update predictably, and font zoom works. Terminal backgrounds follow the theme: white under Trellis Light and dark under Trellis Dark. |
 
 ## Default shortcuts
 
@@ -29,7 +29,10 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Save workspace | ⌘S |
 | Projects ([FR-PL01](project-library.md)) | ⌘O |
 | Hide / show sidebar | ⌃⌘S |
+| Show / hide [files](files.md) in the [right sidebar](sidebar.md) | ⌥⌘F |
 | Show / hide the [command scratchpad](scratchpad.md) | ⌥⌘E |
+| Show / hide [tasks](tasks.md) in the [right sidebar](sidebar.md) | ⌥⌘T |
+| Show / hide [agents](agents.md) in the right sidebar | ⌥⌘A |
 | Open / close the [command palette](command-palette.md) | ⇧⌘P |
 | [Jump to Directory…](directory-jump.md) | ⌘J |
 | Rename tab, rename window, delete window, show hosts | Unbound by default |
@@ -39,7 +42,7 @@ These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q)
 Rules for shortcuts:
 
 - Every configurable shortcut must include ⌘, so terminal key combinations (Ctrl-C, Option sequences) always reach the shell.
-- Conflicts are rejected before they're saved. Previous/Next Prompt (added with shell integration) yield to a shortcut you had already assigned to ⌘↑ or ⌘↓, Clear yields to one you had assigned to ⌘K, Projects yields to one you had assigned to ⌘O, Toggle Scratchpad yields to one you had assigned to ⌥⌘E, Command Palette yields to one you had assigned to ⇧⌘P, and Jump to Directory yields to one you had assigned to ⌘J: that action starts unbound instead of discarding your saved shortcuts.
+- Conflicts are rejected before they're saved. Previous/Next Prompt (added with shell integration) yield to a shortcut you had already assigned to ⌘↑ or ⌘↓, Clear yields to one you had assigned to ⌘K, Projects yields to one you had assigned to ⌘O, Toggle Scratchpad, Toggle Tasks and Toggle Agents yield to one you had assigned to ⌥⌘E, ⌥⌘T or ⌥⌘A, Command Palette yields to one you had assigned to ⇧⌘P, and Jump to Directory yields to one you had assigned to ⌘J: that action starts unbound instead of discarding your saved shortcuts.
 - Settings are stored under the `keyboard.settings` user default.
 - **Option as Meta** is a terminal setting and is off by default.
 - Cmd-C and Cmd-V are always native copy and paste, and Ctrl-C always sends the terminal interrupt. Clipboard actions and terminal input must not fight over the responder chain.
@@ -66,7 +69,7 @@ Scrollback, desktop notifications, command-finished notifications and GPU render
 
 - Every primary operation can be done from the keyboard, and the focus location stays visible in the terminal, tabs, sidebar and dialogs.
 - VoiceOver can identify sidebar items, tabs, terminal panes, their status, and action labels. `WorkspaceAccessibility` provides them, for example "Window Project, 2 tabs, new output", "Tab Build, 1 of 2", and "Terminal Server, Exited (7), focused".
-- Selection is shown by shape and weight as well as color: a semibold pane title and a tab underline. Terminal panes have no surrounding focus border. Stopped, exited and failed panes show a text status. **Color is never the only signal.**
+- Selection is shown by shape and weight as well as color: a semibold pane title and a tab underline. Terminal panes have no surrounding focus border; with several panes visible, the focused pane's header is marked and the others dimmed (FR-P05). Stopped, exited and failed panes show a text status. **Color is never the only signal.**
 - Trellis honors the system appearance, increased contrast, reduced motion and native text input.
 - While a tab name is being edited, terminal input is suspended, so keystrokes can't leak into a shell.
 - Trellis never requests Accessibility, event-tap or global-monitor permissions.

@@ -158,6 +158,7 @@ extension AppWorkspaceModel {
         // A check still in flight must not put the sheet back to Ready while setup runs.
         session.checkGeneration += 1
         let terminal = NativeTerminal()
+        terminal.applyPalette(effectiveTheme.terminal)
         session.terminal = terminal
         session.stage = .settingUp(launch)
         terminal.onExit = { [weak self, weak session] code in
