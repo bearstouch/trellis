@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, nil, .toggleFiles, .toggleScratchpad, .toggleTasks, .toggleAgents, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, nil, .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -331,11 +331,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
         let pane = presentation.activePane?.id
+        model.revealTerminalsForPaneAction(action)
         switch action {
         case .newWindow: newWindow()
         case .newTab: Task { await model.createTab() }
         case .renameTab: model.tabRenameRequest = UUID()
         case .renameWindow: model.windowRenameRequest = UUID()
+        // The Review tab hides the terminals, so closing acts on what is shown, never on a pane out of sight (FR-GC05).
+        case .closePane where model.reviewVisible, .closeTab where model.reviewVisible: model.closeReview()
         case .closePane: if let pane { Task { await model.closePane(pane) } }
         case .closeTab: if let tab = presentation.selectedTab?.id { Task { await model.closeTab(tab) } }
         case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
@@ -352,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
         case .toggleSidebar: model.toggleSidebar()
-        case .toggleFiles, .toggleScratchpad, .toggleTasks, .toggleAgents: if let view = SidebarView(shortcut: action) { model.toggleSidebarView(view) }
+        case .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents: if let view = SidebarView(shortcut: action) { model.toggleSidebarView(view) }
         case .commandPalette: model.toggleCommandPalette()
         case .jumpToDirectory: model.openDirectoryJump()
         case .splitLeftRight, .splitTopBottom:

@@ -441,7 +441,7 @@ private struct WelcomeTourStage: View {
     private func dock(shown: SidebarView?, needsYou: Int = 0) -> some View {
         VStack(spacing: 2) {
             ForEach(SidebarView.allCases, id: \.self) { view in
-                Image(systemName: view.symbol).font(.system(size: 11)).foregroundStyle(view == shown ? fg : muted)
+                SidebarViewIcon(view: view, size: 11).foregroundStyle(view == shown ? fg : muted)
                     .frame(width: 28, height: 26)
                     .overlay(alignment: .leading) {
                         if view == shown { model.themeColor(.accent).frame(width: 2, height: 15).clipShape(Capsule()) }

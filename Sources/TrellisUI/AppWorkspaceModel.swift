@@ -395,6 +395,8 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Injected by tests; nil disables integration.
     var shellIntegrationDirectory: String? = BundledShellIntegration.directory()
     public var confirmCloseSessions: (Int) -> Bool = { _ in true }
+    /// Asked before staging a conflicted file, which marks it resolved (FR-GC06); the app shows an alert.
+    public var confirmStageConflict: (String) -> Bool = { _ in false }
     public var confirmForceSessions: (Int) -> Bool = { _ in false }
     private var closeSummary: [String] = []
     let closureCoordinator = SessionClosureCoordinator()
@@ -498,6 +500,17 @@ public final class AppWorkspaceModel: ObservableObject {
     var filesSearchTask: Task<Void, Never>?
     var filesGeneration = 0
     var filesStatusTask: Task<Void, Never>?
+    /// The Changes view's list, filter and folds (FR-GC02–FR-GC04): runtime only, never saved with the workspace.
+    @Published public internal(set) var gitChanges = GitChangesState()
+    /// Each window's Review tab (FR-GC05), and the windows showing it in place of their terminal tabs. Never saved.
+    @Published public internal(set) var reviewTabs: [UUID: ReviewTab] = [:]
+    @Published public internal(set) var reviewShownWindows: Set<UUID> = []
+    /// Bumped when the Changes view's filter field should take keyboard focus.
+    @Published public internal(set) var gitChangesFocusRequest = 0
+    var gitChangesGeneration = 0
+    var gitChangesStatusTask: Task<Void, Never>?
+    /// Runs git for the Changes view; injected by tests.
+    public var gitChangesClient = GitChangesClient.local
     /// The Files view's dependencies; injected by tests so nothing opens an app or touches the pasteboard.
     public var fileListing: any FileListing = LocalFileListing()
     public var openFileInApp: (URL, URL?) -> Void = { url, app in
@@ -638,6 +651,16 @@ public final class AppWorkspaceModel: ObservableObject {
         confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
         confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
         confirmClearDirectoryHistory = { [weak self] in self?.showClearDirectoryHistoryConfirmation() ?? false }
+        confirmStageConflict = { Self.showStageConflictConfirmation(name: $0) }
+    }
+
+    private static func showStageConflictConfirmation(name: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Mark \(name) as resolved?"
+        alert.informativeText = "Staging a conflicted file tells git the conflict is resolved, with the file as it is now. Check that no conflict markers (<<<<<<<, =======, >>>>>>>) are left."
+        alert.addButton(withTitle: "Stage as Resolved")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// Returns true for an existing document or recovery state, even if empty.
@@ -851,6 +874,7 @@ public final class AppWorkspaceModel: ObservableObject {
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         lastRecordedDirectories = lastRecordedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
+        if !reviewTabs.isEmpty || !reviewShownWindows.isEmpty { pruneReviews(previous: previous, next: next) }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
         refreshTerminalAccessibility()
@@ -1273,7 +1297,12 @@ public final class AppWorkspaceModel: ObservableObject {
 
     private func applyShellEvent(_ event: ShellIntegrationEvent, paneID: UUID) {
         // After a cd or a command the work tree may have changed (FR-PL09); looked at once the prompt's directory is applied.
-        defer { if case .promptStart = event { refreshGitStatus(paneID: paneID) } }
+        defer {
+            if case .promptStart = event {
+                refreshGitStatus(paneID: paneID)
+                refreshGitChangesAtPrompt(paneID: paneID)
+            }
+        }
         switch event {
         case .commandFinished, .promptStart: settleOutput(paneID: paneID)
         case .commandInputStart, .commandStart, .reportedDirectory, .reportedHost: break
@@ -1688,6 +1717,8 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func selectTab(_ id: UUID) async {
+        // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
+        if let windowID = snapshot.tabs[id]?.windowID { reviewShownWindows.remove(windowID) }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = "The tab could not be selected." }
     }

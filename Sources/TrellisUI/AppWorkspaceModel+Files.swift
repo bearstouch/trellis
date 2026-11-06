@@ -86,10 +86,7 @@ extension AppWorkspaceModel {
     public func refreshFiles(paneID: UUID) async {
         filesGeneration &+= 1
         let generation = filesGeneration
-        // Looked up here, not while drawing: the view redraws on every model change and Launch Services isn't free.
-        files.editorAppURLs = Dictionary(uniqueKeysWithValues: EditorApp.catalog.compactMap { app in appURL(for: app).map { (app.id, $0) } })
-        files.editors = EditorApp.catalog.filter { $0.bundleIDs.isEmpty || $0 == .finder || files.editorAppURLs[$0.id] != nil }
-        files.editorID = preferences.string(forKey: Self.filesEditorKey) ?? EditorApp.finder.id
+        loadEditorChoices()
         guard presentation.activePane?.id == paneID, sidebarUnavailableReason(.files) == nil, let directory = paneDirectory(paneID) else {
             resetFiles(paneID: paneID, root: nil)
             return
@@ -113,6 +110,14 @@ extension AppWorkspaceModel {
         files.ignore = ignore
         files.folders = folders
         if !files.query.isEmpty { startFilesSearch() }
+    }
+
+    /// The installed editors and the remembered choice, shared by Files and Changes (FR-FB05, FR-GC07). Looked up when a
+    /// view loads, not while drawing: the view redraws on every model change and Launch Services isn't free.
+    func loadEditorChoices() {
+        files.editorAppURLs = Dictionary(uniqueKeysWithValues: EditorApp.catalog.compactMap { app in appURL(for: app).map { (app.id, $0) } })
+        files.editors = EditorApp.catalog.filter { $0.bundleIDs.isEmpty || $0 == .finder || files.editorAppURLs[$0.id] != nil }
+        files.editorID = preferences.string(forKey: Self.filesEditorKey) ?? EditorApp.finder.id
     }
 
     private func resetFiles(paneID: UUID, root: String?) {

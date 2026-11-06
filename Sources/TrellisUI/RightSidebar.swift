@@ -26,7 +26,7 @@ struct SidebarDock: View {
         return Button {
             model.toggleSidebarView(view)
         } label: {
-            Image(systemName: view.symbol).font(.system(size: 15))
+            SidebarViewIcon(view: view, size: 15)
                 .foregroundStyle(reason != nil ? model.themeColor(.mutedForeground).opacity(0.35) : shown ? model.themeColor(.foreground) : model.themeColor(.mutedForeground))
                 .frame(width: 40, height: 38)
                 .overlay(alignment: .leading) {
@@ -49,6 +49,9 @@ struct SidebarDock: View {
     private func badge(_ view: SidebarView) -> (count: Int, spoken: String, tint: Color, foreground: Color)? {
         switch view {
         case .files, .scratchpad: return nil
+        case .changes:
+            let count = model.changedFileCount
+            return count > 0 ? (count, "\(count) changed", model.themeColor(.accent), model.accentForeground) : nil
         case .tasks:
             let count = model.activeTaskCount
             return count > 0 ? (count, "\(count) running", model.themeColor(.accent), model.accentForeground) : nil
@@ -73,6 +76,8 @@ struct RightSidebarPanel: View {
         switch view {
         case .files:
             if let paneID = model.presentation.activePane?.id { FilesSidebarView(model: model, paneID: paneID) }
+        case .changes:
+            if let paneID = model.presentation.activePane?.id { ChangesSidebarView(model: model, paneID: paneID) }
         case .scratchpad: ScratchpadPanel(model: model, buffer: model.scratchpadBuffer)
         case .tasks:
             if let paneID = model.presentation.activePane?.id { TasksSidebarView(model: model, paneID: paneID) }
@@ -89,7 +94,7 @@ struct SidebarHeader<Accessory: View>: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: view.symbol).accessibilityHidden(true)
+            SidebarViewIcon(view: view, size: 12).accessibilityHidden(true)
             Text(view.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(model.themeColor(.foreground)).accessibilityAddTraits(.isHeader)
             Spacer(minLength: 4)
             accessory
@@ -219,5 +224,35 @@ struct AgentsSidebarView: View {
     private func launch(_ id: String, resume: Bool) {
         let flip = NSEvent.modifierFlags.contains(.option)
         Task { await model.launchAgentFromSidebar(id, resume: resume, flipPlacement: flip) }
+    }
+}
+
+/// A dock view's icon: an SF Symbol, except Changes, whose git branch graph SF Symbols lacks (FR-GC01).
+struct SidebarViewIcon: View {
+    let view: SidebarView
+    let size: CGFloat
+
+    var body: some View {
+        if view == .changes {
+            GitBranchGlyph().stroke(style: StrokeStyle(lineWidth: max(1.2, size / 11), lineCap: .round)).frame(width: size, height: size)
+        } else {
+            Image(systemName: view.symbol).font(.system(size: size))
+        }
+    }
+}
+
+/// Two commits on a line and a branch curving into it, drawn in a 16-point box.
+struct GitBranchGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 16
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * scale, y: rect.minY + y * scale) }
+        let radius = 2 * scale
+        var path = Path()
+        for (x, y) in [(4.5, 3.5), (4.5, 12.5), (11.5, 4.5)] as [(CGFloat, CGFloat)] {
+            path.addEllipse(in: CGRect(x: rect.minX + x * scale - radius, y: rect.minY + y * scale - radius, width: radius * 2, height: radius * 2))
+        }
+        path.move(to: point(4.5, 5.5)); path.addLine(to: point(4.5, 10.5))
+        path.move(to: point(11.5, 6.5)); path.addCurve(to: point(4.5, 10.5), control1: point(11.5, 9.5), control2: point(4.5, 8.5))
+        return path
     }
 }

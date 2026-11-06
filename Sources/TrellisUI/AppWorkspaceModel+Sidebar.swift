@@ -4,11 +4,12 @@ import TrellisCore
 
 /// A view of the right sidebar, chosen from the dock (FR-SB01, FR-SB02).
 public enum SidebarView: String, CaseIterable, Sendable {
-    case files, scratchpad, tasks, agents
+    case files, changes, scratchpad, tasks, agents
 
     public var title: String {
         switch self {
         case .files: "Files"
+        case .changes: "Changes"
         case .scratchpad: "Scratchpad"
         case .tasks: "Tasks"
         case .agents: "Agents"
@@ -18,6 +19,7 @@ public enum SidebarView: String, CaseIterable, Sendable {
     public var symbol: String {
         switch self {
         case .files: "folder"
+        case .changes: "arrow.triangle.branch"
         case .scratchpad: "chevron.left.forwardslash.chevron.right"
         case .tasks: "play"
         case .agents: "sparkles"
@@ -27,6 +29,7 @@ public enum SidebarView: String, CaseIterable, Sendable {
     public var shortcut: ShortcutAction {
         switch self {
         case .files: .toggleFiles
+        case .changes: .toggleChanges
         case .scratchpad: .toggleScratchpad
         case .tasks: .toggleTasks
         case .agents: .toggleAgents
@@ -61,6 +64,7 @@ extension AppWorkspaceModel {
         if view == .scratchpad, machine != .local { return "The scratchpad runs only in panes on this Mac." }
         // The remote helper reads only allow-listed files; it can't list folders (FR-FB01).
         if view == .files, machine != .local { return "Files shows only folders on this Mac." }
+        if view == .changes, machine != .local { return "Changes reads git only in panes on this Mac." }
         return nil
     }
 
@@ -76,13 +80,15 @@ extension AppWorkspaceModel {
         if visibleSidebarView == view {
             closeSidebar()
         } else {
-            let leavingEditor = visibleSidebarView == .scratchpad || visibleSidebarView == .files
+            let leavingEditor = visibleSidebarView == .scratchpad || visibleSidebarView == .files || visibleSidebarView == .changes
             sidebarView = view
             if view == .scratchpad {
                 scratchpadFocusRequest &+= 1
             } else if view == .files {
                 // Showing Files puts the keyboard in its search field, so ⌥⌘F, a few letters and Return opens a file (FR-FB04).
                 filesFocusRequest &+= 1
+            } else if view == .changes {
+                gitChangesFocusRequest &+= 1
             } else if leavingEditor, let terminal = activeTerminal {
                 // The editor that had the keyboard is gone; give it back to the terminal rather than to nothing.
                 DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
@@ -100,6 +106,9 @@ extension AppWorkspaceModel {
 
     /// Task runs starting or running, in every pane.
     public var activeTaskCount: Int { taskRuns.values.filter(\.isActive).count }
+
+    /// The focused pane's changed files, from its header git status (FR-GC01).
+    public var changedFileCount: Int { presentation.activePane.flatMap { gitStatuses[$0.id]?.changes } ?? 0 }
 
     /// Running agent panes whose state is Needs you, in every window.
     public var agentsNeedingYouCount: Int {
