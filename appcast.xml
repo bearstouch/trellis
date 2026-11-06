@@ -6,6 +6,16 @@
     <description>Trellis updates</description>
     <language>en</language>
     <item>
+      <title>Trellis 1.2.0-beta.1</title>
+      <pubDate>Fri, 06 Nov 2026 19:41:46 GMT</pubDate>
+      <sparkle:version>1.2.0.31</sparkle:version>
+      <sparkle:shortVersionString>1.2.0-beta.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/bearstouch/trellis/releases/tag/v1.2.0-beta.1</sparkle:fullReleaseNotesLink>
+      <sparkle:channel>beta</sparkle:channel>
+      <enclosure url="https://github.com/bearstouch/trellis/releases/download/v1.2.0-beta.1/Trellis-1.2.0-beta.1.dmg" length="38149340" type="application/octet-stream" sparkle:edSignature="eMqjvmGlciJbG+VJWyc/Do2+aQ73G3VP8uPi/A1UvT6TbqeaMu+4sFQhNGnn774D2xGx9m/+yijPjwX8BJoxDw==" />
+    </item>
+    <item>
       <title>Trellis 1.1.0</title>
       <pubDate>Tue, 03 Nov 2026 20:16:25 GMT</pubDate>
       <sparkle:version>1.1.0.100</sparkle:version>
