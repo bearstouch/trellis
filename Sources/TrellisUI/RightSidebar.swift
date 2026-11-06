@@ -165,7 +165,7 @@ struct AgentsSidebarView: View {
                 Text("Split Beside Pane").tag(AppWorkspaceModel.AgentPlacement.split)
             }
             .pickerStyle(.segmented).labelsHidden().controlSize(.small)
-            .help("Where Open starts the agent; ⌥-click Open for the other")
+            .help("Where ▶ starts the agent; ⌥-click ▶ for the other")
         }
     }
 
@@ -181,16 +181,21 @@ struct AgentsSidebarView: View {
                 if let status { Text(status).font(.caption2).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1) }
             }.accessibilityElement(children: .combine)
             Spacer(minLength: 4)
-            Button(missing ? "Install…" : "Open") { launch(agent.id, resume: false) }
-                .controlSize(.small).help(missing ? "Offer \(agent.name)'s installer" : "Open \(agent.name) (⌥-click for the other placement)")
-                .accessibilityLabel(missing ? "Install \(agent.name)" : "Open \(agent.name)")
+            Button {
+                launch(agent.id, resume: false)
+            } label: {
+                // A missing agent keeps the word: a lone download icon wouldn't say an installer is offered.
+                if missing { Text("Install…") } else { Image(systemName: "play.fill") }
+            }
+            .buttonStyle(.borderless).help(missing ? "Offer \(agent.name)'s installer" : "Open \(agent.name) (⌥-click for the other placement)")
+            .accessibilityLabel(missing ? "Install \(agent.name)" : "Open \(agent.name)")
             if !agent.resumeArguments.isEmpty {
                 Button {
                     launch(agent.id, resume: true)
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
-                .controlSize(.small).help("Resume \(agent.name)'s last conversation").accessibilityLabel("Resume \(agent.name)")
+                .buttonStyle(.borderless).help("Resume \(agent.name)'s last conversation").accessibilityLabel("Resume \(agent.name)")
             }
         }
     }
