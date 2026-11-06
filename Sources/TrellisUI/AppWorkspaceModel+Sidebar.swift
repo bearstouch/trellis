@@ -4,10 +4,11 @@ import TrellisCore
 
 /// A view of the right sidebar, chosen from the dock (FR-SB01, FR-SB02).
 public enum SidebarView: String, CaseIterable, Sendable {
-    case scratchpad, tasks, agents
+    case files, scratchpad, tasks, agents
 
     public var title: String {
         switch self {
+        case .files: "Files"
         case .scratchpad: "Scratchpad"
         case .tasks: "Tasks"
         case .agents: "Agents"
@@ -16,6 +17,7 @@ public enum SidebarView: String, CaseIterable, Sendable {
 
     public var symbol: String {
         switch self {
+        case .files: "folder"
         case .scratchpad: "chevron.left.forwardslash.chevron.right"
         case .tasks: "checklist"
         case .agents: "sparkles"
@@ -24,6 +26,7 @@ public enum SidebarView: String, CaseIterable, Sendable {
 
     public var shortcut: ShortcutAction {
         switch self {
+        case .files: .toggleFiles
         case .scratchpad: .toggleScratchpad
         case .tasks: .toggleTasks
         case .agents: .toggleAgents
@@ -56,6 +59,8 @@ extension AppWorkspaceModel {
         let machine = paneContext(paneID).machine
         if machine == .ssh { return "\(view.title) isn't available in SSH panes." }
         if view == .scratchpad, machine != .local { return "The scratchpad runs only in panes on this Mac." }
+        // The remote helper reads only allow-listed files; it can't list folders (FR-FB01).
+        if view == .files, machine != .local { return "Files shows only folders on this Mac." }
         return nil
     }
 
@@ -71,10 +76,13 @@ extension AppWorkspaceModel {
         if visibleSidebarView == view {
             closeSidebar()
         } else {
-            let leavingEditor = visibleSidebarView == .scratchpad
+            let leavingEditor = visibleSidebarView == .scratchpad || visibleSidebarView == .files
             sidebarView = view
             if view == .scratchpad {
                 scratchpadFocusRequest &+= 1
+            } else if view == .files {
+                // Showing Files puts the keyboard in its search field, so ⌥⌘F, a few letters and Return opens a file (FR-FB04).
+                filesFocusRequest &+= 1
             } else if leavingEditor, let terminal = activeTerminal {
                 // The editor that had the keyboard is gone; give it back to the terminal rather than to nothing.
                 DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }

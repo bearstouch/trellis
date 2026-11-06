@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, nil, .toggleScratchpad, .toggleTasks, .toggleAgents, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, nil, .toggleFiles, .toggleScratchpad, .toggleTasks, .toggleAgents, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -352,7 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .zoomOut: model.zoomTerminalFont(by: -1)
         case .actualSize: model.zoomTerminalFont(by: 0, reset: true)
         case .toggleSidebar: model.toggleSidebar()
-        case .toggleScratchpad, .toggleTasks, .toggleAgents: if let view = SidebarView(shortcut: action) { model.toggleSidebarView(view) }
+        case .toggleFiles, .toggleScratchpad, .toggleTasks, .toggleAgents: if let view = SidebarView(shortcut: action) { model.toggleSidebarView(view) }
         case .commandPalette: model.toggleCommandPalette()
         case .jumpToDirectory: model.openDirectoryJump()
         case .splitLeftRight, .splitTopBottom:

@@ -53,6 +53,7 @@ nav:
       - Coding agents: features/agents.md
       - Command scratchpad: features/scratchpad.md
       - Right sidebar and dock: features/sidebar.md
+      - Files: features/files.md
       - Command palette: features/command-palette.md
       - Directory jump: features/directory-jump.md
       - Terminal: features/terminal.md

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Files view:** a new folder icon at the top of the right sidebar's dock (⌥⌘F) shows the focused pane's project as a tree, with a search across every file name, an **Open in** button for Finder and the editors you have installed (Cursor, VS Code, Zed, Xcode, Sublime Text, JetBrains IDEs…) that remembers your choice, and Copy Path, Copy Relative Path and Insert Path in Terminal. It leaves out `.git`, build folders and what `.gitignore` ignores. Panes on this Mac only. See [Files](docs/features/files.md).
 - **Welcome tour:** a fresh install opens with a short eight-step tour of windows, sessions, projects, remote work, agents and shortcuts. Its last step sets the appearance, the command line tool and whether sessions keep running after quit. Replay it from **Help → Welcome Tour** or the command palette.
 - **Translucent panes:** Settings → Appearance → **Background opacity** (30–100 %) lets the desktop show through the terminal background, with an optional **Blur behind background**. Text, colors, selections and the sidebar and tabs stay opaque, and panes stay opaque while Reduce Transparency or Increase Contrast is on.
 - **Drop files on a pane:** dragging files from Finder onto a terminal pane inserts their escaped paths at the prompt, for every file type.
