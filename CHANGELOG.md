@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0-beta.1] - 2026-11-06
+
+The first 1.2 beta.
+
 ### Added
 
 - **Changes view:** a new branch icon in the right sidebar's dock (⌥⌘G) lists the focused pane's uncommitted git changes as a tree, with lines added and removed per file and folder, status letters (M, A, D, U, C), a filter, and **Stage**/**Unstage** for each file. Clicking a file opens its diff in a **Review** tab with line numbers, `n`/`p` to jump between changes and `]`/`[` between files. Git runs with hooks and filters off while reading. Panes on this Mac only. See [Changes](docs/features/changes.md).
@@ -325,7 +329,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...HEAD
+[1.2.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.1.0...v1.2.0-beta.1
 [1.1.0]: https://github.com/bearstouch/trellis/compare/v1.1.0-beta.1...v1.1.0
 [1.1.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.0.0...v1.1.0-beta.1
 [1.0.0]: https://github.com/bearstouch/trellis/compare/v1.0.0-beta.2...v1.0.0
