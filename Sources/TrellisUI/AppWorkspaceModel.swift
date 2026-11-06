@@ -518,7 +518,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the palette's field should take keyboard focus.
     @Published public internal(set) var commandPaletteFocusRequest = 0
     var commandPaletteRecents = CommandPaletteRecents()
-    /// The welcome tour (FR-ON01–FR-ON09): the open step, runtime only.
+    /// The welcome tour (FR-ON01–FR-ON10): the open step, runtime only.
     @Published public internal(set) var welcomeTourStep: WelcomeTourStep?
     @Published public internal(set) var welcomeTourCLIStatus = WelcomeTourCLIStatus.unavailable
     @Published public internal(set) var welcomeTourCLIInstalling = false
