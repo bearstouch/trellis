@@ -83,23 +83,8 @@ struct PaneTreeView: View {
                         Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
                             .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
                     }
-                    if let detected = model.detectedAgent(paneID: id) {
-                        // FR-AG15: still a shell, so its tools stay below and no state is claimed.
-                        AgentStateLabel(agent: detected, state: nil, directory: model.agentCatalog.iconDirectories[detected.id], iconOnly: !AgentStateLabel.fitsName(paneWidth: size.width))
-                    }
-                    if let agent = model.agentDefinition(paneID: id) {
-                        // FR-AG10: an agent pane shows its agent and state instead of shell tools.
-                        AgentStateLabel(
-                            agent: agent, state: terminal.sessionState == .running ? model.agentStates[id]?.state ?? .ready : .ready,
-                            directory: model.agentCatalog.iconDirectories[agent.id])
-                    }
-                    // FR-SB06: the scratchpad, tasks and agents live in the right sidebar, for the focused pane.
-                    if let git = model.gitStatuses[id] {
-                        // An icon in the header; the branch and counts are in its hover card and read by VoiceOver (FR-PL09).
-                        GitStatusBadge(
-                            text: AppWorkspaceModel.gitStatusText(git), spoken: AppWorkspaceModel.gitStatusSpoken(git),
-                            foreground: model.themeColor(.foreground), background: model.themeColor(.surface))
-                    }
+                    // FR-AG09/FR-AG10: an agent's icon and state are on its tab, not repeated here.
+                    // FR-SB06: the scratchpad, tasks, agents and git changes live in the right sidebar, for the focused pane.
                     PaneMachineLabel(machine: context.machine, model: model)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Pane headers:** the Git icon and its hover card are gone; the Changes icon in the dock shows the focused pane's git changes instead.
+- **Pane headers:** an agent's name and state ("Claude Code · Working") are no longer repeated in the pane header; the tab already shows the agent's icon, state and title.
+- **Sidebar hover card and Agents view:** busy tabs and working agents show a small spinner instead of the **Busy** label and **Working** capsule. It holds still with Reduce Motion on.
+
 ## [1.2.0-beta.1] - 2026-11-06
 
 The first 1.2 beta.

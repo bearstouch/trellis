@@ -2,8 +2,8 @@ import Foundation
 import TrellisBroker
 import TrellisCore
 
-/// Git status in pane headers (FR-PL09): looked at when a shell shows its prompt (after a `cd` or a command), at most one
-/// check per pane at a time, on this Mac or by the host's helper. Only the branch and counts are kept.
+/// A pane's git status (FR-PL09), behind the Changes dock badge (FR-GC01): looked at when a shell shows its prompt (after a
+/// `cd` or a command), at most one check per pane at a time, on this Mac or by the host's helper. Only the branch and counts are kept.
 extension AppWorkspaceModel {
     func refreshGitStatus(paneID: UUID) {
         guard gitStatusEnabled else { return }
@@ -45,23 +45,5 @@ extension AppWorkspaceModel {
             case .gitState(let found)? = try? await connection.request(.gitStatus(path: directory))
         else { return nil }
         return found
-    }
-
-    /// "main ●2 ↑1" for the header.
-    nonisolated static func gitStatusText(_ status: BrokerGitStatus) -> String {
-        var parts = [status.branch ?? status.commit.map { "(\($0))" } ?? "(no commit)"]
-        if status.changes > 0 { parts.append("●\(status.changes)") }
-        if status.ahead > 0 { parts.append("↑\(status.ahead)") }
-        if status.behind > 0 { parts.append("↓\(status.behind)") }
-        return parts.joined(separator: " ")
-    }
-
-    /// "Git branch main, 2 changes, 1 ahead" for VoiceOver.
-    nonisolated static func gitStatusSpoken(_ status: BrokerGitStatus) -> String {
-        var parts = [status.branch.map { "Git branch \($0)" } ?? status.commit.map { "Git commit \($0), detached" } ?? "Git, no commits yet"]
-        if status.changes > 0 { parts.append("\(status.changes) change\(status.changes == 1 ? "" : "s")") }
-        if status.ahead > 0 { parts.append("\(status.ahead) ahead") }
-        if status.behind > 0 { parts.append("\(status.behind) behind") }
-        return parts.joined(separator: ", ")
     }
 }

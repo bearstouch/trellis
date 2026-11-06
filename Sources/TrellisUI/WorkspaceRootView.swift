@@ -1056,7 +1056,10 @@ private struct WindowTabsPreviewCard: View {
             if tab.paneCount > 1 { Text("\(tab.paneCount) panes").foregroundStyle(model.themeColor(.mutedForeground)) }
             if let code = tab.failedCommandExit { Label("exit \(code)", systemImage: "exclamationmark.circle").labelStyle(.titleAndIcon) }
             if tab.hasExitedSession { Label("Exited", systemImage: "stop.circle").labelStyle(.titleAndIcon) }
-            if let state = tab.agentState {
+            // A working agent reads as busy, like any tab printing output; only states that need a look get a capsule.
+            if tab.agentState == .working {
+                BusyLabel(color: model.themeColor(.accent))
+            } else if let state = tab.agentState {
                 AgentTabBadge(state: state)
             } else if let wait = tab.inputWait {
                 Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
@@ -1066,7 +1069,7 @@ private struct WindowTabsPreviewCard: View {
                 Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").labelStyle(.titleAndIcon)
                     .monospacedDigit()
             } else if tab.isBusy {
-                Label("Busy", systemImage: "waveform").labelStyle(.titleAndIcon).foregroundStyle(model.themeColor(.accent))
+                BusyLabel(color: model.themeColor(.accent))
             }
         }
         .font(.system(size: 11)).lineLimit(1).padding(.horizontal, 6).padding(.vertical, 5)

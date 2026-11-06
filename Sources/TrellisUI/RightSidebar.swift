@@ -206,7 +206,9 @@ struct AgentsSidebarView: View {
                     Text("\(row.windowName) · \(row.agent.name)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
                 }
                 Spacer(minLength: 4)
-                if let state = row.state, state != .ready {
+                if row.state == .working {
+                    BusyLabel(color: model.themeColor(.accent))
+                } else if let state = row.state, state != .ready {
                     AgentTabBadge(state: state)
                 } else {
                     Text(row.status).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)

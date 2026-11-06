@@ -290,11 +290,6 @@ final class ShellIntegrationUITests: XCTestCase {
         XCTAssertEqual(model.paneTitle(pane), "Claude Code · ~")
     }
 
-    func testANarrowPaneShowsATypedAgentsIconWithoutItsName() {
-        XCTAssertFalse(AgentStateLabel.fitsName(paneWidth: 494), "half of a default window")
-        XCTAssertTrue(AgentStateLabel.fitsName(paneWidth: 986), "a whole default window")
-    }
-
     @MainActor
     func testARenamedTabKeepsItsNameWhileATypedAgentRuns() async throws {
         let model = try await makeModel()
