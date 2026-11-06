@@ -19,7 +19,7 @@ public enum SidebarView: String, CaseIterable, Sendable {
         switch self {
         case .files: "folder"
         case .scratchpad: "chevron.left.forwardslash.chevron.right"
-        case .tasks: "checklist"
+        case .tasks: "play"
         case .agents: "sparkles"
         }
     }

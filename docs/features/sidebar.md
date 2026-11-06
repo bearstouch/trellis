@@ -12,7 +12,7 @@ All requirements here are P1.
 | --- | --- | --- | --- |
 | Folder | [Files](files.md) | ⌥⌘F | — |
 | `</>` | [Scratchpad](scratchpad.md) | ⌥⌘E | — |
-| Checklist | [Tasks](tasks.md) | ⌥⌘T | How many tasks are running in any pane |
+| Play | [Tasks](tasks.md) | ⌥⌘T | How many tasks are running in any pane |
 | Sparkles | [Agents](agents.md) | ⌥⌘A | How many agent panes need you, in any window |
 
 **View → Show/Hide Files**, **Show/Hide Scratchpad**, **Show/Hide Tasks** and **Show/Hide Agents**, and the command palette, do the same as the icons.
