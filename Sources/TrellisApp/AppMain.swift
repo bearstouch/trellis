@@ -456,8 +456,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func setWindowTranslucent(_ translucent: Bool) {
         window.isOpaque = !translucent
         window.backgroundColor = translucent ? .clear : .windowBackgroundColor
-        // A clear window draws the title bar's separator as a solid black seam.
+        // A clear window draws the title bar's separator as a solid black seam, even with the style set to none, so
+        // the title bar is drawn by the root view instead, as chrome with the same border as the rest (FR-TH10).
         window.titlebarSeparatorStyle = translucent ? .none : .automatic
+        window.titlebarAppearsTransparent = translucent
+        if translucent { window.styleMask.insert(.fullSizeContentView) } else { window.styleMask.remove(.fullSizeContentView) }
         window.invalidateShadow()
     }
     private func syncAccessibilityDisplayOptions() {

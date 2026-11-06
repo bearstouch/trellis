@@ -14,11 +14,12 @@ struct ReviewTabView: View {
         VStack(spacing: 0) {
             header
             Divider().overlay(model.separatorOverlay)
-            content
+            // Translucent, the diff follows the panes and the header and footer the chrome; one fill under each (FR-TH10).
+            content.background(model.panesTranslucent ? model.terminalBackground.opacity(model.effectiveBackgroundOpacity) : .clear)
             Divider().overlay(model.separatorOverlay)
             footer
         }
-        .background(model.terminalBackground)
+        .background(model.panesTranslucent ? .clear : model.terminalBackground)
         .accessibilityElement(children: .contain).accessibilityLabel("Review \(review.file.name)")
         .onAppear { DispatchQueue.main.async { focused = true } }
         .onChange(of: review.file) { _, _ in changeIndex = nil }
@@ -90,7 +91,7 @@ struct ReviewTabView: View {
             }
             .buttonStyle(.borderless).help("Read the diff again").accessibilityLabel("Reload diff")
         }
-        .padding(.horizontal, 14).padding(.vertical, 8).background(model.themeColor(.surface))
+        .padding(.horizontal, 14).padding(.vertical, 8).background(model.chromeFill(.surface))
     }
 
     // MARK: Diff
@@ -142,7 +143,7 @@ struct ReviewTabView: View {
             if let status = model.gitChanges.status { Text(status).foregroundStyle(model.themeColor(.foreground)).truncationMode(.middle).layoutPriority(1) }
         }
         .font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
-        .padding(.horizontal, 14).padding(.vertical, 6).background(model.themeColor(.surface))
+        .padding(.horizontal, 14).padding(.vertical, 6).background(model.chromeFill(.surface))
     }
 
     private func hint(_ keys: String, _ text: String) -> some View {

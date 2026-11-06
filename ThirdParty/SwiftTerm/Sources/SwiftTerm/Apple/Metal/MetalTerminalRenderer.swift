@@ -398,7 +398,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
 #else
         let scale = terminalView.backingScaleFactor()
 #endif
-        view.drawableSize = CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale)
+        // Whole pixels, rounded up and pinned top-left by the layer (makeMetalView): a truncated drawable was
+        // stretched over the view, which blended its edge rows with transparency into a seam on translucent panes.
+        let drawableSize = CGSize(width: (view.bounds.width * scale).rounded(.up), height: (view.bounds.height * scale).rounded(.up))
+        if view.drawableSize != drawableSize { view.drawableSize = drawableSize }
         let cursorStyle = terminalView.terminal.options.cursorStyle
         let shouldBlink = isBlinkStyle(cursorStyle)
             && !terminalView.terminal.cursorHidden
@@ -462,11 +465,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             debugLastLogTime = now
         }
 #endif
-        let bgColor = colorToSIMD(terminalView.effectiveNativeBackgroundColor)
-        passDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(Double(bgColor.x),
-                                                                         Double(bgColor.y),
-                                                                         Double(bgColor.z),
-                                                                         Double(bgColor.w))
+        passDescriptor.colorAttachments[0].clearColor = clearColor
         passDescriptor.colorAttachments[0].loadAction = .clear
 
 #if canImport(os)
@@ -2054,6 +2053,16 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     /// terminal's cached colors, and converting one is costly (color space
     /// conversion) when it happens for every run of every rebuilt row.
     private var simdColorCache: [ObjectIdentifier: (color: TTColor, simd: SIMD4<Float>)] = [:]
+
+    /// The pass's clear color: the default background, premultiplied. A non-opaque CAMetalLayer
+    /// composites premultiplied pixels, so a straight translucent color would show lighter than
+    /// the same color painted by a layer or view next to it (backgroundOpacity < 1).
+    var clearColor: MTLClearColor {
+        guard let terminalView else { return MTLClearColorMake(0, 0, 0, 0) }
+        let bg = colorToSIMD(terminalView.effectiveNativeBackgroundColor)
+        let a = bg.w
+        return MTLClearColorMake(Double(bg.x * a), Double(bg.y * a), Double(bg.z * a), Double(a))
+    }
 
     private func colorToSIMD(_ color: TTColor) -> SIMD4<Float> {
         let key = ObjectIdentifier(color)

@@ -44,7 +44,7 @@ struct TasksSidebarView: View {
                 }.controlSize(.small).padding(.horizontal, 12).padding(.vertical, 8)
             }
         }
-        .background(model.themeColor(.surface))
+        .background(model.chromeFill(.surface))
         .accessibilityElement(children: .contain).accessibilityLabel("Tasks")
         // The list follows the focused pane, and reads launch.json again each time (FR-TK02).
         .task(id: refreshKey) {

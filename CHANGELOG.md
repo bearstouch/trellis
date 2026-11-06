@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pane headers:** an agent's name and state ("Claude Code · Working") are no longer repeated in the pane header; the tab already shows the agent's icon, state and title.
 - **Sidebar hover card and Agents view:** busy tabs and working agents show a small spinner instead of the **Busy** label and **Working** capsule. It holds still with Reduce Motion on.
 - **Agents view:** **Open** is now a play button, and it and Resume are drawn without a box.
+- **Background opacity:** now applies to the whole window, not only the terminal panes. The sidebar, dock, tab bar, pane headers, side panels and status bar follow the setting, but never go below 60 % so their labels stay readable. The blur covers the whole window.
+
+### Fixed
+
+- **Translucent panes:** with GPU rendering, the terminal area was lighter than the padding around it, which looked like a frame, and a thin dark line ran along the top of the terminal. Both are gone.
 
 ## [1.2.0-beta.1] - 2026-11-06
 

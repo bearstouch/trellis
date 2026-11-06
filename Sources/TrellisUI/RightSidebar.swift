@@ -13,7 +13,7 @@ struct SidebarDock: View {
             Spacer(minLength: 0)
         }
         .padding(.top, 6).frame(width: 40).frame(maxHeight: .infinity)
-        .background(model.themeColor(.sidebarBackground))
+        .background(model.chromeFill(.sidebarBackground))
         .overlay(alignment: .leading) { model.themeColor(.border).frame(width: 1).accessibilityHidden(true) }
         .accessibilityElement(children: .contain).accessibilityLabel("Sidebar views")
     }
@@ -141,7 +141,7 @@ struct AgentsSidebarView: View {
                 Spacer()
             }.controlSize(.small).padding(.horizontal, 12).padding(.vertical, 8)
         }
-        .background(model.themeColor(.surface))
+        .background(model.chromeFill(.surface))
         .accessibilityElement(children: .contain).accessibilityLabel("Agents")
         // The install status is for the focused pane's machine; a host's is learned when a launch finds it missing.
         .task(id: model.presentation.activePane?.id) {

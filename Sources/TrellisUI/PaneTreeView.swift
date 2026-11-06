@@ -133,7 +133,13 @@ struct PaneTreeView: View {
                     .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
                     // The surface under it: the native tint is translucent, and the terminal canvas behind a pane tree is dark.
-                    .padding(.horizontal, 9).frame(height: 30).background(headerBackground(focusStyle.header)).background(model.themeColor(.surface))
+                    // Flattened before the chrome opacity, so the tint and its surface don't composite twice (FR-TH10).
+                    .padding(.horizontal, 9).frame(height: 30)
+                    .background {
+                        ZStack {
+                            model.themeColor(.surface); headerBackground(focusStyle.header)
+                        }.compositingGroup().opacity(model.chromeOpacity)
+                    }
                     // On the bottom edge: along the top it would stack against the selected tab's underline.
                     .overlay(alignment: .bottom) {
                         if focusStyle.header == .focused { model.themeColor(.focusRing).frame(height: 3).allowsHitTesting(false).accessibilityHidden(true) }

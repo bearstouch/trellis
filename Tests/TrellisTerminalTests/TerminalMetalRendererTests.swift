@@ -163,6 +163,26 @@ final class TerminalMetalRendererTests: XCTestCase {
         XCTAssertEqual(underline.first?.width ?? 0, 4 * view.cellMetrics.size.width, accuracy: 0.01)
     }
 
+    /// FR-TH10: a translucent CAMetalLayer composites premultiplied pixels; a straight clear color made the
+    /// terminal area lighter than the pane margins around it.
+    @MainActor
+    func testMetalClearsToThePremultipliedBackground() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        let bg = try XCTUnwrap(view.nativeBackgroundColor.usingColorSpace(.deviceRGB))
+        let opaque = try XCTUnwrap(view.metalClearColorForTesting)
+        XCTAssertEqual(opaque.alpha, 1, accuracy: 0.001)
+        XCTAssertEqual(opaque.red, Double(bg.redComponent), accuracy: 0.001, "an opaque background is unchanged")
+        var translucent = Self.metalOn()
+        translucent.backgroundOpacity = 0.6
+        native.applyAppearance(translucent)
+        let clear = try XCTUnwrap(view.metalClearColorForTesting)
+        XCTAssertEqual(clear.alpha, 0.6, accuracy: 0.001)
+        XCTAssertEqual(clear.red, Double(bg.redComponent) * 0.6, accuracy: 0.001)
+        XCTAssertEqual(clear.green, Double(bg.greenComponent) * 0.6, accuracy: 0.001)
+        XCTAssertEqual(clear.blue, Double(bg.blueComponent) * 0.6, accuracy: 0.001)
+    }
+
     @MainActor
     func testMetalCursorHidesConcealedTextAndDrawsTheWholeCharacter() throws {
         let (native, view) = try hostedTerminal()

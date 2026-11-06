@@ -321,6 +321,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         metalRenderer?.renderedRowForTesting(screenRow)
     }
 
+    /// The premultiplied color the Metal renderer clears to, or nil when Metal is off. For tests.
+    public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
+
     /// Whether the terminal view is currently using the Metal GPU renderer.
     ///
     /// Returns `true` after a successful call to ``setUseMetal(_:)`` with
@@ -555,6 +558,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
             metalLayer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
             // Composite through the layer when the background is translucent
             metalLayer.isOpaque = backgroundOpacity >= 1.0
+            // The drawable is the view's size in whole pixels, rounded up: shown unscaled from the top-left
+            // (where row 0 is), with the sub-pixel overflow clipped, so no edge row is resampled into a seam
+            metalLayer.contentsGravity = .topLeft
+            metalLayer.masksToBounds = true
         }
         return mtkView
     }

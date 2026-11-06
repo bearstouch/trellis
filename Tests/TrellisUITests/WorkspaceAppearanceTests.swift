@@ -84,4 +84,24 @@ final class WorkspaceAppearanceTests: XCTestCase {
         XCTAssertEqual(restored.effectiveBackgroundOpacity, 0.7)
         XCTAssertEqual(try XCTUnwrap(restored.activeTerminal).backgroundOpacity, 0.7)
     }
+    @MainActor
+    func testWindowChromeFollowsTheBackgroundOpacityWithAReadableFloor() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-chrome-opacity-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
+        _ = await model.loadWorkspace()
+        XCTAssertEqual(model.chromeOpacity, 1, "opaque by default")
+        var settings = model.appearance
+        settings.backgroundOpacity = 0.8
+        XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertEqual(model.chromeOpacity, 0.8, "the chrome matches the panes")
+        settings.backgroundOpacity = 0.3
+        XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertEqual(model.chromeOpacity, AppWorkspaceModel.minimumChromeOpacity, "but never drops below the readable floor")
+        model.accessibilityDisplayOptionsDidChange(increaseContrast: false, reduceMotion: false, reduceTransparency: true)
+        XCTAssertEqual(model.chromeOpacity, 1, "Reduce Transparency makes the whole window opaque")
+        model.accessibilityDisplayOptionsDidChange(increaseContrast: false, reduceMotion: false, reduceTransparency: false)
+        XCTAssertEqual(model.chromeOpacity, AppWorkspaceModel.minimumChromeOpacity)
+    }
 }
