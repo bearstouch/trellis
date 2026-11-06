@@ -265,6 +265,17 @@ extension AppWorkspaceModel {
         hideReview()
     }
 
+    /// After a workspace change: a deleted window drops its Review tab, and a window whose tab changed (new, closed, selected
+    /// by automation) shows its terminals again (FR-GC05). Kept out of `publish` and in plain loops: Swift 6.3 miscompiled
+    /// the closure-based form inline there (a task-allocator abort in unrelated async tests).
+    func pruneReviews(previous: WorkspaceSnapshot, next: WorkspaceSnapshot) {
+        var tabs: [UUID: UUID] = [:], before: [UUID: UUID] = [:]
+        for window in next.windows { tabs[window.id] = window.activeTabID }
+        for window in previous.windows { before[window.id] = window.activeTabID }
+        for windowID in Array(reviewTabs.keys) where tabs[windowID] == nil { reviewTabs[windowID] = nil }
+        for windowID in Array(reviewShownWindows) where tabs[windowID] == nil || tabs[windowID] != before[windowID] { reviewShownWindows.remove(windowID) }
+    }
+
     /// Shows the selected window's Review tab again.
     public func showReview() {
         guard let windowID = presentation.selectedWindow?.id, reviewTabs[windowID] != nil else { return }

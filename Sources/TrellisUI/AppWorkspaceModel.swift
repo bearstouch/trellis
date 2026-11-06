@@ -874,15 +874,7 @@ public final class AppWorkspaceModel: ObservableObject {
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         lastRecordedDirectories = lastRecordedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
-        // A deleted window drops its Review tab; a window whose tab changed (new, closed, selected by automation) shows its
-        // terminals again (FR-GC05).
-        if !reviewTabs.isEmpty || !reviewShownWindows.isEmpty {
-            let tabs = Dictionary(next.windows.map { ($0.id, $0.activeTabID) }, uniquingKeysWith: { first, _ in first })
-            let before = Dictionary(previous.windows.map { ($0.id, $0.activeTabID) }, uniquingKeysWith: { first, _ in first })
-            if reviewTabs.keys.contains(where: { tabs[$0] == nil }) { reviewTabs = reviewTabs.filter { tabs[$0.key] != nil } }
-            let shown = reviewShownWindows.filter { tabs[$0] != nil && tabs[$0] == before[$0] }
-            if shown != reviewShownWindows { reviewShownWindows = shown }
-        }
+        if !reviewTabs.isEmpty || !reviewShownWindows.isEmpty { pruneReviews(previous: previous, next: next) }
         if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
         refreshTerminalAccessibility()
