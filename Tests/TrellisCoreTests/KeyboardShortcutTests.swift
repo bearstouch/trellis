@@ -110,6 +110,24 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
     }
 
+    func testSidebarViewTogglesDefaultToOptionCommandAndYieldToSavedChords() throws {
+        let map = ShortcutMap.defaults
+        XCTAssertEqual(map[.toggleTasks], KeyChord("t", [.command, .option]))
+        XCTAssertEqual(map[.toggleAgents], KeyChord("a", [.command, .option]))
+        XCTAssertEqual(ShortcutAction.toggleTasks.menu, .view)
+        XCTAssertEqual(ShortcutAction.toggleAgents.title, "Toggle Agents")
+        // Saved before the sidebar had these defaults: the user's choices win and the new toggles start unbound.
+        let tasksChord = String(decoding: try JSONEncoder().encode(KeyChord("t", [.command, .option])), as: UTF8.self)
+        let agentsChord = String(decoding: try JSONEncoder().encode(KeyChord("a", [.command, .option])), as: UTF8.self)
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"renameTab":{"chord":\#(tasksChord)},"renameWindow":{"chord":\#(agentsChord)}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.renameTab], KeyChord("t", [.command, .option]))
+        XCTAssertEqual(loaded.shortcuts[.renameWindow], KeyChord("a", [.command, .option]))
+        XCTAssertNil(loaded.shortcuts[.toggleTasks])
+        XCTAssertNil(loaded.shortcuts[.toggleAgents])
+        XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
+    }
+
     func testOpenWorkspaceFileDefaultsToCommandOAndYieldsToASavedChord() throws {
         XCTAssertEqual(ShortcutMap.defaults[.showProjects], KeyChord("o"))
         XCTAssertEqual(ShortcutAction.showProjects.menu, .file)

@@ -271,7 +271,7 @@ extension AppWorkspaceModel {
                 target: .theme(theme.id), kind: .theme, title: "Theme: " + theme.name,
                 subtitle: theme.appearance.rawValue.capitalized + (theme.id == currentTheme ? " · current" : ""), keywords: ["appearance colors"])
         }
-        // FR-AG07: the same agents as the pane's Agent button, opened beside the focused pane.
+        // FR-AG07: the same agents as the Agents view, opened beside the focused pane.
         let agentItems =
             presentation.activePane == nil
             ? []
@@ -305,7 +305,7 @@ extension AppWorkspaceModel {
     private func commandPaletteTitle(_ action: ShortcutAction) -> String {
         switch action {
         case .toggleSidebar: sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
-        case .toggleScratchpad: scratchpadVisible ? "Hide Scratchpad" : "Show Scratchpad"
+        case .toggleScratchpad, .toggleTasks, .toggleAgents: SidebarView(shortcut: action).map { visibleSidebarView == $0 ? "Hide \($0.title)" : "Show \($0.title)" } ?? action.title
         default: action.title
         }
     }

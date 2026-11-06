@@ -105,7 +105,7 @@ struct ScratchpadPanel: View {
             Spacer(minLength: 4)
             languageMenu
             Button {
-                Task { await model.toggleScratchpad() }
+                model.closeSidebar()
             } label: {
                 Image(systemName: "xmark")
             }

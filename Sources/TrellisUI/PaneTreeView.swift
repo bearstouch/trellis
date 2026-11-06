@@ -92,16 +92,8 @@ struct PaneTreeView: View {
                         AgentStateLabel(
                             agent: agent, state: terminal.sessionState == .running ? model.agentStates[id]?.state ?? .ready : .ready,
                             directory: model.agentCatalog.iconDirectories[agent.id])
-                        AgentDropdownButton(model: model, paneID: id)
-                    } else if context.machine == .local {
-                        scratchpadButton(id, pressed: model.scratchpadVisible && focused)
-                        TaskDropdownButton(model: model, paneID: id)
-                        AgentDropdownButton(model: model, paneID: id)
-                    } else if model.isRemoteWorkspace(paneID: id) {
-                        // FR-RW11: the host's tasks; the scratchpad stays local.
-                        TaskDropdownButton(model: model, paneID: id)
-                        AgentDropdownButton(model: model, paneID: id)
                     }
+                    // FR-SB06: the scratchpad, tasks and agents live in the right sidebar, for the focused pane.
                     if let git = model.gitStatuses[id] {
                         // An icon in the header; the branch and counts are in its hover card and read by VoiceOver (FR-PL09).
                         GitStatusBadge(
@@ -197,22 +189,6 @@ struct PaneTreeView: View {
         case .focused: return model.focusedPaneHeaderBackground
         case .receded: return model.themeColor(.background)
         }
-    }
-
-    /// Opens the scratchpad for this pane (FR-SP01); pressed in the pane it runs in while it is open.
-    private func scratchpadButton(_ id: UUID, pressed: Bool) -> some View {
-        let title = pressed ? "Hide Scratchpad" : "Scratchpad"
-        return Button {
-            Task { await model.toggleScratchpad(paneID: id) }
-        } label: {
-            Image(systemName: "chevron.left.forwardslash.chevron.right").frame(width: 20, height: 18)
-                .foregroundStyle(pressed ? model.themeColor(.accent) : model.themeColor(.mutedForeground))
-                .background(RoundedRectangle(cornerRadius: 4).fill(pressed ? model.themeColor(.accent).opacity(0.14) : .clear))
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(pressed ? model.themeColor(.accent).opacity(0.4) : .clear))
-                .contentShape(Rectangle())
-        }
-        .help(model.keyboard.shortcuts[.toggleScratchpad].map { "\(title) (\($0))" } ?? title)
-        .accessibilityLabel("Scratchpad").accessibilityAddTraits(pressed ? [.isSelected] : [])
     }
 
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {

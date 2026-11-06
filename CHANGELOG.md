@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Right sidebar and dock:** the scratchpad, tasks and agents now share one sidebar on the right, switched from a dock on the window's right edge (⌥⌘E, ⌥⌘T, ⌥⌘A). Each view works with the focused pane; icons that don't apply to it, such as all three in an SSH pane, are dimmed. The dock badges count running tasks and agents that need you, and the Agents view lists every running agent across windows. Pane headers no longer have Scratchpad, Tasks or Agent buttons.
+- **Agent icons:** Claude Code and Codex now show their vendors' logos, Claude Code's in its own orange. Agent definitions can set `"fullColor": true` on an image icon to keep its colors.
 - **Trellis Light:** the terminal is now white, with black text and a matching palette, instead of dark. Custom light themes with no terminal colors follow it; those that set terminal colors keep a dark terminal unless they set a light background or dark text. Use another theme, such as My Light from the examples, for dark panes under light chrome.
 - **Pane padding:** terminals now have an 8 pt margin on every side, and the part of a row that doesn't fit is split evenly above and below the rows, so the top and bottom padding always match. Rows were pinned to the bottom before, leaving a varying gap under the pane header.
 - **Focused pane:** with several panes visible, the focused pane's header gets an accent line and tint, and the other panes are slightly dimmed. Nothing is dimmed while the window is inactive or with Increase Contrast on.

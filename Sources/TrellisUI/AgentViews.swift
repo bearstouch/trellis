@@ -15,9 +15,10 @@ struct AgentIconView: View {
             Image(systemName: NSImage(systemSymbolName: name, accessibilityDescription: nil) == nil ? fallbackSymbol : name).font(.system(size: size))
         case .monogram(let text):
             Text(text).font(.system(size: size + 1, weight: .bold, design: .rounded)).lineLimit(1).fixedSize()
-        case .image(let file):
-            if let image = AgentIconImages.load(file, directory: directory) {
-                Image(nsImage: image).renderingMode(.template).resizable().aspectRatio(contentMode: .fit).frame(width: size + 2, height: size + 2)
+        case .image(let file, let fullColor):
+            // Built-in definitions read their images from the bundle; a user's from their Agents folder.
+            if let image = AgentIconImages.load(file, directory: directory ?? AgentCatalog.bundledDirectory, template: !fullColor) {
+                Image(nsImage: image).renderingMode(fullColor ? .original : .template).resizable().aspectRatio(contentMode: .fit).frame(width: size + 2, height: size + 2)
             } else {
                 Image(systemName: fallbackSymbol).font(.system(size: size))
             }
@@ -34,90 +35,28 @@ enum AgentIconImages {
     static let maximumBytes = 32_768
     private static var cache: [String: NSImage?] = [:]
 
-    static func load(_ file: String, directory: URL?) -> NSImage? {
+    static func load(_ file: String, directory: URL?, template: Bool = true) -> NSImage? {
         guard let directory else { return nil }
         let url = directory.appendingPathComponent(file)
-        if let cached = cache[url.path] { return cached }
-        let image = read(url)
-        cache[url.path] = image
+        let key = (template ? "t:" : "c:") + url.path
+        if let cached = cache[key] { return cached }
+        let image = read(url, template: template)
+        cache[key] = image
         return image
     }
 
     /// A reloaded catalog reads icon files again.
     static func clear() { cache = [:] }
 
-    private static func read(_ url: URL) -> NSImage? {
+    private static func read(_ url: URL, template: Bool) -> NSImage? {
         guard let data = try? DiskThemeLibraryFiles().read(url), data.count <= maximumBytes else { return nil }
         if url.pathExtension == "svg" {
             let text = String(decoding: data, as: UTF8.self).lowercased()
             guard !["<script", "foreignobject", "javascript:", "href=\"http", "href='http", "href=\"file", "href='file", "<!entity", "@import", "url(http", "url(file"].contains(where: text.contains) else { return nil }
         }
         guard let image = NSImage(data: data) else { return nil }
-        image.isTemplate = true
+        image.isTemplate = template
         return image
-    }
-}
-
-/// FR-AG07: launches an agent in a new tab, in this pane's directory and on its host. ⌥ opens it in a split beside the pane.
-struct AgentDropdownButton: View {
-    @ObservedObject var model: AppWorkspaceModel
-    let paneID: UUID
-
-    var body: some View {
-        Menu {
-            Section("Open in a New Tab (⌥ Beside This Pane)") {
-                ForEach(model.agentCatalog.definitions) { agent in
-                    Button {
-                        launch(agent.id, resume: false)
-                    } label: {
-                        Label(title(agent), systemImage: symbol(agent))
-                    }
-                }
-            }
-            Menu("Resume Last Conversation") {
-                ForEach(model.agentCatalog.definitions.filter { !$0.resumeArguments.isEmpty }) { agent in
-                    Button(agent.name) { launch(agent.id, resume: true) }
-                }
-            }
-            Divider()
-            Button("Add Agent Definition…") { model.revealAgentsFolder() }.disabled(model.agentsDirectory == nil)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "sparkles")
-                Text("Agent").lineLimit(1)
-                Image(systemName: "chevron.down").font(.system(size: 7, weight: .semibold)).accessibilityHidden(true)
-            }
-            .padding(.horizontal, 6).padding(.vertical, 2)
-        }
-        // Plain, like the Tasks button beside it, so it takes the header's font and color.
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-        .help("Launch a coding agent in a new tab (⌥ beside this pane)")
-        .accessibilityLabel("Launch agent")
-        .onAppear { if !model.isRemoteWorkspace(paneID: paneID) { model.refreshAgentAvailability() } }
-    }
-
-    private func launch(_ id: String, resume: Bool) {
-        let placement: AppWorkspaceModel.AgentPlacement = NSEvent.modifierFlags.contains(.option) ? .split : .tab
-        Task { await model.launchAgent(id, from: paneID, placement: placement, resume: resume) }
-    }
-
-    /// Install status for the machine this pane runs on, in words (FR-AG07).
-    private func title(_ agent: AgentDefinition) -> String {
-        if model.isRemoteWorkspace(paneID: paneID) {
-            let host = model.snapshot.panes[paneID].flatMap { model.snapshot.sessions[$0.sessionID]?.launch.remoteHostID }
-            return host.flatMap { model.remoteMissingAgents[$0]?.contains(agent.id) == true ? "\(agent.name) — not installed there, Install…" : nil } ?? agent.name
-        }
-        switch model.agentAvailability[agent.id] {
-        case .missing?: return "\(agent.name) — not installed, Install…"
-        case .checking?: return "\(agent.name) — checking…"
-        default: return agent.name
-        }
-    }
-
-    /// Menus show SF Symbols only; a monogram or image agent gets the default symbol here.
-    private func symbol(_ agent: AgentDefinition) -> String {
-        if case .symbol(let name) = agent.icon, NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil { return name }
-        return "sparkles"
     }
 }
 
@@ -286,7 +225,7 @@ struct AgentInstallSheet: View {
     }
 }
 
-/// Settings → Agents (FR-AG02): every agent the Agent button offers, where it comes from, how it reports its state,
+/// Settings → Agents (FR-AG02): every agent the Agents view offers, where it comes from, how it reports its state,
 /// whether this Mac has it, and files in the Agents folder that couldn't be used.
 struct AgentSettingsView: View {
     @ObservedObject var model: AppWorkspaceModel

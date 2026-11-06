@@ -183,7 +183,7 @@ private struct WelcomeTourCopy: View {
         case .sessions: "Quit Trellis, or lose it to a crash, and your long builds and servers carry on. They’re back in their panes at the next launch."
         case .projects: "Save the layout and commands a project needs, then open it all together, ready to work."
         case .remote: "Save your SSH hosts, then open one as a whole workspace. When the network drops, your remote sessions keep going."
-        case .agents: "Run Claude Code, Codex or pi from a pane’s Agent button, here or on a remote host. Your agent, your account: Trellis adds no AI of its own."
+        case .agents: "Run Claude Code, Codex or pi from the Agents view in the right sidebar, here or on a remote host. Your agent, your account: Trellis adds no AI of its own."
         case .keyboard: "Three shortcuts are worth learning first. You can rebind all of them in Settings → Keyboard."
         case .setup: "A few choices to finish. You can change them later."
         }
@@ -223,7 +223,7 @@ private struct WelcomeTourCopy: View {
             case .keyboard:
                 row(chord: .commandPalette, "command", "Command palette", "Search actions, windows, hosts, projects and themes in one list.")
                 row(chord: .jumpToDirectory, "arrow.turn.down.right", "Jump to a directory", "Return to folders you visit often, on this Mac or a host.")
-                row(chord: .toggleScratchpad, "square.and.pencil", "Scratchpad", "Draft and edit longer commands beside your panes.")
+                row(chord: .toggleScratchpad, "sidebar.right", "Scratchpad, tasks and agents", "Switch them in the right sidebar from the dock on the window’s edge.")
             case .setup: setup
             }
         }

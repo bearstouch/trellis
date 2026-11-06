@@ -139,7 +139,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .broker: "The helpers that keep sessions running, on this Mac and on your hosts."
         case .keyboard: "Set your shortcuts and terminal key behavior."
         case .themes: "Browse, preview, and manage your color themes."
-        case .agents: "The coding agents the Agent button launches, and how they report their state."
+        case .agents: "The coding agents the Agents view launches, and how they report their state."
         case .automation: "Manage access for scripts and agents."
         case .remoteControl: "Let agents connect over the Model Context Protocol (MCP)."
         case .updates: "Check for new versions of Trellis and install them."

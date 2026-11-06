@@ -449,7 +449,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public var commandPaletteProjects: () -> [ProjectDefinition] = { [] }
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
     @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
-    /// The Tasks menu's project, read when the menu opens (FR-TK02); nil when the active pane has none.
+    /// The Tasks view's project, read when the view opens or focus moves (FR-TK02); nil when the active pane has none.
     @Published public internal(set) var taskCatalog: TaskCatalog?
     @Published public internal(set) var pendingTaskReview: TaskReview?
     var taskCatalogGeneration: UInt64 = 0
@@ -458,7 +458,10 @@ public final class AppWorkspaceModel: ObservableObject {
     var taskStopEscalation: TimeInterval = 2
     /// The command scratchpad (FR-SP01–FR-SP10): runtime only, never persisted or logged. Run and Save write the
     /// buffer to a file; nothing else does.
-    @Published public internal(set) var scratchpadVisible = false
+    /// The right sidebar's chosen view (FR-SB02). Runtime only; shown while the focused pane can use it (FR-SB04).
+    @Published public internal(set) var sidebarView: SidebarView?
+    /// Where the Agents view opens an agent (FR-AG07): kept while Trellis runs, never saved.
+    @Published public var agentPlacement: AgentPlacement = .tab
     /// Published apart from the model, so typing re-renders only the scratchpad panel, not every workspace view.
     public let scratchpadBuffer = ScratchpadBuffer()
     public var scratchpad: ScratchpadDocument {

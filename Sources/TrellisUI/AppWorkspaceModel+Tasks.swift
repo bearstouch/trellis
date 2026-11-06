@@ -4,7 +4,7 @@ import TrellisControl
 import TrellisCore
 import TrellisTerminal
 
-/// The Tasks menu's view of one project (FR-TK02), read when the menu opens.
+/// The Tasks view's picture of one project (FR-TK02), read when the view opens or focus moves.
 public struct TaskCatalog: Equatable, Sendable {
     public enum FileState: Equatable, Sendable {
         case missing
@@ -315,7 +315,7 @@ extension AppWorkspaceModel {
             return nil
         }
         guard current == catalog.data else {
-            errorMessage = "launch.json changed since the Tasks menu read it. Nothing was written; check the file and try again."
+            errorMessage = "launch.json changed since the Tasks view read it. Nothing was written; check the file and try again."
             await refreshTaskCatalog()
             return nil
         }

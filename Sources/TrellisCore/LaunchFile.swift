@@ -1,6 +1,6 @@
 import Foundation
 
-/// A project's `.trellis/launch.json` (FR-TK01): named one-line tasks the Tasks menu types into the active
+/// A project's `.trellis/launch.json` (FR-TK01): named one-line tasks the Tasks view types into the active
 /// pane's shell. It is shared through the repository, so its tasks only run once the exact bytes are trusted (FR-TK06).
 public struct LaunchFile: Equatable, Sendable {
     public static let fileName = "launch.json"

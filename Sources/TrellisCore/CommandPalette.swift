@@ -288,7 +288,9 @@ extension ShortcutAction {
         case .showProjects: ["folder", "workspace", "library"]
         case .saveWorkspace: ["layout"]
         case .toggleSidebar: ["windows list"]
-        case .toggleScratchpad: ["script editor"]
+        case .toggleScratchpad: ["script editor", "right sidebar"]
+        case .toggleTasks: ["launch.json run build test", "right sidebar"]
+        case .toggleAgents: ["claude codex pi coding", "right sidebar"]
         case .zoomIn, .zoomOut, .actualSize: ["font size"]
         default: []
         }

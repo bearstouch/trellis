@@ -1,70 +1,55 @@
 import SwiftUI
 import TrellisCore
 
-/// A pane header's Tasks button (FR-TK02, FR-TK07): the pane's task state in words and a symbol, never color alone,
-/// opening the Tasks menu for that pane.
-struct TaskDropdownButton: View {
+/// The sidebar's Tasks view (FR-TK02, FR-TK07): the focused pane's project, its launch.json and detected tasks with
+/// their exact lines and Run, Stop or Add buttons, and the pane's task state in words and a symbol, never color alone.
+struct TasksSidebarView: View {
     @ObservedObject var model: AppWorkspaceModel
     let paneID: UUID
-    @State private var isPresented = false
+    /// The pane the list was last read for; a `cd` reads it again without flashing the progress view.
+    @State private var loadedPane: UUID?
+    private var loaded: Bool { loadedPane == paneID }
+    /// A `cd`, or a remote shell's first authenticated mark, changes the folder and reads the project again (FR-TK02).
+    private var refreshKey: [String?] { [paneID.uuidString, model.paneDirectory(paneID) ?? model.remoteWorkingDirectory(paneID: paneID)] }
 
     var body: some View {
-        let run = model.taskRuns[paneID]
-        Button {
-            isPresented.toggle()
-        } label: {
-            // Only a running task's elapsed time changes; otherwise the header needn't redraw every second.
-            TimelineView(.periodic(from: .now, by: run?.isRunning == true ? 1 : 3600)) { context in
-                HStack(spacing: 4) {
-                    Image(systemName: symbol(run))
-                    Text(run?.statusText(now: context.date) ?? "Tasks").lineLimit(1).truncationMode(.middle)
-                    Image(systemName: "chevron.down").font(.system(size: 7, weight: .semibold)).accessibilityHidden(true)
+        VStack(spacing: 0) {
+            SidebarHeader(model: model, view: .tasks) {
+                Button {
+                    Task { await model.refreshTaskCatalog(paneID: paneID) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
-                .monospacedDigit()
-                .accessibilityElement(children: .ignore).accessibilityLabel("Tasks")
-                .accessibilityValue(run?.statusText(now: context.date) ?? "")
+                .help("Reload launch.json").accessibilityLabel("Reload Tasks")
             }
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(Capsule().fill(model.themeColor(.accent).opacity(run?.isActive == true ? 0.18 : 0)))
-            // Hugs its label, up to 220 points, so it sits right before Local.
-            .frame(maxWidth: 220).fixedSize()
-        }
-        .help("Run a task in this pane")
-        .popover(isPresented: $isPresented, arrowEdge: .bottom) { TaskPopover(model: model, paneID: paneID) }
-    }
-
-    private func symbol(_ run: TaskRun?) -> String {
-        guard let run else { return "play.circle" }
-        switch run.failed {
-        case nil: return "stop.circle"
-        case true?: return "xmark.octagon"
-        case false?: return "checkmark.circle"
-        }
-    }
-}
-
-/// The project's launch.json tasks and detected tasks, each with its exact line and a Run, Stop or Add button.
-private struct TaskPopover: View {
-    @ObservedObject var model: AppWorkspaceModel
-    let paneID: UUID
-    @State private var loaded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !loaded {
-                ProgressView("Looking for tasks…").frame(maxWidth: .infinity)
-            } else if let catalog = model.taskCatalog, catalog.paneID == paneID {
-                content(catalog)
-            } else {
-                Text("No project folder").font(.headline)
-                Text("This pane isn't inside a folder with .trellis or .git, or it isn't a local shell.")
-                    .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
+            Divider().overlay(model.separatorOverlay)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !loaded {
+                        ProgressView("Looking for tasks…").frame(maxWidth: .infinity)
+                    } else if let catalog = model.taskCatalog, catalog.paneID == paneID {
+                        content(catalog)
+                    } else {
+                        Text("No project folder").font(.headline)
+                        Text("The focused pane isn't inside a folder with .trellis or .git, or it isn't a shell.")
+                            .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
+                    }
+                }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if loaded, let catalog = model.taskCatalog, catalog.paneID == paneID, catalog.hostID == nil {
+                Divider().overlay(model.separatorOverlay)
+                HStack {
+                    Button(catalog.file == .missing ? "Create launch.json" : "Edit launch.json") { Task { await model.editLaunchFile() } }.help(catalog.path)
+                    Spacer()
+                }.controlSize(.small).padding(.horizontal, 12).padding(.vertical, 8)
             }
         }
-        .padding(14).frame(width: 440)
-        .task {
+        .background(model.themeColor(.surface))
+        .accessibilityElement(children: .contain).accessibilityLabel("Tasks")
+        // The list follows the focused pane, and reads launch.json again each time (FR-TK02).
+        .task(id: refreshKey) {
             await model.refreshTaskCatalog(paneID: paneID)
-            loaded = true
+            if !Task.isCancelled { loadedPane = paneID }
         }
     }
 
@@ -74,39 +59,48 @@ private struct TaskPopover: View {
             Text(catalog.name).font(.headline)
             Text(catalog.root).font(.system(size: 11, design: .monospaced)).foregroundStyle(muted).textSelection(.enabled).lineLimit(1).truncationMode(.head)
         }
+        runStatus
         if let reason = model.taskAvailability(paneID: catalog.paneID).reason, model.taskRuns[catalog.paneID]?.isActive != true {
             Label(reason, systemImage: "info.circle").font(.caption).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true)
         }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("launch.json").font(.subheadline.weight(.semibold))
-                switch catalog.file {
-                case .missing:
-                    Text("No launch.json yet. Add a detected task below, or create the file.").font(.caption).foregroundStyle(muted)
-                case .invalid(let reason):
-                    Label(reason, systemImage: "exclamationmark.triangle").font(.caption).fixedSize(horizontal: false, vertical: true)
-                case .loaded(let file):
-                    if file.tasks.isEmpty { Text("No tasks yet.").font(.caption).foregroundStyle(muted) }
-                    ForEach(file.tasks, id: \.name) { task in
-                        TaskRow(model: model, catalog: catalog, task: task, detected: nil, env: file.environment(for: task).map(\.name))
-                    }
-                }
-                if !catalog.detected.isEmpty {
-                    Divider().padding(.vertical, 2)
-                    Text("Detected").font(.subheadline.weight(.semibold))
-                    ForEach(catalog.detected) { detected in TaskRow(model: model, catalog: catalog, task: detected.task, detected: detected, env: []) }
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }.frame(maxHeight: 420).fixedSize(horizontal: false, vertical: true)
-        Divider()
-        HStack {
-            if catalog.hostID == nil {
-                Button(catalog.file == .missing ? "Create launch.json" : "Edit launch.json") { Task { await model.editLaunchFile() } }
-                    .help(catalog.path)
+        Text("launch.json").font(.subheadline.weight(.semibold)).padding(.top, 4)
+        switch catalog.file {
+        case .missing:
+            Text("No launch.json yet. Add a detected task below, or create the file.").font(.caption).foregroundStyle(muted)
+        case .invalid(let reason):
+            Label(reason, systemImage: "exclamationmark.triangle").font(.caption).fixedSize(horizontal: false, vertical: true)
+        case .loaded(let file):
+            if file.tasks.isEmpty { Text("No tasks yet.").font(.caption).foregroundStyle(muted) }
+            ForEach(file.tasks, id: \.name) { task in
+                TaskRow(model: model, catalog: catalog, task: task, detected: nil, env: file.environment(for: task).map(\.name))
             }
-            Spacer()
-            Button("Reload") { Task { await model.refreshTaskCatalog(paneID: paneID) } }
-        }.controlSize(.small)
+        }
+        if !catalog.detected.isEmpty {
+            Divider().padding(.vertical, 2)
+            Text("Detected").font(.subheadline.weight(.semibold))
+            ForEach(catalog.detected) { detected in TaskRow(model: model, catalog: catalog, task: detected.task, detected: detected, env: []) }
+        }
+    }
+
+    /// The focused pane's task, in words and a symbol (FR-TK07). Only a running task's elapsed time changes, so the
+    /// timeline ticks only then.
+    @ViewBuilder private var runStatus: some View {
+        if let run = model.taskRuns[paneID] {
+            TimelineView(.periodic(from: .now, by: run.isRunning ? 1 : 3600)) { context in
+                Label(run.statusText(now: context.date), systemImage: symbol(run)).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Capsule().fill(model.themeColor(.accent).opacity(run.isActive ? 0.18 : 0.08)))
+                    .accessibilityElement(children: .ignore).accessibilityLabel("Task").accessibilityValue(run.statusText(now: context.date))
+            }
+        }
+    }
+
+    private func symbol(_ run: TaskRun) -> String {
+        switch run.failed {
+        case nil: return "stop.circle"
+        case true?: return "xmark.octagon"
+        case false?: return "checkmark.circle"
+        }
     }
 }
 

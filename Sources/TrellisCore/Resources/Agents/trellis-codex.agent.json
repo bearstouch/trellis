@@ -5,7 +5,7 @@
   "executable": "codex",
   "resumeArguments": ["resume", "--last"],
   "integration": "codex-notify",
-  "icon": { "symbol": "curlybraces" },
+  "icon": { "image": "trellis-codex.svg" },
   "install": {
     "darwin": { "command": "npm install -g @openai/codex", "requires": ["npm"] },
     "linux": { "command": "npm install -g @openai/codex", "requires": ["npm"] }
