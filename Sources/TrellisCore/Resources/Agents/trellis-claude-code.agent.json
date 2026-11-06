@@ -5,7 +5,7 @@
   "executable": "claude",
   "resumeArguments": ["--continue"],
   "integration": "claude-hooks",
-  "icon": { "symbol": "asterisk" },
+  "icon": { "image": "trellis-claude-code.svg", "fullColor": true },
   "install": {
     "darwin": { "command": "curl -fsSL https://claude.ai/install.sh | bash", "requires": ["curl", "bash"] },
     "linux": { "command": "curl -fsSL https://claude.ai/install.sh | bash", "requires": ["curl", "bash"] }

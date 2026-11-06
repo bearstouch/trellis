@@ -30,24 +30,27 @@ public enum AgentIcon: Equatable, Sendable {
     case symbol(String)
     /// One or two characters drawn in the tab's tint.
     case monogram(String)
-    /// An SVG, PNG or PDF beside the definition file, drawn as a template image.
-    case image(String)
+    /// An SVG, PNG or PDF beside the definition file, drawn as a template image in the tab's tint, or in its own colors
+    /// when `fullColor` is set (a vendor's colored mark).
+    case image(String, fullColor: Bool = false)
 
     public static let fallback = AgentIcon.symbol("sparkles")
 }
 
 extension AgentIcon: Codable {
-    private enum Key: String, CodingKey { case symbol, monogram, image }
+    private enum Key: String, CodingKey { case symbol, monogram, image, fullColor }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: Key.self)
-        guard values.allKeys.count == 1, let key = values.allKeys.first else {
+        let kinds = values.allKeys.filter { $0 != .fullColor }
+        guard kinds.count == 1, let key = kinds.first, key == .image || !values.contains(.fullColor) else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "An icon names exactly one of symbol, monogram or image."))
         }
         let value = try values.decode(String.self, forKey: key)
         switch key {
         case .symbol: self = .symbol(value)
         case .monogram: self = .monogram(value)
-        case .image: self = .image(value)
+        case .image: self = .image(value, fullColor: try values.decodeIfPresent(Bool.self, forKey: .fullColor) ?? false)
+        case .fullColor: throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "fullColor needs an image."))
         }
     }
     public func encode(to encoder: Encoder) throws {
@@ -55,7 +58,9 @@ extension AgentIcon: Codable {
         switch self {
         case .symbol(let name): try values.encode(name, forKey: .symbol)
         case .monogram(let text): try values.encode(text, forKey: .monogram)
-        case .image(let file): try values.encode(file, forKey: .image)
+        case .image(let file, let fullColor):
+            try values.encode(file, forKey: .image)
+            if fullColor { try values.encode(true, forKey: .fullColor) }
         }
     }
 }
@@ -161,7 +166,7 @@ public enum AgentDefinitionValidator {
         switch definition.icon {
         case .symbol(let name): guard !name.isEmpty, name.count <= 64, name.utf8.allSatisfy({ isLower($0) || isDigit($0) || $0 == 0x2e }) else { throw AgentDefinitionError.invalid("icon") }
         case .monogram(let text): guard (1...2).contains(text.count), !text.contains(where: \.isWhitespace) else { throw AgentDefinitionError.invalid("icon") }
-        case .image(let file): guard isIconFile(file) else { throw AgentDefinitionError.invalid("icon") }
+        case .image(let file, _): guard isIconFile(file) else { throw AgentDefinitionError.invalid("icon") }
         }
         for (platform, recipe) in definition.install {
             guard ["darwin", "linux"].contains(platform), !recipe.command.isEmpty, recipe.command.utf8.count <= 1024,
@@ -249,6 +254,9 @@ public enum AgentCatalog {
             return try? AgentDefinitionValidator.validate(data)
         }
     }
+
+    /// The bundle's Agents folder, where the built-in definitions' icon images are read from.
+    public static var bundledDirectory: URL? { bundledFile(builtInIDs[0] + fileSuffix)?.deletingLastPathComponent() }
 
     /// A file shipped in the bundle's Agents folder, such as the pi extension.
     public static func bundledFile(_ name: String) -> URL? {

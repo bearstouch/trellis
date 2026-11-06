@@ -45,7 +45,7 @@ extension AppWorkspaceModel {
         NSWorkspace.shared.activateFileViewerSelecting([agentsDirectory])
     }
 
-    /// Looks each agent up on the login shell's PATH; the Agent menu shows the result (FR-AG07).
+    /// Looks each agent up on the login shell's PATH; the Agents view shows the result (FR-AG07).
     public func refreshAgentAvailability() {
         // Each check starts an interactive login shell, so a header appearing doesn't repeat a fresh one.
         let fresh = agentPathCheckedAt.map { activityNow().timeIntervalSince($0) < 60 } ?? false

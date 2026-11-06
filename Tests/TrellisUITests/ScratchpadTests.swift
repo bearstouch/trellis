@@ -389,23 +389,23 @@ final class ScratchpadTests: XCTestCase {
     }
 
     @MainActor
-    func testToggleFocusesThePaneAndNeverChangesTheWorkspace() async throws {
+    func testToggleFollowsTheFocusedPaneAndNeverChangesTheWorkspace() async throws {
         let (model, first) = try await makeModel()
         defer { cleanUp(model) }
         let split = await model.splitPane(first, axis: .x, startSession: false)
         let second = try XCTUnwrap(split)
         XCTAssertEqual(model.presentation.activePane?.id, second)
         let before = model.snapshot
-        await model.toggleScratchpad()
+        model.toggleSidebarView(.scratchpad)
         XCTAssertTrue(model.scratchpadVisible)
         XCTAssertEqual(model.snapshot, before, "Opening the panel isn't a workspace change")
-        await model.toggleScratchpad(paneID: first)
-        XCTAssertTrue(model.scratchpadVisible, "Another pane's button keeps the panel open")
-        XCTAssertEqual(model.scratchpadPaneID, first)
-        await model.toggleScratchpad(paneID: first)
+        _ = await model.selectPane(first)
+        XCTAssertTrue(model.scratchpadVisible, "Focusing another pane keeps the panel open")
+        XCTAssertEqual(model.scratchpadPaneID, first, "Run follows the focused pane")
+        model.toggleSidebarView(.scratchpad)
         XCTAssertFalse(model.scratchpadVisible)
         let request = model.scratchpadFocusRequest
-        await model.toggleScratchpad()
+        model.toggleSidebarView(.scratchpad)
         XCTAssertEqual(model.scratchpadFocusRequest, request + 1, "Opening focuses the editor")
     }
 

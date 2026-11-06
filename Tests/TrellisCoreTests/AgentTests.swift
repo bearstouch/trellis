@@ -71,6 +71,30 @@ final class AgentCatalogTests: XCTestCase {
         XCTAssertEqual(definition.icon, .fallback)
     }
 
+    func testBuiltInLogosShipInTheBundleAndOnlyClaudeCodeKeepsItsColors() throws {
+        let icons = Dictionary(uniqueKeysWithValues: AgentCatalog.bundled().map { ($0.id, $0.icon) })
+        XCTAssertEqual(icons["trellis-claude-code"], .image("trellis-claude-code.svg", fullColor: true))
+        XCTAssertEqual(icons["trellis-codex"], .image("trellis-codex.svg"), "The OpenAI mark is black alone, so it takes the tab's tint")
+        XCTAssertEqual(icons["trellis-pi"], .monogram("π"))
+        let directory = try XCTUnwrap(AgentCatalog.bundledDirectory)
+        for file in ["trellis-claude-code.svg", "trellis-codex.svg"] {
+            let data = try Data(contentsOf: directory.appendingPathComponent(file))
+            XCTAssertLessThanOrEqual(data.count, 32_768, file)
+            XCTAssertFalse(String(decoding: data, as: UTF8.self).lowercased().contains("<script"), file)
+        }
+    }
+
+    func testFullColorIsAnImageOptionThatRoundTrips() throws {
+        let colored = #"{"version":1,"id":"c","name":"C","executable":"c","icon":{"image":"c.svg","fullColor":true}}"#
+        let definition = try AgentDefinitionValidator.validate(Data(colored.utf8))
+        XCTAssertEqual(definition.icon, .image("c.svg", fullColor: true))
+        XCTAssertEqual(try JSONDecoder().decode(AgentDefinition.self, from: try JSONEncoder().encode(definition)).icon, definition.icon)
+        let plain = try JSONEncoder().encode(AgentIcon.image("p.svg"))
+        XCTAssertFalse(String(decoding: plain, as: UTF8.self).contains("fullColor"), "Only a colored icon writes the option")
+        let misplaced = #"{"version":1,"id":"m","name":"M","executable":"m","icon":{"monogram":"M","fullColor":true}}"#
+        XCTAssertEqual(try AgentDefinitionValidator.validate(Data(misplaced.utf8)).icon, .fallback, "fullColor without an image is the default icon")
+    }
+
     func testANewerSchemaIsRefusedWithItsVersionEvenWhenItsShapeChanged() {
         let json = #"{"version":2,"id":"new","name":{"en":"New"},"run":["new"]}"#
         XCTAssertThrowsError(try AgentDefinitionValidator.validate(Data(json.utf8))) { XCTAssertEqual($0 as? AgentDefinitionError, .unsupportedVersion(2)) }

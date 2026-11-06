@@ -35,22 +35,6 @@ extension AppWorkspaceModel {
         try? FileManager.default.removeItem(at: scratchpadRunDirectory)
     }
 
-    /// Shows or hides the panel. From a pane's button it focuses that pane first; the panel stays open when the
-    /// button belongs to another pane than the focused one.
-    public func toggleScratchpad(paneID: UUID? = nil) async {
-        if let paneID, paneID != presentation.activePane?.id {
-            guard await selectPane(paneID) else { return }
-            scratchpadVisible = true
-        } else {
-            scratchpadVisible.toggle()
-        }
-        if scratchpadVisible {
-            scratchpadFocusRequest &+= 1
-        } else if let terminal = activeTerminal {
-            DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
-        }
-    }
-
     public func setScratchpadLanguage(_ language: ScratchpadLanguage) { scratchpad.language = language }
 
     /// Why Run can't type into the focused pane now; nil when it can (FR-SP05).

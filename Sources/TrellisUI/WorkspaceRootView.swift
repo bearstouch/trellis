@@ -8,11 +8,11 @@ public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
     @State private var windowToRename: ManagedWindow?
     /// The scratchpad's width; layout only, never persisted.
-    @State private var scratchpadWidth: CGFloat = 380
-    @State private var scratchpadDragStart: CGFloat?
+    @State private var sidebarWidth: CGFloat = 380
+    @State private var sidebarDragStart: CGFloat?
     /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
-    @State private var scratchpadCursorPushed = false
-    static let scratchpadWidths: ClosedRange<CGFloat> = 280...640
+    @State private var sidebarCursorPushed = false
+    static let sidebarWidths: ClosedRange<CGFloat> = 280...640
     @State private var windowName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var draggedTabID: UUID?
@@ -351,56 +351,63 @@ public struct WorkspaceRootView: View {
                 Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
         } else {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 0) {
-                            ForEach(model.presentation.visibleTabs) { tab in
-                                tabLabel(tab)
-                                Divider().overlay(model.separatorOverlay).frame(height: 20)
-                            }
-                        }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
-                    }.scrollIndicators(.hidden)
-                    Button {
-                        Task { await model.createTab() }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
-                }.frame(height: 40).background(model.themeColor(.surface))
-                Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
-                HStack(spacing: 0) {
-                    terminalCanvas
-                    if model.scratchpadVisible {
-                        scratchpadResizeHandle
-                        ScratchpadPanel(model: model, buffer: model.scratchpadBuffer).frame(width: scratchpadWidth)
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    tabBar
+                    Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
+                    HStack(spacing: 0) {
+                        terminalCanvas
+                        if let view = model.visibleSidebarView {
+                            sidebarResizeHandle
+                            RightSidebarPanel(model: model, view: view).frame(width: sidebarWidth)
+                        }
                     }
                 }
+                SidebarDock(model: model)
             }
         }
     }
 
-    /// Drag to resize the scratchpad; the canvas takes the rest, so split minimums follow (FR-SP01).
-    private var scratchpadResizeHandle: some View {
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(model.presentation.visibleTabs) { tab in
+                        tabLabel(tab)
+                        Divider().overlay(model.separatorOverlay).frame(height: 20)
+                    }
+                }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
+            }.scrollIndicators(.hidden)
+            Button {
+                Task { await model.createTab() }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
+        }.frame(height: 40).background(model.themeColor(.surface))
+    }
+
+    /// Drag to resize the sidebar, whichever view it shows; the canvas takes the rest, so split minimums follow (FR-SB03).
+    private var sidebarResizeHandle: some View {
         // A 1-point line, like the other dividers, with a wider invisible grab area over its neighbors.
         Color.clear.frame(width: 7).overlay(model.themeColor(.border).frame(width: 1)).contentShape(Rectangle()).padding(.horizontal, -3).zIndex(1)
             .onHover { inside in
-                guard inside != scratchpadCursorPushed else { return }
-                scratchpadCursorPushed = inside
+                guard inside != sidebarCursorPushed else { return }
+                sidebarCursorPushed = inside
                 if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
             }
-            .onDisappear { if scratchpadCursorPushed { scratchpadCursorPushed = false; NSCursor.pop() } }
+            .onDisappear { if sidebarCursorPushed { sidebarCursorPushed = false; NSCursor.pop() } }
             .gesture(
                 DragGesture(minimumDistance: 1).onChanged { value in
-                    let start = scratchpadDragStart ?? scratchpadWidth
-                    scratchpadDragStart = start
-                    scratchpadWidth = min(max(start - value.translation.width, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
-                }.onEnded { _ in scratchpadDragStart = nil }
+                    let start = sidebarDragStart ?? sidebarWidth
+                    sidebarDragStart = start
+                    sidebarWidth = min(max(start - value.translation.width, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
+                }.onEnded { _ in sidebarDragStart = nil }
             )
-            .accessibilityElement().accessibilityLabel("Scratchpad width").accessibilityValue("\(Int(scratchpadWidth)) points")
+            .accessibilityElement().accessibilityLabel("Sidebar width").accessibilityValue("\(Int(sidebarWidth)) points")
             .accessibilityAdjustableAction { direction in
-                let next = scratchpadWidth + (direction == .increment ? 20 : -20)
-                scratchpadWidth = min(max(next, Self.scratchpadWidths.lowerBound), Self.scratchpadWidths.upperBound)
+                let next = sidebarWidth + (direction == .increment ? 20 : -20)
+                sidebarWidth = min(max(next, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
             }
     }
 
