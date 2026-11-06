@@ -491,6 +491,25 @@ public final class AppWorkspaceModel: ObservableObject {
     public var scratchpadProcessRunner: ScratchpadProcessRunner = ScratchpadValidator.runProcess
     /// Opens launch.json in the user's editor; injected by tests.
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// The Files view's tree, search and copy status (FR-FB02–FR-FB06): runtime only, never saved with the workspace.
+    @Published public internal(set) var files = FilesBrowserState()
+    /// Bumped when the Files view's search field should take keyboard focus.
+    @Published public internal(set) var filesFocusRequest = 0
+    var filesSearchTask: Task<Void, Never>?
+    var filesGeneration = 0
+    var filesStatusTask: Task<Void, Never>?
+    /// The Files view's dependencies; injected by tests so nothing opens an app or touches the pasteboard.
+    public var fileListing: any FileListing = LocalFileListing()
+    public var openFileInApp: (URL, URL?) -> Void = { url, app in
+        guard let app else { NSWorkspace.shared.open(url); return }
+        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+    public var revealFiles: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
+    public var applicationURL: (String) -> URL? = { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+    public var copyToPasteboard: (String) -> Void = { text in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
     /// The command palette (FR-CP01–FR-CP08): runtime only; the query is never persisted or logged.
     @Published public internal(set) var commandPaletteVisible = false
     @Published public internal(set) var commandPaletteQuery = ""

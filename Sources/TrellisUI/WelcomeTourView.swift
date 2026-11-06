@@ -223,7 +223,7 @@ private struct WelcomeTourCopy: View {
             case .keyboard:
                 row(chord: .commandPalette, "command", "Command palette", "Search actions, windows, hosts, projects and themes in one list.")
                 row(chord: .jumpToDirectory, "arrow.turn.down.right", "Jump to a directory", "Return to folders you visit often, on this Mac or a host.")
-                row(chord: .toggleScratchpad, "sidebar.right", "Scratchpad, tasks and agents", "Switch them in the right sidebar from the dock on the window’s edge.")
+                row(chord: .toggleFiles, "sidebar.right", "Files, scratchpad, tasks and agents", "Switch them in the right sidebar from the dock on the window’s edge.")
             case .setup: setup
             }
         }

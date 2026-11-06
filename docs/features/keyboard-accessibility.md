@@ -29,6 +29,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Save workspace | ⌘S |
 | Projects ([FR-PL01](project-library.md)) | ⌘O |
 | Hide / show sidebar | ⌃⌘S |
+| Show / hide [files](files.md) in the [right sidebar](sidebar.md) | ⌥⌘F |
 | Show / hide the [command scratchpad](scratchpad.md) | ⌥⌘E |
 | Show / hide [tasks](tasks.md) in the [right sidebar](sidebar.md) | ⌥⌘T |
 | Show / hide [agents](agents.md) in the right sidebar | ⌥⌘A |

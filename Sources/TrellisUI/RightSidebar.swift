@@ -48,7 +48,7 @@ struct SidebarDock: View {
 
     private func badge(_ view: SidebarView) -> (count: Int, spoken: String, tint: Color, foreground: Color)? {
         switch view {
-        case .scratchpad: return nil
+        case .files, .scratchpad: return nil
         case .tasks:
             let count = model.activeTaskCount
             return count > 0 ? (count, "\(count) running", model.themeColor(.accent), model.accentForeground) : nil
@@ -71,6 +71,8 @@ struct RightSidebarPanel: View {
 
     var body: some View {
         switch view {
+        case .files:
+            if let paneID = model.presentation.activePane?.id { FilesSidebarView(model: model, paneID: paneID) }
         case .scratchpad: ScratchpadPanel(model: model, buffer: model.scratchpadBuffer)
         case .tasks:
             if let paneID = model.presentation.activePane?.id { TasksSidebarView(model: model, paneID: paneID) }
