@@ -20,11 +20,9 @@ final class ChangesSidebarTests: XCTestCase {
             try FileManager.default.createDirectory(at: scratch.appendingPathComponent(folder), withIntermediateDirectories: true)
         }
         // Git reports the real path (/private/var/…), which Foundation's resolving shortens.
-        scratch = URL(
-            fileURLWithPath: try XCTUnwrap(
-                realpath(scratch.path, nil).map {
-                    defer { free($0) }; return String(cString: $0)
-                }))
+        let real = try XCTUnwrap(realpath(scratch.path, nil))
+        defer { free(real) }
+        scratch = URL(fileURLWithPath: String(cString: real))
         repo = scratch.appendingPathComponent("repo").path
         shell = scratch.appendingPathComponent("bin/sh").path
         try "#!/bin/sh\nprintf 'SHELL-UP\\n'\n[ \"$2\" = -c ] && exec /bin/sh -c \"$3\"\nexec /bin/cat\n".write(toFile: shell, atomically: true, encoding: .utf8)
