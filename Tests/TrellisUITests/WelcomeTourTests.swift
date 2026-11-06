@@ -338,6 +338,16 @@ final class WelcomeTourTests: XCTestCase {
         XCTAssertNil(model.welcomeTourChord(.showHosts))
     }
 
+    func testFilesRowNamesTheOtherDockChordsOrPointsToTheDock() async throws {
+        let model = try await makeModel()
+        XCTAssertEqual(model.welcomeTourChord(.toggleFiles), "⌥⌘F")
+        XCTAssertTrue(model.welcomeTourSidebarDetail.hasSuffix("⌥⌘E, ⌥⌘T and ⌥⌘A open the scratchpad, tasks and agents."), model.welcomeTourSidebarDetail)
+        var settings = model.keyboard
+        settings.shortcuts = settings.shortcuts.assigning(nil, to: .toggleTasks)
+        XCTAssertEqual(model.saveKeyboardSettings(settings), [])
+        XCTAssertTrue(model.welcomeTourSidebarDetail.hasSuffix("The dock on the window’s edge also opens the scratchpad, tasks and agents."), model.welcomeTourSidebarDetail)
+    }
+
     func testDialogFitsEveryWindowSizeAndDropsTheIllustrationWhenSmall() {
         let full = CGSize(width: 1280, height: 800)
         XCTAssertEqual(WelcomeTourView.dialogSize(in: full), WelcomeTourView.fullSize)

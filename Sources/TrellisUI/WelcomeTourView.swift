@@ -183,7 +183,7 @@ private struct WelcomeTourCopy: View {
         case .sessions: "Quit Trellis, or lose it to a crash, and your long builds and servers carry on. They’re back in their panes at the next launch."
         case .projects: "Save the layout and commands a project needs, then open it all together, ready to work."
         case .remote: "Save your SSH hosts, then open one as a whole workspace. When the network drops, your remote sessions keep going."
-        case .agents: "Run Claude Code, Codex or pi from the Agents view in the right sidebar, here or on a remote host. Your agent, your account: Trellis adds no AI of its own."
+        case .agents: "Run Claude Code, pi or Codex from the Agents view in the right sidebar, here or on a remote host. Your agent, your account: Trellis adds no AI of its own."
         case .keyboard: "Three shortcuts are worth learning first. You can rebind all of them in Settings → Keyboard."
         case .setup: "A few choices to finish. You can change them later."
         }
@@ -208,6 +208,7 @@ private struct WelcomeTourCopy: View {
                 row(chord: .newWindow, "macwindow", "Windows in the sidebar", "Rename and reorder them. Sessions keep running when you switch away.")
                 row(chord: .newTab, "plus.square", "Tabs in each window", "Double-click a tab to name it. Each tab keeps its own layout.")
                 row(chord: .splitLeftRight, "rectangle.split.2x1", "Splits inside a tab", splitDetail)
+                row("sidebar.right", "A sidebar on the right", "The dock on the window’s edge opens files, the scratchpad, tasks and agents beside your panes.")
             case .sessions:
                 row("waveform.path.ecg", "On by default", "Prefer sessions to end at quit? You can choose that at the end of this tour.")
                 row("checkmark.shield", "Nothing replays by itself", "Sessions that ended come back stopped, and typed commands are never rerun.")
@@ -218,12 +219,12 @@ private struct WelcomeTourCopy: View {
                 row("server.rack", "Saved hosts", "Connect in a new tab, a new window or a split. Uses your own ssh and config.")
                 row("arrow.clockwise", "Remote workspaces", "Trellis reconnects by itself when it can and shows what you missed, without repeating output.")
             case .agents:
-                row("bell", "Know when you’re needed", "Tabs say Needs you, Done or Error, so you can leave agents to work.")
+                row("bell", "Know when you’re needed", "Tabs say Needs you, Done or Error, and the dock counts agents waiting on you, so you can leave them to work.")
                 row("play", "Pick up where you left off", "Stopped agent panes offer to resume the last conversation.")
             case .keyboard:
                 row(chord: .commandPalette, "command", "Command palette", "Search actions, windows, hosts, projects and themes in one list.")
                 row(chord: .jumpToDirectory, "arrow.turn.down.right", "Jump to a directory", "Return to folders you visit often, on this Mac or a host.")
-                row(chord: .toggleFiles, "sidebar.right", "Files, scratchpad, tasks and agents", "Switch them in the right sidebar from the dock on the window’s edge.")
+                row(chord: .toggleFiles, "folder", "Files", model.welcomeTourSidebarDetail)
             case .setup: setup
             }
         }
@@ -423,6 +424,7 @@ private struct WelcomeTourStage: View {
                 }
                 .font(mono(10)).background(model.terminalBackground)
             }
+            dock(shown: nil)
         }
         .font(.system(size: 11)).frame(width: 374, height: 358)
         .background(card, in: RoundedRectangle(cornerRadius: 10)).clipShape(RoundedRectangle(cornerRadius: 10))
@@ -433,6 +435,29 @@ private struct WelcomeTourStage: View {
     private func sidebarRow(_ name: String, selected: Bool) -> some View {
         Text(name).fontWeight(selected ? .semibold : .regular).foregroundStyle(selected ? fg : muted).padding(.horizontal, 8).padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading).background(selected ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// The right edge's dock (FR-SB01) in miniature: the real views' symbols, the shown one marked by an accent bar.
+    private func dock(shown: SidebarView?, needsYou: Int = 0) -> some View {
+        VStack(spacing: 2) {
+            ForEach(SidebarView.allCases, id: \.self) { view in
+                Image(systemName: view.symbol).font(.system(size: 11)).foregroundStyle(view == shown ? fg : muted)
+                    .frame(width: 28, height: 26)
+                    .overlay(alignment: .leading) {
+                        if view == shown { model.themeColor(.accent).frame(width: 2, height: 15).clipShape(Capsule()) }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if view == .agents, needsYou > 0 {
+                            Text("\(needsYou)").font(.system(size: 6.5, weight: .bold)).foregroundStyle(.black)
+                                .frame(minWidth: 10, minHeight: 10).background(Capsule().fill(model.themeColor(.warning))).padding(.trailing, 3).padding(.bottom, 2)
+                        }
+                    }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 6).frame(width: 28).frame(maxHeight: .infinity)
+        .background(model.themeColor(.sidebarBackground))
+        .overlay(alignment: .leading) { border.opacity(0.6).frame(width: 0.5) }
     }
 
     private func pane<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -532,35 +557,70 @@ private struct WelcomeTourStage: View {
         Text(text).font(.system(size: 9.5)).foregroundStyle(color).padding(.horizontal, 6).padding(.vertical, 2).overlay(Capsule().strokeBorder(color, lineWidth: 1))
     }
 
-    private var agents: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Text("Claude Code").fontWeight(.semibold).foregroundStyle(fg)
-                    capsule("! Needs you", yellow)
-                }
-                .padding(.horizontal, 10).frame(maxHeight: .infinity).background(model.terminalBackground)
-                Text("Codex").foregroundStyle(muted).padding(.horizontal, 10).frame(maxHeight: .infinity)
-                    .overlay(alignment: .top) { model.themeColor(.accent).frame(height: 2) }
-                HStack(spacing: 6) {
-                    Text("pi").foregroundStyle(muted)
-                    capsule("✓ Done", green)
-                }
-                .padding(.horizontal, 10)
-                Spacer(minLength: 0)
+    /// A Launch row (name, Open) or a Running row (tab, "window · agent", state capsule), as in the Agents view (FR-AG16).
+    private func agentRow<Trailing: View>(_ name: String, _ detail: String? = nil, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(.system(size: 10.5, weight: .medium)).foregroundStyle(fg).lineLimit(1)
+                if let detail { Text(detail).font(.system(size: 9)).foregroundStyle(muted).lineLimit(1) }
             }
-            .font(.system(size: 11)).frame(height: 38)
-            VStack(alignment: .leading, spacing: 5) {
-                output("* Updated checkout.ts", purple)
-                output("* Ran the test suite", purple)
-                output(" ", dim)
-                output("Run database migration?", termText)
-                output("❯ Yes", cyan)
-                output("  No", dim)
-            }
-            .font(mono(11)).padding(14).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(model.terminalBackground)
+            Spacer(minLength: 0)
+            trailing().fixedSize()
         }
-        .frame(width: 374, height: 300)
+        .padding(.vertical, 4)
+    }
+
+    private func launchRow(_ name: String) -> some View {
+        agentRow(name) { Text("Open").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(model.themeColor(.accent)) }
+    }
+
+    /// A tab bar over the panes and the Agents view, with the dock on the right edge (FR-SB01–FR-SB03, FR-SB05).
+    private var agents: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    HStack(spacing: 6) {
+                        Text("checkout").fontWeight(.semibold).foregroundStyle(fg)
+                        capsule("! Needs you", yellow)
+                    }
+                    .padding(.horizontal, 10).frame(maxHeight: .infinity).background(model.terminalBackground)
+                    .overlay(alignment: .top) { model.themeColor(.accent).frame(height: 2) }
+                    HStack(spacing: 6) {
+                        Text("docs").foregroundStyle(muted)
+                        capsule("✓ Done", green)
+                    }
+                    .padding(.horizontal, 10)
+                    Spacer(minLength: 0)
+                }
+                .font(.system(size: 11)).frame(height: 34)
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        output("* Updated checkout.ts", purple)
+                        output("* Ran the tests", purple)
+                        output(" ", dim)
+                        output("Run migration?", termText)
+                        output("❯ Yes", cyan)
+                        output("  No", dim)
+                    }
+                    .font(mono(10)).padding(10).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(model.terminalBackground)
+                    Rectangle().fill(border.opacity(0.6)).frame(width: 0.5)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Agents").font(.system(size: 11, weight: .semibold)).foregroundStyle(fg).padding(.bottom, 8)
+                        Text("Launch").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
+                        launchRow("Claude Code"); launchRow("pi"); launchRow("Codex")
+                        Rectangle().fill(border.opacity(0.6)).frame(height: 0.5).padding(.vertical, 6)
+                        Text("Running").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
+                        agentRow("checkout", "api · Claude Code") { capsule("! Needs you", yellow) }
+                        agentRow("docs", "web · pi") { capsule("✓ Done", green) }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(10).frame(width: 150).frame(maxHeight: .infinity, alignment: .top)
+                    .background(model.themeColor(.sidebarBackground))
+                }
+            }
+            dock(shown: .agents, needsYou: 1)
+        }
+        .frame(width: 374, height: 320)
         .background(card, in: RoundedRectangle(cornerRadius: 10)).clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(border, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.25), radius: 12, y: 6)

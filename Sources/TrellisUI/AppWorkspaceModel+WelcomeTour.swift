@@ -41,7 +41,7 @@ public enum WelcomeTourKey: Sendable, Equatable {
     }
 }
 
-/// The welcome tour (FR-ON01–FR-ON09): modal like the command palette. It owns no settings of its own; the last step
+/// The welcome tour (FR-ON01–FR-ON10): modal like the command palette. It owns no settings of its own; the last step
 /// changes the same ones the Settings window does.
 extension AppWorkspaceModel {
     static let welcomeTourSeenKey = "welcomeTour.seen"
@@ -147,4 +147,12 @@ extension AppWorkspaceModel {
 
     /// FR-ON08: the bound chord, which a replay may find rebound or unbound.
     func welcomeTourChord(_ action: ShortcutAction) -> String? { keyboard.shortcuts[action]?.description }
+
+    /// The keyboard step's Files row names the other dock views' chords, or the dock itself when any of them is unbound.
+    var welcomeTourSidebarDetail: String {
+        let lead = "Browse the focused pane’s project in the right sidebar."
+        let chords = [SidebarView.scratchpad, .tasks, .agents].compactMap { welcomeTourChord($0.shortcut) }
+        guard chords.count == 3 else { return "\(lead) The dock on the window’s edge also opens the scratchpad, tasks and agents." }
+        return "\(lead) \(chords[0]), \(chords[1]) and \(chords[2]) open the scratchpad, tasks and agents."
+    }
 }
