@@ -47,7 +47,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     /// The project library (FR-PL01). The stored name predates it, so a customized ⌘O carries over.
     case showProjects = "openWorkspaceFile"
     case findInPane, findNext, findPrevious, previousPrompt, nextPrompt, clearPane
-    case zoomIn, zoomOut, actualSize, toggleSidebar, toggleFiles, toggleScratchpad, toggleTasks, toggleAgents, commandPalette, jumpToDirectory
+    case zoomIn, zoomOut, actualSize, toggleSidebar, toggleFiles, toggleChanges, toggleScratchpad, toggleTasks, toggleAgents, commandPalette, jumpToDirectory
     case splitLeftRight, splitTopBottom, maximizePane
     case focusLeft, focusRight, focusUp, focusDown
     case resizeLeft, resizeRight, resizeUp, resizeDown
@@ -77,6 +77,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .actualSize: "Actual Size"
         case .toggleSidebar: "Toggle Sidebar"
         case .toggleFiles: "Toggle Files"
+        case .toggleChanges: "Toggle Changes"
         case .toggleScratchpad: "Toggle Scratchpad"
         case .toggleTasks: "Toggle Tasks"
         case .toggleAgents: "Toggle Agents"
@@ -111,7 +112,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         switch self {
         case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .showProjects: .file
         case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt, .clearPane: .edit
-        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleFiles, .toggleScratchpad, .toggleTasks, .toggleAgents, .commandPalette, .jumpToDirectory: .view
+        case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents, .commandPalette, .jumpToDirectory: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             .pane
@@ -138,6 +139,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .actualSize: KeyChord("0")
         case .toggleSidebar: KeyChord("s", [.command, .control])
         case .toggleFiles: KeyChord("f", [.command, .option])
+        case .toggleChanges: KeyChord("g", [.command, .option])
         case .toggleScratchpad: KeyChord("e", [.command, .option])
         case .toggleTasks: KeyChord("t", [.command, .option])
         case .toggleAgents: KeyChord("a", [.command, .option])
@@ -264,7 +266,9 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
     private struct Override: Codable { var chord: KeyChord? }
 
     /// Actions whose default chord shipped after saved maps already existed.
-    static let laterDefaults: [ShortcutAction] = [.previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .showProjects, .toggleScratchpad, .commandPalette, .jumpToDirectory, .toggleTasks, .toggleAgents, .toggleFiles]
+    static let laterDefaults: [ShortcutAction] = [
+        .previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .showProjects, .toggleScratchpad, .commandPalette, .jumpToDirectory, .toggleTasks, .toggleAgents, .toggleFiles, .toggleChanges
+    ]
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)

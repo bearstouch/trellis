@@ -305,7 +305,7 @@ extension AppWorkspaceModel {
     private func commandPaletteTitle(_ action: ShortcutAction) -> String {
         switch action {
         case .toggleSidebar: sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
-        case .toggleFiles, .toggleScratchpad, .toggleTasks, .toggleAgents: SidebarView(shortcut: action).map { visibleSidebarView == $0 ? "Hide \($0.title)" : "Show \($0.title)" } ?? action.title
+        case .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents: SidebarView(shortcut: action).map { visibleSidebarView == $0 ? "Hide \($0.title)" : "Show \($0.title)" } ?? action.title
         default: action.title
         }
     }

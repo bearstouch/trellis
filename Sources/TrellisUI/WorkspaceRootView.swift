@@ -356,7 +356,11 @@ public struct WorkspaceRootView: View {
                     tabBar
                     Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
                     HStack(spacing: 0) {
-                        terminalCanvas
+                        if model.reviewVisible, let review = model.currentReview {
+                            ReviewTabView(model: model, review: review).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            terminalCanvas
+                        }
                         if let view = model.visibleSidebarView {
                             sidebarResizeHandle
                             RightSidebarPanel(model: model, view: view).frame(width: sidebarWidth)
@@ -374,6 +378,10 @@ public struct WorkspaceRootView: View {
                 HStack(spacing: 0) {
                     ForEach(model.presentation.visibleTabs) { tab in
                         tabLabel(tab)
+                        Divider().overlay(model.separatorOverlay).frame(height: 20)
+                    }
+                    if let review = model.currentReview {
+                        reviewTabLabel(review)
                         Divider().overlay(model.separatorOverlay).frame(height: 20)
                     }
                 }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
@@ -411,8 +419,35 @@ public struct WorkspaceRootView: View {
             }
     }
 
+    /// The window's Review tab (FR-GC05): after the terminal tabs, never saved, not reorderable.
+    private func reviewTabLabel(_ review: ReviewTab) -> some View {
+        let selected = model.reviewVisible
+        return HStack(spacing: 8) {
+            Image(systemName: "plus.forwardslash.minus").font(.system(size: 10)).accessibilityHidden(true)
+            Text(review.file.name).lineLimit(1).truncationMode(.middle)
+            Button {
+                model.closeReview()
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9))
+            }
+            .buttonStyle(.plain).help("Close Review").accessibilityLabel("Close Review of \(review.file.name)")
+        }
+        .foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
+        .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 240).frame(height: 40)
+        .background(selected ? model.themeColor(.activeTabBackground) : .clear)
+        .overlay(alignment: .bottom) { if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) } }
+        .contentShape(Rectangle())
+        .onTapGesture { model.showReview() }
+        .help("Review: \(review.file.path)")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Review \(review.file.name)")
+        .accessibilityValue("diff of \(review.file.path)")
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
+        .accessibilityAction { model.showReview() }
+    }
+
     private func tabLabel(_ tab: WorkspaceTab) -> some View {
-        let selected = tab.id == model.presentation.selectedTab?.id
+        let selected = tab.id == model.presentation.selectedTab?.id && !model.reviewVisible
         let busy = model.busyTabIDs.contains(tab.id)
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)

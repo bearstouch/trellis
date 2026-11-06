@@ -140,6 +140,18 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertNil(loaded.shortcuts[.toggleFiles], "A chord the user already chose keeps working; Toggle Files starts unbound")
     }
 
+    func testToggleChangesDefaultsToOptionCommandGAndYieldsToASavedChord() throws {
+        XCTAssertEqual(ShortcutMap.defaults[.toggleChanges], KeyChord("g", [.command, .option]))
+        XCTAssertEqual(ShortcutAction.toggleChanges.menu, .view)
+        XCTAssertEqual(ShortcutAction.toggleChanges.title, "Toggle Changes")
+        XCTAssertTrue(ShortcutMap.defaults.issues().isEmpty, "⌥⌘G clashes with no other default")
+        let chord = String(decoding: try JSONEncoder().encode(KeyChord("g", [.command, .option])), as: UTF8.self)
+        let data = Data(#"{"optionAsMeta":false,"overrides":{"renameTab":{"chord":\#(chord)}}}"#.utf8)
+        let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
+        XCTAssertEqual(loaded.shortcuts[.renameTab], KeyChord("g", [.command, .option]))
+        XCTAssertNil(loaded.shortcuts[.toggleChanges], "A chord the user already chose keeps working; Toggle Changes starts unbound")
+    }
+
     func testOpenWorkspaceFileDefaultsToCommandOAndYieldsToASavedChord() throws {
         XCTAssertEqual(ShortcutMap.defaults[.showProjects], KeyChord("o"))
         XCTAssertEqual(ShortcutAction.showProjects.menu, .file)

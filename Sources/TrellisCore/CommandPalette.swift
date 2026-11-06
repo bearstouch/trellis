@@ -289,6 +289,7 @@ extension ShortcutAction {
         case .saveWorkspace: ["layout"]
         case .toggleSidebar: ["windows list"]
         case .toggleFiles: ["file browser explorer tree open in editor copy path", "right sidebar"]
+        case .toggleChanges: ["git diff review stage unstage status modified", "right sidebar"]
         case .toggleScratchpad: ["script editor", "right sidebar"]
         case .toggleTasks: ["launch.json run build test", "right sidebar"]
         case .toggleAgents: ["claude codex pi coding", "right sidebar"]
