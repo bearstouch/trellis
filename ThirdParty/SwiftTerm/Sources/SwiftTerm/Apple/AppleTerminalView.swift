@@ -326,7 +326,8 @@ extension TerminalView {
 #if os(macOS)
     /// Controls whether font smoothing (sub-pixel rendering) is enabled during glyph drawing.
     /// Set to `false` to get thinner strokes on Retina displays, matching iTerm2's "Thin strokes" setting.
-    /// Defaults to `true` (standard macOS font smoothing).
+    /// Defaults to `true` (standard macOS font smoothing). Smoothing thickens strokes by an amount that depends on the
+    /// text and background colors; the Metal renderer rasterizes each glyph for its color pair to match.
     @objc open var fontSmoothing: Bool {
         get { _fontSmoothing }
         set { _fontSmoothing = newValue }

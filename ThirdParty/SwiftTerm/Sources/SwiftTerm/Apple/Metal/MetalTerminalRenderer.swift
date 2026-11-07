@@ -16,6 +16,8 @@ struct GlyphKey: Hashable {
     let fontName: String
     let size: CGFloat
     let glyph: CGGlyph
+    /// The colors a smoothed glyph was rasterized for; nil for unsmoothed and color glyphs.
+    var colors: GlyphSmoothingColors? = nil
 }
 
 struct GlyphEntry {
@@ -390,7 +392,12 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             return
         }
 #if os(macOS)
-        rasterizer.fontSmoothing = terminalView.fontSmoothing
+        if rasterizer.fontSmoothing != terminalView.fontSmoothing {
+            // Plain-keyed glyphs and the rows using them were rasterized with the other stroke weight.
+            rasterizer.fontSmoothing = terminalView.fontSmoothing
+            glyphCache.removeAll()
+            rowCache.removeAll()
+        }
         let scale = terminalView.metalRenderingScaleFactor()
         if let layer = view.layer, layer.contentsScale != scale {
             layer.contentsScale = scale
@@ -1373,6 +1380,11 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
 
                 let textColor = runAttributes[.foregroundColor] as? TTColor ?? terminalView.effectiveNativeForegroundColor
                 let textColorSIMD = colorToSIMD(textColor)
+                // The color the run's glyphs are drawn over, chosen as the background pass above chooses it.
+                let backgroundColor = runAttributes[.selectionBackgroundColor] as? TTColor
+                    ?? runAttributes[.backgroundColor] as? TTColor
+                    ?? terminalView.effectiveNativeBackgroundColor
+                let backgroundSIMD = colorToSIMD(backgroundColor)
 
                 // Same-cell glyphs (base + combining marks) are adjacent in
                 // glyph order, so a pair of locals replaces a per-run anchor
@@ -1383,7 +1395,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                     let scaledFont = scaledFontFor(font: glyphRun.font, scale: scale)
                     for i in 0..<glyphRun.glyphs.count {
                         let glyph = glyphRun.glyphs[i]
-                        guard let entry = glyphEntry(for: scaledFont, glyph: glyph) else {
+                        guard let entry = glyphEntry(for: scaledFont, glyph: glyph, foreground: textColorSIMD, background: backgroundSIMD) else {
                             continue
                         }
                         if entry.size.width <= 0 || entry.size.height <= 0 {
@@ -1671,15 +1683,26 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    private func glyphEntry(for font: CTFont, glyph: CGGlyph) -> GlyphEntry? {
-        let key = GlyphKey(fontName: CTFontCopyPostScriptName(font) as String,
-                           size: CTFontGetSize(font),
-                           glyph: glyph)
+    /// The atlas entry for `glyph`. With font smoothing on, a glyph is rasterized for the colors it's drawn in
+    /// (`foreground` over `background`), as CoreGraphics smooths it; color glyphs are shared by every pair.
+    private func glyphEntry(for font: CTFont, glyph: CGGlyph, foreground: SIMD4<Float>, background: SIMD4<Float>) -> GlyphEntry? {
+        let plainKey = GlyphKey(fontName: CTFontCopyPostScriptName(font) as String,
+                                size: CTFontGetSize(font),
+                                glyph: glyph)
+        let colors = rasterizer.fontSmoothing ? GlyphSmoothingColors(foreground: foreground, background: background) : nil
+        if let plain = glyphCache[plainKey], colors == nil || plain.isColor {
+            return plain
+        }
+        var key = plainKey
+        key.colors = colors
         if let cached = glyphCache[key] {
             return cached
         }
-        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph) else {
+        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph, smoothingOver: colors) else {
             return nil
+        }
+        if bitmap.isColor {
+            key = plainKey
         }
         let atlasKind: GlyphAtlasKind = bitmap.isColor ? .color : .grayscale
         let atlas = atlasKind == .color ? colorAtlas : grayscaleAtlas
@@ -2492,7 +2515,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
 
             for i in 0..<runGlyphsCount {
                 let glyph = runGlyphs[i]
-                guard let entry = glyphEntry(for: scaledFont, glyph: glyph) else {
+                guard let entry = glyphEntry(for: scaledFont, glyph: glyph, foreground: textColorSIMD, background: cursorColor) else {
                     continue
                 }
                 if entry.size.width <= 0 || entry.size.height <= 0 {

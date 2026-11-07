@@ -324,6 +324,17 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// The premultiplied color the Metal renderer clears to, or nil when Metal is off. For tests.
     public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
 
+    /// The Metal renderer's glyph mask for `glyph` drawn in `foreground` over `background` (device RGB components),
+    /// as one coverage byte per pixel in CoreGraphics bitmap order (top row first), with the mask's origin relative to the glyph origin. For tests.
+    public static func metalGlyphCoverageForTesting(font: CTFont, glyph: CGGlyph, foreground: SIMD4<Float>, background: SIMD4<Float>,
+                                                    smoothing: Bool) -> (coverage: [UInt8], width: Int, height: Int, origin: CGPoint)? {
+        let rasterizer = CoreTextGlyphRasterizer()
+        rasterizer.fontSmoothing = smoothing
+        let colors = smoothing ? GlyphSmoothingColors(foreground: foreground, background: background) : nil
+        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph, smoothingOver: colors) else { return nil }
+        let coverage = stride(from: 3, to: bitmap.pixels.count, by: 4).map { bitmap.pixels[$0] }
+        return (coverage, bitmap.width, bitmap.height, bitmap.bearing)
+    }
     /// Whether the terminal view is currently using the Metal GPU renderer.
     ///
     /// Returns `true` after a successful call to ``setUseMetal(_:)`` with
