@@ -1844,7 +1844,7 @@
      var pendingMetalDisplay: Bool = false
      /// The cursor position last submitted to the Metal renderer. Used to
      /// detect pure cursor-only moves (no rows dirty) such as the
-@@ -279,6 +311,30 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -279,6 +311,36 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          }
      }
  
@@ -1861,6 +1861,12 @@
 +    /// The premultiplied color the Metal renderer clears to, or nil when Metal is off. For tests.
 +    public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
 +
++    /// Builds one Metal frame without presenting it, smoothing at most `smoothedGlyphBudget` new glyphs, and reports
++    /// how many it smoothed and whether glyphs were left for a later frame; nil when Metal is off. For tests.
++    public func metalBuildFrameForTesting(smoothedGlyphBudget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool)? {
++        metalRenderer?.buildFrameForTesting(smoothedGlyphBudget: smoothedGlyphBudget)
++    }
++
 +    /// The Metal renderer's glyph mask for `glyph` drawn in `foreground` over `background` (device RGB components),
 +    /// as one coverage byte per pixel in CoreGraphics bitmap order (top row first), with the mask's origin relative to the glyph origin. For tests.
 +    public static func metalGlyphCoverageForTesting(font: CTFont, glyph: CGGlyph, foreground: SIMD4<Float>, background: SIMD4<Float>,
@@ -1875,7 +1881,7 @@
      /// Whether the terminal view is currently using the Metal GPU renderer.
      ///
      /// Returns `true` after a successful call to ``setUseMetal(_:)`` with
-@@ -347,10 +403,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -347,10 +409,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      /// The font to use to render the terminal
      public var font: NSFont {
          get {
@@ -1888,7 +1894,7 @@
              resetFont()
              selectNone()
          }
-@@ -513,6 +569,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -513,6 +575,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
              metalLayer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
              // Composite through the layer when the background is translucent
              metalLayer.isOpaque = backgroundOpacity >= 1.0
@@ -1899,7 +1905,7 @@
          }
          return mtkView
      }
-@@ -614,6 +674,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -614,6 +680,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          metalRenderer = nil
          metalBoundWindow = nil
          useMetalRenderer = false
@@ -1908,7 +1914,7 @@
          if let caretView = caretView {
              caretView.isHidden = false
              caretView.updateCursorStyle()
-@@ -795,6 +857,15 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -795,6 +863,15 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
  #endif
      }
  
@@ -1924,7 +1930,7 @@
      open override func viewDidUnhide() {
          super.viewDidUnhide()
  #if canImport(MetalKit)
-@@ -983,6 +1054,47 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -983,6 +1060,47 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      /// Controls weather to use high ansi colors, if false terminal will use bold text instead of high ansi colors
      public var useBrightColors: Bool = true
  
@@ -1972,7 +1978,7 @@
      /// Controls whether this view applies the terminal's BiDi presentation state.
      public var bidiHostPolicy: BidiHostPolicy = .respectTerminal {
          didSet {
-@@ -1014,6 +1126,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1014,6 +1132,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          set {
              cursorColorIsDefault = false
              caretView.caretColor = newValue
@@ -1983,7 +1989,7 @@
          }
      }
  
-@@ -1024,6 +1140,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1024,6 +1146,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          set {
              cursorTextColorIsDefault = newValue == nil
              caretView.caretTextColor = newValue
@@ -1993,7 +1999,7 @@
          }
      }
  
-@@ -1189,6 +1308,17 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1189,6 +1314,17 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      /// `.explicit` = OSC 8 only, `.implicit` = explicit + implicit fallback, `.none` = off.
      public var linkReporting: LinkReporting = .implicit
  
@@ -2011,7 +2017,7 @@
      /// Controls link highlighting and link activation behavior.
      public var linkHighlightMode: LinkHighlightMode = .hoverWithModifier {
          didSet {
-@@ -1241,6 +1371,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1241,6 +1377,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          NSGraphicsContext.current?.cgContext
      }
      
@@ -2021,7 +2027,7 @@
      override public func draw (_ dirtyRect: NSRect) {
  #if canImport(MetalKit)
          if metalView != nil {
-@@ -1250,6 +1383,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1250,6 +1389,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          guard let currentContext = getCurrentGraphicsContext() else {
              return
          }
@@ -2029,7 +2035,7 @@
          drawTerminalContents (dirtyRect: dirtyRect, context: currentContext, bufferOffset: terminal.displayBuffer.yDisp)
      }
      
-@@ -1524,7 +1658,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -1524,7 +1664,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          super.flagsChanged(with: event)
      }
      
@@ -2038,7 +2044,7 @@
          turnOffUrlPreview()
          if linkHighlightMode == .hover || linkHighlightMode == .hoverWithModifier {
              let oldRange = linkHighlightRange
-@@ -2903,7 +3037,11 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -2903,7 +3043,11 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
              }
          case 2:
              let displayBuffer = terminal.displayBuffer
@@ -2051,7 +2057,7 @@
  
          default:
              // 3 and higher
-@@ -3190,7 +3328,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -3190,7 +3334,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
          didSet { scrollSensitivity = max(0.05, scrollSensitivity) }
      }
  
@@ -2060,7 +2066,7 @@
          // Preserves the previous `deltaY == 0` early exit, restated against the
          // delta this method now reads. Without it a zero delta would fall into
          // the non-precise branch below and be turned into a spurious -1 line.
-@@ -3276,13 +3414,19 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -3276,13 +3420,19 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      {
          // Recompute metrics and redraw, but unlike the font setter do not
          // clear the active selection
@@ -2226,7 +2232,16 @@
  }
  
  struct GlyphEntry {
-@@ -166,6 +168,25 @@ struct KittyCacheStamp: Hashable {
+@@ -102,6 +104,8 @@ struct RowCacheEntry {
+     var bidiParagraphRevision: Int
+     var data: RowDrawData?
+     var buffers: RowDrawBuffers?
++    /// Built with unsmoothed stand-ins for glyphs over the frame's smoothing budget; rebuilt on a later frame.
++    var provisional = false
+ }
+ 
+ struct FrameDrawData {
+@@ -166,6 +170,25 @@ struct KittyCacheStamp: Hashable {
      let nextPlacementId: UInt32
  }
  
@@ -2252,7 +2267,7 @@
  struct CacheSignature: Hashable {
      let scale: Double
      let cellWidth: Double
-@@ -200,7 +221,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -200,7 +223,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
      private let sampler: MTLSamplerState
      private let textureLoader: MTKTextureLoader
      private let bufferPool: BufferPool
@@ -2260,7 +2275,25 @@
      private let grayscaleAtlas: GlyphAtlas
      private let colorAtlas: GlyphAtlas
      private let rasterizer = CoreTextGlyphRasterizer()
-@@ -372,7 +392,12 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -213,6 +235,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+     private var cacheBufferingMode: MetalBufferingMode?
+     private var cacheSignature: CacheSignature?
+     private var atlasInvalidatedDuringBuild = false
++    /// Glyphs smoothed for a new color pair cost two CoreGraphics draws each, so a frame smooths at most this many;
++    /// the rest use the plain mask for that frame and the frame after smooths the next batch. Without it, output
++    /// that changes truecolor every frame would rasterize every cell every frame.
++    static let defaultSmoothedGlyphBudget = 256
++    var smoothedGlyphBudget = MetalTerminalRenderer.defaultSmoothedGlyphBudget
++    /// Smoothed glyphs the current frame may still rasterize; unlimited outside a frame build.
++    private var smoothedGlyphsLeft = Int.max
++    private var smoothedGlyphsInLastFrame = 0
++    /// Set when a glyph used the unsmoothed stand-in, for the row being built and for the frame.
++    private var rowUsedUnsmoothedGlyph = false
++    private var frameNeedsSmoothingPass = false
+     private var cursorBlinkTimer: Timer?
+     private var cursorBlinkOn = true
+     private lazy var frameCoordinator = MetalFrameCoordinator(
+@@ -372,7 +405,12 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              return
          }
  #if os(macOS)
@@ -2274,7 +2307,7 @@
          let scale = terminalView.metalRenderingScaleFactor()
          if let layer = view.layer, layer.contentsScale != scale {
              layer.contentsScale = scale
-@@ -380,7 +405,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -380,7 +418,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  #else
          let scale = terminalView.backingScaleFactor()
  #endif
@@ -2286,7 +2319,20 @@
          let cursorStyle = terminalView.terminal.options.cursorStyle
          let shouldBlink = isBlinkStyle(cursorStyle)
              && !terminalView.terminal.cursorHidden
-@@ -444,11 +472,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -427,6 +468,12 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+         }
+ #endif
+         let drawData = buildDrawData(scale: scale)
++        if frameNeedsSmoothingPass {
++            DispatchQueue.main.async { [weak self] in
++                guard let view = self?.view else { return }
++                view.setNeedsDisplay(view.bounds)
++            }
++        }
+ #if canImport(os)
+         if MetalTerminalRenderer.profileEnabled {
+             os_signpost(.end, log: MetalTerminalRenderer.profileLog, name: "Metal.BuildDrawData", signpostID: buildID)
+@@ -444,11 +491,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              debugLastLogTime = now
          }
  #endif
@@ -2299,10 +2345,38 @@
          passDescriptor.colorAttachments[0].loadAction = .clear
  
  #if canImport(os)
-@@ -657,6 +681,54 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -628,9 +671,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+     private static let maxAtlasRebuildPasses = 5
+ 
+     private func buildDrawData(scale: CGFloat) -> DrawData {
++        smoothedGlyphsLeft = smoothedGlyphBudget
++        frameNeedsSmoothingPass = false
+         defer {
+             grayscaleAtlas.frozen = false
+             colorAtlas.frozen = false
++            smoothedGlyphsInLastFrame = smoothedGlyphBudget - smoothedGlyphsLeft
++            smoothedGlyphsLeft = .max
+         }
+         var attempt = 0
+         while true {
+@@ -657,6 +704,68 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
++    /// Builds a frame's draw data without presenting it, with the given smoothing budget, and reports how many
++    /// glyphs it smoothed and whether it left glyphs for a later frame. For tests.
++#if os(macOS)
++    func buildFrameForTesting(smoothedGlyphBudget budget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool) {
++        guard let terminalView else { return (0, false) }
++        let saved = smoothedGlyphBudget
++        smoothedGlyphBudget = budget
++        defer { smoothedGlyphBudget = saved }
++        rasterizer.fontSmoothing = terminalView.fontSmoothing
++        _ = buildDrawData(scale: terminalView.metalRenderingScaleFactor())
++        return (smoothedGlyphsInLastFrame, frameNeedsSmoothingPass)
++    }
++#endif
++
 +    /// What the renderer emits for a visible row, built by the same code as a
 +    /// frame, for tests.
 +    func renderedRowForTesting(_ screenRow: Int) -> MetalRenderedRowForTesting? {
@@ -2354,7 +2428,7 @@
      private func buildDrawDataPass(scale: CGFloat) -> DrawData {
          guard let terminalView = terminalView else {
  #if DEBUG
-@@ -729,8 +801,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -729,8 +838,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              rowCache = rowCache.filter { visibleRange.contains($0.key) }
          }
  
@@ -2364,7 +2438,29 @@
          let needsFullRebuild = signatureChanged || rowCache.isEmpty
          let rebuildRange = needsFullRebuild ? visibleRange : intersect(dirtyRange, visibleRange)
  
-@@ -971,7 +1042,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -769,6 +877,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+             // BufferLine instance (scrolls rotate refs in the CircularList) and
+             // that line has not been mutated since we cached its draw data.
+             let cacheValid = entry?.lineRef === line
++                && entry?.provisional == false
+                 && entry?.generation == lineGeneration
+                 && entry?.bidiParagraphRevision == bidiParagraphRevision
+             let needsRebuild = needsFullRebuild ||
+@@ -777,6 +886,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+                 (bufferingMode == .perFrameAggregated && entry?.data == nil)
+             let rowBuffers: RowDrawBuffers?
+             let rowData: RowDrawData
++            rowUsedUnsmoothedGlyph = false
++            defer {
++                if rowUsedUnsmoothedGlyph, var provisional = rowCache[row] {
++                    provisional.provisional = true
++                    rowCache[row] = provisional
++                }
++            }
+             if needsRebuild {
+                 rowData = buildRowDrawData(row: row,
+                                            buffer: buffer,
+@@ -971,7 +1087,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let lineOrigin = CGPoint(x: 0, y: terminalView.bounds.height - lineOffset)
          let rowBase = lineOrigin.y + cellHeight
          let lineInfo = terminalView.buildAttributedString(row: row, line: line, cols: buffer.cols)
@@ -2373,7 +2469,7 @@
          let lineOriginPx = CGPoint(x: lineOrigin.x * scale, y: lineOrigin.y * scale)
          let cellWidthPx = cellWidth * scale
          let cellHeightPx = cellHeight * scale
-@@ -1000,7 +1071,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1000,7 +1116,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }()
          let underlinePosition = terminalView.fontSet.underlinePosition()
          let underlineThickness = max(round(scale * terminalView.fontSet.underlineThickness()) / scale, 0.5)
@@ -2381,7 +2477,7 @@
  
          if !lineInfo.boxDrawings.isEmpty || !lineInfo.blockElements.isEmpty || !lineInfo.powerlineGlyphs.isEmpty {
              let boxThicknessScale: CGFloat = 1.35
-@@ -1176,24 +1246,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1176,24 +1291,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
          for shaped in shapedSegments {
              for run in shaped.runs {
@@ -2410,7 +2506,7 @@
                      backgroundColor = runAttributes[.backgroundColor] as? TTColor
                  }
                      // Runs carrying the default background emit no quad: the
-@@ -1315,16 +1374,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1315,16 +1419,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
          for shaped in shapedSegments {
              for run in shaped.runs {
@@ -2432,7 +2528,7 @@
  
                  // Same-cell glyphs (base + combining marks) are adjacent in
                  // glyph order, so a pair of locals replaces a per-run anchor
-@@ -1335,7 +1395,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1335,7 +1440,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                      let scaledFont = scaledFontFor(font: glyphRun.font, scale: scale)
                      for i in 0..<glyphRun.glyphs.count {
                          let glyph = glyphRun.glyphs[i]
@@ -2441,7 +2537,7 @@
                              continue
                          }
                          if entry.size.width <= 0 || entry.size.height <= 0 {
-@@ -1401,26 +1461,36 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1401,26 +1506,36 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                      }
                  }
  
@@ -2493,7 +2589,7 @@
                                                  thickness: thickness,
                                                  color: underlineColorSIMD,
                                                  style: segmentStyle,
-@@ -1429,25 +1499,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1429,25 +1544,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                                                  clipRect: clipRect,
                                                  pivotY: pivotY,
                                                  output: &decorationCells)
@@ -2520,7 +2616,7 @@
                      let style = NSUnderlineStyle(rawValue: rawStyle)
                      let strikeColor = (runAttributes[.strikethroughColor] as? TTColor) ?? terminalView.effectiveNativeForegroundColor
                      let strikeColorSIMD = colorToSIMD(strikeColor)
-@@ -1459,24 +1514,26 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1459,24 +1559,26 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                      } else {
                          strikeStyle = .single
                      }
@@ -2563,7 +2659,7 @@
                                                  color: strikeColorSIMD,
                                                  style: strikeStyle,
                                                  patternScale: scale,
-@@ -1484,23 +1541,27 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1484,23 +1586,27 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                                                  clipRect: clipRect,
                                                  pivotY: pivotY,
                                                  output: &decorationCells)
@@ -2605,7 +2701,7 @@
              }
          }
  
-@@ -1575,33 +1636,33 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1575,33 +1681,33 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                             otherImageDraws: otherImageDraws)
      }
  
@@ -2663,7 +2759,7 @@
      }
  
      /// Reacts to a grow or reset that `ensureRegion` performed on `atlas`.
-@@ -1622,16 +1683,27 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1622,16 +1728,44 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -2687,7 +2783,24 @@
              return cached
          }
 -        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph) else {
-+        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph, smoothingOver: colors) else {
++        var smoothingColors = colors
++        if colors != nil {
++            // Blank glyphs aren't cached (there's nothing to draw), so they mustn't use up the budget every frame.
++            guard rasterizer.hasInk(font: font, glyph: glyph) else { return nil }
++            if smoothedGlyphsLeft > 0 {
++                smoothedGlyphsLeft -= 1
++            } else {
++                // Over this frame's budget: draw the plain mask now and smooth it on a later frame.
++                rowUsedUnsmoothedGlyph = true
++                frameNeedsSmoothingPass = true
++                smoothingColors = nil
++                key = plainKey
++                if let plain = glyphCache[plainKey] {
++                    return plain
++                }
++            }
++        }
++        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph, smoothingOver: smoothingColors) else {
              return nil
          }
 +        if bitmap.isColor {
@@ -2696,7 +2809,7 @@
          let atlasKind: GlyphAtlasKind = bitmap.isColor ? .color : .grayscale
          let atlas = atlasKind == .color ? colorAtlas : grayscaleAtlas
          let previousSize = atlas.size
-@@ -1905,7 +1977,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1905,7 +2039,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              guard let buffer = dequeue(length: length) else {
                  return nil
              }
@@ -2705,7 +2818,7 @@
                  memcpy(buffer.contents(), raw.baseAddress!, byteCount)
              }
              frameBuffers.append(buffer)
-@@ -1966,12 +2038,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1966,12 +2100,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -2718,7 +2831,7 @@
      private struct ShaperGlyphRun {
          let font: CTFont
          let glyphs: [CGGlyph]
-@@ -1986,9 +2052,18 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1986,9 +2114,18 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let glyphCount: Int
      }
  
@@ -2738,7 +2851,7 @@
          let shaperRun: ShaperRun
      }
  
-@@ -1997,91 +2072,35 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1997,91 +2134,35 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let runs: [ShapedRun]
      }
  
@@ -2750,11 +2863,7 @@
 -        init(maxEntries: Int) {
 -            self.maxEntries = maxEntries
 -        }
-+    /// Colors converted to shader components, by identity: rows reuse the
-+    /// terminal's cached colors, and converting one is costly (color space
-+    /// conversion) when it happens for every run of every rebuilt row.
-+    private var simdColorCache: [ObjectIdentifier: (color: TTColor, simd: SIMD4<Float>)] = [:]
- 
+-
 -        func shape(text: String, font: CTFont) -> ShaperRun? {
 -            guard !text.isEmpty else {
 -                return nil
@@ -2778,7 +2887,11 @@
 -            guard let runs = CTLineGetGlyphRuns(line) as? [CTRun], !runs.isEmpty else {
 -                return nil
 -            }
--
++    /// Colors converted to shader components, by identity: rows reuse the
++    /// terminal's cached colors, and converting one is costly (color space
++    /// conversion) when it happens for every run of every rebuilt row.
++    private var simdColorCache: [ObjectIdentifier: (color: TTColor, simd: SIMD4<Float>)] = [:]
+ 
 -            var glyphRuns: [ShaperGlyphRun] = []
 -            var positions: [CGPoint] = []
 -            var stringIndices: [CFIndex] = []
@@ -2853,7 +2966,7 @@
          #if os(macOS)
          let rgb = color.usingColorSpace(.deviceRGB) ?? color
          var r: CGFloat = 0
-@@ -2129,7 +2148,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2129,7 +2210,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          guard let buffer = device.makeBuffer(length: byteCount, options: .storageModeShared) else {
              return (nil, 0)
          }
@@ -2862,7 +2975,7 @@
              memcpy(buffer.contents(), raw.baseAddress!, byteCount)
          }
          return (buffer, count)
-@@ -2352,7 +2371,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2352,7 +2433,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          // the CoreGraphics caret.
          let cursorColumnWidth = CGFloat(max(1, Int(buffer.lines[cursorRow][buffer.x].width)))
  
@@ -2881,7 +2994,7 @@
          let y0 = lineOriginPx.y
          let x1 = x0 + cellWidthPx * doublePosition * cursorColumnWidth
          let y1 = y0 + cellHeightPx
-@@ -2417,7 +2446,9 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2417,7 +2508,9 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
          let charData = buffer.lines[cursorRow][buffer.x]
          let caretTextColor = terminalView.effectiveCaretTextColor
@@ -2892,7 +3005,7 @@
              return (colorVertices, [], [])
          }
          if PowerlineRenderer.shouldRender(codePoint: UInt32(charData.code),
-@@ -2457,7 +2488,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2457,7 +2550,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let attributes = terminalView.getAttributedValue(charData.attribute,
                                                           usingFg: terminalView.effectiveCaretColor,
                                                           andBg: caretTextColor) ?? [.font: terminalView.fontSet.normal]
@@ -2901,7 +3014,7 @@
          let ctline = CTLineCreateWithAttributedString(attributedString)
          guard let runs = CTLineGetGlyphRuns(ctline) as? [CTRun] else {
              return (colorVertices, [], [])
-@@ -2484,7 +2515,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2484,7 +2577,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
              for i in 0..<runGlyphsCount {
                  let glyph = runGlyphs[i]
@@ -2910,7 +3023,7 @@
                      continue
                  }
                  if entry.size.width <= 0 || entry.size.height <= 0 {
-@@ -2494,7 +2525,8 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2494,7 +2587,8 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                  // Center the glyph under the cursor the same way as normal text so
                  // a full-width (CJK) character doesn't shift when the caret lands on it.
                  let fit = terminalView.glyphSlotFit(font: ctFont, glyph: glyph, columnWidth: max(1, Int(charData.width)))
@@ -2920,7 +3033,7 @@
                                        y: lineOrigin.y + yOffset + ctPos.y + fit.dy)
                  let pxX = basePos.x * scale + entry.bearing.x * fit.scale
                  let pxY = basePos.y * scale + entry.bearing.y * fit.scale
-@@ -2769,6 +2801,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2769,6 +2863,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
      private func appendUnderlineSegments(x0: CGFloat,
                                           x1: CGFloat,
@@ -2928,7 +3041,7 @@
                                           yCenter: CGFloat,
                                           thickness: CGFloat,
                                           color: SIMD4<Float>,
-@@ -2803,7 +2836,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2803,7 +2898,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              let step = max(thickness, patternScale)
              var x = x0
              while x < x1 {
@@ -2937,7 +3050,7 @@
                  let y = baseY + amplitude * CGFloat(sin(phase))
                  let end = min(x + step, x1)
                  emitSegment(start: x, end: end, centerY: y)
-@@ -2812,11 +2845,16 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2812,11 +2907,16 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          case .dotted, .dashed:
              let segmentLength = style == .dotted ? dotLength : dashLength
              let gapLength = style == .dotted ? (dotLength * 2) : dashLength
@@ -2957,7 +3070,7 @@
              }
          case .none:
              break
-@@ -2825,7 +2863,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2825,7 +2925,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -2966,7 +3079,7 @@
          if let raw = attributes[SwiftTermUnderlineStyleKey] as? Int,
             let style = UnderlineStyle(rawValue: UInt8(raw)) {
              return style
-@@ -2980,7 +3018,32 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2980,7 +3080,32 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -2999,7 +3112,7 @@
          if let library = device.makeDefaultLibrary(),
             libraryHasRequiredFunctions(library) {
              return library
-@@ -3081,9 +3144,14 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -3081,9 +3206,14 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let containerBundles = [Bundle.main, Bundle(for: MetalTerminalRenderer.self)]
              + Bundle.allBundles + Bundle.allFrameworks
          for container in containerBundles {
@@ -3017,7 +3130,7 @@
                  if let resourceBundle = Bundle(url: url),
 --- a/Sources/SwiftTerm/Apple/Metal/CoreTextGlyphRasterizer.swift
 +++ b/Sources/SwiftTerm/Apple/Metal/CoreTextGlyphRasterizer.swift
-@@ -2,33 +2,125 @@
+@@ -2,33 +2,132 @@
  import CoreGraphics
  import CoreText
  
@@ -3043,6 +3156,13 @@
 +    // iOS and visionOS never smooth: no outset, and the renderer keeps one plain mask per glyph.
 +    var fontSmoothing: Bool = false
 +#endif
++
++    /// Whether the glyph has an outline to draw; blank glyphs (spaces) rasterize to nothing.
++    func hasInk(font: CTFont, glyph: CGGlyph) -> Bool {
++        var glyphVar = glyph
++        let rect = CTFontGetBoundingRectsForGlyphs(font, .default, &glyphVar, nil, 1)
++        return rect.width > 0 && rect.height > 0
++    }
  
 -    func rasterize(font: CTFont, glyph: CGGlyph) -> GlyphBitmap? {
 +    /// Rasterizes `glyph` as a coverage mask (white, premultiplied) or, for a color glyph, as its colors.
@@ -3075,7 +3195,7 @@
              return nil
          }
 +        let origin = CGPoint(x: -minX, y: -minY)
-+
+ 
 +        guard var pixels = draw(font: font, glyph: glyph, at: origin, width: width, height: height, colors: nil) else {
 +            return nil
 +        }
@@ -3104,7 +3224,7 @@
 +                           pixels: pixels,
 +                           isColor: isColor)
 +    }
- 
++
 +    #if os(macOS)
 +    /// The glyph's coverage as CoreGraphics smooths it for `colors`, or nil when the two colors are too close to
 +    /// recover it (the text is then all but invisible, and the plain mask is used).
@@ -3150,7 +3270,7 @@
                  return false
              }
              let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
-@@ -56,35 +148,25 @@ final class CoreTextGlyphRasterizer {
+@@ -56,35 +155,25 @@ final class CoreTextGlyphRasterizer {
              context.setShouldSmoothFonts(false)
  #endif
  

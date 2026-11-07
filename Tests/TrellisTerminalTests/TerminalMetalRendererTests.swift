@@ -196,6 +196,26 @@ final class TerminalMetalRendererTests: XCTestCase {
         XCTAssertGreaterThan(try XCTUnwrap(view.metalRenderedRowForTesting(2)).cursorGlyphCount, 1, "the combining mark is drawn with its base")
     }
 
+    /// Smoothing a glyph for a new color pair costs two CoreGraphics draws, so a frame smooths a bounded number and
+    /// the following frames finish the rest; output whose colors change every frame can't stall every frame.
+    @MainActor
+    func testMetalSmoothsNewColorPairsWithinAPerFrameBudget() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        let text = "abcdefghijkl".enumerated().map { i, c in "\u{1b}[38;2;\(20 * i);90;160m\(c)" }.joined()
+        native.adapter.receive(Data("\u{1b}[?25l\(text)\u{1b}[0m".utf8))
+        let first = try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5))
+        XCTAssertEqual(first.smoothedGlyphs, 5)
+        XCTAssertTrue(first.needsSmoothingPass, "the rest wait for a later frame")
+        XCTAssertEqual(try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5)).smoothedGlyphs, 5, "the provisional row is rebuilt")
+        let third = try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5))
+        XCTAssertEqual(third.smoothedGlyphs, 2)
+        XCTAssertFalse(third.needsSmoothingPass)
+        let settled = try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5))
+        XCTAssertEqual(settled.smoothedGlyphs, 0, "smoothed glyphs and the finished row are cached")
+        XCTAssertFalse(settled.needsSmoothingPass)
+    }
+
     /// One channel of `glyph` drawn by CoreGraphics in `fg` over `bg`, in a bitmap laid out like the Metal mask.
     private func coreGraphicsPixels(font: CTFont, glyph: CGGlyph, fg: SIMD4<Float>, bg: SIMD4<Float>, width: Int, height: Int, origin: CGPoint, smoothing: Bool) throws -> [Double] {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
