@@ -25,6 +25,13 @@ final class CoreTextGlyphRasterizer {
     var fontSmoothing: Bool = false
 #endif
 
+    /// Whether the glyph has an outline to draw; blank glyphs (spaces) rasterize to nothing.
+    func hasInk(font: CTFont, glyph: CGGlyph) -> Bool {
+        var glyphVar = glyph
+        let rect = CTFontGetBoundingRectsForGlyphs(font, .default, &glyphVar, nil, 1)
+        return rect.width > 0 && rect.height > 0
+    }
+
     /// Rasterizes `glyph` as a coverage mask (white, premultiplied) or, for a color glyph, as its colors.
     ///
     /// macOS font smoothing thickens strokes by an amount that depends on the text and background colors: about
