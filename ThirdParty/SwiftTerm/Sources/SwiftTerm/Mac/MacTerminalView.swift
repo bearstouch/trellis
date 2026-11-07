@@ -324,6 +324,12 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     /// The premultiplied color the Metal renderer clears to, or nil when Metal is off. For tests.
     public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
 
+    /// Builds one Metal frame without presenting it, smoothing at most `smoothedGlyphBudget` new glyphs, and reports
+    /// how many it smoothed and whether glyphs were left for a later frame; nil when Metal is off. For tests.
+    public func metalBuildFrameForTesting(smoothedGlyphBudget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool)? {
+        metalRenderer?.buildFrameForTesting(smoothedGlyphBudget: smoothedGlyphBudget)
+    }
+
     /// The Metal renderer's glyph mask for `glyph` drawn in `foreground` over `background` (device RGB components),
     /// as one coverage byte per pixel in CoreGraphics bitmap order (top row first), with the mask's origin relative to the glyph origin. For tests.
     public static func metalGlyphCoverageForTesting(font: CTFont, glyph: CGGlyph, foreground: SIMD4<Float>, background: SIMD4<Float>,

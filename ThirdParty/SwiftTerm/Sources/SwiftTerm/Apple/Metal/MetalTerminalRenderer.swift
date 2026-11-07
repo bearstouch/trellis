@@ -104,6 +104,8 @@ struct RowCacheEntry {
     var bidiParagraphRevision: Int
     var data: RowDrawData?
     var buffers: RowDrawBuffers?
+    /// Built with unsmoothed stand-ins for glyphs over the frame's smoothing budget; rebuilt on a later frame.
+    var provisional = false
 }
 
 struct FrameDrawData {
@@ -233,6 +235,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     private var cacheBufferingMode: MetalBufferingMode?
     private var cacheSignature: CacheSignature?
     private var atlasInvalidatedDuringBuild = false
+    /// Glyphs smoothed for a new color pair cost two CoreGraphics draws each, so a frame smooths at most this many;
+    /// the rest use the plain mask for that frame and the frame after smooths the next batch. Without it, output
+    /// that changes truecolor every frame would rasterize every cell every frame.
+    static let defaultSmoothedGlyphBudget = 256
+    var smoothedGlyphBudget = MetalTerminalRenderer.defaultSmoothedGlyphBudget
+    /// Smoothed glyphs the current frame may still rasterize; unlimited outside a frame build.
+    private var smoothedGlyphsLeft = Int.max
+    private var smoothedGlyphsInLastFrame = 0
+    /// Set when a glyph used the unsmoothed stand-in, for the row being built and for the frame.
+    private var rowUsedUnsmoothedGlyph = false
+    private var frameNeedsSmoothingPass = false
     private var cursorBlinkTimer: Timer?
     private var cursorBlinkOn = true
     private lazy var frameCoordinator = MetalFrameCoordinator(
@@ -455,6 +468,12 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         }
 #endif
         let drawData = buildDrawData(scale: scale)
+        if frameNeedsSmoothingPass {
+            DispatchQueue.main.async { [weak self] in
+                guard let view = self?.view else { return }
+                view.setNeedsDisplay(view.bounds)
+            }
+        }
 #if canImport(os)
         if MetalTerminalRenderer.profileEnabled {
             os_signpost(.end, log: MetalTerminalRenderer.profileLog, name: "Metal.BuildDrawData", signpostID: buildID)
@@ -652,9 +671,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     private static let maxAtlasRebuildPasses = 5
 
     private func buildDrawData(scale: CGFloat) -> DrawData {
+        smoothedGlyphsLeft = smoothedGlyphBudget
+        frameNeedsSmoothingPass = false
         defer {
             grayscaleAtlas.frozen = false
             colorAtlas.frozen = false
+            smoothedGlyphsInLastFrame = smoothedGlyphBudget - smoothedGlyphsLeft
+            smoothedGlyphsLeft = .max
         }
         var attempt = 0
         while true {
@@ -680,6 +703,20 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             GlyphAtlas.log.info("glyph atlas changed during frame build; rebuild pass \(attempt)/\(Self.maxAtlasRebuildPasses)")
         }
     }
+
+    /// Builds a frame's draw data without presenting it, with the given smoothing budget, and reports how many
+    /// glyphs it smoothed and whether it left glyphs for a later frame. For tests.
+#if os(macOS)
+    func buildFrameForTesting(smoothedGlyphBudget budget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool) {
+        guard let terminalView else { return (0, false) }
+        let saved = smoothedGlyphBudget
+        smoothedGlyphBudget = budget
+        defer { smoothedGlyphBudget = saved }
+        rasterizer.fontSmoothing = terminalView.fontSmoothing
+        _ = buildDrawData(scale: terminalView.metalRenderingScaleFactor())
+        return (smoothedGlyphsInLastFrame, frameNeedsSmoothingPass)
+    }
+#endif
 
     /// What the renderer emits for a visible row, built by the same code as a
     /// frame, for tests.
@@ -840,6 +877,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             // BufferLine instance (scrolls rotate refs in the CircularList) and
             // that line has not been mutated since we cached its draw data.
             let cacheValid = entry?.lineRef === line
+                && entry?.provisional == false
                 && entry?.generation == lineGeneration
                 && entry?.bidiParagraphRevision == bidiParagraphRevision
             let needsRebuild = needsFullRebuild ||
@@ -848,6 +886,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                 (bufferingMode == .perFrameAggregated && entry?.data == nil)
             let rowBuffers: RowDrawBuffers?
             let rowData: RowDrawData
+            rowUsedUnsmoothedGlyph = false
+            defer {
+                if rowUsedUnsmoothedGlyph, var provisional = rowCache[row] {
+                    provisional.provisional = true
+                    rowCache[row] = provisional
+                }
+            }
             if needsRebuild {
                 rowData = buildRowDrawData(row: row,
                                            buffer: buffer,
@@ -1698,7 +1743,24 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         if let cached = glyphCache[key] {
             return cached
         }
-        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph, smoothingOver: colors) else {
+        var smoothingColors = colors
+        if colors != nil {
+            // Blank glyphs aren't cached (there's nothing to draw), so they mustn't use up the budget every frame.
+            guard rasterizer.hasInk(font: font, glyph: glyph) else { return nil }
+            if smoothedGlyphsLeft > 0 {
+                smoothedGlyphsLeft -= 1
+            } else {
+                // Over this frame's budget: draw the plain mask now and smooth it on a later frame.
+                rowUsedUnsmoothedGlyph = true
+                frameNeedsSmoothingPass = true
+                smoothingColors = nil
+                key = plainKey
+                if let plain = glyphCache[plainKey] {
+                    return plain
+                }
+            }
+        }
+        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph, smoothingOver: smoothingColors) else {
             return nil
         }
         if bitmap.isColor {
