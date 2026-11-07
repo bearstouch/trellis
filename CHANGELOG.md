@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **GPU rendering:** text drawn with Metal was noticeably bolder than with GPU rendering off, most of all in light themes. Both renderers now draw the same stroke weight.
 - **Translucent panes:** with GPU rendering, the terminal area was lighter than the padding around it, which looked like a frame, and a thin dark line ran along the top of the terminal. Both are gone.
 
 ## [1.2.0-beta.1] - 2026-11-06
