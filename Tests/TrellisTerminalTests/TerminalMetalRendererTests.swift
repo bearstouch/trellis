@@ -216,6 +216,17 @@ final class TerminalMetalRendererTests: XCTestCase {
         XCTAssertFalse(settled.needsSmoothingPass)
     }
 
+    /// Spaces have no atlas entry; without a negative cache every row rebuild asked CoreText for their bounds again.
+    @MainActor
+    func testMetalRemembersBlankGlyphsAcrossRowRebuilds() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        native.adapter.receive(Data("\u{1b}[?25la b  c\u{1b}[31m d e".utf8))
+        XCTAssertGreaterThan(try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 256)).glyphCacheMisses, 0)
+        native.adapter.receive(Data("\u{1b}[0m\ra b  c\u{1b}[31m d e".utf8))  // rewrites the row in the same colors, so it's rebuilt
+        XCTAssertEqual(try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 256)).glyphCacheMisses, 0, "letters and spaces both come from cache")
+    }
+
     /// One channel of `glyph` drawn by CoreGraphics in `fg` over `bg`, in a bitmap laid out like the Metal mask.
     private func coreGraphicsPixels(font: CTFont, glyph: CGGlyph, fg: SIMD4<Float>, bg: SIMD4<Float>, width: Int, height: Int, origin: CGPoint, smoothing: Bool) throws -> [Double] {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)

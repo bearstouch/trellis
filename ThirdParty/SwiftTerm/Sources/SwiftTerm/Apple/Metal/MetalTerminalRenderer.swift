@@ -227,6 +227,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     private let colorAtlas: GlyphAtlas
     private let rasterizer = CoreTextGlyphRasterizer()
     private var glyphCache: [GlyphKey: GlyphEntry] = [:]
+    /// Glyphs with nothing to draw (spaces), which have no atlas entry; remembered so a row rebuild doesn't ask
+    /// CoreText for their bounds again. Font metrics don't change with smoothing or the atlas, so it's never cleared.
+    private var blankGlyphs: Set<GlyphKey> = []
+    private var glyphCacheMisses = 0
     private var scaledFontCache: [GlyphKey: CTFont] = [:]
     private var customGlyphCache: [CustomGlyphKey: CustomGlyphEntry] = [:]
     private let imageTextureCache = NSMapTable<AnyObject, MTLTexture>(keyOptions: .weakMemory, valueOptions: .strongMemory)
@@ -673,6 +677,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     private func buildDrawData(scale: CGFloat) -> DrawData {
         smoothedGlyphsLeft = smoothedGlyphBudget
         frameNeedsSmoothingPass = false
+        glyphCacheMisses = 0
         defer {
             grayscaleAtlas.frozen = false
             colorAtlas.frozen = false
@@ -707,14 +712,14 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     /// Builds a frame's draw data without presenting it, with the given smoothing budget, and reports how many
     /// glyphs it smoothed and whether it left glyphs for a later frame. For tests.
 #if os(macOS)
-    func buildFrameForTesting(smoothedGlyphBudget budget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool) {
-        guard let terminalView else { return (0, false) }
+    func buildFrameForTesting(smoothedGlyphBudget budget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool, glyphCacheMisses: Int) {
+        guard let terminalView else { return (0, false, 0) }
         let saved = smoothedGlyphBudget
         smoothedGlyphBudget = budget
         defer { smoothedGlyphBudget = saved }
         rasterizer.fontSmoothing = terminalView.fontSmoothing
         _ = buildDrawData(scale: terminalView.metalRenderingScaleFactor())
-        return (smoothedGlyphsInLastFrame, frameNeedsSmoothingPass)
+        return (smoothedGlyphsInLastFrame, frameNeedsSmoothingPass, glyphCacheMisses)
     }
 #endif
 
@@ -1734,6 +1739,9 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         let plainKey = GlyphKey(fontName: CTFontCopyPostScriptName(font) as String,
                                 size: CTFontGetSize(font),
                                 glyph: glyph)
+        if blankGlyphs.contains(plainKey) {
+            return nil
+        }
         let colors = rasterizer.fontSmoothing ? GlyphSmoothingColors(foreground: foreground, background: background) : nil
         if let plain = glyphCache[plainKey], colors == nil || plain.isColor {
             return plain
@@ -1743,10 +1751,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         if let cached = glyphCache[key] {
             return cached
         }
+        glyphCacheMisses += 1
+        guard rasterizer.hasInk(font: font, glyph: glyph) else {
+            blankGlyphs.insert(plainKey)
+            return nil
+        }
         var smoothingColors = colors
         if colors != nil {
-            // Blank glyphs aren't cached (there's nothing to draw), so they mustn't use up the budget every frame.
-            guard rasterizer.hasInk(font: font, glyph: glyph) else { return nil }
             if smoothedGlyphsLeft > 0 {
                 smoothedGlyphsLeft -= 1
             } else {

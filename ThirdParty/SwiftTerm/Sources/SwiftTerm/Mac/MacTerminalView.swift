@@ -325,8 +325,9 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
 
     /// Builds one Metal frame without presenting it, smoothing at most `smoothedGlyphBudget` new glyphs, and reports
-    /// how many it smoothed and whether glyphs were left for a later frame; nil when Metal is off. For tests.
-    public func metalBuildFrameForTesting(smoothedGlyphBudget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool)? {
+    /// how many it smoothed, whether glyphs were left for a later frame, and how many glyph lookups missed every cache;
+    /// nil when Metal is off. For tests.
+    public func metalBuildFrameForTesting(smoothedGlyphBudget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool, glyphCacheMisses: Int)? {
         metalRenderer?.buildFrameForTesting(smoothedGlyphBudget: smoothedGlyphBudget)
     }
 
