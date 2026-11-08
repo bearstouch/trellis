@@ -96,6 +96,13 @@ final class AccessibleTerminalView: TerminalView {
         addTrackingArea(area)
     }
 
+    /// The overlay scroller covers the last columns; while it's faded out, clicks there belong to the terminal.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        guard let scroller = terminalScroller, scroller.alphaValue == 0, let hit, hit === scroller || hit.isDescendant(of: scroller) else { return hit }
+        return self
+    }
+
     override func mouseEntered(with event: NSEvent) {
         guard event.trackingArea === scrollbarTrackingArea else { super.mouseEntered(with: event); return }
         scrollbarHovered = true

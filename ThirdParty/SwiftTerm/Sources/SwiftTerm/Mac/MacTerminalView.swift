@@ -1277,7 +1277,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     }
 
     private var reservedScrollerWidth: CGFloat {
-        scroller?.isHidden == true ? 0 : scrollerWidth
+        // An overlay scroller floats over the content, so it takes no columns.
+        scroller?.isHidden == true || scrollerStyle == .overlay ? 0 : scrollerWidth
     }
 
     /**
