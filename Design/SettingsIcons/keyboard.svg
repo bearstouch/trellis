@@ -1,13 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 <defs>
-<linearGradient id="t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#DDE0E6" stop-opacity=".78"/><stop offset="1" stop-color="#565A63" stop-opacity=".94"/></linearGradient>
-<linearGradient id="r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".45" stop-color="#fff" stop-opacity=".12"/><stop offset=".7" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity=".65"/></linearGradient>
-<filter id="d" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2.5" stdDeviation="2" flood-color="#000" flood-opacity=".4"/></filter>
-<filter id="g" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#23262C" flood-opacity=".5"/></filter>
-<clipPath id="c"><path d="M40 4H88C108 4 124 20 124 40V88C124 108 108 124 88 124H40C20 124 4 108 4 88V40C4 20 20 4 40 4Z"/></clipPath>
+<linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".32"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".12"/></linearGradient>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9AA0AA"/><stop offset="1" stop-color="#4A4F58"/></linearGradient>
+<linearGradient id="cap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E9EBEF"/><stop offset="1" stop-color="#B9BEC7"/></linearGradient>
+<linearGradient id="face" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF0F3"/></linearGradient>
 </defs>
-<path d="M40 4H88C108 4 124 20 124 40V88C124 108 108 124 88 124H40C20 124 4 108 4 88V40C4 20 20 4 40 4Z" fill="url(#t)" filter="url(#d)"/>
-<g clip-path="url(#c)"><path d="M4 40C4 20 20 4 40 4H88C100 4 110 9 116 18C86 12 40 18 8 50C5 46 4 43 4 40Z" fill="#fff" fill-opacity=".24"/></g>
-<path filter="url(#g)" d="M52 52V42A10 10 0 1 0 42 52H86A10 10 0 1 0 76 42V86A10 10 0 1 0 86 76H42A10 10 0 1 0 52 86V52Z" fill="none" stroke="#fff" stroke-opacity=".96" stroke-width="9" stroke-linejoin="round"/>
-<path d="M40 5.5H88C107 5.5 122.5 21 122.5 40V88C122.5 107 107 122.5 88 122.5H40C21 122.5 5.5 107 5.5 88V40C5.5 21 21 5.5 40 5.5Z" fill="none" stroke="url(#r)" stroke-width="3"/>
+<rect width="100" height="100" rx="22.5" fill="url(#bg)"/>
+<rect x="17" y="17" width="66" height="68" rx="13" fill="#1E2127" opacity=".45" transform="translate(0 2.5)"/>
+<rect x="17" y="17" width="66" height="68" rx="13" fill="url(#cap)"/>
+<rect x="22" y="19" width="56" height="57" rx="10" fill="url(#face)"/>
+<path d="M22 29a10 10 0 0 1 10-10h36a10 10 0 0 1 10 10" fill="none" stroke="#fff" stroke-width="1.4"/>
+<path d="M43 41V37a5 5 0 1 0-5 5h24a5 5 0 1 0-5-5v20a5 5 0 1 0 5-5H38a5 5 0 1 0 5 5z" transform="translate(0 0.8)" fill="none" stroke="#fff" stroke-width="3.6" stroke-linejoin="round"/>
+<path d="M43 41V37a5 5 0 1 0-5 5h24a5 5 0 1 0-5-5v20a5 5 0 1 0 5-5H38a5 5 0 1 0 5 5z" fill="none" stroke="#3A3E46" stroke-width="3.6" stroke-linejoin="round"/>
+<rect width="100" height="100" rx="22.5" fill="url(#gloss)"/>
+<rect x=".5" y=".5" width="99" height="99" rx="22" fill="none" stroke="#fff" stroke-opacity=".2"/>
 </svg>

@@ -1,18 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 <defs>
-<linearGradient id="t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6CF3F5" stop-opacity=".78"/><stop offset="1" stop-color="#0585A8" stop-opacity=".93"/></linearGradient>
-<linearGradient id="r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".45" stop-color="#fff" stop-opacity=".12"/><stop offset=".7" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity=".65"/></linearGradient>
-<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset="1" stop-color="#fff" stop-opacity=".55"/></linearGradient>
-<filter id="d" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2.5" stdDeviation="2" flood-color="#00303F" flood-opacity=".4"/></filter>
-<filter id="b" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="9"/></filter>
-<clipPath id="c"><path d="M40 4H88C108 4 124 20 124 40V88C124 108 108 124 88 124H40C20 124 4 108 4 88V40C4 20 20 4 40 4Z"/></clipPath>
+<linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".32"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".12"/></linearGradient>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#55DDE6"/><stop offset="1" stop-color="#0B88A3"/></linearGradient>
+<linearGradient id="unit" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#D3EEF2"/></linearGradient>
+<radialGradient id="ledG" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#9DFFB4"/><stop offset="1" stop-color="#1DB954"/></radialGradient>
+<radialGradient id="ledO" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#FFE0A0"/><stop offset="1" stop-color="#FF8A00"/></radialGradient>
 </defs>
-<path d="M40 4H88C108 4 124 20 124 40V88C124 108 108 124 88 124H40C20 124 4 108 4 88V40C4 20 20 4 40 4Z" fill="url(#t)" filter="url(#d)"/>
-<g clip-path="url(#c)"><ellipse cx="44" cy="100" rx="42" ry="22" fill="#8CFFD8" fill-opacity=".6" filter="url(#b)"/><path d="M4 40C4 20 20 4 40 4H88C100 4 110 9 116 18C86 12 40 18 8 50C5 46 4 43 4 40Z" fill="#fff" fill-opacity=".2"/></g>
-<g stroke="#fff" stroke-width="1.3">
-<rect x="22" y="22" width="84" height="26" rx="8" fill="url(#f)"/><rect x="22" y="51" width="84" height="26" rx="8" fill="url(#f)"/><rect x="22" y="80" width="84" height="26" rx="8" fill="url(#f)"/>
-</g>
-<circle cx="36" cy="35" r="5.5" fill="#0BD870"/><circle cx="36" cy="64" r="5.5" fill="#0BD870"/><circle cx="36" cy="93" r="5.5" fill="#FF9F1C"/>
-<path d="M60 35H94M60 64H94M60 93H94" stroke="#0A7F9C" stroke-opacity=".6" stroke-width="4" stroke-linecap="round"/>
-<path d="M40 5.5H88C107 5.5 122.5 21 122.5 40V88C122.5 107 107 122.5 88 122.5H40C21 122.5 5.5 107 5.5 88V40C5.5 21 21 5.5 40 5.5Z" fill="none" stroke="url(#r)" stroke-width="3"/>
+<rect width="100" height="100" rx="22.5" fill="url(#bg)"/>
+<g fill="#04495A" opacity=".35" transform="translate(0 2.5)"><rect x="18" y="18" width="64" height="18" rx="5"/><rect x="18" y="41" width="64" height="18" rx="5"/><rect x="18" y="64" width="64" height="18" rx="5"/></g>
+<g fill="url(#unit)" stroke="#fff" stroke-width="1"><rect x="18" y="18" width="64" height="18" rx="5"/><rect x="18" y="41" width="64" height="18" rx="5"/><rect x="18" y="64" width="64" height="18" rx="5"/></g>
+<circle cx="28" cy="27" r="3.6" fill="url(#ledG)"/><circle cx="28" cy="50" r="3.6" fill="url(#ledG)"/><circle cx="28" cy="73" r="3.6" fill="url(#ledO)"/>
+<g stroke="#8FB9C4" stroke-width="3" stroke-linecap="round"><path d="M38 27h22M38 50h16M38 73h26"/></g>
+<g fill="#B5D3DA"><rect x="66" y="23" width="3" height="8" rx="1.2"/><rect x="71" y="23" width="3" height="8" rx="1.2"/><rect x="66" y="46" width="3" height="8" rx="1.2"/><rect x="71" y="46" width="3" height="8" rx="1.2"/></g>
+<rect width="100" height="100" rx="22.5" fill="url(#gloss)"/>
+<rect x=".5" y=".5" width="99" height="99" rx="22" fill="none" stroke="#fff" stroke-opacity=".2"/>
 </svg>
