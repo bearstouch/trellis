@@ -398,6 +398,8 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Asked before staging a conflicted file, which marks it resolved (FR-GC06); the app shows an alert.
     public var confirmStageConflict: (String) -> Bool = { _ in false }
     public var confirmForceSessions: (Int) -> Bool = { _ in false }
+    /// Asked before an agent replaces a running shell in its pane (FR-AG17), with the agent's name; the app shows an alert.
+    public var confirmReplaceShell: (String) -> Bool = { _ in false }
     private var closeSummary: [String] = []
     let closureCoordinator = SessionClosureCoordinator()
     var closureInProgress = false
@@ -652,6 +654,18 @@ public final class AppWorkspaceModel: ObservableObject {
         confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
         confirmClearDirectoryHistory = { [weak self] in self?.showClearDirectoryHistoryConfirmation() ?? false }
         confirmStageConflict = { Self.showStageConflictConfirmation(name: $0) }
+        confirmReplaceShell = { Self.showReplaceShellConfirmation(agent: $0) }
+    }
+
+    /// Shell marks don't report jobs, so the alert names what ends with the shell.
+    private static func showReplaceShellConfirmation(agent: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Replace this shell with \(agent)?"
+        alert.informativeText =
+            "The shell in this pane ends, along with any background or stopped jobs it started, such as a server run with & or a suspended editor. \(agent) starts in the same folder."
+        alert.addButton(withTitle: "Replace Shell")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private static func showStageConflictConfirmation(name: String) -> Bool {

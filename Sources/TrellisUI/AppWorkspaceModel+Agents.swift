@@ -166,7 +166,7 @@ extension AppWorkspaceModel {
         case .tab:
             paneID = await createTab(windowID: window.id, startSessions: false).flatMap { snapshot.tabs[$0]?.activePaneID }
         case .currentTab:
-            paneID = await clearPaneForAgent(sourcePaneID) ? sourcePaneID : nil
+            paneID = await clearPaneForAgent(sourcePaneID, agentName: agentCatalog.definition(agentID)?.name ?? "the agent") ? sourcePaneID : nil
         }
         guard let paneID, !isClosing(paneID: paneID) else { return }
         await configureAgent(paneID: paneID, launch: launch)
@@ -181,8 +181,9 @@ extension AppWorkspaceModel {
     }
 
     /// FR-AG17: the pane gives its session to the agent. A running shell is ended only while it waits at an authenticated
-    /// prompt, so no command or program is cut off, and only in a tab without an agent; nothing is asked or forced.
-    private func clearPaneForAgent(_ paneID: UUID) async -> Bool {
+    /// prompt, so no command is cut off, only in a tab without an agent, and only after the user confirms, since its marks
+    /// don't report background or stopped jobs. Nothing is forced.
+    private func clearPaneForAgent(_ paneID: UUID, agentName: String) async -> Bool {
         guard let pane = snapshot.panes[paneID], let terminal = terminals[paneID], !agentRunning(inTab: pane.tabID) else {
             errorMessage = "An agent is already running in this tab. Open the agent in a new tab or a split."
             return false
@@ -191,8 +192,20 @@ extension AppWorkspaceModel {
         case .stopped: return true
         case .exited, .failed: break
         case .running:
-            guard let state = shellStates[paneID], state.origin == .authenticated, !state.commandRunning, !terminal.isReplaying, taskRuns[paneID]?.isActive != true else {
+            func idle() -> Bool {
+                guard terminals[paneID] === terminal, terminal.sessionState == .running, !isClosing(paneID: paneID), !agentRunning(inTab: pane.tabID),
+                    let state = shellStates[paneID]
+                else { return false }
+                return state.origin == .authenticated && !state.commandRunning && !terminal.isReplaying && taskRuns[paneID]?.isActive != true
+            }
+            guard idle() else {
                 errorMessage = "This pane isn't at its shell prompt. Finish its command first, or open the agent in a new tab."
+                return false
+            }
+            guard confirmReplaceShell(agentName) else { return false }
+            // Marks keep arriving while the alert is up; a command started meanwhile is never cut off.
+            guard idle() else {
+                errorMessage = "This pane's shell started a command, so the agent wasn't opened there."
                 return false
             }
             guard await endRunningSession(terminal, paneID: paneID, force: false), [.exited, .failed].contains(terminal.sessionState) else {
