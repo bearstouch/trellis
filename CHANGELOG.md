@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop notifications:** each notification now says where it came from. Its subtitle names the window and tab ("api › Build"), followed by the agent or running program when known ("api › Build · make"); the command line itself is never shown. Agent notifications read "Waiting for your input" or "Finished its turn". See [Workspace](docs/features/workspace.md) (FR-T08), FR-SI08 and FR-AG14.
+
 ## [1.2.0-beta.2] - 2026-11-09
 
 The second 1.2 beta.

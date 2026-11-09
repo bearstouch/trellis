@@ -1222,7 +1222,23 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
         let title = notification.title.isEmpty ? paneTitle(paneID) : notification.title
-        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, body: notification.body))
+        // Only the program's name, never its command line.
+        let source = agentDefinition(paneID: paneID)?.name ?? detectedAgent(paneID: paneID)?.name ?? shellStates[paneID]?.commandName
+        // An automatic tab title that follows this pane already names its agent or program (FR-SI05, FR-AG15).
+        let tab = snapshot.tabs[pane.tabID]
+        let tabNamesSource = tab?.title == WorkspaceTab.defaultTitle && tab?.activePaneID == paneID
+        let subtitle = notificationContext(paneID: paneID, source: source == title || tabNamesSource ? nil : source)
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, subtitle: subtitle, body: notification.body))
+    }
+
+    /// Where a notification came from (FR-T08): "Window › Tab", plus " · source" when the agent or program is known.
+    func notificationContext(paneID: UUID, source: String? = nil) -> String {
+        guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID] else { return "" }
+        var parts = [displayTitle(tab)]
+        if let window = snapshot.windows.first(where: { $0.id == tab.windowID }) { parts.insert(window.name, at: 0) }
+        var context = parts.map(TerminalNotification.cleanedContext).filter { !$0.isEmpty }.joined(separator: " › ")
+        if let source = source.map(TerminalNotification.cleanedContext), !source.isEmpty { context += context.isEmpty ? source : " · \(source)" }
+        return context
     }
 
     /// FR-SI08: a long command finished while the user wasn't looking at its pane. Unlike `postNotification` this runs
@@ -1237,7 +1253,7 @@ public final class AppWorkspaceModel: ObservableObject {
         let title = state.lastCommandFailed ? "Command failed (exit \(state.lastExitCode ?? 0))" : "Command finished"
         // The program name is untrusted output, so it gets the same cleaning as OSC notification text.
         guard let text = TerminalNotification(title: title, body: "\(state.lastCommandName ?? paneTitle(paneID)) ran for \(durationText)") else { return }
-        desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, body: text.body))
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, subtitle: notificationContext(paneID: paneID), body: text.body))
     }
 
     /// Progress never labels the tab as waiting (FR-T09); it only refreshes the bar, text and spoken status.

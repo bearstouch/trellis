@@ -400,11 +400,12 @@ extension AppWorkspaceModel {
 
     private func postAgentNotification(paneID: UUID, state: AgentState) {
         guard appearance.desktopNotifications, agentNotificationsEnabled, let desktopNotifier, let agent = agentDefinition(paneID: paneID),
-            let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID], !agentPaneVisible(paneID),
-            notificationLimiter.allow(paneID, at: activityNow())
+            snapshot.panes[paneID] != nil, !agentPaneVisible(paneID), notificationLimiter.allow(paneID, at: activityNow())
         else { return }
-        let title = state == .needsInput ? "\(agent.name) needs you" : "\(agent.name) finished"
-        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, body: displayTitle(tab)))
+        let needsYou = state == .needsInput
+        let title = needsYou ? "\(agent.name) needs you" : "\(agent.name) finished"
+        let body = needsYou ? "Waiting for your input" : "Finished its turn"
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, subtitle: notificationContext(paneID: paneID), body: body))
     }
 
     /// FR-AG12: exit 127 before any hook spoke means the agent isn't installed where it ran, so its installer is offered.
