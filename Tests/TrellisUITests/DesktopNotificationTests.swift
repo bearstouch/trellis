@@ -47,8 +47,8 @@ final class DesktopNotificationTests: XCTestCase {
         XCTAssertEqual(
             notifier.posted,
             [
-                DesktopNotification(paneID: t.paneB, title: h.model.paneTitle(t.paneB), body: "Build done"),
-                DesktopNotification(paneID: t.paneB, title: "Claude", body: "Needs approval")
+                DesktopNotification(paneID: t.paneB, title: h.model.paneTitle(t.paneB), subtitle: "W › Terminal", body: "Build done"),
+                DesktopNotification(paneID: t.paneB, title: "Claude", subtitle: "W › Terminal", body: "Needs approval")
             ])
     }
 
@@ -155,10 +155,10 @@ final class DesktopNotificationTests: XCTestCase {
         XCTAssertEqual(
             notifier.posted,
             [
-                DesktopNotification(paneID: t.paneB, title: "Command finished", body: "make ran for 12 s"),
-                DesktopNotification(paneID: t.paneB, title: "Command failed (exit 101)", body: "cargo ran for 1 min 15 s")
+                DesktopNotification(paneID: t.paneB, title: "Command finished", subtitle: "W › Terminal", body: "make ran for 12 s"),
+                DesktopNotification(paneID: t.paneB, title: "Command failed (exit 101)", subtitle: "W › Terminal", body: "cargo ran for 1 min 15 s")
             ])
-        for text in notifier.posted.flatMap({ [$0.title, $0.body] }) {
+        for text in notifier.posted.flatMap({ [$0.title, $0.subtitle, $0.body] }) {
             for secret in ["s3cret", "release", "hunter2", "TOKEN", "/usr/bin", "test"] { XCTAssertFalse(text.contains(secret), text) }
         }
         XCTAssertNil(h.model.inputWait(tabID: t.b), "A finished command never labels the tab")
@@ -180,8 +180,8 @@ final class DesktopNotificationTests: XCTestCase {
         XCTAssertEqual(
             notifier.posted,
             [
-                DesktopNotification(paneID: t.paneB, title: "Command finished", body: "ssh ran for 30 s"),
-                DesktopNotification(paneID: t.paneB, title: "Command finished", body: "\(h.model.paneTitle(t.paneB)) ran for 10 s")
+                DesktopNotification(paneID: t.paneB, title: "Command finished", subtitle: "W › Terminal", body: "ssh ran for 30 s"),
+                DesktopNotification(paneID: t.paneB, title: "Command finished", subtitle: "W › Terminal", body: "\(h.model.paneTitle(t.paneB)) ran for 10 s")
             ])
     }
 
@@ -238,7 +238,49 @@ final class DesktopNotificationTests: XCTestCase {
         XCTAssertEqual(notifier.posted.count, NotificationRateLimiter().limit, "OSC notifications used up this pane's allowance")
         try run(h, t.paneB, "make", for: 5, advance: { now.addTimeInterval($0) })
         XCTAssertEqual(notifier.posted.count, NotificationRateLimiter().limit + 1, "The window has passed")
-        XCTAssertEqual(notifier.posted.last, DesktopNotification(paneID: t.paneB, title: "Command finished", body: "make ran for 5 s"))
+        XCTAssertEqual(notifier.posted.last, DesktopNotification(paneID: t.paneB, title: "Command finished", subtitle: "W › Terminal", body: "make ran for 5 s"))
+    }
+
+    @MainActor
+    func testNotificationSubtitleNamesTheWindowTabAndRunningProgram() async throws {
+        let h = try Harness()
+        let notifier = setUp(h)
+        let t = try await makeTabs(h)
+        let windowID = try XCTUnwrap(h.model.snapshot.tabs[t.b]?.windowID)
+        await h.model.renameWindow(windowID, name: "api")
+        await h.model.renameTab(t.b, title: "Build")
+        let terminal = try XCTUnwrap(h.model.terminals[t.paneB])
+        terminal.onShellIntegrationEvent?(.commandStart(commandLine: "TOKEN=s3cret /usr/bin/make release"))
+        try notify(h, t.paneB, title: "Done", body: "All passed")
+        try notify(h, t.paneB, title: "make", body: "Same name as the title")
+        XCTAssertEqual(
+            notifier.posted,
+            [
+                DesktopNotification(paneID: t.paneB, title: "Done", subtitle: "api › Build · make", body: "All passed"),
+                DesktopNotification(paneID: t.paneB, title: "make", subtitle: "api › Build", body: "Same name as the title")
+            ])
+        for secret in ["s3cret", "release", "TOKEN", "/usr/bin"] { XCTAssertFalse(notifier.posted[0].subtitle.contains(secret)) }
+    }
+
+    @MainActor
+    func testNotificationSubtitleDoesNotRepeatAProgramTheAutomaticTabTitleAlreadyNames() async throws {
+        let h = try Harness()
+        let notifier = setUp(h)
+        let t = try await makeTabs(h)
+        let terminal = try XCTUnwrap(h.model.terminals[t.paneB])
+        terminal.onShellIntegrationEvent?(.commandStart(commandLine: "make release"))
+        try notify(h, t.paneB, title: "Done", body: "All passed")
+        XCTAssertEqual(notifier.posted.map(\.subtitle), ["W › make"])
+    }
+
+    @MainActor
+    func testNotificationSubtitleCleansControlAndBidiCharacters() async throws {
+        let h = try Harness()
+        let notifier = setUp(h)
+        let t = try await makeTabs(h)
+        await h.model.renameTab(t.b, title: "evil\u{202E}txt.exe")
+        try notify(h, t.paneB, body: "x")
+        XCTAssertEqual(notifier.posted.first?.subtitle, "W › evil txt.exe")
     }
 
     @MainActor

@@ -19,6 +19,9 @@ public struct TerminalNotification: Equatable, Sendable {
         if self.title.isEmpty && self.body.isEmpty { return nil }
     }
 
+    /// Window, tab and program names for a notification's subtitle: tab titles can follow untrusted output (FR-SI05).
+    public static func cleanedContext(_ text: String) -> String { sanitized(text, limit: titleLimit) }
+
     /// Controls (C0, DEL, C1 and bidi overrides) become spaces so output can't spoof the notification's layout.
     static func sanitized(_ text: String, limit: Int) -> String {
         // Bounded first: an OSC payload can be megabytes, and only the start can ever be shown.
