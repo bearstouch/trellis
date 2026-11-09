@@ -50,7 +50,7 @@ final class ScratchpadTests: XCTestCase {
         model.scratchpadProcessRunner = { _, _, _ in checks.next() }
         let saved = await model.saveLaunchSettings(shell: shell, directory: directory ?? project)
         XCTAssertTrue(saved)
-        _ = await model.createWindow(name: "W")
+        _ = await model.createSpace(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         return (model, pane)

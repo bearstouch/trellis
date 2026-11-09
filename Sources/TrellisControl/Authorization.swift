@@ -2,8 +2,8 @@ import Darwin
 import Foundation
 import TrellisCore
 
-/// `anyLayout` accepts a window, tab, pane, branch, or session ID (event filters).
-public enum ResourceKind: Sendable { case window, tab, pane, branch, session, host, anyLayout }
+/// `anyLayout` accepts a space, tab, pane, branch, or session ID (event filters).
+public enum ResourceKind: Sendable { case space, tab, pane, branch, session, host, anyLayout }
 
 /// Capabilities and resources a method needs before the domain sees it.
 public struct MethodRequirement: Sendable {
@@ -12,19 +12,19 @@ public struct MethodRequirement: Sendable {
     public var resources: [(kind: ResourceKind, key: String)] = []
     /// Optional arrays of resource IDs; every listed ID must be visible.
     public var resourceLists: [(kind: ResourceKind, key: String)] = []
-    public var requiresAllWindows = false
+    public var requiresAllSpaces = false
     /// Extra capabilities when the params call for them (fail-safe: unknown shapes require them).
     public var conditional: [(capability: Capability, applies: @Sendable (JSONValue?) -> Bool)] = []
 }
 
 public enum AuthorizationPolicy {
     private static func needs(
-        _ capabilities: Capability..., resources: [(ResourceKind, String)] = [], lists: [(ResourceKind, String)] = [], allWindows: Bool = false,
+        _ capabilities: Capability..., resources: [(ResourceKind, String)] = [], lists: [(ResourceKind, String)] = [], allSpaces: Bool = false,
         conditional: [(String, Capability)] = [], when: [(Capability, @Sendable (JSONValue?) -> Bool)] = []
     ) -> MethodRequirement {
         MethodRequirement(
             capabilities: Set(capabilities), resources: resources.map { (kind: $0.0, key: $0.1) }, resourceLists: lists.map { (kind: $0.0, key: $0.1) },
-            requiresAllWindows: allWindows, conditional: conditional.map { flag($0.0, $0.1) } + when.map { (capability: $0.0, applies: $0.1) })
+            requiresAllSpaces: allSpaces, conditional: conditional.map { flag($0.0, $0.1) } + when.map { (capability: $0.0, applies: $0.1) })
     }
 
     /// Required when the param is present and not `false`/`null`.
@@ -70,18 +70,18 @@ public enum AuthorizationPolicy {
     /// Every method in the API catalog. Unknown methods are not dispatched.
     public static let requirements: [String: MethodRequirement] = [
         "system.info": needs(),
-        "window.list": needs(.metadataRead),
-        "window.get": needs(.metadataRead, resources: [(.window, "id")]),
-        "window.create": needs(.layoutWrite, allWindows: true, conditional: [("start", .sessionStart)]),
-        "window.update": needs(.layoutWrite, resources: [(.window, "id")]),
-        "window.reorder": needs(.layoutWrite, allWindows: true),
-        "window.focus": needs(.layoutWrite, resources: [(.window, "id")]),
-        "window.close": needs(.layoutWrite, resources: [(.window, "id")], conditional: [("allowRunning", .sessionClose), ("force", .sessionClose)]),
-        "tab.list": needs(.metadataRead, resources: [(.window, "windowId")]),
+        "space.list": needs(.metadataRead),
+        "space.get": needs(.metadataRead, resources: [(.space, "id")]),
+        "space.create": needs(.layoutWrite, allSpaces: true, conditional: [("start", .sessionStart)]),
+        "space.update": needs(.layoutWrite, resources: [(.space, "id")]),
+        "space.reorder": needs(.layoutWrite, allSpaces: true),
+        "space.focus": needs(.layoutWrite, resources: [(.space, "id")]),
+        "space.close": needs(.layoutWrite, resources: [(.space, "id")], conditional: [("allowRunning", .sessionClose), ("force", .sessionClose)]),
+        "tab.list": needs(.metadataRead, resources: [(.space, "spaceId")]),
         "tab.get": needs(.metadataRead, resources: [(.tab, "id")]),
-        "tab.create": needs(.layoutWrite, resources: [(.window, "windowId")], conditional: [("start", .sessionStart)]),
+        "tab.create": needs(.layoutWrite, resources: [(.space, "spaceId")], conditional: [("start", .sessionStart)]),
         "tab.update": needs(.layoutWrite, resources: [(.tab, "id")]),
-        "tab.reorder": needs(.layoutWrite, resources: [(.window, "windowId")], lists: [(.tab, "ids")]),
+        "tab.reorder": needs(.layoutWrite, resources: [(.space, "spaceId")], lists: [(.tab, "ids")]),
         "tab.focus": needs(.layoutWrite, resources: [(.tab, "id")]),
         "tab.close": needs(.layoutWrite, resources: [(.tab, "id")], conditional: [("allowRunning", .sessionClose), ("force", .sessionClose)]),
         "pane.split": needs(.layoutWrite, resources: [(.pane, "paneId")], conditional: [("start", .sessionStart)]),
@@ -105,20 +105,20 @@ public enum AuthorizationPolicy {
         "host.create": needs(.hostWrite, .sessionExecute),
         "host.update": needs(.hostWrite, resources: [(.host, "id")], when: [(.sessionExecute, hostUpdateMayChangeConnection)]),
         "host.delete": needs(.hostWrite, resources: [(.host, "id")]),
-        "host.connect": needs(.sessionStart, .layoutWrite, resources: [(.host, "hostId"), (.window, "windowId")]),
+        "host.connect": needs(.sessionStart, .layoutWrite, resources: [(.host, "hostId"), (.space, "spaceId")]),
         "layout.validate": needs(.metadataRead),
         "layout.plan": needs(.metadataRead),
-        "layout.apply": needs(.layoutWrite, allWindows: true, conditional: [("startNew", .sessionStart)]),
-        "layout.export": needs(.metadataRead, lists: [(.window, "windowIds")]),
+        "layout.apply": needs(.layoutWrite, allSpaces: true, conditional: [("startNew", .sessionStart)]),
+        "layout.export": needs(.metadataRead, lists: [(.space, "spaceIds")]),
         "theme.list": needs(.themeRead),
         "theme.get": needs(.themeRead),
         "theme.validate": needs(.themeRead),
         "theme.export": needs(.themeRead),
-        // Theme writes change every window, so they need explicitly global scope.
-        "theme.import": needs(.themeWrite, allWindows: true),
-        "theme.delete": needs(.themeWrite, allWindows: true),
+        // Theme writes change every space, so they need explicitly global scope.
+        "theme.import": needs(.themeWrite, allSpaces: true),
+        "theme.delete": needs(.themeWrite, allSpaces: true),
         "appearance.get": needs(.themeRead),
-        "appearance.set": needs(.themeWrite, allWindows: true),
+        "appearance.set": needs(.themeWrite, allSpaces: true),
         "events.subscribe": needs(
             .metadataRead, lists: [(.anyLayout, "resourceIds")], when: [(.sessionOutputRead, subscribesToOutput), (.themeRead, subscribesToAppearance)]),
         "events.unsubscribe": needs()
@@ -133,25 +133,25 @@ public struct GrantAccess: Sendable {
 
     public func allows(_ capability: Capability) -> Bool { grant.allows(capability) }
 
-    public func canSee(window id: UUID) -> Bool {
-        guard snapshot.windows.contains(where: { $0.id == id }) else { return false }
-        switch grant.windowScope {
+    public func canSee(space id: UUID) -> Bool {
+        guard snapshot.spaces.contains(where: { $0.id == id }) else { return false }
+        switch grant.spaceScope {
         case .all: return true
-        case .windows(let ids): return ids.contains(id)
+        case .spaces(let ids): return ids.contains(id)
         }
     }
 
-    /// The window owning a resource, or nil when it does not exist.
-    public func owningWindow(_ kind: ResourceKind, _ id: UUID) -> UUID? {
+    /// The space owning a resource, or nil when it does not exist.
+    public func owningSpace(_ kind: ResourceKind, _ id: UUID) -> UUID? {
         switch kind {
-        case .window: return snapshot.windows.contains { $0.id == id } ? id : nil
-        case .tab: return snapshot.tabs[id]?.windowID
-        case .pane: return snapshot.panes[id].flatMap { snapshot.tabs[$0.tabID]?.windowID }
-        case .session: return snapshot.panes.values.first { $0.sessionID == id }.flatMap { snapshot.tabs[$0.tabID]?.windowID }
+        case .space: return snapshot.spaces.contains { $0.id == id } ? id : nil
+        case .tab: return snapshot.tabs[id]?.spaceID
+        case .pane: return snapshot.panes[id].flatMap { snapshot.tabs[$0.tabID]?.spaceID }
+        case .session: return snapshot.panes.values.first { $0.sessionID == id }.flatMap { snapshot.tabs[$0.tabID]?.spaceID }
         case .branch:
-            return snapshot.tabs.values.first { tab in Self.branchIDs(tab.root).contains(id) }?.windowID
+            return snapshot.tabs.values.first { tab in Self.branchIDs(tab.root).contains(id) }?.spaceID
         case .host: return nil
-        case .anyLayout: return [ResourceKind.window, .tab, .pane, .session, .branch].lazy.compactMap { owningWindow($0, id) }.first
+        case .anyLayout: return [ResourceKind.space, .tab, .pane, .session, .branch].lazy.compactMap { owningSpace($0, id) }.first
         }
     }
 
@@ -291,9 +291,9 @@ public actor AuthorizingControlHandler: ControlHandler {
         connections[connectionID] = grant.id
         let identity = ControlIdentity(connectionID: connectionID, peerUID: peerUID, grantID: grant.id)
         let scope: JSONValue =
-            switch grant.windowScope {
+            switch grant.spaceScope {
             case .all: .string("all")
-            case .windows(let ids): .array(ids.map(\.uuidString).sorted().map(JSONValue.string))
+            case .spaces(let ids): .array(ids.map(\.uuidString).sorted().map(JSONValue.string))
             }
         return .success(
             (
@@ -301,7 +301,7 @@ public actor AuthorizingControlHandler: ControlHandler {
                 .object([
                     "connectionId": .string(connectionID.uuidString), "grantId": .string(grant.id.uuidString),
                     "expiresAt": .string(ISO8601DateFormatter().string(from: grant.expiresAt)),
-                    "capabilities": .array(grant.capabilities.sorted().map { .string($0.rawValue) }), "windowScope": scope,
+                    "capabilities": .array(grant.capabilities.sorted().map { .string($0.rawValue) }), "spaceScope": scope,
                     "protocolVersion": .number(1)
                 ])
             ))
@@ -329,6 +329,7 @@ public actor AuthorizingControlHandler: ControlHandler {
     }
 
     public func dispatch(_ method: String, params: JSONValue?, identity: ControlIdentity) async -> Result<JSONValue, ControlError> {
+        let (method, params) = ControlMethods.canonical(method, params: params)
         guard let grantID = identity.grantID, let grant = await grants.activeGrant(id: grantID) else {
             connections.removeValue(forKey: identity.connectionID)
             return .failure(.application("AUTH_REQUIRED", "This grant expired or was revoked. Authenticate again with a valid grant."))
@@ -421,7 +422,7 @@ public actor AuthorizingControlHandler: ControlHandler {
                     return .failure(.application("PERMISSION_DENIED", "This host's connection changed after it was approved. Reapprove it in Settings → Automation."))
                 }
             }
-            guard let window = access.owningWindow(kind, id), access.canSee(window: window) else { return .failure(.notFound) }
+            guard let space = access.owningSpace(kind, id), access.canSee(space: space) else { return .failure(.notFound) }
         }
         for (kind, key) in requirement.resourceLists {
             let values: [JSONValue]
@@ -432,11 +433,11 @@ public actor AuthorizingControlHandler: ControlHandler {
             }
             for value in values {
                 guard case .string(let raw) = value, let id = UUID(uuidString: raw) else { return .failure(.invalidParams) }
-                guard let window = access.owningWindow(kind, id), access.canSee(window: window) else { return .failure(.notFound) }
+                guard let space = access.owningSpace(kind, id), access.canSee(space: space) else { return .failure(.notFound) }
             }
         }
-        if requirement.requiresAllWindows, access.grant.windowScope != .all {
-            return .failure(.application("PERMISSION_DENIED", "This operation needs access to all windows."))
+        if requirement.requiresAllSpaces, access.grant.spaceScope != .all {
+            return .failure(.application("PERMISSION_DENIED", "This operation needs access to all spaces."))
         }
         var needed = requirement.capabilities
         for (capability, applies) in requirement.conditional where applies(params) { needed.insert(capability) }

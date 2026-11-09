@@ -6,10 +6,10 @@ All state lives in `~/Library/Application Support/<identity>/`: `com.bearstouch.
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `workspace.json` | Windows, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `stopSessionsOnQuit` (the older `keepSessionsRunning` key is read only to show the FR-R03 change notice), `restoreScrollback`, `saveBudgetMegabytesPerHour`) | Last-known-good copy in `workspace.backup.json` |
+| `workspace.json` | Spaces, tabs, split trees and ratios, titles, tab colors, selection, launch descriptions and settings (shell, directory, window frame, appearance, remote control, `stopSessionsOnQuit` (the older `keepSessionsRunning` key is read only to show the FR-R03 change notice), `restoreScrollback`, `saveBudgetMegabytesPerHour`) | Last-known-good copy in `workspace.backup.json` |
 | `hosts.json` | Saved hosts, including whether each has a saved password (never the value) | `hosts.backup.json`. An unreadable file is preserved as `hosts.unreadable.<UUID>.json`. |
 | `grants.json` | Automation grant metadata, with token **hashes** only | An unreadable file is preserved, and the store becomes read-only |
-| `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each launched [project](../features/project-library.md)'s window (namespace `project:<project>:<target>:<folder>`) | An unreadable file is preserved |
+| `layout-bindings.json` | Namespace/key → resource bindings for declarative layouts, and for each launched [project](../features/project-library.md)'s space (namespace `project:<project>:<target>:<folder>`) | An unreadable file is preserved |
 | `projects.json` | The [project library](../features/project-library.md): each project's name, notes, layout, folders, commands, repository URLs and branches, and its last folder per target (FR-PL05) | `projects.backup.json`. An unreadable or newer file is preserved and the library is read-only. |
 | `workspace-trust.json` | Left from builds with repository project files (FR-WF03, removed); no longer read or written | Left in place; safe to delete |
 | `control.json` | Discovery for the running control socket | Rewritten on every launch |
@@ -52,9 +52,10 @@ Interrupting a save at any point must still leave a readable current file or bac
 
 ## Versions and migration
 
-- `WorkspaceSnapshotCodec.currentVersion` is `1`, and `HostLibraryCodec.currentVersion` is `1`. Version 0 workspaces are migrated in memory when loaded.
+- `WorkspaceSnapshotCodec.currentVersion` is `4`, and `HostLibraryCodec.currentVersion` is `1`. Version 0 workspaces are migrated in memory when loaded.
 - When you change the on-disk format, bump the version, add a migration, and add a test that loads the old format. A failed migration must leave the original file untouched.
-- Schema version 2 adds [remote workspaces](../features/remote-workspaces.md): a window's `remoteHostID` and `remoteShell` pane launches (host and remote directory). A workspace without a remote window is still written as version 1, so older builds keep reading it; one with a remote window is version 2, which an older build opens read-only instead of treating it as corrupt.
+- Schema version 2 added [remote workspaces](../features/remote-workspaces.md) (a space's `remoteHostID` and `remoteShell` pane launches) and version 3 agent panes. Version 4 renames windows to spaces: the workspace's `spaces` and `activeSpaceID` and each tab's `spaceID` were `windows`, `activeWindowID` and `windowID`, and it adds a space's `projectID` and a tab's `projectKey` (FR-W08). Versions 0–3 are still read with the old names; every save writes version 4, which an older build opens read-only instead of treating it as corrupt.
+- Some stored names keep their pre-rename spelling so older and newer builds read the same files: the Space keyboard actions (`newWindow`, `renameWindow`, `deleteWindow`, `nextWindow`, `previousWindow` in `keyboard.settings`), a grant's `windowScope` with its `windows` case in `grants.json`, and the `trellis-window` key of each project's space in `layout-bindings.json`. Bindings are written with kind `space`; `window` is still read.
 - A **newer, unknown** version opens in read-only recovery and is never overwritten. Downgrading isn't supported, so keep a copy of the folder before you try.
 
 ## Recovery
@@ -67,7 +68,7 @@ Loading returns `.missing`, `.loaded` or `.recovery(reason, backup?)`.
 
 ## Restoring stopped sessions
 
-Relaunching restores windows, tabs, splits and titles with every session **stopped**. `WorkspaceStore.restoreStoppedSnapshot` accepts only stopped sessions and only into an empty store. You start panes yourself, one at a time or with "Start all" after reviewing the launch summary (`FR-R01`).
+Relaunching restores spaces, tabs, splits and titles with every session **stopped**. `WorkspaceStore.restoreStoppedSnapshot` accepts only stopped sessions and only into an empty store. You start panes yourself, one at a time or with "Start all" after reviewing the launch summary (`FR-R01`).
 
 Right after the restore, and whatever the setting, the app asks this folder's broker (if `broker.json` names a live one) which sessions it holds (FR-R03). A stopped pane whose session UUID matches adopts the running process through `.adoptRunningSession(sessionID:processID:)`, which accepts only a stopped session without a launch attempt and a positive, unowned PID. Nothing is spawned, and process IDs and states are still never saved. Sessions no pane claims are offered **Stop Them** / **Leave Running**.
 

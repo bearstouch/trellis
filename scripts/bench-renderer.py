@@ -88,10 +88,10 @@ def fresh(binary, renderer):
     app = App(binary, ["--renderer", renderer])
     ready = app.wait_ready()
     c = app.client
-    window = c.result("window.list")["windows"][0]["id"]
-    # Replace the fixture window with an empty one we control.
-    created = c.result("window.create", {"name": "Bench"})
-    c.result("window.close", {"id": window, "allowRunning": True})
+    window = c.result("space.list")["spaces"][0]["id"]
+    # Replace the fixture space with an empty one we control.
+    created = c.result("space.create", {"name": "Bench"})
+    c.result("space.close", {"id": window, "allowRunning": True})
     return app, ready, created
 
 

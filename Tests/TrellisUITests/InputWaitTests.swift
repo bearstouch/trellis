@@ -9,10 +9,10 @@ final class InputWaitTests: XCTestCase {
     /// A window with two tabs running `sleep`; tab A (the first) ends up selected.
     @MainActor
     private func makeTabs(_ h: Harness) async throws -> (a: UUID, b: UUID, paneA: UUID, paneB: UUID) {
-        let created = await h.model.createWindow(name: "W", startSession: false)
-        let windowID = try XCTUnwrap(created)
+        let created = await h.model.createSpace(name: "W", startSession: false)
+        let spaceID = try XCTUnwrap(created)
         let a = try XCTUnwrap(h.model.presentation.selectedTab?.id)
-        let tab = await h.model.createTab(windowID: windowID, startSessions: false)
+        let tab = await h.model.createTab(spaceID: spaceID, startSessions: false)
         let b = try XCTUnwrap(tab)
         let paneA = try XCTUnwrap(h.model.snapshot.tabs[a]?.activePaneID), paneB = try XCTUnwrap(h.model.snapshot.tabs[b]?.activePaneID)
         for pane in [paneA, paneB] {
@@ -42,8 +42,8 @@ final class InputWaitTests: XCTestCase {
         h.model.terminals[t.paneB]?.onAttentionRequested?()
         XCTAssertEqual(h.model.inputWait(tabID: t.b), .attention)
         XCTAssertNil(h.model.inputWait(tabID: t.a))
-        XCTAssertEqual(h.model.windowsNeedingInput, [try XCTUnwrap(h.model.snapshot.activeWindowID)])
-        XCTAssertTrue(h.model.accessibility.windows.first?.value.contains("waiting for input") == true)
+        XCTAssertEqual(h.model.spacesNeedingInput, [try XCTUnwrap(h.model.snapshot.activeSpaceID)])
+        XCTAssertTrue(h.model.accessibility.spaces.first?.value.contains("waiting for input") == true)
 
         let session = try XCTUnwrap(h.model.terminals[t.paneB]?.sessionID)
         let reported = try result(try await h.call("session.get", ["id": session.uuidString]))
@@ -51,7 +51,7 @@ final class InputWaitTests: XCTestCase {
 
         await h.model.selectTab(t.b)
         XCTAssertNil(h.model.inputWait(tabID: t.b), "Showing the pane answers the bell")
-        XCTAssertTrue(h.model.windowsNeedingInput.isEmpty)
+        XCTAssertTrue(h.model.spacesNeedingInput.isEmpty)
         let cleared = try result(try await h.call("session.get", ["id": session.uuidString]))
         XCTAssertNil(cleared["waitingForInput"])
     }

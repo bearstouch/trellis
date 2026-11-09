@@ -11,8 +11,8 @@ final class AutomationSessionTests: XCTestCase {
     static let byteEcho = #"stty raw -echo; printf 'READY\n'; exec /usr/bin/perl -e '$|=1; binmode STDIN; while (sysread(STDIN, $b, 1)) { printf "%02x ", ord $b }'"#
 
     @MainActor
-    private func liveWindow(_ h: Harness, script: String = byteEcho) async throws -> (window: String, pane: UUID, terminal: NativeTerminalHandle) {
-        let window: String = try await h.value("windowId", "window.create", ["name": "Live"])
+    private func liveSpace(_ h: Harness, script: String = byteEcho) async throws -> (space: String, pane: UUID, terminal: NativeTerminalHandle) {
+        let space: String = try await h.value("spaceId", "space.create", ["name": "Live"])
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         _ = try await h.model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/zsh", arguments: ["-f", "-c", script], directory: "/tmp")))
         await h.model.refresh()
@@ -20,7 +20,7 @@ final class AutomationSessionTests: XCTestCase {
         XCTAssertEqual(started, "OK")
         let terminal = NativeTerminalHandle(try XCTUnwrap(h.model.terminals[pane]))
         try await terminal.waitFor("READY")
-        return (window, pane, terminal)
+        return (space, pane, terminal)
     }
 
     @MainActor
@@ -33,7 +33,7 @@ final class AutomationSessionTests: XCTestCase {
                 $0.requestTermination(force: true); $0.adapter.detach()
             }
         }
-        _ = try await h.code("window.create", ["name": "W"])
+        _ = try await h.code("space.create", ["name": "W"])
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         let marker = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-s024-\(UUID().uuidString)").path
         let arbitrary: [String: Any] = ["kind": "process", "executable": "/usr/bin/touch", "arguments": [marker], "directory": "/tmp"]
@@ -61,7 +61,7 @@ final class AutomationSessionTests: XCTestCase {
         XCTAssertNil((started["session"] as? [String: Any])?["executable"], "Launch details stay redacted without execute")
 
         // A failed arbitrary launch returns LAUNCH_FAILED with the failed record.
-        _ = try await h.code("window.create", ["name": "Fail"])
+        _ = try await h.code("space.create", ["name": "Fail"])
         let failPane = try XCTUnwrap(h.model.presentation.activePane?.id)
         let failed = try await h.call(
             "session.start", ["paneId": failPane.uuidString, "launch": ["kind": "process", "executable": "/nonexistent/tool", "directory": "/tmp"]])
@@ -74,7 +74,7 @@ final class AutomationSessionTests: XCTestCase {
     func testValidateInputEncodingAndLimit() async throws {
         let h = try Harness()
         try await h.grant("full")
-        let live = try await liveWindow(h, script: "stty raw -echo; printf 'READY\\n'; exec /bin/cat > /dev/null")
+        let live = try await liveSpace(h, script: "stty raw -echo; printf 'READY\\n'; exec /bin/cat > /dev/null")
         defer { live.terminal.close() }
         let id = live.terminal.native.sessionID.uuidString
         let fill = Data(repeating: 0x61, count: 65_536)
@@ -106,7 +106,7 @@ final class AutomationSessionTests: XCTestCase {
         let h = try Harness()
         try await h.grant("full")
         try await h.grant("input", [.metadataRead, .sessionInput])
-        let live = try await liveWindow(h)
+        let live = try await liveSpace(h)
         defer { live.terminal.close() }
         let id = live.terminal.native.sessionID.uuidString
         let missing = try await h.call("session.execute", ["id": id, "command": "ls"])
@@ -129,8 +129,8 @@ final class AutomationSessionTests: XCTestCase {
     func testDisconnectDoesNotReplayOrClose() async throws {
         let h = try Harness()
         try await h.grant("full")
-        let token = try await h.grants.create(name: "socket", capabilities: Set(Capability.allCases), windowScope: .all, hostScope: .all, lifetime: 600).token
-        let live = try await liveWindow(h)
+        let token = try await h.grants.create(name: "socket", capabilities: Set(Capability.allCases), spaceScope: .all, hostScope: .all, lifetime: 600).token
+        let live = try await liveSpace(h)
         defer { live.terminal.close() }
         let sessionID = live.terminal.native.sessionID
         let pid = live.terminal.native.processID
@@ -161,7 +161,7 @@ final class AutomationSessionTests: XCTestCase {
         let h = try Harness()
         try await h.grant("full")
         // The process never reads, so most of the input is still queued when it exits.
-        let live = try await liveWindow(h, script: "stty raw -echo; printf 'READY\\n'; exec /bin/sleep 1")
+        let live = try await liveSpace(h, script: "stty raw -echo; printf 'READY\\n'; exec /bin/sleep 1")
         defer { live.terminal.close() }
         let accepted = try result(
             try await h.call("session.sendInput", ["id": live.terminal.native.sessionID.uuidString, "base64": Data(repeating: 0x61, count: 65_536).base64EncodedString()]))
@@ -175,7 +175,7 @@ final class AutomationSessionTests: XCTestCase {
     func testRestartNeedsAllowRunningAndHostConnectStaysInScope() async throws {
         let h = try Harness()
         try await h.grant("full")
-        let live = try await liveWindow(h)
+        let live = try await liveSpace(h)
         defer {
             h.model.terminals.values.forEach {
                 $0.requestTermination(force: true); $0.adapter.detach()
@@ -200,11 +200,11 @@ final class AutomationSessionTests: XCTestCase {
         let hostID: String = try await h.value("id", "host.create", ["name": "Prod", "destination": "prod"])
         await h.hosts.load()
         h.model.resolveHost = { [hosts = h.hosts] id in await hosts.host(id) }
-        let other: String = try await h.value("windowId", "window.create", ["name": "Other"])
-        let foreignPane = try XCTUnwrap(h.model.snapshot.windows.first { $0.id.uuidString == other }.flatMap { h.model.snapshot.tabs[$0.activeTabID]?.activePaneID })
-        let wrongTarget = try await h.code("host.connect", ["hostId": hostID, "windowId": live.window, "paneId": foreignPane.uuidString, "axis": "x"])
+        let other: String = try await h.value("spaceId", "space.create", ["name": "Other"])
+        let foreignPane = try XCTUnwrap(h.model.snapshot.spaces.first { $0.id.uuidString == other }.flatMap { h.model.snapshot.tabs[$0.activeTabID]?.activePaneID })
+        let wrongTarget = try await h.code("host.connect", ["hostId": hostID, "spaceId": live.space, "paneId": foreignPane.uuidString, "axis": "x"])
         XCTAssertEqual(wrongTarget, "NOT_FOUND")
-        let connected = try result(try await h.call("host.connect", ["hostId": hostID, "windowId": live.window]))
+        let connected = try result(try await h.call("host.connect", ["hostId": hostID, "spaceId": live.space]))
         let session = try XCTUnwrap(connected["session"] as? [String: Any])
         XCTAssertEqual(session["launchKind"] as? String, "host")
         XCTAssertEqual(session["state"] as? String, "running")

@@ -23,7 +23,7 @@ final class KeyboardShortcutTests: XCTestCase {
     func testDefaultsMatchSpecificationAndAreConflictFree() {
         let map = ShortcutMap.defaults
         XCTAssertEqual(map.issues(), [])
-        XCTAssertEqual(map[.newWindow], KeyChord("n"))
+        XCTAssertEqual(map[.newSpace], KeyChord("n"))
         XCTAssertEqual(map[.newTab], KeyChord("t"))
         XCTAssertEqual(map[.closePane], KeyChord("w"))
         XCTAssertEqual(map[.closeTab], KeyChord("w", [.command, .shift]))
@@ -122,7 +122,7 @@ final class KeyboardShortcutTests: XCTestCase {
         let data = Data(#"{"optionAsMeta":false,"overrides":{"renameTab":{"chord":\#(tasksChord)},"renameWindow":{"chord":\#(agentsChord)}}}"#.utf8)
         let loaded = try JSONDecoder().decode(KeyboardSettings.self, from: data)
         XCTAssertEqual(loaded.shortcuts[.renameTab], KeyChord("t", [.command, .option]))
-        XCTAssertEqual(loaded.shortcuts[.renameWindow], KeyChord("a", [.command, .option]))
+        XCTAssertEqual(loaded.shortcuts[.renameSpace], KeyChord("a", [.command, .option]))
         XCTAssertNil(loaded.shortcuts[.toggleTasks])
         XCTAssertNil(loaded.shortcuts[.toggleAgents])
         XCTAssertTrue(loaded.shortcuts.issues().isEmpty)
@@ -168,21 +168,21 @@ final class KeyboardShortcutTests: XCTestCase {
     }
 
     func testAccessibilityStateReflectsSelection() throws {
-        let windowA = UUID(), windowB = UUID(), tab1 = UUID(), tab2 = UUID(), tabB = UUID()
+        let spaceA = UUID(), spaceB = UUID(), tab1 = UUID(), tab2 = UUID(), tabB = UUID()
         let paneLeft = UUID(), paneRight = UUID(), paneOther = UUID(), paneB = UUID()
         let sessions = (0..<4).map { _ in UUID() }
         var snapshot = WorkspaceSnapshot()
-        snapshot.windows = [
-            ManagedWindow(id: windowA, name: "Project", tabIDs: [tab1, tab2], activeTabID: tab1),
-            ManagedWindow(id: windowB, name: "Operations", tabIDs: [tabB], activeTabID: tabB)
+        snapshot.spaces = [
+            Space(id: spaceA, name: "Project", tabIDs: [tab1, tab2], activeTabID: tab1),
+            Space(id: spaceB, name: "Operations", tabIDs: [tabB], activeTabID: tabB)
         ]
-        snapshot.activeWindowID = windowA
+        snapshot.activeSpaceID = spaceA
         snapshot.tabs = [
             tab1: WorkspaceTab(
-                id: tab1, windowID: windowA, title: "Build",
+                id: tab1, spaceID: spaceA, title: "Build",
                 root: .split(id: UUID(), axis: .x, ratio: 0.5, children: [.pane(paneLeft), .pane(paneRight)]), activePaneID: paneRight),
-            tab2: WorkspaceTab(id: tab2, windowID: windowA, title: "Logs", root: .pane(paneOther), activePaneID: paneOther),
-            tabB: WorkspaceTab(id: tabB, windowID: windowB, title: "SSH", root: .pane(paneB), activePaneID: paneB)
+            tab2: WorkspaceTab(id: tab2, spaceID: spaceA, title: "Logs", root: .pane(paneOther), activePaneID: paneOther),
+            tabB: WorkspaceTab(id: tabB, spaceID: spaceB, title: "SSH", root: .pane(paneB), activePaneID: paneB)
         ]
         for (pane, (tab, session)) in zip([paneLeft, paneRight, paneOther, paneB], zip([tab1, tab1, tab2, tabB], sessions)) {
             snapshot.panes[pane] = WorkspacePane(id: pane, tabID: tab, sessionID: session, title: pane == paneLeft ? "Server" : nil)
@@ -191,11 +191,11 @@ final class KeyboardShortcutTests: XCTestCase {
         let projection = WorkspaceAccessibility(
             snapshot: snapshot,
             live: [paneLeft: .init(state: .running), paneRight: .init(state: .exited, exitCode: 7)],
-            windowsWithOutput: [windowB], windowsWithExit: [])
+            spacesWithOutput: [spaceB], spacesWithExit: [])
 
-        XCTAssertEqual(projection.windows.map(\.label), ["Window Project", "Window Operations"])
-        XCTAssertEqual(projection.windows.map(\.isSelected), [true, false])
-        XCTAssertEqual(projection.windows.map(\.value), ["2 tabs", "1 tab, new output"])
+        XCTAssertEqual(projection.spaces.map(\.label), ["Space Project", "Space Operations"])
+        XCTAssertEqual(projection.spaces.map(\.isSelected), [true, false])
+        XCTAssertEqual(projection.spaces.map(\.value), ["2 tabs", "1 tab, new output"])
         XCTAssertEqual(projection.tabs.map(\.label), ["Tab Build", "Tab Logs"])
         XCTAssertEqual(projection.tabs.map(\.value), ["1 of 2", "2 of 2"])
         XCTAssertEqual(projection.tabs.map(\.isSelected), [true, false])
@@ -205,9 +205,9 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertEqual(projection.panes.map(\.value), ["Running", "Exited (7), focused"])
         XCTAssertEqual(projection.status, "Exited (7)")
 
-        let stored = WorkspaceAccessibility(snapshot: snapshot, windowsWithExit: [windowB])
+        let stored = WorkspaceAccessibility(snapshot: snapshot, spacesWithExit: [spaceB])
         XCTAssertEqual(stored.status, "Stopped")
-        XCTAssertEqual(stored.windows[1].value, "1 tab, a session exited")
+        XCTAssertEqual(stored.spaces[1].value, "1 tab, a session exited")
         XCTAssertEqual(SessionStatusText.describe(.failed, exitCode: nil), "Failed to start")
         XCTAssertEqual(WorkspaceAccessibility(snapshot: WorkspaceSnapshot()).status, "No session")
     }

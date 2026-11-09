@@ -1,24 +1,48 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Trellis layout v1",
+  "title": "Trellis layout v2 (v1 still accepted)",
   "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "version",
-    "windows"
-  ],
-  "properties": {
-    "version": {
-      "const": 1
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "spaces"
+      ],
+      "properties": {
+        "version": {
+          "const": 2
+        },
+        "spaces": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/space"
+          }
+        }
+      }
     },
-    "windows": {
-      "type": "array",
-      "maxItems": 10,
-      "items": {
-        "$ref": "#/$defs/window"
+    {
+      "description": "Version 1, from before windows were renamed spaces.",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "windows"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "windows": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/space"
+          }
+        }
       }
     }
-  },
+  ],
   "$defs": {
     "key": {
       "type": "string",
@@ -155,7 +179,7 @@
         }
       }
     },
-    "window": {
+    "space": {
       "type": "object",
       "additionalProperties": false,
       "required": [

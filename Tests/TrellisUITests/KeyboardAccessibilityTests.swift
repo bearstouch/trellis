@@ -14,7 +14,7 @@ final class KeyboardAccessibilityTests: XCTestCase {
         let model = AppWorkspaceModel(store: store)
         model.confirmCloseSessions = { _ in true }
         model.confirmForceSessions = { _ in true }
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         _ = try await store.execute(
@@ -103,7 +103,7 @@ final class KeyboardAccessibilityTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { preferences.removePersistentDomain(forName: suite) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let terminal = try XCTUnwrap(model.activeTerminal)
         defer { terminal.adapter.detach() }
         XCTAssertFalse(terminal.optionAsMeta)

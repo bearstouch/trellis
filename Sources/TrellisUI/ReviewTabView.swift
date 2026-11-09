@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import TrellisCore
 
-/// A window's Review tab (FR-GC05): one file's unified diff with old and new line numbers, `+` and `−` marks and hunk
+/// A space's Review tab (FR-GC05): one file's unified diff with old and new line numbers, `+` and `−` marks and hunk
 /// headers, the file's status and place in the list, Stage or Unstage, Open in, and `n`/`p`, `]`/`[` and Esc.
 struct ReviewTabView: View {
     @ObservedObject var model: AppWorkspaceModel

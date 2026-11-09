@@ -11,7 +11,7 @@ final class WorkspacePasteTests: XCTestCase {
         let model = AppWorkspaceModel(store: store)
         model.confirmCloseSessions = { _ in true }
         model.confirmForceSessions = { _ in true }
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x, startSession: false)
         let second = try XCTUnwrap(model.presentation.activePane?.id)
@@ -91,7 +91,7 @@ final class WorkspacePasteTests: XCTestCase {
         let model = AppWorkspaceModel(store: store)
         model.confirmCloseSessions = { _ in true }
         model.confirmForceSessions = { _ in true }
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x, startSession: false)
         let second = try XCTUnwrap(model.presentation.activePane?.id)

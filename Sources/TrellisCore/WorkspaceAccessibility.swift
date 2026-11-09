@@ -47,27 +47,27 @@ public struct WorkspaceAccessibility: Sendable {
     }
 
     public static func commandFailureText(_ code: Int32) -> String { "Last command failed (exit \(code))" }
-    public let windows: [AccessibilityDescriptor]
+    public let spaces: [AccessibilityDescriptor]
     public let tabs: [AccessibilityDescriptor]
     public let panes: [AccessibilityDescriptor]
     /// Status of the focused pane, shown in the status bar.
     public let status: String
 
     /// `live` overrides stored session state with the running terminal's state,
-    /// keyed by pane ID. Window attention sets come from activity tracking.
+    /// keyed by pane ID. Space attention sets come from activity tracking.
     public init(
         snapshot: WorkspaceSnapshot, live: [UUID: LiveSession] = [:],
-        windowsWithOutput: Set<UUID> = [], windowsWithExit: Set<UUID> = [], windowsNeedingInput: Set<UUID> = [], titles: [UUID: String] = [:]
+        spacesWithOutput: Set<UUID> = [], spacesWithExit: Set<UUID> = [], spacesNeedingInput: Set<UUID> = [], titles: [UUID: String] = [:]
     ) {
         let presentation = WorkspacePresentation(snapshot: snapshot)
         func session(_ pane: WorkspacePane) -> LiveSession? {
             live[pane.id] ?? snapshot.sessions[pane.sessionID].map { LiveSession(state: $0.state, exitCode: $0.exitCode) }
         }
-        windows = snapshot.windows.map { window in
-            var parts = ["\(window.tabIDs.count) \(window.tabIDs.count == 1 ? "tab" : "tabs")"]
-            if windowsNeedingInput.contains(window.id) { parts.append("waiting for input") }
-            if windowsWithExit.contains(window.id) { parts.append("a session exited") } else if windowsWithOutput.contains(window.id) { parts.append("new output") }
-            return AccessibilityDescriptor(id: window.id, label: "Window \(window.name)", value: parts.joined(separator: ", "), isSelected: window.id == snapshot.activeWindowID)
+        spaces = snapshot.spaces.map { space in
+            var parts = ["\(space.tabIDs.count) \(space.tabIDs.count == 1 ? "tab" : "tabs")"]
+            if spacesNeedingInput.contains(space.id) { parts.append("waiting for input") }
+            if spacesWithExit.contains(space.id) { parts.append("a session exited") } else if spacesWithOutput.contains(space.id) { parts.append("new output") }
+            return AccessibilityDescriptor(id: space.id, label: "Space \(space.name)", value: parts.joined(separator: ", "), isSelected: space.id == snapshot.activeSpaceID)
         }
         let visible = presentation.visibleTabs
         tabs = visible.enumerated().map { index, tab in

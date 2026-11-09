@@ -57,7 +57,7 @@ The first request on every connection must be `auth.authenticate`:
 The result describes the connection:
 
 ```json
-{"connectionId":"…","grantId":"…","expiresAt":"…","capabilities":["metadata.read","layout.write"],"windowScope":"all","protocolVersion":1}
+{"connectionId":"…","grantId":"…","expiresAt":"…","capabilities":["metadata.read","layout.write"],"spaceScope":"all","protocolVersion":1}
 ```
 
 - Any other method called before authentication returns `AUTH_REQUIRED`. The exception is `system.info`, which needs no capability but still requires an authenticated connection.
@@ -72,7 +72,7 @@ Grants are created in **Settings → Automation**. How tokens are stored and sco
 ```sh
 # The token is shown once when the grant is created. Keep it in an owner-only file.
 trellis system info --token-stdin --json < ~/.config/trellis/token
-trellis window list --token-stdin --json < ~/.config/trellis/token
+trellis space list --token-stdin --json < ~/.config/trellis/token
 ```
 
 Talking to the socket directly works the same way: read `socketPath` from `control.json`, connect, send `auth.authenticate`, and then send requests one line at a time.

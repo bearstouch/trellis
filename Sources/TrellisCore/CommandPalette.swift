@@ -2,7 +2,7 @@ import Foundation
 
 /// What a palette row is, in the order equal scores are listed (FR-CP04).
 public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
-    case action, tab, window, pane, host, project, task, theme, agent, directory
+    case action, tab, space, pane, host, project, task, theme, agent, directory
 
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -10,7 +10,7 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         switch self {
         case .action: "Actions"
         case .tab: "Tabs"
-        case .window: "Windows"
+        case .space: "Spaces"
         case .pane: "Panes"
         case .host: "Hosts"
         case .project: "Projects"
@@ -26,7 +26,7 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
         switch self {
         case .action: "action"
         case .tab: "tab"
-        case .window: "window"
+        case .space: "space"
         case .pane: "pane"
         case .host: "host"
         case .project: "project"
@@ -40,11 +40,11 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
 
 /// One kind listed alone (FR-CP06).
 public enum CommandPaletteScope: String, CaseIterable, Sendable {
-    case windows, tabs, panes, hosts, projects, tasks, themes, agents, directories
+    case spaces, tabs, panes, hosts, projects, tasks, themes, agents, directories
 
     public var kind: CommandPaletteKind {
         switch self {
-        case .windows: .window
+        case .spaces: .space
         case .tabs: .tab
         case .panes: .pane
         case .hosts: .host
@@ -58,7 +58,7 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .windows: "Go to Window…"
+        case .spaces: "Go to Space…"
         case .tabs: "Go to Tab…"
         case .panes: "Go to Pane…"
         case .hosts: "Connect to Host…"
@@ -81,8 +81,8 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     /// Replays the welcome tour (FR-ON03).
     case welcomeTour
     case scope(CommandPaletteScope)
-    case window(UUID)
-    case tab(windowID: UUID, tabID: UUID)
+    case space(UUID)
+    case tab(spaceID: UUID, tabID: UUID)
     case pane(UUID)
     case host(UUID)
     /// Opens the saved host as a remote workspace (FR-RW01).
@@ -102,7 +102,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .settings: "settings"
         case .welcomeTour: "welcome-tour"
         case .scope(let scope): "scope:" + scope.rawValue
-        case .window(let id): "window:" + id.uuidString
+        case .space(let id): "space:" + id.uuidString
         case .tab(_, let id): "tab:" + id.uuidString
         case .pane(let id): "pane:" + id.uuidString
         case .host(let id): "host:" + id.uuidString
@@ -124,7 +124,7 @@ public struct CommandPaletteItem: Identifiable, Equatable, Sendable {
     /// Aliases that also find the item ("split" for Maximize Pane); never shown unless they matched.
     public var keywords: [String]
     public var shortcut: KeyChord?
-    /// The heading inside a scope, such as a tab's window. `groupID` keeps two windows with one name apart.
+    /// The heading inside a scope, such as a tab's space. `groupID` keeps two spaces with one name apart.
     public var groupID: String?
     public var groupTitle: String?
     /// Added to the search score, like recency: it settles similar matches without outranking a clearly better one.
@@ -287,7 +287,7 @@ extension ShortcutAction {
         case .showHosts: ["ssh servers"]
         case .showProjects: ["folder", "workspace", "library"]
         case .saveWorkspace: ["layout"]
-        case .toggleSidebar: ["windows list"]
+        case .toggleSidebar: ["spaces list"]
         case .toggleFiles: ["file browser explorer tree open in editor copy path", "right sidebar"]
         case .toggleChanges: ["git diff review stage unstage status modified", "right sidebar"]
         case .toggleScratchpad: ["script editor", "right sidebar"]

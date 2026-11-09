@@ -3,7 +3,7 @@ import SwiftUI
 import TrellisCore
 
 /// The sidebar's Changes view (FR-GC01–FR-GC08): the focused pane's uncommitted changes as a tree with lines added and
-/// removed, a filter, per-file Stage and Unstage, and Return to review a file in the window's Review tab. State is in
+/// removed, a filter, per-file Stage and Unstage, and Return to review a file in the space's Review tab. State is in
 /// words and letters, never color alone.
 struct ChangesSidebarView: View {
     @ObservedObject var model: AppWorkspaceModel

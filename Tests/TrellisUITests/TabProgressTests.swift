@@ -9,10 +9,10 @@ final class TabProgressTests: XCTestCase {
     /// A window with two tabs running `sleep`; tab A (the first) ends up selected.
     @MainActor
     private func makeTabs(_ h: Harness) async throws -> (a: UUID, b: UUID, paneA: UUID, paneB: UUID) {
-        let created = await h.model.createWindow(name: "W", startSession: false)
-        let windowID = try XCTUnwrap(created)
+        let created = await h.model.createSpace(name: "W", startSession: false)
+        let spaceID = try XCTUnwrap(created)
         let a = try XCTUnwrap(h.model.presentation.selectedTab?.id)
-        let tab = await h.model.createTab(windowID: windowID, startSessions: false)
+        let tab = await h.model.createTab(spaceID: spaceID, startSessions: false)
         let b = try XCTUnwrap(tab)
         let paneA = try XCTUnwrap(h.model.snapshot.tabs[a]?.activePaneID), paneB = try XCTUnwrap(h.model.snapshot.tabs[b]?.activePaneID)
         for pane in [paneA, paneB] {
@@ -53,9 +53,9 @@ final class TabProgressTests: XCTestCase {
         XCTAssertEqual(h.model.progress(tabID: t.b), TerminalProgress(state: .normal, percent: 50))
         XCTAssertNil(h.model.progress(tabID: t.a))
         XCTAssertNil(h.model.inputWait(tabID: t.b), "Progress is not a request for input")
-        XCTAssertTrue(h.model.windowsNeedingInput.isEmpty)
-        let windowID = try XCTUnwrap(h.model.snapshot.activeWindowID)
-        XCTAssertEqual(h.model.tabPreviews(windowID: windowID).map(\.progress), [nil, TerminalProgress(state: .normal, percent: 50)])
+        XCTAssertTrue(h.model.spacesNeedingInput.isEmpty)
+        let spaceID = try XCTUnwrap(h.model.snapshot.activeSpaceID)
+        XCTAssertEqual(h.model.tabPreviews(spaceID: spaceID).map(\.progress), [nil, TerminalProgress(state: .normal, percent: 50)])
 
         let session = try XCTUnwrap(h.model.terminals[t.paneB]?.sessionID)
         let reported = try result(try await h.call("session.get", ["id": session.uuidString]))

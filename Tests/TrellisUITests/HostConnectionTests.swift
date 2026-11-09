@@ -40,7 +40,7 @@ final class HostConnectionTests: XCTestCase {
         model.confirmForceSessions = { _ in true }
         model.sshExecutable = ssh
         model.resolveHost = { $0 == host.id ? host : nil }
-        await model.createWindow(name: "Ops", startSession: false)
+        await model.createSpace(name: "Ops", startSession: false)
         return model
     }
 
@@ -61,7 +61,7 @@ final class HostConnectionTests: XCTestCase {
                 $0.requestTermination(force: true); $0.adapter.detach()
             }
         }
-        let window = try XCTUnwrap(model.presentation.selectedWindow?.id)
+        let space = try XCTUnwrap(model.presentation.selectedSpace?.id)
 
         let firstResult = await model.connect(host: host)
         let first = try XCTUnwrap(firstResult)
@@ -88,7 +88,7 @@ final class HostConnectionTests: XCTestCase {
         let firstTab = try XCTUnwrap(snapshot.panes[first]?.tabID), secondTab = try XCTUnwrap(snapshot.panes[second]?.tabID)
         XCTAssertNotEqual(firstTab, secondTab)
         XCTAssertEqual(snapshot.panes[split]?.tabID, secondTab)
-        XCTAssertEqual(snapshot.tabs[firstTab]?.windowID, window)
+        XCTAssertEqual(snapshot.tabs[firstTab]?.spaceID, space)
         XCTAssertEqual(snapshot.tabs[firstTab]?.title, "Prod")
         XCTAssertEqual(snapshot.tabs[secondTab]?.root.paneIDs, [second, split])
         let lines = try String(contentsOf: fake.log, encoding: .utf8).split(separator: "\n")
@@ -96,7 +96,7 @@ final class HostConnectionTests: XCTestCase {
     }
 
     @MainActor
-    func testConnectInNewWindowCreatesNamedWindow() async throws {
+    func testConnectInNewSpaceCreatesNamedSpace() async throws {
         let fake = try fakeSSH(exitCode: nil)
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
         let model = try await makeModel(host: host, ssh: fake.path)
@@ -105,29 +105,29 @@ final class HostConnectionTests: XCTestCase {
                 $0.requestTermination(force: true); $0.adapter.detach()
             }
         }
-        let original = try XCTUnwrap(model.presentation.selectedWindow)
+        let original = try XCTUnwrap(model.presentation.selectedSpace)
         let frozen = Date()
         model.activityNow = { frozen }
 
-        let result = await model.connect(host: host, placement: .newWindow)
+        let result = await model.connect(host: host, placement: .newSpace)
         let pane = try XCTUnwrap(result)
         let terminal = try XCTUnwrap(model.terminals[pane])
         try await waitUntil { try terminal.adapter.read(.retainedText).contains("FAKE-SSH-READY") }
         await model.waitForUpdates()
         let snapshot = model.snapshot
-        XCTAssertEqual(snapshot.windows.count, 2)
-        let window = try XCTUnwrap(snapshot.windows.last)
-        XCTAssertNotEqual(window.id, original.id)
-        XCTAssertEqual(window.name, "Prod")
-        XCTAssertEqual(snapshot.activeWindowID, window.id)
-        XCTAssertEqual(window.tabIDs.count, 1)
-        let tab = try XCTUnwrap(snapshot.tabs[window.activeTabID])
+        XCTAssertEqual(snapshot.spaces.count, 2)
+        let space = try XCTUnwrap(snapshot.spaces.last)
+        XCTAssertNotEqual(space.id, original.id)
+        XCTAssertEqual(space.name, "Prod")
+        XCTAssertEqual(snapshot.activeSpaceID, space.id)
+        XCTAssertEqual(space.tabIDs.count, 1)
+        let tab = try XCTUnwrap(snapshot.tabs[space.activeTabID])
         XCTAssertEqual(tab.title, "Prod")
         XCTAssertEqual(tab.root.paneIDs, [pane])
         let session = try XCTUnwrap(snapshot.panes[pane]?.sessionID)
         XCTAssertEqual(snapshot.sessions[session]?.launch, .host(host.id))
         XCTAssertEqual(snapshot.sessions[session]?.state, .running)
-        XCTAssertEqual(snapshot.windows.first { $0.id == original.id }?.tabIDs, original.tabIDs, "The original window is untouched")
+        XCTAssertEqual(snapshot.spaces.first { $0.id == original.id }?.tabIDs, original.tabIDs, "The original space is untouched")
         // Output without integration or recent input marks the tab busy until it goes quiet (FR-T05).
         XCTAssertEqual(model.busyTabIDs, [tab.id])
         model.activityNow = { frozen.addingTimeInterval(PaneOutputActivity.quietInterval + 0.1) }
@@ -326,7 +326,7 @@ final class HostConnectionTests: XCTestCase {
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
         model.sshExecutable = ssh
         model.resolveHost = { $0 == host.id ? host : nil }
-        await model.createWindow(name: "Ops", startSession: false)
+        await model.createSpace(name: "Ops", startSession: false)
         let paneResult = await model.connect(host: host)
         let pane = try XCTUnwrap(paneResult)
         let terminal = try XCTUnwrap(model.terminals[pane])
@@ -355,7 +355,7 @@ final class HostConnectionTests: XCTestCase {
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
         model.sshExecutable = ssh
         model.resolveHost = { $0 == host.id ? host : nil }
-        await model.createWindow(name: "Ops", startSession: false)
+        await model.createSpace(name: "Ops", startSession: false)
         let paneResult = await model.connect(host: host)
         let pane = try XCTUnwrap(paneResult)
         let terminal = try XCTUnwrap(model.terminals[pane])
@@ -421,7 +421,7 @@ final class HostConnectionTests: XCTestCase {
                 $0.requestTermination(force: true); $0.adapter.detach()
             }
         }
-        await model.createWindow(name: "Direct", startSession: false)
+        await model.createSpace(name: "Direct", startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         // `ssh -l` matches the login-shell argument list that FR-SI07 would otherwise resume in a reported directory.
         let launch = SessionLaunch.process(executable: ssh, arguments: ["-l"], directory: "/tmp")

@@ -153,13 +153,13 @@ final class ProjectLibraryTests: XCTestCase {
         XCTAssertFalse(refused)
     }
 
-    func testCapturingAWindowUsesTheCommonFolderAndNeverCommands() throws {
-        let window = UUID(), tab = UUID(), first = UUID(), second = UUID(), third = UUID(), split = UUID(), inner = UUID()
+    func testCapturingASpaceUsesTheCommonFolderAndNeverCommands() throws {
+        let space = UUID(), tab = UUID(), first = UUID(), second = UUID(), third = UUID(), split = UUID(), inner = UUID()
         let sessions = [UUID(), UUID(), UUID()]
         var snapshot = WorkspaceSnapshot()
-        snapshot.windows = [ManagedWindow(id: window, name: "Shop", tabIDs: [tab], activeTabID: tab)]
+        snapshot.spaces = [Space(id: space, name: "Shop", tabIDs: [tab], activeTabID: tab)]
         snapshot.tabs[tab] = WorkspaceTab(
-            id: tab, windowID: window, title: "API", color: .blue,
+            id: tab, spaceID: space, title: "API", color: .blue,
             root: .split(id: split, axis: .x, ratio: 0.6234, children: [.pane(first), .split(id: inner, axis: .y, ratio: 0.5, children: [.pane(second), .pane(third)])]),
             activePaneID: first)
         let folders = [first: "/Users/me/code/shop/api", second: "/Users/me/code/shop/web", third: "/Users/me/code/shop"]
@@ -167,7 +167,7 @@ final class ProjectLibraryTests: XCTestCase {
             snapshot.panes[pane] = WorkspacePane(id: pane, tabID: tab, sessionID: sessions[index], title: index == 0 ? "Server" : nil)
             snapshot.sessions[sessions[index]] = WorkspaceSession(id: sessions[index], launch: index == 1 ? .host(UUID()) : .shell(directory: folders[pane]))
         }
-        let capture = try XCTUnwrap(ProjectCapture.capture(window: window, snapshot: snapshot, home: "/Users/me") { folders[$0] })
+        let capture = try XCTUnwrap(ProjectCapture.capture(space: space, snapshot: snapshot, home: "/Users/me") { folders[$0] })
         XCTAssertEqual(capture.project.name, "Shop")
         XCTAssertEqual(capture.project.lastFolders, ["local": "/Users/me/code/shop"])
         XCTAssertEqual(capture.project.tabs.first?.color, .blue)
@@ -178,7 +178,7 @@ final class ProjectLibraryTests: XCTestCase {
         XCTAssertEqual(capture.warnings.count, 1, "The SSH pane becomes a shell, with a warning")
         XCTAssertEqual(capture.project.issues, [])
 
-        let relative = try XCTUnwrap(ProjectCapture.capture(window: window, snapshot: snapshot, home: "/Users/me") { $0 == first ? "code/shop/api" : folders[$0] })
+        let relative = try XCTUnwrap(ProjectCapture.capture(space: space, snapshot: snapshot, home: "/Users/me") { $0 == first ? "code/shop/api" : folders[$0] })
         XCTAssertEqual(relative.project.lastFolders, ["local": "/Users/me/code/shop"], "A relative folder is never resolved against the app's own")
         XCTAssertEqual(ProjectCapture.commonFolder(["/a/b", "/c"]), "/")
     }

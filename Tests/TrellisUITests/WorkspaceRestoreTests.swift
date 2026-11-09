@@ -15,7 +15,7 @@ final class WorkspaceRestoreTests: XCTestCase {
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: persistence)
         let exists = await model.loadWorkspace()
         XCTAssertFalse(exists)
-        await model.createWindow(name: "Saved Project", startSession: false)
+        await model.createSpace(name: "Saved Project", startSession: false)
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x, startSession: false)
         let marker = "PRIVATE_RENDERED_OUTPUT_\(UUID())"
@@ -27,7 +27,7 @@ final class WorkspaceRestoreTests: XCTestCase {
         let restored = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: directory))
         let didRestore = await restored.loadWorkspace()
         XCTAssertTrue(didRestore)
-        XCTAssertEqual(restored.snapshot.windows, before.windows)
+        XCTAssertEqual(restored.snapshot.spaces, before.spaces)
         XCTAssertEqual(restored.snapshot.tabs, before.tabs)
         XCTAssertEqual(restored.snapshot.panes, before.panes)
         XCTAssertEqual(restored.terminals.count, 2)
@@ -56,7 +56,7 @@ final class WorkspaceRestoreTests: XCTestCase {
         XCTAssertNotNil(model.recoveryMessage)
         await model.recoverWorkspace(useBackup: false)
         XCTAssertTrue(model.persistenceReadOnly)
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let saved = await model.flushWorkspaceSave()
         XCTAssertTrue(saved)
         XCTAssertEqual(try Data(contentsOf: persistence.currentURL), original)
@@ -73,7 +73,7 @@ final class WorkspaceRestoreTests: XCTestCase {
         let persistence = WorkspacePersistence(directory: directory)
         _ = await persistence.load()
         let store = try WorkspaceStore()
-        let saved = try await store.execute(.createWindow(name: "Do not lose me")).snapshot
+        let saved = try await store.execute(.createSpace(name: "Do not lose me")).snapshot
         try await persistence.save(saved, settings: WorkspaceSettings(), sequence: 1)
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: persistence)
         let restore = Task { @MainActor in
@@ -82,10 +82,10 @@ final class WorkspaceRestoreTests: XCTestCase {
         }
         let didRestore = await restore.value
         XCTAssertTrue(didRestore)
-        XCTAssertEqual(model.snapshot.windows, saved.windows)
+        XCTAssertEqual(model.snapshot.spaces, saved.spaces)
         let flushed = await model.flushWorkspaceSave()
         XCTAssertTrue(flushed)
-        XCTAssertEqual(try WorkspaceSnapshotCodec.decode(Data(contentsOf: persistence.currentURL)).snapshot.windows, saved.windows)
+        XCTAssertEqual(try WorkspaceSnapshotCodec.decode(Data(contentsOf: persistence.currentURL)).snapshot.spaces, saved.spaces)
     }
 
     @MainActor
@@ -118,13 +118,13 @@ final class WorkspaceRestoreTests: XCTestCase {
     func testCancelledQuitAfterSaveFailureAllowsWorkspaceCommands() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        await model.createWindow(startSession: false)
-        XCTAssertEqual(model.snapshot.windows.count, 1)
+        await model.createSpace(startSession: false)
+        XCTAssertEqual(model.snapshot.spaces.count, 1)
         let closed = await model.shutdown()
         XCTAssertTrue(closed)
         model.cancelShutdown()
-        await model.createWindow(startSession: false)
-        XCTAssertEqual(model.snapshot.windows.count, 2)
+        await model.createSpace(startSession: false)
+        XCTAssertEqual(model.snapshot.spaces.count, 2)
     }
 
 }

@@ -7,7 +7,7 @@ import TrellisCore
 final class SplitManagementTests: XCTestCase {
     func testMixedAxisSplitPreservesLeaf() async throws {
         let store = try WorkspaceStore()
-        let initial = try await store.execute(.createWindow(name: "Project")).snapshot
+        let initial = try await store.execute(.createSpace(name: "Project")).snapshot
         let original = try XCTUnwrap(initial.panes.values.first)
         let first = try await store.execute(.splitPane(id: original.id, axis: .x, availableSize: TerminalSize(columns: 80, rows: 24)))
         let second = try await store.execute(.splitPane(id: try XCTUnwrap(first.createdPaneID), axis: .y, availableSize: TerminalSize(columns: 40, rows: 24)))
@@ -25,7 +25,7 @@ final class SplitManagementTests: XCTestCase {
 
     func testCloseCollapsesOnlyParent() async throws {
         let store = try WorkspaceStore()
-        let initial = try await store.execute(.createWindow(name: "Project")).snapshot
+        let initial = try await store.execute(.createSpace(name: "Project")).snapshot
         let original = try XCTUnwrap(initial.panes.keys.first)
         let x = try await store.execute(.splitPane(id: original, axis: .x, availableSize: TerminalSize(columns: 80, rows: 24)))
         let sibling = try XCTUnwrap(x.createdPaneID)
@@ -43,20 +43,20 @@ final class SplitManagementTests: XCTestCase {
 
     func testLastLeafCascadesToEmpty() async throws {
         let store = try WorkspaceStore()
-        let created = try await store.execute(.createWindow(name: "Project"))
+        let created = try await store.execute(.createSpace(name: "Project"))
         let removed = try await store.execute(.deletePane(id: try XCTUnwrap(created.snapshot.panes.keys.first))).snapshot
-        XCTAssertTrue(removed.windows.isEmpty)
+        XCTAssertTrue(removed.spaces.isEmpty)
         XCTAssertTrue(removed.tabs.isEmpty)
         XCTAssertTrue(removed.panes.isEmpty)
         XCTAssertTrue(removed.sessions.isEmpty)
-        XCTAssertNil(removed.activeWindowID)
+        XCTAssertNil(removed.activeSpaceID)
         XCTAssertEqual(removed.revision, created.snapshot.revision + 1)
         try removed.validate()
     }
 
     func testRejectSplitLimitsAtomically() async throws {
         let store = try WorkspaceStore()
-        var result = try await store.execute(.createWindow(name: "Deep"))
+        var result = try await store.execute(.createSpace(name: "Deep"))
         var leaf = try XCTUnwrap(result.snapshot.panes.keys.first)
         for _ in 0..<16 {
             result = try await store.execute(.splitPane(id: leaf, axis: .x, availableSize: TerminalSize(columns: 40, rows: 5)))
@@ -67,7 +67,7 @@ final class SplitManagementTests: XCTestCase {
         var unchanged = await store.snapshot()
         XCTAssertEqual(unchanged, depthBoundary)
         let capacity = try WorkspaceStore()
-        for index in 0..<99 { _ = try await capacity.execute(.createWindow(name: "Window \(index)")) }
+        for index in 0..<99 { _ = try await capacity.execute(.createSpace(name: "Space \(index)")) }
         let original = await capacity.snapshot()
         let target = try XCTUnwrap(original.panes.keys.first)
         let hundred = try await capacity.execute(.splitPane(id: target, axis: .y, availableSize: TerminalSize(columns: 20, rows: 10))).snapshot
@@ -76,7 +76,7 @@ final class SplitManagementTests: XCTestCase {
         unchanged = await capacity.snapshot()
         XCTAssertEqual(unchanged, hundred)
         let cells = try WorkspaceStore()
-        let one = try await cells.execute(.createWindow(name: "Cells")).snapshot
+        let one = try await cells.execute(.createSpace(name: "Cells")).snapshot
         let pane = try XCTUnwrap(one.panes.keys.first)
         for (axis, columns, rows) in [(SplitAxis.x, 39, 5), (.x, 40, 4), (.y, 20, 9), (.y, 19, 10)] {
             do { _ = try await cells.execute(.splitPane(id: pane, axis: axis, availableSize: TerminalSize(columns: columns, rows: rows))); XCTFail("Accepted undersized split") } catch {}
@@ -94,7 +94,7 @@ final class SplitManagementTests: XCTestCase {
         preferences.set("/does-not-exist-trellis", forKey: "terminal.shell")
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane)
         await model.splitPane(original.id, axis: .x)
         await model.waitForUpdates()
@@ -111,7 +111,7 @@ final class SplitManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane?.id)
         let split = Task { await model.splitPane(original, axis: .x, startSession: false) }
         let close = Task { await model.closePane(original) }
@@ -129,7 +129,7 @@ final class SplitManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let original = try XCTUnwrap(model.presentation.activePane?.id)
         let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
         let split = Task { await model.splitPane(original, axis: .x, startSession: false) }
@@ -146,7 +146,7 @@ final class SplitManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let left = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(left, axis: .x, startSession: false)
         let top = try XCTUnwrap(model.presentation.activePane?.id)
@@ -174,7 +174,7 @@ final class SplitManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let before = model.snapshot
         await model.splitPane(
             try XCTUnwrap(model.presentation.activePane?.id), axis: .y,

@@ -24,13 +24,13 @@ The output journal behind `stream` is an in-memory ring with a global budget of 
 
 | Topic | Aliases | Event types | Extra capability |
 | --- | --- | --- | --- |
-| `resources` | `resource` | `window.created/updated/deleted/reordered`, `tab.created/updated/deleted/layoutChanged`, `pane.created/deleted` | — |
-| `selection` | — | `selection.window`, `selection.tab`, `selection.pane` | — |
+| `resources` | `resource` | `space.created/updated/deleted/reordered`, `tab.created/updated/deleted/layoutChanged`, `pane.created/deleted` | — |
+| `selection` | — | `selection.space`, `selection.tab`, `selection.pane` | — |
 | `session` | `session.state`, `session.exit` | `session.state` (`state`, `paneId`), `session.exit` (adds `exitCode`) | — |
 | `output` | `session.output` | `session.output` (`base64`, `cursor`, `nextCursor`, `gap`) | `session.output.read` |
 | `appearance` | `appearance.changed` | `appearance.changed` (`mode`, `lightThemeId`, `darkThemeId`, `effectiveThemeId`, `revision`) | `theme.read` |
 
-Every subscription needs `metadata.read`. `window.*` events are delivered only to grants with all-windows scope, and every other metadata event is filtered by scope.
+Every subscription needs `metadata.read`. `space.*` events are delivered only to grants with all-spaces scope, and every other metadata event is filtered by scope.
 
 Events arrive as JSON-RPC notifications named `event`:
 

@@ -65,7 +65,7 @@ Formatting uses the toolchain's `swift format` with the repo's `.swift-format`: 
 3. Call the CLI with the same state directory:
 
 ```sh
-swift run trellis-cli window list --state-directory "$PWD/.build/dev-state" --token-stdin --json < .build/token.txt
+swift run trellis-cli space list --state-directory "$PWD/.build/dev-state" --token-stdin --json < .build/token.txt
 swift run trellis-cli          # prints the available nouns
 ```
 
@@ -79,7 +79,7 @@ See [CLI](../api/cli.md) for every command.
 ## Other scripts
 
 ```sh
-python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"  # launcher regression, no windows
+python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"  # launcher regression, no spaces
 python3 scripts/qualify.py [--quick] [--renderer metal|coregraphics] [--remote|--remote-only]  # release qualification, about 5 min; opens isolated app windows; --remote adds a Docker sshd section
 python3 scripts/bench-renderer.py [--quick] [--only NAMES]  # Metal vs CoreGraphics benchmarks, about 25 min; keep its windows visible
 scripts/test-linux.sh                         # trellis-broker build and tests on Linux, in Docker

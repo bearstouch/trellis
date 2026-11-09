@@ -47,9 +47,9 @@ public enum RemoteLinkDisplay: Equatable, Sendable {
     var isUp: Bool { self == .connected || self == .connecting }
 }
 
-/// Remote workspaces (FR-RW01–FR-RW09): windows bound to a saved host whose sessions the host's helper owns.
+/// Remote workspaces (FR-RW01–FR-RW09): spaces bound to a saved host whose sessions the host's helper owns.
 extension AppWorkspaceModel {
-    /// Opens a window bound to `host` and starts its first shell there, in `directory` or home; the helper is installed
+    /// Opens a space bound to `host` and starts its first shell there, in `directory` or home; the helper is installed
     /// first if needed and allowed.
     @discardableResult
     public func openRemoteWorkspace(host: SavedHost, directory: String? = nil) async -> UUID? {
@@ -57,9 +57,9 @@ extension AppWorkspaceModel {
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
-            let result = try await service.execute(.createRemoteWindow(name: host.name, hostID: host.id))
-            guard let id = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == id }),
-                let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID]
+            let result = try await service.execute(.createRemoteSpace(name: host.name, hostID: host.id))
+            guard let id = result.createdSpaceID, let space = result.snapshot.spaces.first(where: { $0.id == id }),
+                let tab = result.snapshot.tabs[space.activeTabID], let pane = result.snapshot.panes[tab.activePaneID]
             else { return nil }
             attachTerminal(pane)
             publish(result.snapshot)
@@ -164,15 +164,15 @@ extension AppWorkspaceModel {
 
     /// At launch: every host with a remote workspace is tried without prompting, and its panes re-attach (FR-RW09).
     func reattachRemoteSessions() async {
-        for host in Set(snapshot.windows.compactMap(\.remoteHostID)) where !shuttingDown {
+        for host in Set(snapshot.spaces.compactMap(\.remoteHostID)) where !shuttingDown {
             await remoteReconnector.attempt(host, interactive: false)
         }
     }
 
-    /// A window bound to the host, a project setup running there, or a hangup still to send (a setup cancelled while
+    /// A space bound to the host, a project setup running there, or a hangup still to send (a setup cancelled while
     /// disconnected): each needs the link back after a drop (FR-RW07).
     public func hasRemoteWorkspace(_ hostID: UUID) -> Bool {
-        snapshot.windows.contains { $0.remoteHostID == hostID } || projectLaunch?.terminal?.remoteTransport?.hostID == hostID
+        snapshot.spaces.contains { $0.remoteHostID == hostID } || projectLaunch?.terminal?.remoteTransport?.hostID == hostID
             || pendingRemoteHangups[hostID]?.isEmpty == false
     }
 

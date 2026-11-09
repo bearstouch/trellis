@@ -70,7 +70,7 @@ final class ProjectLaunchFlowTests: XCTestCase {
         return try XCTUnwrap(launch)
     }
 
-    func testSetUpAndOpenClonesThenOpensTheWindowAndRelaunchingReconcilesIt() async throws {
+    func testSetUpAndOpenClonesThenOpensTheSpaceAndRelaunchingReconcilesIt() async throws {
         let model = try await makeModel()
         var launched: [(UUID, ProjectTarget, String)] = []
         model.onProjectLaunched = { launched.append(($0, $1, $2)) }
@@ -90,10 +90,10 @@ final class ProjectLaunchFlowTests: XCTestCase {
         XCTAssertEqual(launch.checkouts.map(\.state), [.clone])
 
         await model.runProjectSetup(session)
-        try await until("the window opened") { model.projectLaunch == nil && model.snapshot.windows.contains { $0.name == "Shop" } }
+        try await until("the space opened") { model.projectLaunch == nil && model.snapshot.spaces.contains { $0.name == "Shop" } }
         XCTAssertEqual(try String(contentsOf: scratch.appendingPathComponent("git.log"), encoding: .utf8), "git clone -- https://github.com/acme/api.git ./api\n")
-        let window = try XCTUnwrap(model.snapshot.windows.first { $0.name == "Shop" })
-        let tab = try XCTUnwrap(model.snapshot.tabs[window.activeTabID])
+        let space = try XCTUnwrap(model.snapshot.spaces.first { $0.name == "Shop" })
+        let tab = try XCTUnwrap(model.snapshot.tabs[space.activeTabID])
         XCTAssertEqual(tab.root.paneIDs.count, 2)
         let first = try XCTUnwrap(model.terminals[tab.root.paneIDs[0]])
         // Without integration the command is written as soon as the shell starts; the terminal echoes it.
@@ -115,11 +115,11 @@ final class ProjectLaunchFlowTests: XCTestCase {
         XCTAssertFalse(ready.needsSetup)
         try await Task.sleep(for: .milliseconds(300))
         let screen = first.screenText
-        let windows = model.snapshot.windows.count, sessions = model.snapshot.sessions.count
+        let spaces = model.snapshot.spaces.count, sessions = model.snapshot.sessions.count
         await model.openProjectLaunch(again, ready)
-        XCTAssertEqual(model.snapshot.windows.count, windows)
+        XCTAssertEqual(model.snapshot.spaces.count, spaces)
         XCTAssertEqual(model.snapshot.sessions.count, sessions)
-        XCTAssertEqual(model.snapshot.activeWindowID, window.id)
+        XCTAssertEqual(model.snapshot.activeSpaceID, space.id)
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertEqual(first.screenText, screen, "No command is typed again")
         XCTAssertTrue(model.pendingProjectCommands.isEmpty)
@@ -147,9 +147,9 @@ final class ProjectLaunchFlowTests: XCTestCase {
         XCTAssertFalse(launch.needsSetup)
         XCTAssertEqual(launch.agents, ["t1-1": "fake"])
         await model.openProjectLaunch(session, launch)
-        try await until("the window opened") { model.snapshot.windows.contains { $0.name == "Shop" } }
-        let window = try XCTUnwrap(model.snapshot.windows.first { $0.name == "Shop" })
-        let tab = try XCTUnwrap(model.snapshot.tabs[window.activeTabID])
+        try await until("the space opened") { model.snapshot.spaces.contains { $0.name == "Shop" } }
+        let space = try XCTUnwrap(model.snapshot.spaces.first { $0.name == "Shop" })
+        let tab = try XCTUnwrap(model.snapshot.tabs[space.activeTabID])
         let agentPane = tab.root.paneIDs[0], shellPane = tab.root.paneIDs[1]
         XCTAssertEqual(model.agentLaunch(paneID: agentPane), AgentLaunch(agentID: "fake", directory: scratch.appendingPathComponent("work/shop/api").path))
         XCTAssertNil(model.agentLaunch(paneID: shellPane))
@@ -159,7 +159,7 @@ final class ProjectLaunchFlowTests: XCTestCase {
         XCTAssertEqual(model.tabAgent(tabID: tab.id)?.id, "fake")
     }
 
-    func testAFailedSetupKeepsTheSheetAndCancelLeavesNoWindow() async throws {
+    func testAFailedSetupKeepsTheSheetAndCancelLeavesNoSpace() async throws {
         let model = try await makeModel()
         setenv("FAKE_GIT_STATUS", "128", 1)
         addTeardownBlock { unsetenv("FAKE_GIT_STATUS") }
@@ -176,7 +176,7 @@ final class ProjectLaunchFlowTests: XCTestCase {
         XCTAssertNotNil(session.terminal, "The output stays visible")
         model.cancelProjectLaunch(session)
         XCTAssertNil(model.projectLaunch)
-        XCTAssertFalse(model.snapshot.windows.contains { $0.name == "Broken" })
+        XCTAssertFalse(model.snapshot.spaces.contains { $0.name == "Broken" })
     }
 
     /// Cancel while setup runs stops it (a hangup, so git can clean up) and keeps the terminal until it has ended.
@@ -197,6 +197,6 @@ final class ProjectLaunchFlowTests: XCTestCase {
         XCTAssertNil(model.projectLaunch)
         XCTAssertNotNil(terminal, "Kept until it ends")
         try await until("setup ended and was let go") { terminal == nil }
-        XCTAssertFalse(model.snapshot.windows.contains { $0.name == "Slow" })
+        XCTAssertFalse(model.snapshot.spaces.contains { $0.name == "Slow" })
     }
 }

@@ -11,7 +11,7 @@ final class WorkspaceAppearanceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
         _ = await model.loadWorkspace()
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let native = try XCTUnwrap(model.activeTerminal)
         let snapshot = model.snapshot
         var settings = AppearanceSettings()
@@ -41,7 +41,7 @@ final class WorkspaceAppearanceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
         _ = await model.loadWorkspace()
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let native = try XCTUnwrap(model.activeTerminal)
         var windowStates: [Bool] = []
         model.onWindowTranslucencyChanged = { windowStates.append($0) }
@@ -60,7 +60,7 @@ final class WorkspaceAppearanceTests: XCTestCase {
         settings.backgroundOpacity = 0.7
         XCTAssertTrue(model.applyAppearance(settings))
         XCTAssertEqual(native.backgroundOpacity, 0.7)
-        XCTAssertEqual(windowStates, [true], "Only the opaque/translucent switch reconfigures the window")
+        XCTAssertEqual(windowStates, [true], "Only the opaque/translucent switch reconfigures the space")
         // Reduce Transparency and Increase Contrast keep panes opaque without changing the saved setting.
         model.accessibilityDisplayOptionsDidChange(increaseContrast: false, reduceMotion: false, reduceTransparency: true)
         XCTAssertEqual(model.effectiveBackgroundOpacity, 1)
@@ -100,7 +100,7 @@ final class WorkspaceAppearanceTests: XCTestCase {
         XCTAssertTrue(model.applyAppearance(settings))
         XCTAssertEqual(model.chromeOpacity, AppWorkspaceModel.minimumChromeOpacity, "but never drops below the readable floor")
         model.accessibilityDisplayOptionsDidChange(increaseContrast: false, reduceMotion: false, reduceTransparency: true)
-        XCTAssertEqual(model.chromeOpacity, 1, "Reduce Transparency makes the whole window opaque")
+        XCTAssertEqual(model.chromeOpacity, 1, "Reduce Transparency makes the whole space opaque")
         model.accessibilityDisplayOptionsDidChange(increaseContrast: false, reduceMotion: false, reduceTransparency: false)
         XCTAssertEqual(model.chromeOpacity, AppWorkspaceModel.minimumChromeOpacity)
     }

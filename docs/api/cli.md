@@ -28,7 +28,8 @@ trellis --version
 - `--state-directory DIR` points the CLI at a development instance started with the same flag.
 - Mutating commands accept `--idempotency-key KEY`.
 - The CLI never retries anything on its own.
-- `--window`, `--tab` and `--host` accept a UUID or an exact name. An ambiguous name exits with 2, and no match exits with 3.
+- `--space`, `--tab` and `--host` accept a UUID or an exact name. An ambiguous name exits with 2, and no match exits with 3.
+- `trellis window …` and `--window` are deprecated names for `trellis space …` and `--space`, from before windows were renamed spaces; they still work for now.
 - Replies time out after 120 seconds. Event streams have no timeout.
 
 ## Commands
@@ -36,17 +37,17 @@ trellis --version
 | Command | API method | Options |
 | --- | --- | --- |
 | `system info` | `system.info` | — |
-| `window list` / `get` | `window.list` / `get` | `--window` |
-| `window create` | `window.create` | `--name [--start]` |
-| `window rename` | `window.update` | `--window --name --expected-revision` |
-| `window reorder` | `window.reorder` | `--ids a,b,c --expected-revision` |
-| `window focus` | `window.focus` | `--window` |
-| `window close` | `window.close` | `--window --expected-revision [--allow-running --force]` |
-| `tab list` / `get` | `tab.list` / `get` | `--window` / `--tab` |
-| `tab create` | `tab.create` | `--window --title [--start]` |
+| `space list` / `get` | `space.list` / `get` | `--space` |
+| `space create` | `space.create` | `--name [--start]` |
+| `space rename` | `space.update` | `--space --name --expected-revision` |
+| `space reorder` | `space.reorder` | `--ids a,b,c --expected-revision` |
+| `space focus` | `space.focus` | `--space` |
+| `space close` | `space.close` | `--space --expected-revision [--allow-running --force]` |
+| `tab list` / `get` | `tab.list` / `get` | `--space` / `--tab` |
+| `tab create` | `tab.create` | `--space --title [--start]` |
 | `tab rename` | `tab.update` | `--tab --title --expected-revision` |
 | `tab color` | `tab.update` | `--tab --color <red\|orange\|yellow\|green\|blue\|purple\|gray\|none> --expected-revision` |
-| `tab reorder` | `tab.reorder` | `--window --ids --expected-revision` |
+| `tab reorder` | `tab.reorder` | `--space --ids --expected-revision` |
 | `tab focus` / `close` | `tab.focus` / `close` | `--tab [--expected-revision --allow-running --force]` |
 | `pane split` | `pane.split` | `--pane --axis x\|y --ratio [--start]` |
 | `pane resize` | `pane.resize` | `--branch --ratio --expected-revision` |
@@ -58,9 +59,9 @@ trellis --version
 | `session output` | `session.readOutput` | `--session --view screen\|scrollback\|stream [--cursor C --max-bytes N]` |
 | `host list` / `get` | `host.list` / `get` | `--query` / `--host` |
 | `host create` / `update` / `delete` | `host.*` | `--name --destination --user --port --identity-file --tags`, plus `--host --expected-revision` |
-| `host connect` | `host.connect` | `--host --window [--pane --axis]` |
+| `host connect` | `host.connect` | `--host --space [--pane --axis]` |
 | `layout validate` / `plan` / `apply` | `layout.*` | `FILE [--namespace NS] [--expected-revision N --start-new]` |
-| `layout export` | `layout.export` | `--window …` (repeatable) |
+| `layout export` | `layout.export` | `--space …` (repeatable) |
 | `events subscribe` | `events.subscribe` | `--topics resources,selection,session [--resource ID … --after-sequence N --instance ID]` |
 | `theme list` / `get` / `export` / `delete` | `theme.*` | `--id ID [--resolved]` |
 | `theme validate` / `import` | `theme.validate` / `import` | `FILE [--replace]` |
@@ -107,12 +108,12 @@ Exit 0 means the request was **accepted**. `session execute` succeeds once the i
 TOKEN=~/.config/trellis/token   # owner-only file holding the grant token
 t() { trellis "$@" --token-stdin --json < "$TOKEN"; }
 
-t window list
-t window create --name Project
-t tab create --window Project --title Server
+t space list
+t space create --name Project
+t tab create --space Project --title Server
 t pane split --pane PANE_UUID --axis x
 t session start --pane PANE_UUID
-t host connect --host HOST_UUID --window WINDOW_UUID
+t host connect --host HOST_UUID --space SPACE_UUID
 t layout plan ./project-layout.json --namespace project
 t layout apply ./project-layout.json --namespace project --expected-revision 12
 t session execute --session SESSION_UUID --command 'git status' --submit
@@ -124,7 +125,7 @@ t appearance set --mode dark --dark-theme my-midnight
 ## Agent workflow (INT-06)
 
 1. The user creates a scoped grant in **Settings → Automation**.
-2. The agent authenticates and lists the windows it's allowed to see.
+2. The agent authenticates and lists the spaces it's allowed to see.
 3. It validates, plans and applies a layout.
 4. It explicitly starts approved sessions and subscribes to their state.
 5. If its grant allows it, it reads output.

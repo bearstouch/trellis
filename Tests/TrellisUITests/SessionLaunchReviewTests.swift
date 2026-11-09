@@ -32,7 +32,7 @@ final class SessionLaunchReviewTests: XCTestCase {
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: nil)
         model.sessionBroker = broker
         model.setKeepSessionsRunning(true)
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.terminals[pane.id])
         defer {

@@ -206,9 +206,9 @@ extension AppWorkspaceModel {
     /// FR-AG07: a new tab (or a split beside `sourcePaneID`) runs the agent in that pane's directory, on its host.
     public func launchAgent(_ agentID: String, from sourcePaneID: UUID, placement: AgentPlacement = .tab, resume: Bool = false) async {
         guard !shuttingDown, agentCatalog.definition(agentID) != nil, let pane = snapshot.panes[sourcePaneID], let tab = snapshot.tabs[pane.tabID],
-            let window = snapshot.windows.first(where: { $0.id == tab.windowID })
+            let space = snapshot.spaces.first(where: { $0.id == tab.spaceID })
         else { return }
-        let hostID = window.remoteHostID
+        let hostID = space.remoteHostID
         let launch = AgentLaunch(agentID: agentID, directory: inheritedDirectory(from: sourcePaneID, remote: hostID != nil), hostID: hostID, resume: resume)
         let paneID: UUID?
         switch placement {
@@ -220,7 +220,7 @@ extension AppWorkspaceModel {
             }
             paneID = await splitPane(sourcePaneID, axis: .x, startSession: false)
         case .tab:
-            paneID = await createTab(windowID: window.id, startSessions: false).flatMap { snapshot.tabs[$0]?.activePaneID }
+            paneID = await createTab(spaceID: space.id, startSessions: false).flatMap { snapshot.tabs[$0]?.activePaneID }
         case .currentTab:
             paneID = await clearPaneForAgent(sourcePaneID, agentName: agentCatalog.definition(agentID)?.name ?? "the agent") ? sourcePaneID : nil
         }

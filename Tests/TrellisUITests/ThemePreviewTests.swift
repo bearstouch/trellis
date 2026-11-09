@@ -8,7 +8,7 @@ final class ThemePreviewTests: XCTestCase {
     func testValidAndInvalidPreviewCannotChangeWorkspaceOrStartSession() async throws {
         _ = NSApplication.shared
         let workspace = AppWorkspaceModel(store: try WorkspaceStore())
-        await workspace.createWindow(startSession: false)
+        await workspace.createSpace(startSession: false)
         let settings = workspace.appearance, snapshot = workspace.snapshot
         let terminal = try XCTUnwrap(workspace.activeTerminal)
         let preview = ThemePreviewModel()

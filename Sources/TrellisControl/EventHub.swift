@@ -138,10 +138,10 @@ public actor EventHub {
     /// Raw output is never stored in the metadata ring; it carries a stream cursor.
     /// `gap` marks output skipped since the previous event for this session; each
     /// event also carries its start `cursor`, so readers can detect and backfill holes.
-    public func publishOutput(session: UUID, windowID: UUID?, data: Data, next: OutputCursor, gap: Bool = false) async {
+    public func publishOutput(session: UUID, spaceID: UUID?, data: Data, next: OutputCursor, gap: Bool = false) async {
         guard !data.isEmpty else { return }
         for subscription in subscriptions.values where subscription.topics.contains("output") {
-            guard let grant = await activeGrant(subscription), grant.allows(.sessionOutputRead), visible(windowID, grant),
+            guard let grant = await activeGrant(subscription), grant.allows(.sessionOutputRead), visible(spaceID, grant),
                 subscription.resourceIDs.isEmpty || subscription.resourceIDs.contains(session)
             else { continue }
             send(
@@ -168,24 +168,24 @@ public actor EventHub {
         return subscriptions[subscription.id] == nil ? nil : grant
     }
 
-    private func visible(_ windowID: UUID?, _ grant: AutomationGrant) -> Bool {
-        switch grant.windowScope {
+    private func visible(_ spaceID: UUID?, _ grant: AutomationGrant) -> Bool {
+        switch grant.spaceScope {
         case .all: true
-        case .windows(let ids): windowID.map(ids.contains) ?? false
+        case .spaces(let ids): spaceID.map(ids.contains) ?? false
         }
     }
 
     private func deliverEvent(_ event: Event, to subscription: Subscription, grant: AutomationGrant) {
         let workspace = event.event
         if workspace.topic == "appearance" {
-            // Appearance is global: it needs theme.read, independent of window scope.
+            // Appearance is global: it needs theme.read, independent of space scope.
             guard grant.allows(.themeRead) else { return }
         } else {
-            guard visible(workspace.windowID, grant) || (workspace.type == "window.reordered" && grant.windowScope == .all) else { return }
+            guard visible(workspace.spaceID, grant) || (workspace.type == "space.reordered" && grant.spaceScope == .all) else { return }
         }
         guard
             subscription.resourceIDs.isEmpty || subscription.resourceIDs.contains(workspace.resourceID)
-                || workspace.windowID.map(subscription.resourceIDs.contains) == true
+                || workspace.spaceID.map(subscription.resourceIDs.contains) == true
         else { return }
         send(
             subscription, method: "event",

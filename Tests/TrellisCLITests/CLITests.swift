@@ -45,7 +45,7 @@ final class CLIHarness {
                 return self.stdinToken
             },
             readKeychain: { self.keychain[$0] },
-            readFile: { _ in Data(#"{"version":1,"windows":[]}"#.utf8) },
+            readFile: { _ in Data(#"{"version":1,"spaces":[]}"#.utf8) },
             stdout: { self.out.append($0) }, stderr: { self.err.append($0) }, sleep: { _ in },
             defaultStateDirectory: URL(fileURLWithPath: "/tmp/state"))
     }
@@ -61,44 +61,44 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(create.options["arg"], ["a b", "c"])
         XCTAssertTrue(create.has("json"))
         for bad in [
-            ["window"], ["nope", "list"], ["window", "explode"], ["window", "list", "--bogus", "x"], ["window", "create", "--name"], ["layout", "apply"],
-            ["window", "get", "--window", "a", "--window", "b"], ["window", "list", "stray"]
+            ["space"], ["nope", "list"], ["space", "explode"], ["space", "list", "--bogus", "x"], ["space", "create", "--name"], ["layout", "apply"],
+            ["space", "get", "--space", "a", "--space", "b"], ["space", "list", "stray"]
         ] {
             XCTAssertThrowsError(try CLIArguments.parse(bad), "\(bad)")
         }
 
-        // Two windows share a name: resolving it is an argument error and nothing mutates.
+        // Two spaces share a name: resolving it is an argument error and nothing mutates.
         let h = CLIHarness()
-        h.transport.replies["window.list"] = [
+        h.transport.replies["space.list"] = [
             "result": .object([
-                "windows": .array([
+                "spaces": .array([
                     .object(["id": .string(UUID().uuidString), "name": .string("Dup")]), .object(["id": .string(UUID().uuidString), "name": .string("Dup")]),
                     .object(["id": .string(UUID().uuidString), "name": .string("Solo")])
                 ])
             ])
         ]
-        XCTAssertEqual(h.run(["window", "rename", "--window", "Dup", "--name", "New", "--token-stdin", "--json"]), 2)
+        XCTAssertEqual(h.run(["space", "rename", "--space", "Dup", "--name", "New", "--token-stdin", "--json"]), 2)
         XCTAssertTrue(h.out.last?.contains("Use its UUID") == true)
         XCTAssertEqual(h.mutatingCalls, [])
-        XCTAssertEqual(h.run(["window", "rename", "--window", "Missing", "--name", "New", "--token-stdin"]), 3)
+        XCTAssertEqual(h.run(["space", "rename", "--space", "Missing", "--name", "New", "--token-stdin"]), 3)
         XCTAssertEqual(h.mutatingCalls, [])
-        XCTAssertEqual(h.run(["window", "rename", "--window", "Solo", "--name", "New", "--token-stdin"]), 0)
-        XCTAssertEqual(h.mutatingCalls, ["window.update"])
+        XCTAssertEqual(h.run(["space", "rename", "--space", "Solo", "--name", "New", "--token-stdin"]), 0)
+        XCTAssertEqual(h.mutatingCalls, ["space.update"])
         XCTAssertEqual(h.transport.calls.last?.params["name"], .string("New"))
 
         // A denied lookup keeps its auth status instead of looking like "no match".
         let denied = CLIHarness()
-        denied.transport.replies["window.list"] = ["error": .object(["code": .number(-32000), "message": .string("Denied."), "data": .object(["code": .string("PERMISSION_DENIED")])])]
-        XCTAssertEqual(denied.run(["window", "rename", "--window", "Solo", "--name", "New", "--token-stdin"]), 4)
+        denied.transport.replies["space.list"] = ["error": .object(["code": .number(-32000), "message": .string("Denied."), "data": .object(["code": .string("PERMISSION_DENIED")])])]
+        XCTAssertEqual(denied.run(["space", "rename", "--space", "Solo", "--name", "New", "--token-stdin"]), 4)
         XCTAssertEqual(denied.mutatingCalls, [])
 
-        // Tabs resolve across windows; a title in two windows is ambiguous.
+        // Tabs resolve across spaces; a title in two spaces is ambiguous.
         let tabs = CLIHarness()
         let w1 = UUID().uuidString, w2 = UUID().uuidString
-        tabs.transport.replies["window.list"] = ["result": .object(["windows": .array([.object(["id": .string(w1)]), .object(["id": .string(w2)])])])]
+        tabs.transport.replies["space.list"] = ["result": .object(["spaces": .array([.object(["id": .string(w1)]), .object(["id": .string(w2)])])])]
         tabs.transport.replies["tab.list"] = ["result": .object(["tabs": .array([.object(["id": .string(UUID().uuidString), "title": .string("Server")])])])]
         XCTAssertEqual(tabs.run(["tab", "close", "--tab", "Server", "--token-stdin"]), 2)
-        XCTAssertEqual(tabs.transport.calls.filter { $0.method == "tab.list" }.map { $0.params["windowId"] }, [.string(w1), .string(w2)])
+        XCTAssertEqual(tabs.transport.calls.filter { $0.method == "tab.list" }.map { $0.params["spaceId"] }, [.string(w1), .string(w2)])
         XCTAssertEqual(tabs.mutatingCalls, [])
     }
 
@@ -175,8 +175,8 @@ final class CLITests: XCTestCase {
             let h = CLIHarness()
             var error: [String: JSONValue] = ["code": .number(Double(rpcCode)), "message": .string("Something specific.")]
             if let appCode { error["data"] = .object(["code": .string(appCode), "retryable": .bool(false)]) }
-            h.transport.replies["window.list"] = ["error": .object(error)]
-            XCTAssertEqual(h.run(["window", "list", "--json", "--token-stdin"]), status, "\(appCode ?? String(rpcCode))")
+            h.transport.replies["space.list"] = ["error": .object(error)]
+            XCTAssertEqual(h.run(["space", "list", "--json", "--token-stdin"]), status, "\(appCode ?? String(rpcCode))")
             XCTAssertEqual(h.out.count, 1)
             XCTAssertEqual(h.err, [], "JSON mode keeps stderr for diagnostics only")
             let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(h.out[0].utf8)) as? [String: Any])
@@ -189,9 +189,9 @@ final class CLITests: XCTestCase {
         }
 
         let ok = CLIHarness()
-        ok.transport.replies["window.list"] = ["result": .object(["windows": .array([])])]
-        XCTAssertEqual(ok.run(["window", "list", "--json", "--token-stdin"]), 0)
-        XCTAssertEqual(ok.out, [#"{"ok":true,"result":{"windows":[]}}"#])
+        ok.transport.replies["space.list"] = ["result": .object(["spaces": .array([])])]
+        XCTAssertEqual(ok.run(["space", "list", "--json", "--token-stdin"]), 0)
+        XCTAssertEqual(ok.out, [#"{"ok":true,"result":{"spaces":[]}}"#])
 
         // Transport failure is status 7 and is never retried, even for execute.
         let lost = CLIHarness()
@@ -202,8 +202,8 @@ final class CLITests: XCTestCase {
 
         // Plain mode: result on stdout, diagnostics on stderr, no color.
         let plain = CLIHarness()
-        plain.transport.replies["window.list"] = ["error": .object(["code": .number(-32000), "message": .string("Nope."), "data": .object(["code": .string("NOT_FOUND")])])]
-        XCTAssertEqual(plain.run(["window", "list", "--token-stdin"]), 3)
+        plain.transport.replies["space.list"] = ["error": .object(["code": .number(-32000), "message": .string("Nope."), "data": .object(["code": .string("NOT_FOUND")])])]
+        XCTAssertEqual(plain.run(["space", "list", "--token-stdin"]), 3)
         XCTAssertEqual(plain.out, [])
         XCTAssertEqual(plain.err, ["trellis: Nope. (NOT_FOUND)"])
     }
@@ -211,7 +211,7 @@ final class CLITests: XCTestCase {
     func testLaunchOnlyWhenRequested() {
         let absent = CLIHarness()
         absent.discovery = nil
-        XCTAssertEqual(absent.run(["window", "list", "--json", "--token-stdin"]), 7)
+        XCTAssertEqual(absent.run(["space", "list", "--json", "--token-stdin"]), 7)
         XCTAssertTrue(absent.out[0].contains("APP_NOT_RUNNING"))
         XCTAssertEqual(absent.launches, 0)
         XCTAssertEqual(absent.transport.calls.count, 0)
@@ -219,17 +219,17 @@ final class CLITests: XCTestCase {
         let launched = CLIHarness()
         launched.discovery = nil
         launched.discoverAfterLaunch = true
-        XCTAssertEqual(launched.run(["window", "list", "--json", "--launch", "--token-stdin"]), 0)
+        XCTAssertEqual(launched.run(["space", "list", "--json", "--launch", "--token-stdin"]), 0)
         XCTAssertEqual(launched.launches, 1)
         XCTAssertNil(launched.launchedWith, "Default launches use the app's own state directory")
         let isolated = CLIHarness()
         isolated.discovery = nil
         isolated.discoverAfterLaunch = true
-        XCTAssertEqual(isolated.run(["window", "list", "--launch", "--state-directory", "/tmp/dev-state", "--token-stdin"]), 0)
+        XCTAssertEqual(isolated.run(["space", "list", "--launch", "--state-directory", "/tmp/dev-state", "--token-stdin"]), 0)
         XCTAssertEqual(isolated.launchedWith?.path, "/tmp/dev-state", "An explicit state directory is forwarded to the launched app")
 
         let running = CLIHarness()
-        XCTAssertEqual(running.run(["window", "list", "--launch", "--token-stdin"]), 0)
+        XCTAssertEqual(running.run(["space", "list", "--launch", "--token-stdin"]), 0)
         XCTAssertEqual(running.launches, 0, "An already running app is never relaunched")
     }
 
@@ -237,7 +237,7 @@ final class CLITests: XCTestCase {
         let secret = "trl_STDIN_SECRET_123"
         for flag in ["--token", "--password"] {
             let h = CLIHarness()
-            XCTAssertEqual(h.run(["window", "list", flag, secret, "--json"]), 2)
+            XCTAssertEqual(h.run(["space", "list", flag, secret, "--json"]), 2)
             XCTAssertTrue(h.out[0].contains("never accepted as arguments"))
             XCTAssertFalse((h.out + h.err).joined().contains(secret), "The rejected argument is not echoed")
             XCTAssertEqual(h.transport.calls.count, 0)
@@ -245,7 +245,7 @@ final class CLITests: XCTestCase {
         // Misplaced secrets are rejected without being echoed in any form.
         for arguments in [["--token=\(secret)"], ["--password=\(secret)"], ["--token-stdin", secret], ["--json=\(secret)"]] {
             let h = CLIHarness()
-            XCTAssertEqual(h.run(["window", "list", "--json"] + arguments), 2, "\(arguments)")
+            XCTAssertEqual(h.run(["space", "list", "--json"] + arguments), 2, "\(arguments)")
             XCTAssertFalse((h.out + h.err).joined().contains(secret), "\(arguments)")
             XCTAssertEqual(h.transport.calls.count, 0)
         }
@@ -253,7 +253,7 @@ final class CLITests: XCTestCase {
         // Stdin token: sent only inside auth.authenticate, never printed.
         let h = CLIHarness()
         h.transport.replies["auth.authenticate"] = ["error": .object(["code": .number(-32000), "message": .string("Authentication failed."), "data": .object(["code": .string("AUTH_REQUIRED")])])]
-        XCTAssertEqual(h.run(["window", "list", "--token-stdin", "--json"]), 4)
+        XCTAssertEqual(h.run(["space", "list", "--token-stdin", "--json"]), 4)
         XCTAssertEqual(h.transport.calls.first?.params["token"], .string(secret))
         XCTAssertFalse((h.out + h.err).joined().contains(secret))
 
@@ -261,12 +261,12 @@ final class CLITests: XCTestCase {
         let grant = UUID()
         let keychained = CLIHarness()
         keychained.keychain[grant] = "trl_KEYCHAIN_SECRET_456"
-        XCTAssertEqual(keychained.run(["window", "list", "--keychain-grant", grant.uuidString, "--json"]), 0)
+        XCTAssertEqual(keychained.run(["space", "list", "--keychain-grant", grant.uuidString, "--json"]), 0)
         XCTAssertEqual(keychained.stdinReads, 0)
         XCTAssertEqual(keychained.transport.calls.first?.params["token"], .string("trl_KEYCHAIN_SECRET_456"))
         XCTAssertFalse((keychained.out + keychained.err).joined().contains("KEYCHAIN_SECRET"))
-        XCTAssertEqual(keychained.run(["window", "list", "--keychain-grant", UUID().uuidString]), 4, "A missing Keychain item is an auth failure")
-        XCTAssertEqual(CLIHarness().run(["window", "list"]), 2, "Credentials are required")
+        XCTAssertEqual(keychained.run(["space", "list", "--keychain-grant", UUID().uuidString]), 4, "A missing Keychain item is an auth failure")
+        XCTAssertEqual(CLIHarness().run(["space", "list"]), 2, "Credentials are required")
     }
 
     func testThemeAndAppearanceCommandsMapToTheAPI() {
@@ -372,12 +372,12 @@ final class CLITests: XCTestCase {
         environment.launchApp = { _ in
             XCTFail("Must not launch"); return false
         }
-        XCTAssertEqual(CLI.run(["window", "list", "--json", "--token-stdin", "--state-directory", root.path], environment: environment), 0)
-        XCTAssertEqual(out, [#"{"ok":true,"result":{"method":"window.list"}}"#])
+        XCTAssertEqual(CLI.run(["space", "list", "--json", "--token-stdin", "--state-directory", root.path], environment: environment), 0)
+        XCTAssertEqual(out, [#"{"ok":true,"result":{"method":"space.list"}}"#])
         environment.readStdinLine = { "wrong" }
-        XCTAssertEqual(CLI.run(["window", "list", "--json", "--token-stdin", "--state-directory", root.path], environment: environment), 4)
+        XCTAssertEqual(CLI.run(["space", "list", "--json", "--token-stdin", "--state-directory", root.path], environment: environment), 4)
         server.stop()
-        XCTAssertEqual(CLI.run(["window", "list", "--json", "--token-stdin", "--state-directory", root.path], environment: environment), 7)
+        XCTAssertEqual(CLI.run(["space", "list", "--json", "--token-stdin", "--state-directory", root.path], environment: environment), 7)
     }
 }
 

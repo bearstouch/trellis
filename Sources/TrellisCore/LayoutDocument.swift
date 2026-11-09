@@ -3,11 +3,11 @@ import Foundation
 /// Declarative layout v1: structure and safe launch references only, never
 /// commands. Parsed from JSON by the control layer.
 public struct LayoutDocument: Equatable, Sendable {
-    public var windows: [LayoutWindow]
-    public init(windows: [LayoutWindow]) { self.windows = windows }
+    public var spaces: [LayoutSpace]
+    public init(spaces: [LayoutSpace]) { self.spaces = spaces }
 }
 
-public struct LayoutWindow: Equatable, Sendable {
+public struct LayoutSpace: Equatable, Sendable {
     public var key: String, name: String, tabs: [LayoutTab]
     /// A remote workspace's saved host (FR-R02, FR-RW01); only exports carry it, never API layouts.
     public var remoteHostID: UUID?
@@ -40,7 +40,19 @@ public indirect enum LayoutNode: Equatable, Sendable {
     }
 }
 
-public enum LayoutResourceKind: String, Codable, Sendable { case window, tab, split, pane }
+public enum LayoutResourceKind: String, Codable, Sendable {
+    case space, tab, split, pane
+
+    /// Bindings saved before windows were renamed spaces say `window`; they still bind the same space.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        guard let kind = Self(rawValue: raw == "window" ? "space" : raw) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown layout resource kind")
+        }
+        self = kind
+    }
+}
 
 /// A namespace's key → resource mapping; keys never change resource type.
 public struct LayoutBinding: Codable, Equatable, Sendable {
@@ -106,10 +118,12 @@ public enum LayoutPlanner {
     /// Validates the document and reconciles it with `snapshot` under the
     /// namespace `bindings`. Never mutates; the target is applied atomically.
     /// `keepOmittedPanes` leaves a bound tab's live panes the document omits where they are (project launches, FR-PL08).
+    /// `projectID` is set by project launches (FR-W08): its spaces record the project, and the tabs it declares their key,
+    /// so any other tab in such a space reads as temporary.
     public static func plan(
         _ document: LayoutDocument, bindings existing: [String: LayoutBinding], snapshot: WorkspaceSnapshot, home: String,
         hostExists: (UUID) -> Bool, directoryExists: (String) -> Bool, keepLiveLaunches: Bool = false, keepOmittedPanes: Bool = false,
-        remoteHostID: UUID? = nil, makeID: () -> UUID = { UUID() }
+        remoteHostID: UUID? = nil, projectID: UUID? = nil, makeID: () -> UUID = { UUID() }
     ) -> LayoutPlan {
         var plan = LayoutPlan(baseRevision: snapshot.revision)
         // Structural validation first; nothing is reconciled on errors.
@@ -141,12 +155,12 @@ public enum LayoutPlanner {
             if !isValidKey(key) { plan.errors.append(LayoutIssue(key: key, "Keys must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$.")) }
             if !seen.insert(key).inserted { plan.errors.append(LayoutIssue(key: key, "Keys must be unique across the document.")) }
         }
-        if document.windows.count > 10 { plan.errors.append(LayoutIssue(key: nil, "Use at most 10 windows.")) }
-        for window in document.windows {
-            checkKey(window.key)
-            if window.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || window.name.count > 200 { plan.errors.append(LayoutIssue(key: window.key, "Window names need 1–200 characters.")) }
-            if window.tabs.isEmpty || window.tabs.count > 50 { plan.errors.append(LayoutIssue(key: window.key, "Windows need 1–50 tabs.")) }
-            for tab in window.tabs {
+        if document.spaces.count > 10 { plan.errors.append(LayoutIssue(key: nil, "Use at most 10 spaces.")) }
+        for space in document.spaces {
+            checkKey(space.key)
+            if space.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || space.name.count > 200 { plan.errors.append(LayoutIssue(key: space.key, "Space names need 1–200 characters.")) }
+            if space.tabs.isEmpty || space.tabs.count > 50 { plan.errors.append(LayoutIssue(key: space.key, "Spaces need 1–50 tabs.")) }
+            for tab in space.tabs {
                 checkKey(tab.key)
                 if tab.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || tab.title.count > 200 { plan.errors.append(LayoutIssue(key: tab.key, "Tab titles need 1–200 characters.")) }
                 check(tab.root, depth: 0)
@@ -165,7 +179,7 @@ public enum LayoutPlanner {
             }
             return binding.id
         }
-        // A remote window's layout opens on its host (FR-RW10): every shell is that host's, in a path there.
+        // A remote space's layout opens on its host (FR-RW10): every shell is that host's, in a path there.
         func launch(_ value: LayoutLaunch, on host: UUID?) -> SessionLaunch {
             switch value {
             case .shell(let directory) where host != nil: .remoteShell(hostID: host!, directory: directory.flatMap { expand($0, home: home) })
@@ -174,25 +188,25 @@ public enum LayoutPlanner {
             }
         }
 
-        var managedWindows: [UUID] = []
-        for declared in document.windows {
-            let windowID: UUID
+        var managedSpaces: [UUID] = []
+        for declared in document.spaces {
+            let spaceID: UUID
             var managedTabs: [UUID] = []
-            if let id = bound(declared.key, .window) {
-                windowID = id
-                if next.windows.first(where: { $0.id == id })?.name != declared.name { plan.updates.append((.window, declared.key)) }
+            if let id = bound(declared.key, .space) {
+                spaceID = id
+                if next.spaces.first(where: { $0.id == id })?.name != declared.name { plan.updates.append((.space, declared.key)) }
             } else {
-                windowID = makeID()
-                plan.creates.append((.window, declared.key))
+                spaceID = makeID()
+                plan.creates.append((.space, declared.key))
             }
-            bindings[declared.key] = LayoutBinding(kind: .window, id: windowID)
-            // An existing window keeps its own binding; a new one takes the document's, or the plan's.
-            let windowHost = next.windows.first { $0.id == windowID }.map(\.remoteHostID) ?? declared.remoteHostID ?? remoteHostID
+            bindings[declared.key] = LayoutBinding(kind: .space, id: spaceID)
+            // An existing space keeps its own binding; a new one takes the document's, or the plan's.
+            let spaceHost = next.spaces.first { $0.id == spaceID }.map(\.remoteHostID) ?? declared.remoteHostID ?? remoteHostID
             for tab in declared.tabs {
                 let tabID: UUID
                 let existingTab = bound(tab.key, .tab).flatMap { next.tabs[$0] }
-                if let existingTab, existingTab.windowID != windowID {
-                    plan.conflicts.append(LayoutIssue(key: tab.key, "Tabs cannot move between windows; close and recreate it instead."))
+                if let existingTab, existingTab.spaceID != spaceID {
+                    plan.conflicts.append(LayoutIssue(key: tab.key, "Tabs cannot move between spaces; close and recreate it instead."))
                     continue
                 }
                 tabID = existingTab?.id ?? makeID()
@@ -201,7 +215,7 @@ public enum LayoutPlanner {
                 func build(_ node: LayoutNode) -> PaneLayout? {
                     switch node {
                     case .pane(let key, let title, let desired):
-                        let desiredLaunch = launch(desired, on: windowHost)
+                        let desiredLaunch = launch(desired, on: spaceHost)
                         if let id = bound(key, .pane), let pane = next.panes[id] {
                             guard pane.tabID == tabID else {
                                 plan.conflicts.append(LayoutIssue(key: key, "Panes cannot move between tabs; close and recreate it instead."))
@@ -258,45 +272,55 @@ public enum LayoutPlanner {
                         root = merged
                     }
                     var updated = existingTab
-                    let changed = updated.title != tab.title || updated.root != root || (tab.color != nil && updated.color != tab.color)
+                    let projectKey = projectID == nil ? updated.projectKey : tab.key
+                    let changed =
+                        updated.title != tab.title || updated.root != root || (tab.color != nil && updated.color != tab.color) || updated.projectKey != projectKey
                     updated.title = tab.title
                     updated.color = tab.color ?? updated.color
                     updated.root = root
+                    updated.projectKey = projectKey
                     if !root.paneIDs.contains(updated.activePaneID) { updated.activePaneID = root.paneIDs[0] }
                     next.tabs[tabID] = updated
                     if changed { plan.updates.append((.tab, tab.key)) }
                 } else {
-                    next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: tab.title, color: tab.color, root: root, activePaneID: root.paneIDs[0])
+                    next.tabs[tabID] = WorkspaceTab(
+                        id: tabID, spaceID: spaceID, title: tab.title, color: tab.color, root: root, activePaneID: root.paneIDs[0], projectKey: projectID.map { _ in tab.key })
                     plan.creates.append((.tab, tab.key))
                 }
                 managedTabs.append(tabID)
             }
-            if let index = next.windows.firstIndex(where: { $0.id == windowID }) {
-                var window = next.windows[index]
-                let unmanaged = window.tabIDs.filter { !managedTabs.contains($0) }
+            if let index = next.spaces.firstIndex(where: { $0.id == spaceID }) {
+                var space = next.spaces[index]
+                let unmanaged = space.tabIDs.filter { !managedTabs.contains($0) }
                 plan.unmanaged += unmanaged
+                // A tab the project no longer declares stays where it is but becomes temporary (FR-W08).
+                if projectID != nil { for id in unmanaged where next.tabs[id]?.projectKey != nil { next.tabs[id]?.projectKey = nil } }
                 // Managed tabs follow document order in the slots they occupied; new ones append.
-                var queue = managedTabs.filter { window.tabIDs.contains($0) }
-                window.tabIDs =
-                    window.tabIDs.map { id in managedTabs.contains(id) && !queue.isEmpty ? queue.removeFirst() : id }
-                    + managedTabs.filter { !window.tabIDs.contains($0) }
-                window.name = declared.name
-                next.windows[index] = window
+                var queue = managedTabs.filter { space.tabIDs.contains($0) }
+                space.tabIDs =
+                    space.tabIDs.map { id in managedTabs.contains(id) && !queue.isEmpty ? queue.removeFirst() : id }
+                    + managedTabs.filter { !space.tabIDs.contains($0) }
+                space.name = declared.name
+                if let projectID, space.projectID != projectID {
+                    space.projectID = projectID
+                    if !plan.updates.contains(where: { $0.kind == .space && $0.key == declared.key }) { plan.updates.append((.space, declared.key)) }
+                }
+                next.spaces[index] = space
             } else if let first = managedTabs.first {
-                next.windows.append(ManagedWindow(id: windowID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: windowHost))
+                next.spaces.append(Space(id: spaceID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: spaceHost, projectID: projectID))
             }
-            managedWindows.append(windowID)
+            managedSpaces.append(spaceID)
         }
-        plan.unmanaged += next.windows.map(\.id).filter { !managedWindows.contains($0) }
-        // Managed windows take document order within the slots they already hold.
-        let existingIDs = snapshot.windows.map(\.id)
-        var queue = managedWindows.filter { existingIDs.contains($0) }
-        let reordered = next.windows.map { window in
-            managedWindows.contains(window.id) && existingIDs.contains(window.id) && !queue.isEmpty ? queue.removeFirst() : window.id
+        plan.unmanaged += next.spaces.map(\.id).filter { !managedSpaces.contains($0) }
+        // Managed spaces take document order within the slots they already hold.
+        let existingIDs = snapshot.spaces.map(\.id)
+        var queue = managedSpaces.filter { existingIDs.contains($0) }
+        let reordered = next.spaces.map { space in
+            managedSpaces.contains(space.id) && existingIDs.contains(space.id) && !queue.isEmpty ? queue.removeFirst() : space.id
         }
-        let byID = Dictionary(uniqueKeysWithValues: next.windows.map { ($0.id, $0) })
-        next.windows = reordered.compactMap { byID[$0] }
-        if next.activeWindowID == nil { next.activeWindowID = next.windows.first?.id }
+        let byID = Dictionary(uniqueKeysWithValues: next.spaces.map { ($0.id, $0) })
+        next.spaces = reordered.compactMap { byID[$0] }
+        if next.activeSpaceID == nil { next.activeSpaceID = next.spaces.first?.id }
         guard plan.conflicts.isEmpty else { return plan }
         guard next.panes.count <= maxPanes else {
             plan.conflicts.append(LayoutIssue(key: nil, "Applying would exceed \(maxPanes) panes in the workspace."))
@@ -309,10 +333,10 @@ public enum LayoutPlanner {
 
     /// Bindings whose resources still exist; the rest are pruned.
     public static func live(_ bindings: [String: LayoutBinding], in snapshot: WorkspaceSnapshot) -> [String: LayoutBinding] {
-        let windows = Set(snapshot.windows.map(\.id)), branches = Set(snapshot.tabs.values.flatMap { branchIDs($0.root) })
+        let spaces = Set(snapshot.spaces.map(\.id)), branches = Set(snapshot.tabs.values.flatMap { branchIDs($0.root) })
         return bindings.filter { _, binding in
             switch binding.kind {
-            case .window: windows.contains(binding.id)
+            case .space: spaces.contains(binding.id)
             case .tab: snapshot.tabs[binding.id] != nil
             case .pane: snapshot.panes[binding.id] != nil
             case .split: branches.contains(binding.id)

@@ -43,7 +43,8 @@ public struct KeyChord: Codable, Hashable, Sendable, CustomStringConvertible {
 public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view, pane, window }
 
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
-    case newWindow, newTab, renameTab, renameWindow, closePane, closeTab, deleteWindow, saveWorkspace, showHosts
+    // The Space actions keep their stored names from before windows were renamed spaces, so customized shortcuts carry over.
+    case newSpace = "newWindow", newTab, renameTab, renameSpace = "renameWindow", closePane, closeTab, deleteSpace = "deleteWindow", saveWorkspace, showHosts
     /// The project library (FR-PL01). The stored name predates it, so a customized ⌘O carries over.
     case showProjects = "openWorkspaceFile"
     case findInPane, findNext, findPrevious, previousPrompt, nextPrompt, clearPane
@@ -51,18 +52,18 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     case splitLeftRight, splitTopBottom, maximizePane
     case focusLeft, focusRight, focusUp, focusDown
     case resizeLeft, resizeRight, resizeUp, resizeDown
-    case nextWindow, previousWindow, nextTab, previousTab
+    case nextSpace = "nextWindow", previousSpace = "previousWindow", nextTab, previousTab
     case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectTab9
 
     public var title: String {
         switch self {
-        case .newWindow: "New Window"
+        case .newSpace: "New Space"
         case .newTab: "New Tab"
         case .renameTab: "Rename Tab…"
-        case .renameWindow: "Rename Window…"
+        case .renameSpace: "Rename Space…"
         case .closePane: "Close Pane"
         case .closeTab: "Close Tab"
-        case .deleteWindow: "Delete Window…"
+        case .deleteSpace: "Delete Space…"
         case .saveWorkspace: "Save Workspace"
         case .showHosts: "Hosts…"
         case .showProjects: "Projects…"
@@ -94,8 +95,8 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .resizeRight: "Move Divider Right"
         case .resizeUp: "Move Divider Up"
         case .resizeDown: "Move Divider Down"
-        case .nextWindow: "Next Window"
-        case .previousWindow: "Previous Window"
+        case .nextSpace: "Next Space"
+        case .previousSpace: "Previous Space"
         case .nextTab: "Next Tab"
         case .previousTab: "Previous Tab"
         default: "Select Tab \(tabIndex! + 1)"
@@ -110,7 +111,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
 
     public var menu: ShortcutMenu {
         switch self {
-        case .newWindow, .newTab, .renameTab, .renameWindow, .closePane, .closeTab, .deleteWindow, .saveWorkspace, .showHosts, .showProjects: .file
+        case .newSpace, .newTab, .renameTab, .renameSpace, .closePane, .closeTab, .deleteSpace, .saveWorkspace, .showHosts, .showProjects: .file
         case .findInPane, .findNext, .findPrevious, .previousPrompt, .nextPrompt, .clearPane: .edit
         case .zoomIn, .zoomOut, .actualSize, .toggleSidebar, .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents, .commandPalette, .jumpToDirectory: .view
         case .splitLeftRight, .splitTopBottom, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
@@ -122,7 +123,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
 
     public var defaultChord: KeyChord? {
         switch self {
-        case .newWindow: KeyChord("n")
+        case .newSpace: KeyChord("n")
         case .newTab: KeyChord("t")
         case .closePane: KeyChord("w")
         case .closeTab: KeyChord("w", [.command, .shift])
@@ -156,11 +157,11 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .resizeRight: KeyChord("right", [.command, .option, .shift])
         case .resizeUp: KeyChord("up", [.command, .option, .shift])
         case .resizeDown: KeyChord("down", [.command, .option, .shift])
-        case .nextWindow: KeyChord("]", [.command, .control])
-        case .previousWindow: KeyChord("[", [.command, .control])
+        case .nextSpace: KeyChord("]", [.command, .control])
+        case .previousSpace: KeyChord("[", [.command, .control])
         case .nextTab: KeyChord("]", [.command, .shift])
         case .previousTab: KeyChord("[", [.command, .shift])
-        case .renameTab, .renameWindow, .deleteWindow, .showHosts: nil
+        case .renameTab, .renameSpace, .deleteSpace, .showHosts: nil
         default: KeyChord(String(tabIndex! + 1))
         }
     }

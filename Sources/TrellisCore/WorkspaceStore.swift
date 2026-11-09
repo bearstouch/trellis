@@ -18,14 +18,14 @@ public enum WorkspaceEffect: Equatable, Sendable {
 
 /// Both UI and automation use this command boundary. No command performs I/O.
 public enum WorkspaceCommand: Sendable {
-    case createWindow(name: String)
-    /// A window bound to a saved host (FR-RW01); its panes run that host's login shell.
-    case createRemoteWindow(name: String, hostID: UUID)
-    case renameWindow(id: UUID, name: String)
-    case closeAllWindows
-    case selectWindow(id: UUID)
-    case reorderWindows(ids: [UUID])
-    case deleteWindow(id: UUID)
+    case createSpace(name: String)
+    /// A space bound to a saved host (FR-RW01); its panes run that host's login shell.
+    case createRemoteSpace(name: String, hostID: UUID)
+    case renameSpace(id: UUID, name: String)
+    case closeAllSpaces
+    case selectSpace(id: UUID)
+    case reorderSpaces(ids: [UUID])
+    case deleteSpace(id: UUID)
     case recordSessionExit(sessionID: UUID, code: Int32?)
     case markSessionClosing(sessionID: UUID)
     case restartSession(paneID: UUID)
@@ -34,9 +34,9 @@ public enum WorkspaceCommand: Sendable {
     case deletePane(id: UUID)
     case selectPane(id: UUID)
     case resizeSplit(tabID: UUID, splitID: UUID, ratio: Double, canvas: CanvasDimensions)
-    case createTab(windowID: UUID)
+    case createTab(spaceID: UUID)
     case selectTab(id: UUID)
-    case reorderTabs(windowID: UUID, ids: [UUID])
+    case reorderTabs(spaceID: UUID, ids: [UUID])
     case duplicateTab(id: UUID)
     case deleteTab(id: UUID)
     case renameTab(id: UUID, title: String)
@@ -54,17 +54,17 @@ public enum WorkspaceCommand: Sendable {
 
 /// Optimistic concurrency for one resource, checked atomically with the command.
 public enum ResourceExpectation: Equatable, Sendable {
-    case window(UUID, revision: UInt64)
+    case space(UUID, revision: UInt64)
     case tab(UUID, revision: UInt64)
-    /// The whole collection (for example window order).
+    /// The whole collection (for example space order).
     case workspace(revision: UInt64)
 
     /// Throws `notFound` or `conflict` when `snapshot` does not match.
     public func verify(in snapshot: WorkspaceSnapshot) throws {
         switch self {
-        case .window(let id, let revision):
-            guard let window = snapshot.windows.first(where: { $0.id == id }) else { throw WorkspaceError.notFound }
-            guard window.revision == revision else { throw WorkspaceError.conflict(expected: revision, actual: window.revision) }
+        case .space(let id, let revision):
+            guard let space = snapshot.spaces.first(where: { $0.id == id }) else { throw WorkspaceError.notFound }
+            guard space.revision == revision else { throw WorkspaceError.conflict(expected: revision, actual: space.revision) }
         case .tab(let id, let revision):
             guard let tab = snapshot.tabs[id] else { throw WorkspaceError.notFound }
             guard tab.revision == revision else { throw WorkspaceError.conflict(expected: revision, actual: tab.revision) }
@@ -77,7 +77,7 @@ public enum ResourceExpectation: Equatable, Sendable {
 public struct WorkspaceCommandResult: Equatable, Sendable {
     public let snapshot: WorkspaceSnapshot
     public let effects: [WorkspaceEffect]
-    public let createdWindowID: UUID?
+    public let createdSpaceID: UUID?
     public let createdTabID: UUID?
     public let createdPaneID: UUID?
 }
@@ -99,7 +99,7 @@ public actor WorkspaceStore {
     }
 
     public func restoreStoppedSnapshot(_ snapshot: WorkspaceSnapshot) throws {
-        guard state.windows.isEmpty, snapshot.sessions.values.allSatisfy({ $0.state == .stopped }) else { throw WorkspaceError.invalidTransition }
+        guard state.spaces.isEmpty, snapshot.sessions.values.allSatisfy({ $0.state == .stopped }) else { throw WorkspaceError.invalidTransition }
         try snapshot.validate()
         state = snapshot
     }
@@ -115,48 +115,48 @@ public actor WorkspaceStore {
         var next = state
         next.revision += 1
         var effects: [WorkspaceEffect] = []
-        var createdWindowID: UUID?
+        var createdSpaceID: UUID?
         var createdTabID: UUID?
         var createdPaneID: UUID?
         switch command {
-        case .createWindow(let rawName), .createRemoteWindow(let rawName, _):
+        case .createSpace(let rawName), .createRemoteSpace(let rawName, _):
             let name = try validatedName(rawName)
-            let windowID = makeID(), tabID = makeID(), paneID = makeID(), sessionID = makeID()
+            let spaceID = makeID(), tabID = makeID(), paneID = makeID(), sessionID = makeID()
             var remoteHostID: UUID?
-            if case .createRemoteWindow(_, let hostID) = command { remoteHostID = hostID }
-            let window = ManagedWindow(id: windowID, name: name, tabIDs: [tabID], activeTabID: tabID, revision: next.revision, remoteHostID: remoteHostID)
-            next.windows.append(window)
-            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
+            if case .createRemoteSpace(_, let hostID) = command { remoteHostID = hostID }
+            let space = Space(id: spaceID, name: name, tabIDs: [tabID], activeTabID: tabID, revision: next.revision, remoteHostID: remoteHostID)
+            next.spaces.append(space)
+            next.tabs[tabID] = WorkspaceTab(id: tabID, spaceID: spaceID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
-            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: window.defaultLaunch, createdAt: now())
-            next.activeWindowID = windowID
-            createdWindowID = windowID
-        case .closeAllWindows:
+            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: space.defaultLaunch, createdAt: now())
+            next.activeSpaceID = spaceID
+            createdSpaceID = spaceID
+        case .closeAllSpaces:
             guard !next.sessions.values.contains(where: { [.starting, .running, .closing].contains($0.state) }) else {
                 throw WorkspaceError.invalidTransition
             }
-            next.windows = []
+            next.spaces = []
             next.tabs = [:]
             next.panes = [:]
             next.sessions = [:]
-            next.activeWindowID = nil
-        case .selectWindow(let id):
-            guard next.windows.contains(where: { $0.id == id }) else { throw WorkspaceError.notFound }
-            guard next.activeWindowID != id else { return unchanged() }
-            next.activeWindowID = id
-        case .reorderWindows(let order):
-            guard order.count == next.windows.count, Set(order).count == order.count,
-                Set(order) == Set(next.windows.map(\.id))
+            next.activeSpaceID = nil
+        case .selectSpace(let id):
+            guard next.spaces.contains(where: { $0.id == id }) else { throw WorkspaceError.notFound }
+            guard next.activeSpaceID != id else { return unchanged() }
+            next.activeSpaceID = id
+        case .reorderSpaces(let order):
+            guard order.count == next.spaces.count, Set(order).count == order.count,
+                Set(order) == Set(next.spaces.map(\.id))
             else {
-                throw WorkspaceError.invalidState("Window order must contain every window exactly once")
+                throw WorkspaceError.invalidState("Space order must contain every space exactly once")
             }
-            guard order != next.windows.map(\.id) else { return unchanged() }
-            let windows = Dictionary(uniqueKeysWithValues: next.windows.map { ($0.id, $0) })
-            next.windows = order.compactMap { windows[$0] }
-        case .deleteWindow(let id):
-            guard let index = next.windows.firstIndex(where: { $0.id == id }) else { throw WorkspaceError.notFound }
-            let window = next.windows[index]
-            let paneIDs = window.tabIDs.flatMap { next.tabs[$0]?.root.paneIDs ?? [] }
+            guard order != next.spaces.map(\.id) else { return unchanged() }
+            let spaces = Dictionary(uniqueKeysWithValues: next.spaces.map { ($0.id, $0) })
+            next.spaces = order.compactMap { spaces[$0] }
+        case .deleteSpace(let id):
+            guard let index = next.spaces.firstIndex(where: { $0.id == id }) else { throw WorkspaceError.notFound }
+            let space = next.spaces[index]
+            let paneIDs = space.tabIDs.flatMap { next.tabs[$0]?.root.paneIDs ?? [] }
             let sessionIDs = paneIDs.compactMap { next.panes[$0]?.sessionID }
             guard
                 sessionIDs.allSatisfy({ sessionID in
@@ -166,10 +166,10 @@ public actor WorkspaceStore {
             else { throw WorkspaceError.invalidTransition }
             for sessionID in sessionIDs { next.sessions.removeValue(forKey: sessionID) }
             for paneID in paneIDs { next.panes.removeValue(forKey: paneID) }
-            for tabID in window.tabIDs { next.tabs.removeValue(forKey: tabID) }
-            next.windows.remove(at: index)
-            if next.activeWindowID == id {
-                next.activeWindowID = next.windows.isEmpty ? nil : next.windows[min(index, next.windows.count - 1)].id
+            for tabID in space.tabIDs { next.tabs.removeValue(forKey: tabID) }
+            next.spaces.remove(at: index)
+            if next.activeSpaceID == id {
+                next.activeSpaceID = next.spaces.isEmpty ? nil : next.spaces[min(index, next.spaces.count - 1)].id
             }
         case .markSessionClosing(let id):
             guard var session = next.sessions[id] else { throw WorkspaceError.notFound }
@@ -199,12 +199,12 @@ public actor WorkspaceStore {
             session.exitCode = code
             session.endedAt = now()
             next.sessions[id] = session
-        case .renameWindow(let id, let rawName):
-            guard let index = next.windows.firstIndex(where: { $0.id == id }) else { throw WorkspaceError.notFound }
+        case .renameSpace(let id, let rawName):
+            guard let index = next.spaces.firstIndex(where: { $0.id == id }) else { throw WorkspaceError.notFound }
             let name = try validatedName(rawName)
-            guard name != next.windows[index].name else { return unchanged() }
-            next.windows[index].name = name
-            next.windows[index].revision = next.revision
+            guard name != next.spaces[index].name else { return unchanged() }
+            next.spaces[index].name = name
+            next.spaces[index].revision = next.revision
         case .splitPane(let id, let axis, let available):
             guard let pane = next.panes[id], var tab = next.tabs[pane.tabID] else { throw WorkspaceError.notFound }
             guard available.columns >= (axis == .x ? 40 : 20), available.rows >= (axis == .y ? 10 : 5) else {
@@ -216,7 +216,7 @@ public actor WorkspaceStore {
             tab.revision = next.revision
             next.tabs[tab.id] = tab
             next.panes[newPaneID] = WorkspacePane(id: newPaneID, tabID: tab.id, sessionID: sessionID, profileID: pane.profileID)
-            let launch = next.windows.first { $0.id == tab.windowID }?.defaultLaunch ?? .shell(directory: nil)
+            let launch = next.spaces.first { $0.id == tab.spaceID }?.defaultLaunch ?? .shell(directory: nil)
             next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: launch, createdAt: now())
             createdPaneID = newPaneID
         case .resizeSplit(let tabID, let splitID, let ratio, let canvas):
@@ -244,7 +244,7 @@ public actor WorkspaceStore {
             guard let pane = next.panes[id], var tab = next.tabs[pane.tabID], let session = next.sessions[pane.sessionID] else { throw WorkspaceError.notFound }
             guard ![SessionState.starting, .running, .closing].contains(session.state) else { throw WorkspaceError.invalidTransition }
             guard let root = tab.root.removing(paneID: id) else {
-                // The single leaf owns its tab; reuse the tab/window cascade below.
+                // The single leaf owns its tab; reuse the tab/space cascade below.
                 return try execute(.deleteTab(id: tab.id), expectedRevision: expectedRevision)
             }
             next.panes.removeValue(forKey: id)
@@ -253,32 +253,32 @@ public actor WorkspaceStore {
             tab.root = root
             tab.revision = next.revision
             next.tabs[tab.id] = tab
-        case .createTab(let windowID):
-            guard let index = next.windows.firstIndex(where: { $0.id == windowID }) else { throw WorkspaceError.notFound }
+        case .createTab(let spaceID):
+            guard let index = next.spaces.firstIndex(where: { $0.id == spaceID }) else { throw WorkspaceError.notFound }
             let tabID = makeID(), paneID = makeID(), sessionID = makeID()
-            next.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
+            next.tabs[tabID] = WorkspaceTab(id: tabID, spaceID: spaceID, title: WorkspaceTab.defaultTitle, root: .pane(paneID), activePaneID: paneID, revision: next.revision)
             next.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
-            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: next.windows[index].defaultLaunch, createdAt: now())
-            next.windows[index].tabIDs.append(tabID)
-            next.windows[index].activeTabID = tabID
-            next.windows[index].revision = next.revision
+            next.sessions[sessionID] = WorkspaceSession(id: sessionID, launch: next.spaces[index].defaultLaunch, createdAt: now())
+            next.spaces[index].tabIDs.append(tabID)
+            next.spaces[index].activeTabID = tabID
+            next.spaces[index].revision = next.revision
             createdTabID = tabID
         case .selectTab(let id):
-            guard let tab = next.tabs[id], let index = next.windows.firstIndex(where: { $0.id == tab.windowID }) else { throw WorkspaceError.notFound }
-            guard next.windows[index].activeTabID != id else { return unchanged() }
-            next.windows[index].activeTabID = id
-            next.windows[index].revision = next.revision
-        case .reorderTabs(let windowID, let order):
-            guard let index = next.windows.firstIndex(where: { $0.id == windowID }) else { throw WorkspaceError.notFound }
-            let existing = next.windows[index].tabIDs
+            guard let tab = next.tabs[id], let index = next.spaces.firstIndex(where: { $0.id == tab.spaceID }) else { throw WorkspaceError.notFound }
+            guard next.spaces[index].activeTabID != id else { return unchanged() }
+            next.spaces[index].activeTabID = id
+            next.spaces[index].revision = next.revision
+        case .reorderTabs(let spaceID, let order):
+            guard let index = next.spaces.firstIndex(where: { $0.id == spaceID }) else { throw WorkspaceError.notFound }
+            let existing = next.spaces[index].tabIDs
             guard order.count == existing.count, Set(order).count == order.count, Set(order) == Set(existing) else {
-                throw WorkspaceError.invalidState("Tab order must contain each tab in this window exactly once")
+                throw WorkspaceError.invalidState("Tab order must contain each tab in this space exactly once")
             }
             guard existing != order else { return unchanged() }
-            next.windows[index].tabIDs = order
-            next.windows[index].revision = next.revision
+            next.spaces[index].tabIDs = order
+            next.spaces[index].revision = next.revision
         case .duplicateTab(let id):
-            guard let original = next.tabs[id], let index = next.windows.firstIndex(where: { $0.id == original.windowID }) else { throw WorkspaceError.notFound }
+            guard let original = next.tabs[id], let index = next.spaces.firstIndex(where: { $0.id == original.spaceID }) else { throw WorkspaceError.notFound }
             let newTabID = makeID()
             var mapping: [UUID: UUID] = [:]
             func clone(_ layout: PaneLayout) throws -> PaneLayout {
@@ -296,15 +296,15 @@ public actor WorkspaceStore {
             }
             let root = try clone(original.root)
             guard let activePane = mapping[original.activePaneID] else { throw WorkspaceError.notFound }
-            next.tabs[newTabID] = WorkspaceTab(id: newTabID, windowID: original.windowID, title: original.title, color: original.color, root: root, activePaneID: activePane, revision: next.revision)
-            let position = next.windows[index].tabIDs.firstIndex(of: id) ?? next.windows[index].tabIDs.count - 1
-            next.windows[index].tabIDs.insert(newTabID, at: position + 1)
-            next.windows[index].activeTabID = newTabID
-            next.windows[index].revision = next.revision
+            next.tabs[newTabID] = WorkspaceTab(id: newTabID, spaceID: original.spaceID, title: original.title, color: original.color, root: root, activePaneID: activePane, revision: next.revision)
+            let position = next.spaces[index].tabIDs.firstIndex(of: id) ?? next.spaces[index].tabIDs.count - 1
+            next.spaces[index].tabIDs.insert(newTabID, at: position + 1)
+            next.spaces[index].activeTabID = newTabID
+            next.spaces[index].revision = next.revision
             createdTabID = newTabID
         case .deleteTab(let id):
-            guard let tab = next.tabs[id], let index = next.windows.firstIndex(where: { $0.id == tab.windowID }),
-                let position = next.windows[index].tabIDs.firstIndex(of: id)
+            guard let tab = next.tabs[id], let index = next.spaces.firstIndex(where: { $0.id == tab.spaceID }),
+                let position = next.spaces[index].tabIDs.firstIndex(of: id)
             else { throw WorkspaceError.notFound }
             let paneIDs = tab.root.paneIDs
             let sessionIDs = paneIDs.compactMap { next.panes[$0]?.sessionID }
@@ -312,15 +312,15 @@ public actor WorkspaceStore {
             for session in sessionIDs { next.sessions.removeValue(forKey: session) }
             for pane in paneIDs { next.panes.removeValue(forKey: pane) }
             next.tabs.removeValue(forKey: id)
-            next.windows[index].tabIDs.remove(at: position)
-            if next.windows[index].tabIDs.isEmpty {
-                let windowID = next.windows.remove(at: index).id
-                if next.activeWindowID == windowID { next.activeWindowID = next.windows.isEmpty ? nil : next.windows[min(index, next.windows.count - 1)].id }
+            next.spaces[index].tabIDs.remove(at: position)
+            if next.spaces[index].tabIDs.isEmpty {
+                let spaceID = next.spaces.remove(at: index).id
+                if next.activeSpaceID == spaceID { next.activeSpaceID = next.spaces.isEmpty ? nil : next.spaces[min(index, next.spaces.count - 1)].id }
             } else {
-                if next.windows[index].activeTabID == id {
-                    next.windows[index].activeTabID = next.windows[index].tabIDs[min(position, next.windows[index].tabIDs.count - 1)]
+                if next.spaces[index].activeTabID == id {
+                    next.spaces[index].activeTabID = next.spaces[index].tabIDs[min(position, next.spaces[index].tabIDs.count - 1)]
                 }
-                next.windows[index].revision = next.revision
+                next.spaces[index].revision = next.revision
             }
         case .renameTab(let id, let rawTitle):
             guard var tab = next.tabs[id] else { throw WorkspaceError.notFound }
@@ -353,8 +353,8 @@ public actor WorkspaceStore {
         case .applyLayout(let target):
             // Reapplying an identical document changes nothing and keeps revisions.
             guard target != state else { return unchanged() }
-            let keptWindows = Set(next.windows.map(\.id)).isSubset(of: Set(target.windows.map(\.id)))
-            guard keptWindows, Set(next.tabs.keys).isSubset(of: Set(target.tabs.keys)), Set(next.panes.keys).isSubset(of: Set(target.panes.keys)),
+            let keptSpaces = Set(next.spaces.map(\.id)).isSubset(of: Set(target.spaces.map(\.id)))
+            guard keptSpaces, Set(next.tabs.keys).isSubset(of: Set(target.tabs.keys)), Set(next.panes.keys).isSubset(of: Set(target.panes.keys)),
                 Set(next.sessions.keys).isSubset(of: Set(target.sessions.keys))
             else { throw WorkspaceError.invalidState("A layout apply cannot delete resources") }
             for (id, session) in target.sessions {
@@ -371,18 +371,18 @@ public actor WorkspaceStore {
             for (id, pane) in target.panes {
                 if let current = next.panes[id], current.tabID != pane.tabID || current.sessionID != pane.sessionID { throw WorkspaceError.invalidTransition }
             }
-            for (id, tab) in target.tabs { if let current = next.tabs[id], current.windowID != tab.windowID { throw WorkspaceError.invalidTransition } }
-            guard target.activeWindowID == nil || target.windows.contains(where: { $0.id == target.activeWindowID }) else { throw WorkspaceError.invalidTransition }
-            for window in target.windows {
-                if let current = next.windows.first(where: { $0.id == window.id }), current.remoteHostID != window.remoteHostID {
-                    throw WorkspaceError.invalidState("A window's remote host never changes")
+            for (id, tab) in target.tabs { if let current = next.tabs[id], current.spaceID != tab.spaceID { throw WorkspaceError.invalidTransition } }
+            guard target.activeSpaceID == nil || target.spaces.contains(where: { $0.id == target.activeSpaceID }) else { throw WorkspaceError.invalidTransition }
+            for space in target.spaces {
+                if let current = next.spaces.first(where: { $0.id == space.id }), current.remoteHostID != space.remoteHostID {
+                    throw WorkspaceError.invalidState("A space's remote host never changes")
                 }
             }
             var applied = target
             // A layout written for local panes runs on the host when it lands in a remote workspace (FR-RW10).
-            for window in applied.windows {
-                guard let host = window.remoteHostID else { continue }
-                for paneID in window.tabIDs.flatMap({ applied.tabs[$0]?.root.paneIDs ?? [] }) {
+            for space in applied.spaces {
+                guard let host = space.remoteHostID else { continue }
+                for paneID in space.tabIDs.flatMap({ applied.tabs[$0]?.root.paneIDs ?? [] }) {
                     guard let sessionID = applied.panes[paneID]?.sessionID, next.sessions[sessionID] == nil,
                         case .shell(let directory)? = applied.sessions[sessionID]?.launch
                     else { continue }
@@ -390,8 +390,8 @@ public actor WorkspaceStore {
                 }
             }
             applied.revision = next.revision
-            for index in applied.windows.indices where next.windows.first(where: { $0.id == applied.windows[index].id }).map({ $0 != applied.windows[index] }) ?? true {
-                applied.windows[index].revision = next.revision
+            for index in applied.spaces.indices where next.spaces.first(where: { $0.id == applied.spaces[index].id }).map({ $0 != applied.spaces[index] }) ?? true {
+                applied.spaces[index].revision = next.revision
             }
             for (id, tab) in applied.tabs where next.tabs[id].map({ $0 != tab }) ?? true { applied.tabs[id]?.revision = next.revision }
             next = applied
@@ -423,7 +423,7 @@ public actor WorkspaceStore {
         }
         try next.validate()
         state = next
-        return WorkspaceCommandResult(snapshot: next, effects: effects, createdWindowID: createdWindowID, createdTabID: createdTabID, createdPaneID: createdPaneID)
+        return WorkspaceCommandResult(snapshot: next, effects: effects, createdSpaceID: createdSpaceID, createdTabID: createdTabID, createdPaneID: createdPaneID)
     }
 
     /// Runs `command` and an optional follow-up derived from its result as one
@@ -437,7 +437,7 @@ public actor WorkspaceStore {
         do {
             let second = try execute(next)
             return WorkspaceCommandResult(
-                snapshot: second.snapshot, effects: first.effects + second.effects, createdWindowID: first.createdWindowID, createdTabID: first.createdTabID,
+                snapshot: second.snapshot, effects: first.effects + second.effects, createdSpaceID: first.createdSpaceID, createdTabID: first.createdTabID,
                 createdPaneID: first.createdPaneID)
         } catch {
             state = saved
@@ -446,7 +446,7 @@ public actor WorkspaceStore {
     }
 
     private func unchanged() -> WorkspaceCommandResult {
-        WorkspaceCommandResult(snapshot: state, effects: [], createdWindowID: nil, createdTabID: nil, createdPaneID: nil)
+        WorkspaceCommandResult(snapshot: state, effects: [], createdSpaceID: nil, createdTabID: nil, createdPaneID: nil)
     }
 
     private func validatedName(_ name: String) throws -> String {

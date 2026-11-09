@@ -8,7 +8,7 @@ final class SessionSafetyTests: XCTestCase {
     func testInteractiveShellCloseAsksForConfirmationOnlyOnce() async throws {
         _ = NSApplication.shared
         let seed = try WorkspaceStore()
-        var state = try await seed.execute(.createWindow(name: "Interactive shell")).snapshot
+        var state = try await seed.execute(.createSpace(name: "Interactive shell")).snapshot
         let source = try XCTUnwrap(state.panes.values.first)
         state.sessions[source.sessionID]?.launch = .process(
             executable: "/bin/zsh", arguments: ["-f", "-i", "-c", "printf 'READY\\n'; read -r line"], directory: "/tmp")
@@ -41,7 +41,7 @@ final class SessionSafetyTests: XCTestCase {
     func testRestartRetainsExitedOutputUntilExplicitReplacement() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        await model.createWindow(fixture: true)
+        await model.createSpace(fixture: true)
         let deadline = Date().addingTimeInterval(5)
         while model.activeTerminal?.isRunning == true, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
         await model.waitForUpdates()
@@ -63,7 +63,7 @@ final class SessionSafetyTests: XCTestCase {
     func testCancelledQuitLeavesExistingSessionAndStructureUntouched() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        await model.createWindow(fixture: true)
+        await model.createSpace(fixture: true)
         let before = model.snapshot
         model.confirmCloseSessions = { _ in false }
         XCTAssertFalse(model.confirmAllSessionClosure())
@@ -78,7 +78,7 @@ final class SessionSafetyTests: XCTestCase {
     func testForceDeclineKeepsStructureAndDoesNotSilentlyKill() async throws {
         _ = NSApplication.shared
         let seed = try WorkspaceStore()
-        var state = try await seed.execute(.createWindow(name: "Controlled")).snapshot
+        var state = try await seed.execute(.createSpace(name: "Controlled")).snapshot
         let source = try XCTUnwrap(state.panes.values.first)
         state.sessions[source.sessionID]?.launch = .process(executable: "/bin/zsh", arguments: ["-f", "-c", "trap '' HUP TERM; printf 'READY\\n'; while :; do sleep 1; done"], directory: "/tmp")
         let model = AppWorkspaceModel(store: try WorkspaceStore(snapshot: state))

@@ -14,7 +14,7 @@ All requirements here are P2.
 | FR-DJ04 | The [skip rules](#skipped-directories) are applied before anything is stored, and again when the file is read. | Visiting `/tmp`, `~/.ssh` or a share under `/Volumes` adds nothing. |
 | FR-DJ05 | **Jump to Directory…** is a command palette scope, also on **View → Jump to Directory…** (⌘J, rebindable). Rows are ranked by [frecency](#ranking), the current machine's first, under a heading per machine. They're also found by the palette's general search, with the same ranking breaking ties between similar matches. | Two folders named `trellis`: typing `trellis` lists the more frecent first. A shortcut you had already bound to ⌘J keeps it, and Jump to Directory starts unbound. With no history, the scope explains how it fills up. |
 | FR-DJ06 | Return, ⌘Return and ⌥Return act as in [Jumping](#jumping). Text is typed into a pane only when its shell is verified idle at a prompt (FR-TK05); half-typed input at that prompt is cleared first, as when a task runs. | With `vim` open in the focused pane, Return opens a new tab and sends nothing to `vim`. |
-| FR-DJ07 | A path is only ever used on its own machine: a remote path is never checked or opened on this Mac, and a local path is never typed into a remote shell. | From a remote workspace pane, a local row opens a tab in a local window. |
+| FR-DJ07 | A path is only ever used on its own machine: a remote path is never checked or opened on this Mac, and a local path is never typed into a remote shell. | From a remote workspace pane, a local row opens a tab in a local space. |
 | FR-DJ08 | **Settings → Sessions → Remember directories** (on by default) stops recording new visits and keeps what's already there. **Clear Directory History…** asks first, then deletes every entry, the backup and any set-aside copy; a directory is listed again only after a shell moves to it. A file from a newer version, or one that can't be read, stays where it is and the clear reports it. Entries for a deleted host are hidden at once and dropped at the next launch, never while `hosts.json` can't be read. | Turned off, `cd` adds nothing, and existing rows still jump. After clearing, no history file remains in the state directory. |
 | FR-DJ09 | History is stored in `directory-history.json`, owner-only and replaced atomically, with the previous version kept as a backup. It holds no terminal output, typed input or secret. An unparsable file is set aside and reads as empty; one from a newer version, or one that can't be read, is never written over, and changes then last until quit. Writes are batched, at most one every 2 seconds, and flushed at quit. | The file is `0600`. A corrupt file becomes `directory-history.unreadable.<uuid>.json`. Twenty quick `cd`s write once. |
 
@@ -28,8 +28,8 @@ All requirements here are P2.
 
 **New tab there** means:
 
-- **A local row:** a tab in the current window if it's local, otherwise in the first local window, otherwise in a new window.
-- **A host's row:** a tab in that host's remote workspace window, otherwise a new remote workspace.
+- **A local row:** a tab in the current space if it's local, otherwise in the first local space, otherwise in a new space.
+- **A host's row:** a tab in that host's remote workspace space, otherwise a new remote workspace.
 
 A plain SSH pane is on neither kind of machine, because its paths aren't verified, so every row opens a new tab from it.
 
@@ -71,5 +71,5 @@ Matching ignores case, and works on whole path segments, so `/procfoo` is kept w
 ## Privacy
 
 - History is a record of where you've been, kept on this Mac only. It's on by default because the feature is empty without it, and FR-DJ08 turns it off or clears it.
-- It isn't included in diagnostics, in **Export Windows & Hosts** or in the automation API or CLI.
+- It isn't included in diagnostics, in **Export Spaces & Hosts** or in the automation API or CLI.
 - Paths from a remote workspace come from its shell's nonce-checked marks (FR-RW05). A hostile host could still report made-up paths, and those rows only ever act on that host (FR-DJ07).

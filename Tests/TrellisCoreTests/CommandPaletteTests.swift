@@ -48,15 +48,15 @@ final class CommandPaletteTests: XCTestCase {
     }
 
     func testEqualScoresFollowKindOrderAndSectionsFollowTheirBestRow() {
-        let window = UUID(), tab = UUID()
+        let space = UUID(), tab = UUID()
         let items = [
             CommandPaletteItem(target: .theme("t"), kind: .theme, title: "api"),
-            CommandPaletteItem(target: .window(window), kind: .window, title: "api"),
-            CommandPaletteItem(target: .tab(windowID: window, tabID: tab), kind: .tab, title: "api"),
+            CommandPaletteItem(target: .space(space), kind: .space, title: "api"),
+            CommandPaletteItem(target: .tab(spaceID: space, tabID: tab), kind: .tab, title: "api"),
             CommandPaletteItem(target: .host(UUID()), kind: .host, title: "api-prod")
         ]
         let sections = CommandPaletteSearch.sections(items: items, query: "api", scope: nil, recents: [])
-        XCTAssertEqual(sections.map(\.title), ["Tabs", "Windows", "Hosts", "Themes"])
+        XCTAssertEqual(sections.map(\.title), ["Tabs", "Spaces", "Hosts", "Themes"])
     }
 
     func testRecentUseBoostsAMatchAndLeadsTheEmptyQuery() {
@@ -73,17 +73,17 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(home[1].matches.map(\.item.title), ["Go to Tab…"])
     }
 
-    func testAScopeListsOneKindGroupedByWindow() {
+    func testAScopeListsOneKindGroupedBySpace() {
         let first = UUID(), second = UUID()
         let items = [
             CommandPaletteItem(target: .scope(.tabs), kind: .action, title: "Go to Tab…"),
-            CommandPaletteItem(target: .tab(windowID: first, tabID: UUID()), kind: .tab, title: "api", groupID: first.uuidString, groupTitle: "api-server"),
-            CommandPaletteItem(target: .tab(windowID: first, tabID: UUID()), kind: .tab, title: "logs", groupID: first.uuidString, groupTitle: "api-server"),
-            CommandPaletteItem(target: .tab(windowID: second, tabID: UUID()), kind: .tab, title: "dev", groupID: second.uuidString, groupTitle: "api-server"),
-            CommandPaletteItem(target: .window(first), kind: .window, title: "api-server")
+            CommandPaletteItem(target: .tab(spaceID: first, tabID: UUID()), kind: .tab, title: "api", groupID: first.uuidString, groupTitle: "api-server"),
+            CommandPaletteItem(target: .tab(spaceID: first, tabID: UUID()), kind: .tab, title: "logs", groupID: first.uuidString, groupTitle: "api-server"),
+            CommandPaletteItem(target: .tab(spaceID: second, tabID: UUID()), kind: .tab, title: "dev", groupID: second.uuidString, groupTitle: "api-server"),
+            CommandPaletteItem(target: .space(first), kind: .space, title: "api-server")
         ]
         let all = CommandPaletteSearch.sections(items: items, query: "", scope: .tabs, recents: [])
-        // Two windows with one name stay apart.
+        // Two spaces with one name stay apart.
         XCTAssertEqual(all.map(\.matches.count), [2, 1])
         XCTAssertEqual(all.map(\.title), ["api-server", "api-server"])
         XCTAssertEqual(titles(CommandPaletteSearch.sections(items: items, query: "lg", scope: .tabs, recents: [])), ["logs"])

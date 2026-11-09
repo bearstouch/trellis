@@ -82,12 +82,12 @@ final class ControlEndpointTests: XCTestCase {
         defer { server.stop() }
         let client = try SocketClient(path: discovery.socketPath)
         defer { client.close() }
-        let unauth = try client.request(#"{"jsonrpc":"2.0","id":1,"method":"window.list"}"#)
+        let unauth = try client.request(#"{"jsonrpc":"2.0","id":1,"method":"space.list"}"#)
         XCTAssertEqual(appCode(unauth), "AUTH_REQUIRED")
         _ = try client.request(#"{"jsonrpc":"2.0","id":2,"method":"auth.authenticate","params":{"token":"letmein"}}"#)
-        let listed = try client.request(#"{"jsonrpc":"2.0","id":3,"method":"window.list"}"#)
-        XCTAssertEqual((listed["result"] as? [String: Any])?["method"] as? String, "window.list")
-        XCTAssertEqual(handler.dispatches, ["window.list"])
+        let listed = try client.request(#"{"jsonrpc":"2.0","id":3,"method":"space.list"}"#)
+        XCTAssertEqual((listed["result"] as? [String: Any])?["method"] as? String, "space.list")
+        XCTAssertEqual(handler.dispatches, ["space.list"])
 
         // An over-limit frame gets a best-effort error, then the server closes.
         let flood = try SocketClient(path: discovery.socketPath)

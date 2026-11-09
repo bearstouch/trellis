@@ -9,7 +9,7 @@ final class TabManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow()
+        await model.createSpace()
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.activeTerminal)
@@ -29,7 +29,7 @@ final class TabManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let original = model.snapshot
         await model.finishTabRename(tab.id, draft: "Discard me", action: .cancel)
@@ -44,7 +44,7 @@ final class TabManagementTests: XCTestCase {
     func testColorLabelIsSpokenCopiedOnDuplicateAndClearable() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         XCTAssertNil(tab.color)
         await model.setTabColor(tab.id, color: .red)
@@ -102,21 +102,21 @@ final class TabManagementTests: XCTestCase {
         try result.snapshot.validate()
     }
 
-    func testTabOrderIsWindowLocal() async throws {
+    func testTabOrderIsSpaceLocal() async throws {
         let store = try WorkspaceStore()
-        let first = try await store.execute(.createWindow(name: "A"))
-        let a = try XCTUnwrap(first.createdWindowID)
-        _ = try await store.execute(.createTab(windowID: a))
-        let second = try await store.execute(.createWindow(name: "B"))
-        let b = try XCTUnwrap(second.createdWindowID)
-        let original = try await store.execute(.createTab(windowID: b)).snapshot
-        let aTabs = try XCTUnwrap(original.windows.first(where: { $0.id == a })?.tabIDs)
-        let after = try await store.execute(.reorderTabs(windowID: a, ids: aTabs.reversed())).snapshot
-        XCTAssertEqual(after.windows.first(where: { $0.id == b }), original.windows.first(where: { $0.id == b }))
-        XCTAssertEqual(after.activeWindowID, b)
+        let first = try await store.execute(.createSpace(name: "A"))
+        let a = try XCTUnwrap(first.createdSpaceID)
+        _ = try await store.execute(.createTab(spaceID: a))
+        let second = try await store.execute(.createSpace(name: "B"))
+        let b = try XCTUnwrap(second.createdSpaceID)
+        let original = try await store.execute(.createTab(spaceID: b)).snapshot
+        let aTabs = try XCTUnwrap(original.spaces.first(where: { $0.id == a })?.tabIDs)
+        let after = try await store.execute(.reorderTabs(spaceID: a, ids: aTabs.reversed())).snapshot
+        XCTAssertEqual(after.spaces.first(where: { $0.id == b }), original.spaces.first(where: { $0.id == b }))
+        XCTAssertEqual(after.activeSpaceID, b)
         XCTAssertEqual(after.tabs, original.tabs)
         for invalid in [[aTabs[0]], [aTabs[0], aTabs[0]], [aTabs[0], UUID()]] {
-            do { _ = try await store.execute(.reorderTabs(windowID: a, ids: invalid)); XCTFail("Invalid permutation accepted") } catch {}
+            do { _ = try await store.execute(.reorderTabs(spaceID: a, ids: invalid)); XCTFail("Invalid permutation accepted") } catch {}
             let unchanged = await store.snapshot()
             XCTAssertEqual(unchanged, after)
         }
@@ -152,11 +152,11 @@ final class TabManagementTests: XCTestCase {
     }
 
     @MainActor
-    func testClosingLastTabUsesConfirmationAndRemovesWindow() async throws {
+    func testClosingLastTabUsesConfirmationAndRemovesSpace() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow()
+        await model.createSpace()
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let terminal = try XCTUnwrap(model.activeTerminal)
         model.confirmCloseSessions = { _ in false }
@@ -181,7 +181,7 @@ final class TabManagementTests: XCTestCase {
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         let saved = await model.saveLaunchSettings(shell: "/bin/zsh", directory: "/tmp")
         XCTAssertTrue(saved)
-        await model.createWindow()
+        await model.createSpace()
         await model.waitForUpdates()
         let original = try XCTUnwrap(model.presentation.selectedTab)
         let originalTerminal = try XCTUnwrap(model.activeTerminal)
@@ -203,7 +203,7 @@ final class TabManagementTests: XCTestCase {
     }
 
     private func allIDs(_ state: WorkspaceSnapshot) -> Set<UUID> {
-        var ids = Set(state.windows.map(\.id) + Array(state.tabs.keys) + Array(state.panes.keys) + Array(state.sessions.keys))
+        var ids = Set(state.spaces.map(\.id) + Array(state.tabs.keys) + Array(state.panes.keys) + Array(state.sessions.keys))
         func visit(_ tree: PaneLayout) {
             if case .split(let id, _, _, let children) = tree { ids.insert(id); children.forEach(visit) }
         }
@@ -213,8 +213,8 @@ final class TabManagementTests: XCTestCase {
 
     private static func splitFixture() async throws -> WorkspaceSnapshot {
         let store = try WorkspaceStore()
-        var state = try await store.execute(.createWindow(name: "Project")).snapshot
-        let tabID = try XCTUnwrap(state.windows.first?.activeTabID)
+        var state = try await store.execute(.createSpace(name: "Project")).snapshot
+        let tabID = try XCTUnwrap(state.spaces.first?.activeTabID)
         let a = try XCTUnwrap(state.tabs[tabID]?.activePaneID), b = UUID(), c = UUID()
         for id in [b, c] {
             let session = UUID()

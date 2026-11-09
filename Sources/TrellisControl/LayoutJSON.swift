@@ -1,7 +1,7 @@
 import Foundation
 import TrellisCore
 
-/// Strict v1 layout parsing (the committed JSON Schema): unknown fields,
+/// Strict v1/v2 layout parsing (the committed JSON Schema): unknown fields,
 /// wrong types, and executable content such as `process` launches are errors.
 public struct LayoutParseError: Error, Equatable, Sendable {
     public let issues: [LayoutIssue]
@@ -10,7 +10,7 @@ public struct LayoutParseError: Error, Equatable, Sendable {
 }
 
 public enum LayoutJSON {
-    /// `allowRemoteHosts`: exports (FR-R02) may bind a window to a host reference; API layouts never can (FR-RW15).
+    /// `allowRemoteHosts`: exports (FR-R02) may bind a space to a host reference; API layouts never can (FR-RW15).
     public static func parse(_ value: JSONValue?, allowRemoteHosts: Bool = false) -> Result<LayoutDocument, LayoutParseError> {
         var issues: [LayoutIssue] = []
         func fail(_ key: String?, _ message: String) { issues.append(LayoutIssue(key: key, message)) }
@@ -74,12 +74,18 @@ public enum LayoutJSON {
                 return nil
             }
         }
-        guard let root = object(value, ["version", "windows"], ["version", "windows"], "The layout document") else { return .failure(LayoutParseError(issues: issues)) }
-        guard root["version"] == .number(1) else { return .failure(LayoutParseError(issues: issues + [LayoutIssue(key: nil, "Only layout version 1 is supported.")])) }
-        guard case .array(let rawWindows)? = root["windows"] else { return .failure(LayoutParseError(issues: issues + [LayoutIssue(key: nil, "windows must be an array.")])) }
-        var windows: [LayoutWindow] = []
-        for rawWindow in rawWindows.prefix(11) {
-            guard let fields = object(rawWindow, allowRemoteHosts ? ["key", "name", "tabs", "remoteHostId"] : ["key", "name", "tabs"], ["key", "name", "tabs"], "window"),
+        // Version 2 names the list `spaces`; version 1 (from before the rename) called it `windows` and is still read.
+        guard case .object(let top)? = value, case .number(let version)? = top["version"], version == 1 || version == 2 else {
+            if case .object(let top)? = value, top["version"] != nil { return .failure(LayoutParseError(issues: [LayoutIssue(key: nil, "Only layout versions 1 and 2 are supported.")])) }
+            _ = object(value, ["version", "spaces"], ["version", "spaces"], "The layout document")
+            return .failure(LayoutParseError(issues: issues))
+        }
+        let listKey = version == 1 ? "windows" : "spaces"
+        guard let root = object(value, ["version", listKey], ["version", listKey], "The layout document") else { return .failure(LayoutParseError(issues: issues)) }
+        guard case .array(let rawSpaces)? = root[listKey] else { return .failure(LayoutParseError(issues: issues + [LayoutIssue(key: nil, "\(listKey) must be an array.")])) }
+        var spaces: [LayoutSpace] = []
+        for rawSpace in rawSpaces.prefix(11) {
+            guard let fields = object(rawSpace, allowRemoteHosts ? ["key", "name", "tabs", "remoteHostId"] : ["key", "name", "tabs"], ["key", "name", "tabs"], "space"),
                 let key = string(fields["key"], nil, "key"), let name = string(fields["name"], key, "name")
             else { continue }
             var remoteHostID: UUID?
@@ -96,10 +102,10 @@ public enum LayoutJSON {
                 else { continue }
                 tabs.append(LayoutTab(key: tabKey, title: title, root: root))
             }
-            windows.append(LayoutWindow(key: key, name: name, tabs: tabs, remoteHostID: remoteHostID))
+            spaces.append(LayoutSpace(key: key, name: name, tabs: tabs, remoteHostID: remoteHostID))
         }
-        if rawWindows.count > 10 { fail(nil, "Use at most 10 windows.") }
-        return issues.isEmpty ? .success(LayoutDocument(windows: windows)) : .failure(LayoutParseError(issues: issues))
+        if rawSpaces.count > 10 { fail(nil, "Use at most 10 spaces.") }
+        return issues.isEmpty ? .success(LayoutDocument(spaces: spaces)) : .failure(LayoutParseError(issues: issues))
     }
 
     public static func issuesJSON(_ issues: [LayoutIssue]) -> JSONValue {

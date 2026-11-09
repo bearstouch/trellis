@@ -61,4 +61,4 @@ The buttons are icons only. Each has a tooltip and an accessibility label with i
 - The syntax check uses the first interpreter found in the folders above, which can differ from the one your shell finds on its PATH (for example macOS `/bin/bash` 3.2 versus a newer Homebrew bash).
 - `sh -n`, `bash -n` and `node --check` find syntax errors only; a script that parses can still fail when it runs.
 - Run needs shell integration and a local shell, like tasks.
-- The panel is shared by all windows in the sidebar and keeps one buffer.
+- The panel is shared by all spaces in the sidebar and keeps one buffer.

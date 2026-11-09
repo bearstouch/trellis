@@ -13,7 +13,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 
 | Action | Default |
 | --- | --- |
-| New window / new tab | ⌘N / ⌘T |
+| New space / new tab | ⌘N / ⌘T |
 | Close pane (closes a one-pane tab) / close tab | ⌘W / ⇧⌘W |
 | Split Left/Right / Split Top/Bottom | ⌘D / ⇧⌘D |
 | Focus pane left, right, up, down | ⌥⌘ + arrow |
@@ -21,7 +21,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Maximize / restore pane | ⇧⌘Return |
 | Select tab 1–9 | ⌘1 – ⌘9 |
 | Next / previous tab | ⇧⌘] / ⇧⌘[ |
-| Next / previous window | ⌃⌘] / ⌃⌘[ |
+| Next / previous space | ⌃⌘] / ⌃⌘[ |
 | Find in pane / next / previous | ⌘F / ⌘G / ⇧⌘G |
 | Previous / next prompt (shell integration) | ⌘↑ / ⌘↓ |
 | Clear the focused pane (FR-C07) | ⌘K |
@@ -35,7 +35,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Show / hide [agents](agents.md) in the right sidebar | ⌥⌘A |
 | Open / close the [command palette](command-palette.md) | ⇧⌘P |
 | [Jump to Directory…](directory-jump.md) | ⌘J |
-| Rename tab, rename window, delete window, show hosts | Unbound by default |
+| Rename tab, rename space, delete space, show hosts | Unbound by default |
 
 These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q), Undo and Redo, Cut, Copy, Paste, Select All, and Minimize (⌘M).
 
@@ -68,7 +68,7 @@ Scrollback, desktop notifications, command-finished notifications and GPU render
 ## Accessibility
 
 - Every primary operation can be done from the keyboard, and the focus location stays visible in the terminal, tabs, sidebar and dialogs.
-- VoiceOver can identify sidebar items, tabs, terminal panes, their status, and action labels. `WorkspaceAccessibility` provides them, for example "Window Project, 2 tabs, new output", "Tab Build, 1 of 2", and "Terminal Server, Exited (7), focused".
+- VoiceOver can identify sidebar items, tabs, terminal panes, their status, and action labels. `WorkspaceAccessibility` provides them, for example "Space Project, 2 tabs, new output", "Tab Build, 1 of 2", and "Terminal Server, Exited (7), focused".
 - Selection is shown by shape and weight as well as color: a semibold pane title and a tab underline. Terminal panes have no surrounding focus border; with several panes visible, the focused pane's header is marked and the others dimmed (FR-P05). Stopped, exited and failed panes show a text status. **Color is never the only signal.**
 - Trellis honors the system appearance, increased contrast, reduced motion and native text input.
 - While a tab name is being edited, terminal input is suspended, so keystrokes can't leak into a shell.

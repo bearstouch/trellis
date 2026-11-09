@@ -4,10 +4,10 @@ import XCTest
 final class DiagnosticsTests: XCTestCase {
     func testSanitizeErrorsAndDiagnostics() throws {
         var snapshot = WorkspaceSnapshot()
-        let window = UUID(), tab = UUID(), pane = UUID(), session = UUID()
-        snapshot.windows = [ManagedWindow(id: window, name: "SECRET-WINDOW", tabIDs: [tab], activeTabID: tab)]
-        snapshot.activeWindowID = window
-        snapshot.tabs[tab] = WorkspaceTab(id: tab, windowID: window, title: "SECRET-TAB", root: .pane(pane), activePaneID: pane)
+        let space = UUID(), tab = UUID(), pane = UUID(), session = UUID()
+        snapshot.spaces = [Space(id: space, name: "SECRET-SPACE", tabIDs: [tab], activeTabID: tab)]
+        snapshot.activeSpaceID = space
+        snapshot.tabs[tab] = WorkspaceTab(id: tab, spaceID: space, title: "SECRET-TAB", root: .pane(pane), activePaneID: pane)
         snapshot.panes[pane] = WorkspacePane(id: pane, tabID: tab, sessionID: session, title: "SECRET-PANE")
         snapshot.sessions[session] = WorkspaceSession(id: session, launch: .process(executable: "/bin/sh", arguments: ["-c", "export PASSWORD=hunter2"], directory: "/Users/me/secret-dir"))
         var report = DiagnosticsReport(appVersion: "1.0", systemVersion: "macOS 15", architecture: "arm64")
@@ -15,10 +15,10 @@ final class DiagnosticsTests: XCTestCase {
         report.savedHosts = 2
         report.recentErrorCodes = ["LAUNCH_FAILED", "token trl_ABCDEFGHIJK leaked", "hunter2"]
         let text = report.text
-        for secret in ["SECRET-WINDOW", "SECRET-TAB", "SECRET-PANE", "hunter2", "secret-dir", "/bin/sh", "trl_ABCDEFGHIJK", session.uuidString, pane.uuidString] {
+        for secret in ["SECRET-SPACE", "SECRET-TAB", "SECRET-PANE", "hunter2", "secret-dir", "/bin/sh", "trl_ABCDEFGHIJK", session.uuidString, pane.uuidString] {
             XCTAssertFalse(text.contains(secret), "Diagnostics contain \(secret)")
         }
-        XCTAssertTrue(text.contains("1 window(s), 1 tab(s), 1 pane(s)"))
+        XCTAssertTrue(text.contains("1 space(s), 1 tab(s), 1 pane(s)"))
         XCTAssertTrue(text.contains("stopped=1"))
         XCTAssertTrue(text.contains("LAUNCH_FAILED"), "Stable error codes are kept")
         XCTAssertTrue(text.contains("Not included:"), "The preview states what is excluded")

@@ -126,7 +126,7 @@ final class GitStatusRefreshTests: XCTestCase {
             runs.record(folder)
             return folder == "/repo" ? BrokerGitStatus(branch: "main", commit: nil, changes: 1, ahead: 0, behind: 0) : nil
         }
-        let created = await h.model.createWindow(name: "W", startSession: false)
+        let created = await h.model.createSpace(name: "W", startSession: false)
         _ = try XCTUnwrap(created)
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         _ = try await h.model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/sleep", arguments: ["30"], directory: "/tmp")))

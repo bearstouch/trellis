@@ -5,8 +5,8 @@ import XCTest
 final class WorkspaceStoreTests: XCTestCase {
     func testRejectDanglingReferences() async throws {
         let store = try WorkspaceStore()
-        let created = try await store.execute(.createWindow(name: "Project"))
-        let tabID = try XCTUnwrap(created.snapshot.windows.first?.activeTabID)
+        let created = try await store.execute(.createSpace(name: "Project"))
+        let tabID = try XCTUnwrap(created.snapshot.spaces.first?.activeTabID)
         do {
             _ = try await store.execute(.replaceTabLayout(id: tabID, root: .pane(UUID())))
             XCTFail("dangling pane was accepted")
@@ -18,8 +18,8 @@ final class WorkspaceStoreTests: XCTestCase {
     func testRejectMalformedSplit() async throws {
         for count in [0, 1, 3] {
             let store = try WorkspaceStore()
-            let initial = try await store.execute(.createWindow(name: "Project"))
-            let tabID = try XCTUnwrap(initial.snapshot.windows.first?.activeTabID)
+            let initial = try await store.execute(.createSpace(name: "Project"))
+            let tabID = try XCTUnwrap(initial.snapshot.spaces.first?.activeTabID)
             let paneID = try XCTUnwrap(initial.snapshot.tabs[tabID]?.activePaneID)
             let root = PaneLayout.split(id: UUID(), axis: .x, ratio: 0.5, children: Array(repeating: .pane(paneID), count: count))
             do { _ = try await store.execute(.replaceTabLayout(id: tabID, root: root)); XCTFail("accepted \(count) children") } catch { XCTAssertNotNil(error as? WorkspaceError) }
@@ -30,11 +30,11 @@ final class WorkspaceStoreTests: XCTestCase {
 
     func testRejectStaleRevision() async throws {
         let store = try WorkspaceStore()
-        let original = try await store.execute(.createWindow(name: "Project"), expectedRevision: 0)
-        let id = try XCTUnwrap(original.createdWindowID)
-        let changed = try await store.execute(.renameWindow(id: id, name: "Renamed"), expectedRevision: 1)
+        let original = try await store.execute(.createSpace(name: "Project"), expectedRevision: 0)
+        let id = try XCTUnwrap(original.createdSpaceID)
+        let changed = try await store.execute(.renameSpace(id: id, name: "Renamed"), expectedRevision: 1)
         do {
-            _ = try await store.execute(.renameWindow(id: id, name: "Stale"), expectedRevision: 1)
+            _ = try await store.execute(.renameSpace(id: id, name: "Stale"), expectedRevision: 1)
             XCTFail("accepted stale revision")
         } catch {
             XCTAssertEqual(error as? WorkspaceError, .conflict(expected: 1, actual: 2))
@@ -46,7 +46,7 @@ final class WorkspaceStoreTests: XCTestCase {
     func testFailedLaunchKeepsValidPane() async throws {
         let store = try WorkspaceStore()
         let service = WorkspaceCommandService(store: store)
-        let created = try await service.execute(.createWindow(name: "Project"))
+        let created = try await service.execute(.createSpace(name: "Project"))
         let pane = try XCTUnwrap(created.snapshot.panes.values.first)
         XCTAssertTrue(created.effects.isEmpty)
         let started = try await service.execute(.startSession(paneID: pane.id))
@@ -65,13 +65,13 @@ final class WorkspaceStoreTests: XCTestCase {
         let store = try WorkspaceStore()
         try await withThrowingTaskGroup(of: Void.self) { group in
             for n in 0..<20 {
-                group.addTask { _ = try await store.execute(.createWindow(name: "Window \(n)")) }
+                group.addTask { _ = try await store.execute(.createSpace(name: "Space \(n)")) }
             }
             try await group.waitForAll()
         }
         let snapshot = await store.snapshot()
         XCTAssertEqual(snapshot.revision, 20)
-        XCTAssertEqual(snapshot.windows.count, 20)
+        XCTAssertEqual(snapshot.spaces.count, 20)
         XCTAssertEqual(snapshot.panes.count, 20)
         try snapshot.validate()
     }
@@ -82,21 +82,21 @@ final class WorkspaceStoreTests: XCTestCase {
         orphan.sessions[session.id] = session
         XCTAssertThrowsError(try WorkspaceStore(snapshot: orphan))
         var selectedEmpty = WorkspaceSnapshot()
-        selectedEmpty.activeWindowID = UUID()
+        selectedEmpty.activeSpaceID = UUID()
         XCTAssertThrowsError(try WorkspaceStore(snapshot: selectedEmpty))
     }
 
     func testDuplicateIDGeneratorCannotCorruptState() async throws {
         let duplicate = UUID()
         let store = try WorkspaceStore(makeID: { duplicate })
-        do { _ = try await store.execute(.createWindow(name: "Project")); XCTFail("duplicate IDs accepted") } catch { XCTAssertNotNil(error as? WorkspaceError) }
+        do { _ = try await store.execute(.createSpace(name: "Project")); XCTFail("duplicate IDs accepted") } catch { XCTAssertNotNil(error as? WorkspaceError) }
         let snapshot = await store.snapshot()
         XCTAssertEqual(snapshot, WorkspaceSnapshot())
     }
 
     func testDuplicateCompletionAndStaleAttemptCannotChangeSession() async throws {
         let store = try WorkspaceStore()
-        let created = try await store.execute(.createWindow(name: "Project"))
+        let created = try await store.execute(.createSpace(name: "Project"))
         let pane = try XCTUnwrap(created.snapshot.panes.values.first)
         let started = try await store.execute(.startSession(paneID: pane.id))
         guard case .start(let request) = try XCTUnwrap(started.effects.first) else { return XCTFail("missing effect") }
@@ -114,33 +114,33 @@ final class WorkspaceStoreTests: XCTestCase {
 
     func testSnapshotCopyIsIsolatedAndSameNameDoesNotAdvanceRevision() async throws {
         let store = try WorkspaceStore()
-        let created = try await store.execute(.createWindow(name: "Project"))
-        let id = try XCTUnwrap(created.createdWindowID)
+        let created = try await store.execute(.createSpace(name: "Project"))
+        let id = try XCTUnwrap(created.createdSpaceID)
         var externalCopy = created.snapshot
-        externalCopy.windows.removeAll()
-        let same = try await store.execute(.renameWindow(id: id, name: " Project "))
+        externalCopy.spaces.removeAll()
+        let same = try await store.execute(.renameSpace(id: id, name: " Project "))
         XCTAssertEqual(same.snapshot, created.snapshot)
         let after = await store.snapshot()
-        XCTAssertEqual(after.windows.count, 1)
+        XCTAssertEqual(after.spaces.count, 1)
     }
 
     func testUIAndAutomationFacadesProduceEquivalentDomainState() async throws {
         // Reuse the same validated initial snapshot so comparison is exact.
         let seed = try WorkspaceStore()
-        let initial = try await seed.execute(.createWindow(name: "Project"))
-        let id = try XCTUnwrap(initial.createdWindowID)
+        let initial = try await seed.execute(.createSpace(name: "Project"))
+        let id = try XCTUnwrap(initial.createdSpaceID)
         let ui = WorkspaceCommandService(store: try WorkspaceStore(snapshot: initial.snapshot))
         let automation = WorkspaceCommandService(store: try WorkspaceStore(snapshot: initial.snapshot))
-        let a = try await ui.execute(.renameWindow(id: id, name: "Renamed"), expectedRevision: 1)
-        let b = try await automation.execute(.renameWindow(id: id, name: "Renamed"), expectedRevision: 1)
+        let a = try await ui.execute(.renameSpace(id: id, name: "Renamed"), expectedRevision: 1)
+        let b = try await automation.execute(.renameSpace(id: id, name: "Renamed"), expectedRevision: 1)
         XCTAssertEqual(a, b)
     }
 
     func testValidOrderedTabsAndBinarySplitsCanBeLoadedAndUpdated() async throws {
         let initial = makeSplitWorkspace()
         let store = try WorkspaceStore(snapshot: initial)
-        let window = try XCTUnwrap(initial.windows.first)
-        let tab = try XCTUnwrap(initial.tabs[window.tabIDs[1]])
+        let space = try XCTUnwrap(initial.spaces.first)
+        let tab = try XCTUnwrap(initial.tabs[space.tabIDs[1]])
         guard case .split(let id, let axis, _, let children) = tab.root else {
             return XCTFail("fixture must contain a split")
         }
@@ -149,7 +149,7 @@ final class WorkspaceStoreTests: XCTestCase {
                 id: tab.id, root: .split(id: id, axis: axis, ratio: 0.7, children: children.reversed())
             ), expectedRevision: 0)
         try changed.snapshot.validate()
-        XCTAssertEqual(changed.snapshot.windows.first?.tabIDs, window.tabIDs)
+        XCTAssertEqual(changed.snapshot.spaces.first?.tabIDs, space.tabIDs)
         XCTAssertEqual(changed.snapshot.tabs[tab.id]?.root.paneIDs, children.reversed().flatMap(\.paneIDs))
         XCTAssertEqual(changed.snapshot.tabs[tab.id]?.activePaneID, tab.activePaneID)
         XCTAssertEqual(changed.snapshot.tabs[tab.id]?.revision, 1)
@@ -159,7 +159,7 @@ final class WorkspaceStoreTests: XCTestCase {
 
     func testRejectsIncorrectOwnershipSharedSessionsAndDuplicateSplitIDs() throws {
         let initial = makeSplitWorkspace()
-        let tabIDs = try XCTUnwrap(initial.windows.first?.tabIDs)
+        let tabIDs = try XCTUnwrap(initial.spaces.first?.tabIDs)
         let firstTab = try XCTUnwrap(initial.tabs[tabIDs[0]])
         let secondTab = try XCTUnwrap(initial.tabs[tabIDs[1]])
         let pane = try XCTUnwrap(initial.panes[firstTab.activePaneID])
@@ -183,20 +183,20 @@ final class WorkspaceStoreTests: XCTestCase {
         duplicateSplit.tabs[secondTab.id]?.root = .split(id: firstID, axis: axis, ratio: ratio, children: children)
         XCTAssertThrowsError(try WorkspaceStore(snapshot: duplicateSplit))
 
-        var emptyWindow = initial
-        emptyWindow.windows[0].tabIDs = []
-        XCTAssertThrowsError(try WorkspaceStore(snapshot: emptyWindow))
+        var emptySpace = initial
+        emptySpace.spaces[0].tabIDs = []
+        XCTAssertThrowsError(try WorkspaceStore(snapshot: emptySpace))
     }
 
     func testConcurrentExpectedRevisionCommandsCommitExactlyOnce() async throws {
         let store = try WorkspaceStore()
-        let result = try await store.execute(.createWindow(name: "Project"))
-        let id = try XCTUnwrap(result.createdWindowID)
+        let result = try await store.execute(.createSpace(name: "Project"))
+        let id = try XCTUnwrap(result.createdSpaceID)
         let successCount = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
             for index in 0..<20 {
                 group.addTask {
                     do {
-                        _ = try await store.execute(.renameWindow(id: id, name: "Window \(index)"), expectedRevision: 1)
+                        _ = try await store.execute(.renameSpace(id: id, name: "Space \(index)"), expectedRevision: 1)
                         return true
                     } catch { return false }
                 }
@@ -208,7 +208,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let after = await store.snapshot()
         XCTAssertEqual(successCount, 1)
         XCTAssertEqual(after.revision, 2)
-        XCTAssertEqual(after.windows[0].revision, 2)
+        XCTAssertEqual(after.spaces[0].revision, 2)
         try after.validate()
     }
 
@@ -251,7 +251,7 @@ final class WorkspaceStoreTests: XCTestCase {
 
     private func makeSplitWorkspace() -> WorkspaceSnapshot {
         var snapshot = WorkspaceSnapshot()
-        let windowID = UUID()
+        let spaceID = UUID()
         var tabIDs: [UUID] = []
         for title in ["First", "Second"] {
             let tabID = UUID()
@@ -263,14 +263,14 @@ final class WorkspaceStoreTests: XCTestCase {
                 paneIDs.append(paneID)
             }
             snapshot.tabs[tabID] = WorkspaceTab(
-                id: tabID, windowID: windowID, title: title,
+                id: tabID, spaceID: spaceID, title: title,
                 root: .split(id: UUID(), axis: .x, ratio: 0.5, children: paneIDs.map(PaneLayout.pane)),
                 activePaneID: paneIDs[0]
             )
             tabIDs.append(tabID)
         }
-        snapshot.windows = [ManagedWindow(id: windowID, name: "Project", tabIDs: tabIDs, activeTabID: tabIDs[0])]
-        snapshot.activeWindowID = windowID
+        snapshot.spaces = [Space(id: spaceID, name: "Project", tabIDs: tabIDs, activeTabID: tabIDs[0])]
+        snapshot.activeSpaceID = spaceID
         return snapshot
     }
 }

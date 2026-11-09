@@ -52,7 +52,7 @@ final class AgentLaunchFlowTests: XCTestCase {
         let saved = await model.saveLaunchSettings(shell: shell, directory: project)
         XCTAssertTrue(saved)
         model.agentCatalog = AgentCatalogSnapshot(definitions: [fake, missing])
-        _ = await model.createWindow(name: "W")
+        _ = await model.createSpace(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         return (model, pane)
@@ -126,7 +126,7 @@ final class AgentLaunchFlowTests: XCTestCase {
         await model.selectTab(firstTab)
         model.receiveAgentEvent(sessionID: session, event: "done")
         XCTAssertEqual(model.agentBadge(tabID: tab)?.state, .done, "Finished out of view: Done shows")
-        XCTAssertEqual(model.tabPreviews(windowID: try XCTUnwrap(model.snapshot.activeWindowID)).first { $0.id == tab }?.agentState, .done)
+        XCTAssertEqual(model.tabPreviews(spaceID: try XCTUnwrap(model.snapshot.activeSpaceID)).first { $0.id == tab }?.agentState, .done)
         await model.selectTab(tab)
         XCTAssertNil(model.agentBadge(tabID: tab), "Seeing it clears Done")
 
@@ -137,7 +137,7 @@ final class AgentLaunchFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testAgentNotificationsNameTheWindowAndTab() async throws {
+    func testAgentNotificationsNameTheSpaceAndTab() async throws {
         let (model, source) = try await makeModel()
         defer { cleanUp(model) }
         let notifier = AgentNotifications()

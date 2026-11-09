@@ -156,7 +156,7 @@ final class MCPListenerTests: XCTestCase {
     func testServerAppliesSettingsAndServesMCP() async throws {
         let store = GrantStore(url: nil, secrets: MCPSecrets())
         let handler = AuthorizingControlHandler(grants: store, domain: MCPFakeDomain())
-        let token = try await store.create(name: "e2e", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600).token
+        let token = try await store.create(name: "e2e", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600).token
         let server = MCPServer(handler: handler, serverVersion: "test")
         XCTAssertEqual(server.apply(RemoteControlSettings(mcpEnabled: false)), .stopped)
         // Port 0 is not a valid setting; find a free port first.

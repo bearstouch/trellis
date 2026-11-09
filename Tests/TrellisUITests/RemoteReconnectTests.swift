@@ -158,8 +158,8 @@ final class RemoteReconnectTests: XCTestCase {
     func testTabStaysDownUntilItsPanesAreBack() async throws {
         let terminal = try await openWithPendingOutput("red")
         let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
-        let localWindow = await model.createWindow(name: "Local", startSession: false)
-        let localTab = try XCTUnwrap(model.snapshot.windows.first { $0.id == localWindow }?.activeTabID)
+        let localSpace = await model.createSpace(name: "Local", startSession: false)
+        let localTab = try XCTUnwrap(model.snapshot.spaces.first { $0.id == localSpace }?.activeTabID)
         XCTAssertNil(model.tabLinkDown(tabID: tab), "Connected")
 
         try failNextAttempts()

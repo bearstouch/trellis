@@ -44,7 +44,7 @@ struct ThemePreviewView: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("WINDOWS").font(.system(size: 9)).foregroundStyle(ui(.mutedForeground))
+                    Text("SPACES").font(.system(size: 9)).foregroundStyle(ui(.mutedForeground))
                     Text("Workspace").font(.system(size: 11, weight: .semibold)).foregroundStyle(ui(.foreground))
                     Text("Local").font(.system(size: 11)).foregroundStyle(ui(.accent))
                     Spacer()

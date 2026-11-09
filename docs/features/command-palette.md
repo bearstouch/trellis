@@ -1,6 +1,6 @@
 # Command palette
 
-The command palette is one searchable list of everything Trellis can do and everywhere you can go. Open it with **View → Command Palette…** (⇧⌘P, rebindable). Type a few letters to run any action or to jump to a window, tab, pane, saved host, task or theme, without remembering its shortcut or menu.
+The command palette is one searchable list of everything Trellis can do and everywhere you can go. Open it with **View → Command Palette…** (⇧⌘P, rebindable). Type a few letters to run any action or to jump to a space, tab, pane, saved host, task or theme, without remembering its shortcut or menu.
 
 It floats over the workspace: 640 points wide, centered, a little below the title bar, over a dimmed backdrop. Results update as you type.
 
@@ -12,11 +12,11 @@ All requirements here are P2.
 | --- | --- | --- |
 | FR-CP01 | ⇧⌘P (rebindable, **View → Command Palette…**) opens the palette over the workspace with its field focused; the same shortcut, Esc or a click on the backdrop closes it. | Opening focuses the field. Closing returns keyboard focus to the pane, or the scratchpad editor, that had it. A shortcut you had already bound to ⇧⌘P keeps it, and the palette starts unbound. |
 | FR-CP02 | While the palette is open, terminal input is suspended and workspace menu shortcuts other than the palette's own are disabled. | Typing in the palette never reaches a shell, and ⌘D or ⌘1 does nothing behind it. Every pane takes input again after it closes. |
-| FR-CP03 | Items: every keyboard-shortcut action that its menu would enable right now (with its current shortcut), every window, every tab and pane in every window, every saved host, the focused pane's project and detected tasks while that pane can run one, every installed theme, and the [directory history](directory-jump.md). Settings… and Welcome Tour are listed too. | An action the menu shows as disabled (Find Next with no terminal, Next Tab with one tab) isn't listed. A renamed shortcut shows its new chord. |
-| FR-CP04 | Fuzzy matching, case-insensitive: the letters must appear in order. Prefix, word-start and consecutive matches rank higher; gaps rank lower. A match in the title outranks one in an alias keyword or the subtitle. Recently used items get a small boost, and so do frecent directories (FR-DJ05); equal scores follow the kind order Actions, Tabs, Windows, Panes, Hosts, Tasks, Themes, Directories. Results are grouped by kind, and groups are ordered by their best match. The top result is selected. A query of more than 64 letters matches nothing, and only the first 512 characters of a title, alias or subtitle are searched, so typing stays responsive. | “spl” lists Split Left/Right and Split Top/Bottom first, with the matched letters bold and underlined. “split” also finds Maximize / Restore Pane through its alias. Gibberish shows **No matches** and the result count reads 0. |
+| FR-CP03 | Items: every keyboard-shortcut action that its menu would enable right now (with its current shortcut), every space, every tab and pane in every space, every saved host, the focused pane's project and detected tasks while that pane can run one, every installed theme, and the [directory history](directory-jump.md). Settings… and Welcome Tour are listed too. | An action the menu shows as disabled (Find Next with no terminal, Next Tab with one tab) isn't listed. A renamed shortcut shows its new chord. |
+| FR-CP04 | Fuzzy matching, case-insensitive: the letters must appear in order. Prefix, word-start and consecutive matches rank higher; gaps rank lower. A match in the title outranks one in an alias keyword or the subtitle. Recently used items get a small boost, and so do frecent directories (FR-DJ05); equal scores follow the kind order Actions, Tabs, Spaces, Panes, Hosts, Tasks, Themes, Directories. Results are grouped by kind, and groups are ordered by their best match. The top result is selected. A query of more than 64 letters matches nothing, and only the first 512 characters of a title, alias or subtitle are searched, so typing stays responsive. | “spl” lists Split Left/Right and Split Top/Bottom first, with the matched letters bold and underlined. “split” also finds Maximize / Restore Pane through its alias. Gibberish shows **No matches** and the result count reads 0. |
 | FR-CP05 | With an empty field: up to 3 recently used items that still exist, then suggestions (the scopes and New Tab). Recents are kept in memory as item IDs for this launch only, never persisted, and the query is never stored or logged. | After running Split Left/Right, it appears under **Recent** the next time. Closing a tab removes it from Recent. |
-| FR-CP06 | Scopes: **Go to Window…**, **Go to Tab…**, **Go to Pane…**, **Connect to Host…**, **Run Task…**, **Use Theme…** and **Jump to Directory…** list one kind only, grouped by window where that applies. Tab or Return on a scope row enters it; ⌫ in an empty field leaves it. | Go to Tab lists every tab of every window under its window's name, with the current window first. |
-| FR-CP07 | Return runs the selected item through the same path as its menu item or control: an action runs as if chosen from its menu, a window, tab or pane is selected and focused, a host connects in a new tab (⌘Return: new window; ⌥Return: split), a task runs in the focused pane (the `launch.json` trust review still applies), a theme is applied and a directory is jumped to (FR-DJ06). The palette closes first. | Each kind does the same as its menu command or control, including errors and reviews. A failed action leaves the workspace as it was. |
+| FR-CP06 | Scopes: **Go to Space…**, **Go to Tab…**, **Go to Pane…**, **Connect to Host…**, **Run Task…**, **Use Theme…** and **Jump to Directory…** list one kind only, grouped by space where that applies. Tab or Return on a scope row enters it; ⌫ in an empty field leaves it. | Go to Tab lists every tab of every space under its space's name, with the current space first. |
+| FR-CP07 | Return runs the selected item through the same path as its menu item or control: an action runs as if chosen from its menu, a space, tab or pane is selected and focused, a host connects in a new tab (⌘Return: new space; ⌥Return: split), a task runs in the focused pane (the `launch.json` trust review still applies), a theme is applied and a directory is jumped to (FR-DJ06). The palette closes first. | Each kind does the same as its menu command or control, including errors and reviews. A failed action leaves the workspace as it was. |
 | FR-CP08 | Moving the selection onto a theme previews it in the workspace (opening the palette with a theme on top doesn't); Esc or moving to another item restores the previous colors exactly. The palette never touches a preview that Settings started. | Arrowing through themes and pressing Esc leaves the appearance settings and effective theme unchanged. |
 
 ## Keyboard
@@ -26,7 +26,7 @@ All requirements here are P2.
 | ⇧⌘P | Open or close |
 | ↑ ↓, ⌃P ⌃N | Move the selection (wraps) |
 | Return | Run the selected item |
-| ⌘Return, ⌥Return | Host: connect in a new window, or in a split. Directory: open in a new tab, or in a split |
+| ⌘Return, ⌥Return | Host: connect in a new space, or in a split. Directory: open in a new tab, or in a split |
 | Tab | Enter the selected scope |
 | ⌫ in an empty field | Leave the scope |
 | ⌘⌫ | Clear the field |
@@ -37,9 +37,9 @@ All requirements here are P2.
 | Kind | Subtitle | Return |
 | --- | --- | --- |
 | Action | Menu (File, Edit, View, Pane, Window) | Same as the menu item |
-| Window | Number of tabs, “current” | Select the window |
-| Tab | Window › position · status | Select the window and the tab |
-| Pane | Window › tab · status | Show and focus the pane |
+| Space | Number of tabs, “current” | Select the space |
+| Tab | Space › position · status | Select the space and the tab |
+| Pane | Space › tab · status | Show and focus the pane |
 | Host | `user@destination`, port | Connect in a new tab |
 | Task | `.trellis/launch.json` or where it was detected, with the command | Run in the focused pane |
 | Theme | Light or Dark, “current” | Use the theme |

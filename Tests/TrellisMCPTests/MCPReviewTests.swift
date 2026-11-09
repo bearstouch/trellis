@@ -10,7 +10,7 @@ final class MCPReviewTests: XCTestCase {
     private lazy var endpoint = MCPEndpoint(handler: handler, serverVersion: "test", loopbackOnly: true)
 
     private func grant() async throws -> (AutomationGrant, String) {
-        let created = try await store.create(name: "agent", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let created = try await store.create(name: "agent", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         return (created.grant, created.token)
     }
 

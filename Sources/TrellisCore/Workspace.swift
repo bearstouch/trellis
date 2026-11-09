@@ -41,7 +41,7 @@ public enum SessionState: String, Codable, Sendable {
     case stopped, starting, running, closing, exited, failed
 }
 
-public struct ManagedWindow: Identifiable, Equatable, Codable, Sendable {
+public struct Space: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public var name: String
     public var tabIDs: [UUID]
@@ -49,13 +49,16 @@ public struct ManagedWindow: Identifiable, Equatable, Codable, Sendable {
     public var revision: UInt64
     /// A remote workspace (FR-RW01): every session in it is a `.remoteShell` on this saved host.
     public var remoteHostID: UUID?
+    /// The library project this space was loaded from (FR-W08); nil for a plain space. Never resolved here: a deleted
+    /// project leaves the space as it is.
+    public var projectID: UUID?
 
-    public init(id: UUID, name: String, tabIDs: [UUID], activeTabID: UUID, revision: UInt64 = 0, remoteHostID: UUID? = nil) {
+    public init(id: UUID, name: String, tabIDs: [UUID], activeTabID: UUID, revision: UInt64 = 0, remoteHostID: UUID? = nil, projectID: UUID? = nil) {
         self.id = id; self.name = name; self.tabIDs = tabIDs
-        self.activeTabID = activeTabID; self.revision = revision; self.remoteHostID = remoteHostID
+        self.activeTabID = activeTabID; self.revision = revision; self.remoteHostID = remoteHostID; self.projectID = projectID
     }
 
-    /// What a new pane in this window runs.
+    /// What a new pane in this space runs.
     public var defaultLaunch: SessionLaunch { remoteHostID.map { .remoteShell(hostID: $0, directory: nil) } ?? .shell(directory: nil) }
 }
 
@@ -71,23 +74,34 @@ public struct WorkspaceTab: Identifiable, Equatable, Codable, Sendable {
     /// A tab with this title shows an automatic title from shell integration (FR-SI05).
     public static let defaultTitle = "Terminal"
     public let id: UUID
-    public let windowID: UUID
+    public let spaceID: UUID
     public var title: String
     public var color: TabColor?
     public var root: PaneLayout
     public var activePaneID: UUID
     public var revision: UInt64
+    /// The tab's key in its space's project layout (FR-W08). Nil is a temporary tab: one the project doesn't define.
+    public var projectKey: String?
 
-    public init(id: UUID, windowID: UUID, title: String, color: TabColor? = nil, root: PaneLayout, activePaneID: UUID, revision: UInt64 = 0) {
-        self.id = id; self.windowID = windowID; self.title = title; self.color = color
-        self.root = root; self.activePaneID = activePaneID; self.revision = revision
+    public init(
+        id: UUID, spaceID: UUID, title: String, color: TabColor? = nil, root: PaneLayout, activePaneID: UUID, revision: UInt64 = 0, projectKey: String? = nil
+    ) {
+        self.id = id; self.spaceID = spaceID; self.title = title; self.color = color
+        self.root = root; self.activePaneID = activePaneID; self.revision = revision; self.projectKey = projectKey
     }
 
-    private enum CodingKeys: String, CodingKey { case id, windowID, title, color, root, activePaneID, revision }
+    private enum CodingKeys: String, CodingKey { case id, spaceID, title, color, root, activePaneID, revision, projectKey }
+    /// Workspace schema 3 and older named the owner `windowID`.
+    private enum LegacyKeys: String, CodingKey { case windowID }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
-        windowID = try values.decode(UUID.self, forKey: .windowID)
+        if let space = try values.decodeIfPresent(UUID.self, forKey: .spaceID) {
+            spaceID = space
+        } else {
+            spaceID = try decoder.container(keyedBy: LegacyKeys.self).decode(UUID.self, forKey: .windowID)
+        }
+        projectKey = try values.decodeIfPresent(String.self, forKey: .projectKey)
         title = try values.decode(String.self, forKey: .title)
         // A label from a newer build is dropped, never a reason to treat the workspace as corrupt.
         color = (try? values.decodeIfPresent(String.self, forKey: .color)).flatMap { $0.flatMap(TabColor.init(rawValue:)) }
@@ -141,8 +155,8 @@ public enum WorkspaceError: Error, Equatable, Sendable {
 
 public struct WorkspaceSnapshot: Equatable, Sendable {
     public var revision: UInt64 = 0
-    public var windows: [ManagedWindow] = []
-    public var activeWindowID: UUID?
+    public var spaces: [Space] = []
+    public var activeSpaceID: UUID?
     public var tabs: [UUID: WorkspaceTab] = [:]
     public var panes: [UUID: WorkspacePane] = [:]
     public var sessions: [UUID: WorkspaceSession] = [:]
@@ -208,23 +222,23 @@ public struct WorkspaceSnapshot: Equatable, Sendable {
                 for child in children { try visit(child, tabID: tabID, remoteHostID: remoteHostID, depth: depth + 1) }
             }
         }
-        if windows.isEmpty {
-            guard activeWindowID == nil else { throw WorkspaceError.invalidState("Empty workspace has selection") }
+        if spaces.isEmpty {
+            guard activeSpaceID == nil else { throw WorkspaceError.invalidState("Empty workspace has selection") }
         } else {
-            guard windows.contains(where: { $0.id == activeWindowID }) else {
-                throw WorkspaceError.invalidState("Missing active window")
+            guard spaces.contains(where: { $0.id == activeSpaceID }) else {
+                throw WorkspaceError.invalidState("Missing active space")
             }
         }
         guard panes.count <= 100 else { throw WorkspaceError.invalidState("Pane capacity exceeds 100") }
-        for window in windows {
-            try insert(window.id)
-            guard nameIsValid(window.name), !window.tabIDs.isEmpty,
-                window.tabIDs.contains(window.activeTabID), window.revision <= revision
+        for space in spaces {
+            try insert(space.id)
+            guard nameIsValid(space.name), !space.tabIDs.isEmpty,
+                space.tabIDs.contains(space.activeTabID), space.revision <= revision
             else {
-                throw WorkspaceError.invalidState("Invalid window metadata or selection")
+                throw WorkspaceError.invalidState("Invalid space metadata or selection")
             }
-            for id in window.tabIDs {
-                guard let tab = tabs[id], tab.id == id, tab.windowID == window.id,
+            for id in space.tabIDs {
+                guard let tab = tabs[id], tab.id == id, tab.spaceID == space.id,
                     referencedTabs.insert(id).inserted
                 else {
                     throw WorkspaceError.invalidState("Missing, duplicate, or incorrectly owned tab")
@@ -233,7 +247,7 @@ public struct WorkspaceSnapshot: Equatable, Sendable {
                 guard nameIsValid(tab.title), tab.revision <= revision else {
                     throw WorkspaceError.invalidState("Invalid tab metadata")
                 }
-                try visit(tab.root, tabID: id, remoteHostID: window.remoteHostID, depth: 0)
+                try visit(tab.root, tabID: id, remoteHostID: space.remoteHostID, depth: 0)
                 guard tab.root.paneIDs.contains(tab.activePaneID) else {
                     throw WorkspaceError.invalidState("Missing active pane")
                 }
