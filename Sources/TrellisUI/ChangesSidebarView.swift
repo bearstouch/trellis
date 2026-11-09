@@ -32,7 +32,7 @@ struct ChangesSidebarView: View {
             Divider().overlay(model.separatorOverlay)
             content
         }
-        .background(model.themeColor(.surface))
+        .background(model.chromeFill(.surface))
         .accessibilityElement(children: .contain).accessibilityLabel("Changes")
         .animation(.easeOut(duration: 0.15), value: model.gitChanges.status)
         .task(id: refreshKey) { await model.refreshGitChanges(paneID: paneID) }

@@ -13,7 +13,7 @@ struct SidebarDock: View {
             Spacer(minLength: 0)
         }
         .padding(.top, 6).frame(width: 40).frame(maxHeight: .infinity)
-        .background(model.themeColor(.sidebarBackground))
+        .background(model.chromeFill(.sidebarBackground))
         .overlay(alignment: .leading) { model.themeColor(.border).frame(width: 1).accessibilityHidden(true) }
         .accessibilityElement(children: .contain).accessibilityLabel("Sidebar views")
     }
@@ -141,7 +141,7 @@ struct AgentsSidebarView: View {
                 Spacer()
             }.controlSize(.small).padding(.horizontal, 12).padding(.vertical, 8)
         }
-        .background(model.themeColor(.surface))
+        .background(model.chromeFill(.surface))
         .accessibilityElement(children: .contain).accessibilityLabel("Agents")
         // The install status is for the focused pane's machine; a host's is learned when a launch finds it missing.
         .task(id: model.presentation.activePane?.id) {
@@ -160,12 +160,16 @@ struct AgentsSidebarView: View {
                     Text("· \(target.machine)").font(.system(size: 12)).foregroundStyle(muted).lineLimit(1).fixedSize()
                 }.accessibilityElement(children: .combine)
             }
-            Picker("Open agent in", selection: $model.agentPlacement) {
+            // This Tab (FR-AG17) only while the focused tab has no agent; New Tab stands in for it meanwhile.
+            let placement = Binding(get: { model.effectiveAgentPlacement }, set: { model.agentPlacement = $0 })
+            Picker("Open agent in", selection: placement) {
                 Text("New Tab").tag(AppWorkspaceModel.AgentPlacement.tab)
-                Text("Split Beside Pane").tag(AppWorkspaceModel.AgentPlacement.split)
+                if model.canLaunchAgentInFocusedTab { Text("This Tab").tag(AppWorkspaceModel.AgentPlacement.currentTab) }
+                Text("Split").tag(AppWorkspaceModel.AgentPlacement.split)
             }
             .pickerStyle(.segmented).labelsHidden().controlSize(.small)
-            .help("Where Open starts the agent; ⌥-click Open for the other")
+            .help(
+                "Where ▶ starts the agent: a new tab, this tab's focused pane in place of its idle shell, or a split beside it. ⌥-click ▶ for a split, or a new tab from Split")
         }
     }
 
@@ -181,16 +185,21 @@ struct AgentsSidebarView: View {
                 if let status { Text(status).font(.caption2).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1) }
             }.accessibilityElement(children: .combine)
             Spacer(minLength: 4)
-            Button(missing ? "Install…" : "Open") { launch(agent.id, resume: false) }
-                .controlSize(.small).help(missing ? "Offer \(agent.name)'s installer" : "Open \(agent.name) (⌥-click for the other placement)")
-                .accessibilityLabel(missing ? "Install \(agent.name)" : "Open \(agent.name)")
+            Button {
+                launch(agent.id, resume: false)
+            } label: {
+                // A missing agent keeps the word: a lone download icon wouldn't say an installer is offered.
+                if missing { Text("Install…") } else { Image(systemName: "play.fill") }
+            }
+            .buttonStyle(.borderless).help(missing ? "Offer \(agent.name)'s installer" : "Open \(agent.name) (⌥-click for the other placement)")
+            .accessibilityLabel(missing ? "Install \(agent.name)" : "Open \(agent.name)")
             if !agent.resumeArguments.isEmpty {
                 Button {
                     launch(agent.id, resume: true)
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
-                .controlSize(.small).help("Resume \(agent.name)'s last conversation").accessibilityLabel("Resume \(agent.name)")
+                .buttonStyle(.borderless).help("Resume \(agent.name)'s last conversation").accessibilityLabel("Resume \(agent.name)")
             }
         }
     }
@@ -206,7 +215,9 @@ struct AgentsSidebarView: View {
                     Text("\(row.windowName) · \(row.agent.name)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
                 }
                 Spacer(minLength: 4)
-                if let state = row.state, state != .ready {
+                if row.state == .working {
+                    BusyLabel(color: model.themeColor(.accent))
+                } else if let state = row.state, state != .ready {
                     AgentTabBadge(state: state)
                 } else {
                     Text(row.status).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)

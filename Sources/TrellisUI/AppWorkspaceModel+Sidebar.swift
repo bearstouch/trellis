@@ -153,10 +153,21 @@ extension AppWorkspaceModel {
         }
     }
 
-    /// Opens an agent for the focused pane, with the view's placement; `flipPlacement` (⌥) uses the other one (FR-AG07).
+    /// FR-AG17: **This Tab** is offered while no agent runs in the focused pane's tab.
+    public var canLaunchAgentInFocusedTab: Bool {
+        guard let paneID = presentation.activePane?.id, let tabID = snapshot.panes[paneID]?.tabID else { return false }
+        return !agentRunning(inTab: tabID)
+    }
+
+    /// The chosen placement, with New Tab standing in for This Tab while the focused tab already has an agent.
+    public var effectiveAgentPlacement: AgentPlacement { agentPlacement == .currentTab && !canLaunchAgentInFocusedTab ? .tab : agentPlacement }
+
+    /// Opens an agent for the focused pane, with the view's placement; `flipPlacement` (⌥) uses the other one: Split for
+    /// New Tab, New Tab for the others (FR-AG07).
     public func launchAgentFromSidebar(_ agentID: String, resume: Bool, flipPlacement: Bool = false) async {
         guard let paneID = presentation.activePane?.id, sidebarUnavailableReason(.agents) == nil else { return }
-        let placement: AgentPlacement = flipPlacement ? (agentPlacement == .tab ? .split : .tab) : agentPlacement
+        let chosen = effectiveAgentPlacement
+        let placement: AgentPlacement = flipPlacement ? (chosen == .tab ? .split : .tab) : chosen
         await launchAgent(agentID, from: paneID, placement: placement, resume: resume)
     }
 }

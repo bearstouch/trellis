@@ -35,8 +35,8 @@ color alone.
 
 The view reads git only, never a pane's output. It runs git with a fixed argument list, never through a shell, with
 hooks, the fsmonitor, filter drivers, external diff and text conversion switched off, as the
-[header's git status](project-library.md) does (FR-PL09), so opening the view in a folder never runs a program the
-repository configures. Paths are passed literally (no pathspec magic). Like the header, it doesn't look inside a
+[pane git status](project-library.md) does (FR-PL09), so opening the view in a folder never runs a program the
+repository configures. Paths are passed literally (no pathspec magic). Like that status, it doesn't look inside a
 submodule's work tree (that would run git under the submodule's own settings), so a submodule is listed only when
 its commit changed.
 
@@ -77,7 +77,7 @@ similar setups store the right content. When it fails, the view says which file 
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| FR-GC01 | Show Changes in the dock, for panes on this Mac. | The dock's second icon is Changes (a git branch), with Toggle Changes (⌥⌘G, rebindable, starting unbound when the chord is already taken) in the View menu, Settings → Keyboard and the command palette. For SSH and remote workspace panes the icon is dimmed with the reason "Changes reads git only in panes on this Mac." and the view hides until a local pane is focused (FR-SB04). The icon's badge counts the focused pane's changed files from its header git status (FR-PL09). Showing and hiding it never changes the saved workspace. |
+| FR-GC01 | Show Changes in the dock, for panes on this Mac. | The dock's second icon is Changes (a git branch), with Toggle Changes (⌥⌘G, rebindable, starting unbound when the chord is already taken) in the View menu, Settings → Keyboard and the command palette. For SSH and remote workspace panes the icon is dimmed with the reason "Changes reads git only in panes on this Mac." and the view hides until a local pane is focused (FR-SB04). The icon's badge counts the focused pane's changed files from its git status (FR-PL09). Showing and hiding it never changes the saved workspace. |
 | FR-GC02 | List the repository's uncommitted changes as a tree. | In a repository with modified, added, deleted, untracked and conflicted files, each appears once under its folder with the right letter, its lines added and removed (vs `HEAD`, untracked as added, "binary" for binary files) and its staged state (none, partly, staged). Folders sum their files; a single-folder chain is merged into one row; folders sort before files by name. Totals and the file count match the rows. Before the first commit, everything compares with the empty tree. Outside a repository it says "No repository" and names the folder. At most 2,000 files are listed, and the totals row then says "first 2,000 files". |
 | FR-GC03 | Read git safely and off the main thread. | Git runs with a fixed argument list, without a shell, off the main thread, with hooks, fsmonitor, filter drivers, external diff and text conversion off, literal pathspecs and submodule work trees not looked inside, and each git run has a five-second limit. An untracked file over 1 MB isn't read to count its lines. A newer refresh supersedes an older one. The view refreshes when shown, when the pane shows a prompt, on **Reload**, and after staging; a failed read shows "Couldn't read git status" and keeps nothing stale. Output is never logged or saved. |
 | FR-GC04 | Filter and fold the tree. | Typing in the filter keeps only files whose path contains the text, with their folders open; clearing it restores the folded state. Clicking a folder (or VoiceOver's default action) folds or unfolds it; **Collapse All** folds every folder. Folded folders are kept per repository for the session, never saved. ↑ and ↓ move the selection through visible files. |

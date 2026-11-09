@@ -42,7 +42,7 @@ struct ScratchpadPanel: View {
             Divider().overlay(model.separatorOverlay)
             footer
         }
-        .background(model.themeColor(.surface))
+        .background(model.chromeFill(.surface))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command scratchpad")
         .sheet(item: $saveDraft) { draft in saveSheet(draft) }

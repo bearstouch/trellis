@@ -65,7 +65,16 @@ extension AppWorkspaceModel {
     var terminalBackground: Color { Color(themeRGB: effectiveTheme.terminal.background) }
     /// The window's own fill behind the chrome; clear while panes are translucent, so only the chrome paints it (FR-TH10).
     var chromeBackground: Color { usesNativeChrome ? themeColor(.surface) : themeColor(.background) }
+    /// ``chromeBackground`` at the chrome's opacity, for dividers and full-area states (restoring, recovery).
+    var translucentChromeBackground: Color { chromeBackground.opacity(chromeOpacity) }
     var panesTranslucent: Bool { effectiveBackgroundOpacity < 1 }
+    /// Labels on the chrome stay readable over a busy desktop however low the panes go (FR-TH10).
+    static let minimumChromeOpacity = 0.6
+    /// The window's chrome follows the background opacity too, floored at ``minimumChromeOpacity`` (FR-TH10).
+    var chromeOpacity: Double { panesTranslucent ? max(effectiveBackgroundOpacity, Self.minimumChromeOpacity) : 1 }
+    /// A chrome surface's fill: the sidebar, dock, tab bar, pane headers, status bar and side panels. Sheets, popovers
+    /// and cards painted over a surface stay opaque, so nothing composites twice.
+    func chromeFill(_ field: UIColorField) -> Color { themeColor(field).opacity(chromeOpacity) }
 }
 
 /// Frosts what shows through translucent panes (FR-TH10), with the public behind-window material.

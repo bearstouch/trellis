@@ -321,6 +321,27 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         metalRenderer?.renderedRowForTesting(screenRow)
     }
 
+    /// The premultiplied color the Metal renderer clears to, or nil when Metal is off. For tests.
+    public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
+
+    /// Builds one Metal frame without presenting it, smoothing at most `smoothedGlyphBudget` new glyphs, and reports
+    /// how many it smoothed, whether glyphs were left for a later frame, and how many glyph lookups missed every cache;
+    /// nil when Metal is off. For tests.
+    public func metalBuildFrameForTesting(smoothedGlyphBudget: Int) -> (smoothedGlyphs: Int, needsSmoothingPass: Bool, glyphCacheMisses: Int)? {
+        metalRenderer?.buildFrameForTesting(smoothedGlyphBudget: smoothedGlyphBudget)
+    }
+
+    /// The Metal renderer's glyph mask for `glyph` drawn in `foreground` over `background` (device RGB components),
+    /// as one coverage byte per pixel in CoreGraphics bitmap order (top row first), with the mask's origin relative to the glyph origin. For tests.
+    public static func metalGlyphCoverageForTesting(font: CTFont, glyph: CGGlyph, foreground: SIMD4<Float>, background: SIMD4<Float>,
+                                                    smoothing: Bool) -> (coverage: [UInt8], width: Int, height: Int, origin: CGPoint)? {
+        let rasterizer = CoreTextGlyphRasterizer()
+        rasterizer.fontSmoothing = smoothing
+        let colors = smoothing ? GlyphSmoothingColors(foreground: foreground, background: background) : nil
+        guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph, smoothingOver: colors) else { return nil }
+        let coverage = stride(from: 3, to: bitmap.pixels.count, by: 4).map { bitmap.pixels[$0] }
+        return (coverage, bitmap.width, bitmap.height, bitmap.bearing)
+    }
     /// Whether the terminal view is currently using the Metal GPU renderer.
     ///
     /// Returns `true` after a successful call to ``setUseMetal(_:)`` with
@@ -555,6 +576,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
             metalLayer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
             // Composite through the layer when the background is translucent
             metalLayer.isOpaque = backgroundOpacity >= 1.0
+            // The drawable is the view's size in whole pixels, rounded up: shown unscaled from the top-left
+            // (where row 0 is), with the sub-pixel overflow clipped, so no edge row is resampled into a seam
+            metalLayer.contentsGravity = .topLeft
+            metalLayer.masksToBounds = true
         }
         return mtkView
     }
@@ -1252,7 +1277,8 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     }
 
     private var reservedScrollerWidth: CGFloat {
-        scroller?.isHidden == true ? 0 : scrollerWidth
+        // An overlay scroller floats over the content, so it takes no columns.
+        scroller?.isHidden == true || scrollerStyle == .overlay ? 0 : scrollerWidth
     }
 
     /**

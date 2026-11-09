@@ -23,13 +23,15 @@ public struct WorkspaceRootView: View {
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
+            // Translucent, the window draws no title bar; its edge is a border like the others (FR-TH10).
+            if model.panesTranslucent { Divider().overlay(model.separatorOverlay).background(model.translucentChromeBackground) }
             HStack(spacing: 0) {
                 sidebar.frame(width: model.sidebarCollapsed ? 52 : 205).animation(.easeInOut(duration: 0.15), value: model.sidebarCollapsed)
                     .disabled(model.isRestoring || model.recoveryMessage != nil)
-                Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
+                Divider().overlay(model.separatorOverlay).background(model.translucentChromeBackground)
                 mainArea
             }
-            Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
+            Divider().overlay(model.separatorOverlay).background(model.translucentChromeBackground)
             HStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
@@ -52,10 +54,12 @@ public struct WorkspaceRootView: View {
                 }
             }
             .font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 12).frame(height: 28)
-            .background(model.themeColor(.surface))
+            .background(model.chromeFill(.surface))
         }
         .foregroundStyle(model.themeColor(.foreground))
-        .background(model.panesTranslucent ? .clear : model.chromeBackground)
+        // A zero-height strip on the top edge grows into the title bar's safe area: the title bar's chrome fill.
+        .background(alignment: .top) { if model.panesTranslucent { model.chromeFill(.surface).frame(height: 0).ignoresSafeArea(edges: .top) } }
+        .background { windowBackground.ignoresSafeArea() }
         .tint(model.chromeTint)
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
         .modifier(CommandPaletteHost(model: model))
@@ -129,7 +133,7 @@ public struct WorkspaceRootView: View {
             if model.sidebarCollapsed { collapsedSidebar } else { expandedSidebar }
         }
         .font(.system(size: 12)).padding(.top, 20).padding(.bottom, 14)
-        .background(model.themeColor(.sidebarBackground))
+        .background(model.chromeFill(.sidebarBackground))
     }
 
     private var sidebarToggle: some View {
@@ -333,7 +337,7 @@ public struct WorkspaceRootView: View {
 
     @ViewBuilder private var mainArea: some View {
         if model.isRestoring {
-            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeBackground)
+            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity).background(model.translucentChromeBackground)
         } else if let message = model.recoveryMessage {
             VStack(spacing: 16) {
                 Text("Recover Workspace").font(.title2)
@@ -342,19 +346,19 @@ public struct WorkspaceRootView: View {
                     Button("Use Backup") { Task { await model.recoverWorkspace(useBackup: true) } }
                 }
                 Button("Start Empty") { Task { await model.recoverWorkspace(useBackup: false) } }
-            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeBackground)
+            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(model.translucentChromeBackground)
         } else if model.presentation.isEmpty {
             VStack(spacing: 14) {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
                 // A view's key equivalent runs before the menu's, which the open palette or tour disables (FR-CP02, FR-ON04).
                 Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
-            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.themeColor(.background))
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeFill(.background))
         } else {
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     tabBar
-                    Divider().overlay(model.separatorOverlay).background(model.chromeBackground)
+                    Divider().overlay(model.separatorOverlay).background(model.translucentChromeBackground)
                     HStack(spacing: 0) {
                         if model.reviewVisible, let review = model.currentReview {
                             ReviewTabView(model: model, review: review).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -392,7 +396,7 @@ public struct WorkspaceRootView: View {
                 Image(systemName: "plus")
             }
             .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
-        }.frame(height: 40).background(model.themeColor(.surface))
+        }.frame(height: 40).background(model.chromeFill(.surface))
     }
 
     /// Drag to resize the sidebar, whichever view it shows; the canvas takes the rest, so split minimums follow (FR-SB03).
@@ -627,10 +631,14 @@ public struct WorkspaceRootView: View {
             }
         }
     }
-    /// Translucent panes paint their own margins and background (FR-TH10); under them only the optional blur.
+    /// Translucent panes paint their own margins and background (FR-TH10); the window's blur is under them.
     @ViewBuilder private var canvasBackground: some View {
+        if model.panesTranslucent { Color.clear } else { model.terminalBackground }
+    }
+    /// Translucent: one blur behind the whole window, so chrome and panes frost the desktop alike (FR-TH10).
+    @ViewBuilder private var windowBackground: some View {
         if !model.panesTranslucent {
-            model.terminalBackground
+            model.chromeBackground
         } else if model.effectiveBackgroundBlur {
             BehindWindowBlur()
         } else {
@@ -1056,7 +1064,10 @@ private struct WindowTabsPreviewCard: View {
             if tab.paneCount > 1 { Text("\(tab.paneCount) panes").foregroundStyle(model.themeColor(.mutedForeground)) }
             if let code = tab.failedCommandExit { Label("exit \(code)", systemImage: "exclamationmark.circle").labelStyle(.titleAndIcon) }
             if tab.hasExitedSession { Label("Exited", systemImage: "stop.circle").labelStyle(.titleAndIcon) }
-            if let state = tab.agentState {
+            // A working agent reads as busy, like any tab printing output; only states that need a look get a capsule.
+            if tab.agentState == .working {
+                BusyLabel(color: model.themeColor(.accent))
+            } else if let state = tab.agentState {
                 AgentTabBadge(state: state)
             } else if let wait = tab.inputWait {
                 Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
@@ -1066,7 +1077,7 @@ private struct WindowTabsPreviewCard: View {
                 Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").labelStyle(.titleAndIcon)
                     .monospacedDigit()
             } else if tab.isBusy {
-                Label("Busy", systemImage: "waveform").labelStyle(.titleAndIcon).foregroundStyle(model.themeColor(.accent))
+                BusyLabel(color: model.themeColor(.accent))
             }
         }
         .font(.system(size: 11)).lineLimit(1).padding(.horizontal, 6).padding(.vertical, 5)

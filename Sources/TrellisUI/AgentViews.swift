@@ -60,30 +60,25 @@ enum AgentIconImages {
     }
 }
 
-/// The agent's state in the pane header (FR-AG10), as words plus a symbol. A nil state is an agent typed in a shell
-/// (FR-AG15): its state is unknown, so only its name is claimed.
-struct AgentStateLabel: View {
-    let agent: AgentDefinition
-    let state: AgentState?
-    var directory: URL?
-    /// A narrow pane's typed agent (FR-AG15): the automatic title already names it, and the header's tools can't shrink.
-    var iconOnly = false
-
-    static func fitsName(paneWidth: CGFloat) -> Bool { paneWidth >= 640 }
+/// A spinning ring for a tab printing output, or a working agent, in sidebar lists. Shape and motion, not color, carry it;
+/// "Busy" is its tooltip and what VoiceOver reads. With Reduce Motion it holds still.
+struct BusyLabel: View {
+    let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let shown = state ?? .ready
-        HStack(spacing: 4) {
-            AgentIconView(icon: agent.icon, directory: directory)
-            if !iconOnly { Text(shown == .ready ? agent.name : "\(agent.name) · \(shown.label)").lineLimit(1) }
+        // A timeline rather than a repeating animation: inside lists, that one also animates the row's layout changes.
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let turn = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
+            ZStack {
+                Circle().stroke(color.opacity(0.25), lineWidth: 1.5)
+                Circle().trim(from: 0, to: 0.3).stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .rotationEffect(.degrees(turn * 360))
+            }
         }
-        .help(iconOnly ? agent.name : "")
-        .padding(.horizontal, 6).padding(.vertical, 1)
-        .background(Capsule().fill(AgentStateStyle.color(shown).opacity(shown == .ready ? 0 : 0.18)))
-        .overlay(Capsule().strokeBorder(AgentStateStyle.color(shown).opacity(shown == .ready ? 0 : 0.6), lineWidth: 1))
-        .fixedSize()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(state.map { "\(agent.name) \($0.spokenText)" } ?? agent.name)
+        .frame(width: 11, height: 11).padding(1)
+        .help("Busy")
+        .accessibilityElement().accessibilityLabel("Busy")
     }
 }
 

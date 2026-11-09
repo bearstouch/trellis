@@ -59,7 +59,7 @@ struct FilesSidebarView: View {
                 }.padding(12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
-        .background(model.themeColor(.surface))
+        .background(model.chromeFill(.surface))
         .accessibilityElement(children: .contain).accessibilityLabel("Files")
         .animation(.easeOut(duration: 0.15), value: model.files.status)
         .task(id: refreshKey) { await model.refreshFiles(paneID: paneID) }

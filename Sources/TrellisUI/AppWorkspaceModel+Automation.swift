@@ -190,19 +190,7 @@ extension AppWorkspaceModel {
         guard snapshot.panes[paneID] != nil, let terminal = terminals[paneID], !isClosing(paneID: paneID) else { throw .store(.notFound) }
         if terminal.isRunning {
             guard allowRunning else { return .confirmationRequired(sessionIDs: [terminal.sessionID]) }
-            var outcome = await closureCoordinator.close([terminal], allowRunning: true, force: force)
-            if case .closePending = outcome, !terminal.requiresTermination {
-                outcome = await closureCoordinator.close([terminal], allowRunning: true)
-            }
-            guard outcome == .closed else { return .closePending(sessionIDs: [terminal.sessionID]) }
-            // The exit is recorded asynchronously; let it reach the store first.
-            let deadline = ProcessInfo.processInfo.systemUptime + 2
-            while snapshot.panes[paneID].flatMap({ snapshot.sessions[$0.sessionID] }).map({ [.exited, .failed].contains($0.state) }) != true,
-                ProcessInfo.processInfo.systemUptime < deadline
-            {
-                await waitForUpdates()
-                try? await Task.sleep(for: .milliseconds(10))
-            }
+            guard await endRunningSession(terminal, paneID: paneID, force: force) else { return .closePending(sessionIDs: [terminal.sessionID]) }
         }
         guard terminal.sessionState == .exited || terminal.sessionState == .failed else { throw .store(.invalidTransition) }
         pendingOperations += 1
@@ -222,6 +210,25 @@ extension AppWorkspaceModel {
         attachTerminal(pane)
         publish(result.snapshot)
         return .closed
+    }
+
+    /// Ends a running session through the shared closure policy (graceful, then `force` only if asked) and waits up to 2 s
+    /// for its exit to reach the store. False when it is still closing.
+    func endRunningSession(_ terminal: NativeTerminal, paneID: UUID, force: Bool) async -> Bool {
+        var outcome = await closureCoordinator.close([terminal], allowRunning: true, force: force)
+        if case .closePending = outcome, !terminal.requiresTermination {
+            outcome = await closureCoordinator.close([terminal], allowRunning: true)
+        }
+        guard outcome == .closed else { return false }
+        // The exit is recorded asynchronously; let it reach the store first.
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while snapshot.panes[paneID].flatMap({ snapshot.sessions[$0.sessionID] }).map({ [.exited, .failed].contains($0.state) }) != true,
+            ProcessInfo.processInfo.systemUptime < deadline
+        {
+            await waitForUpdates()
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return true
     }
 
     public enum InputFailure: Error, Equatable, Sendable { case notFound, notRunning, queueFull, failed }

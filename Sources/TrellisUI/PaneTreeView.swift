@@ -83,23 +83,8 @@ struct PaneTreeView: View {
                         Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
                             .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
                     }
-                    if let detected = model.detectedAgent(paneID: id) {
-                        // FR-AG15: still a shell, so its tools stay below and no state is claimed.
-                        AgentStateLabel(agent: detected, state: nil, directory: model.agentCatalog.iconDirectories[detected.id], iconOnly: !AgentStateLabel.fitsName(paneWidth: size.width))
-                    }
-                    if let agent = model.agentDefinition(paneID: id) {
-                        // FR-AG10: an agent pane shows its agent and state instead of shell tools.
-                        AgentStateLabel(
-                            agent: agent, state: terminal.sessionState == .running ? model.agentStates[id]?.state ?? .ready : .ready,
-                            directory: model.agentCatalog.iconDirectories[agent.id])
-                    }
-                    // FR-SB06: the scratchpad, tasks and agents live in the right sidebar, for the focused pane.
-                    if let git = model.gitStatuses[id] {
-                        // An icon in the header; the branch and counts are in its hover card and read by VoiceOver (FR-PL09).
-                        GitStatusBadge(
-                            text: AppWorkspaceModel.gitStatusText(git), spoken: AppWorkspaceModel.gitStatusSpoken(git),
-                            foreground: model.themeColor(.foreground), background: model.themeColor(.surface))
-                    }
+                    // FR-AG09/FR-AG10: an agent's icon and state are on its tab, not repeated here.
+                    // FR-SB06: the scratchpad, tasks, agents and git changes live in the right sidebar, for the focused pane.
                     PaneMachineLabel(machine: context.machine, model: model)
                     if terminal.sessionState != .running {
                         // Text, not only color, reports stopped/exited/failed panes.
@@ -148,7 +133,13 @@ struct PaneTreeView: View {
                     .help("Close Pane").accessibilityLabel("Close Pane")
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
                     // The surface under it: the native tint is translucent, and the terminal canvas behind a pane tree is dark.
-                    .padding(.horizontal, 9).frame(height: 30).background(headerBackground(focusStyle.header)).background(model.themeColor(.surface))
+                    // Flattened before the chrome opacity, so the tint and its surface don't composite twice (FR-TH10).
+                    .padding(.horizontal, 9).frame(height: 30)
+                    .background {
+                        ZStack {
+                            model.themeColor(.surface); headerBackground(focusStyle.header)
+                        }.compositingGroup().opacity(model.chromeOpacity)
+                    }
                     // On the bottom edge: along the top it would stack against the selected tab's underline.
                     .overlay(alignment: .bottom) {
                         if focusStyle.header == .focused { model.themeColor(.focusRing).frame(height: 3).allowsHitTesting(false).accessibilityHidden(true) }

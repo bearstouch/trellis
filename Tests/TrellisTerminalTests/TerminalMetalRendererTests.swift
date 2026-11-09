@@ -163,6 +163,26 @@ final class TerminalMetalRendererTests: XCTestCase {
         XCTAssertEqual(underline.first?.width ?? 0, 4 * view.cellMetrics.size.width, accuracy: 0.01)
     }
 
+    /// FR-TH10: a translucent CAMetalLayer composites premultiplied pixels; a straight clear color made the
+    /// terminal area lighter than the pane margins around it.
+    @MainActor
+    func testMetalClearsToThePremultipliedBackground() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        let bg = try XCTUnwrap(view.nativeBackgroundColor.usingColorSpace(.deviceRGB))
+        let opaque = try XCTUnwrap(view.metalClearColorForTesting)
+        XCTAssertEqual(opaque.alpha, 1, accuracy: 0.001)
+        XCTAssertEqual(opaque.red, Double(bg.redComponent), accuracy: 0.001, "an opaque background is unchanged")
+        var translucent = Self.metalOn()
+        translucent.backgroundOpacity = 0.6
+        native.applyAppearance(translucent)
+        let clear = try XCTUnwrap(view.metalClearColorForTesting)
+        XCTAssertEqual(clear.alpha, 0.6, accuracy: 0.001)
+        XCTAssertEqual(clear.red, Double(bg.redComponent) * 0.6, accuracy: 0.001)
+        XCTAssertEqual(clear.green, Double(bg.greenComponent) * 0.6, accuracy: 0.001)
+        XCTAssertEqual(clear.blue, Double(bg.blueComponent) * 0.6, accuracy: 0.001)
+    }
+
     @MainActor
     func testMetalCursorHidesConcealedTextAndDrawsTheWholeCharacter() throws {
         let (native, view) = try hostedTerminal()
@@ -174,5 +194,82 @@ final class TerminalMetalRendererTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(view.metalRenderedRowForTesting(1)).cursorGlyphCount, 1)
         native.adapter.receive(Data("\r\nx\u{0301}\u{1b}[D".utf8))
         XCTAssertGreaterThan(try XCTUnwrap(view.metalRenderedRowForTesting(2)).cursorGlyphCount, 1, "the combining mark is drawn with its base")
+    }
+
+    /// Smoothing a glyph for a new color pair costs two CoreGraphics draws, so a frame smooths a bounded number and
+    /// the following frames finish the rest; output whose colors change every frame can't stall every frame.
+    @MainActor
+    func testMetalSmoothsNewColorPairsWithinAPerFrameBudget() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        let text = "abcdefghijkl".enumerated().map { i, c in "\u{1b}[38;2;\(20 * i);90;160m\(c)" }.joined()
+        native.adapter.receive(Data("\u{1b}[?25l\(text)\u{1b}[0m".utf8))
+        let first = try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5))
+        XCTAssertEqual(first.smoothedGlyphs, 5)
+        XCTAssertTrue(first.needsSmoothingPass, "the rest wait for a later frame")
+        XCTAssertEqual(try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5)).smoothedGlyphs, 5, "the provisional row is rebuilt")
+        let third = try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5))
+        XCTAssertEqual(third.smoothedGlyphs, 2)
+        XCTAssertFalse(third.needsSmoothingPass)
+        let settled = try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 5))
+        XCTAssertEqual(settled.smoothedGlyphs, 0, "smoothed glyphs and the finished row are cached")
+        XCTAssertFalse(settled.needsSmoothingPass)
+    }
+
+    /// Spaces have no atlas entry; without a negative cache every row rebuild asked CoreText for their bounds again.
+    @MainActor
+    func testMetalRemembersBlankGlyphsAcrossRowRebuilds() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        native.adapter.receive(Data("\u{1b}[?25la b  c\u{1b}[31m d e".utf8))
+        XCTAssertGreaterThan(try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 256)).glyphCacheMisses, 0)
+        native.adapter.receive(Data("\u{1b}[0m\ra b  c\u{1b}[31m d e".utf8))  // rewrites the row in the same colors, so it's rebuilt
+        XCTAssertEqual(try XCTUnwrap(view.metalBuildFrameForTesting(smoothedGlyphBudget: 256)).glyphCacheMisses, 0, "letters and spaces both come from cache")
+    }
+
+    /// One channel of `glyph` drawn by CoreGraphics in `fg` over `bg`, in a bitmap laid out like the Metal mask.
+    private func coreGraphicsPixels(font: CTFont, glyph: CGGlyph, fg: SIMD4<Float>, bg: SIMD4<Float>, width: Int, height: Int, origin: CGPoint, smoothing: Bool) throws -> [Double] {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let space = CGColorSpaceCreateDeviceRGB()
+        try pixels.withUnsafeMutableBytes { raw in
+            let context = try XCTUnwrap(
+                CGContext(
+                    data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
+                    bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue))
+            func color(_ c: SIMD4<Float>) -> CGColor { CGColor(colorSpace: space, components: [CGFloat(c.x), CGFloat(c.y), CGFloat(c.z), 1])! }
+            context.setFillColor(color(bg)); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.setAllowsFontSmoothing(smoothing); context.setShouldSmoothFonts(smoothing)
+            context.setFillColor(color(fg))
+            var glyph = glyph; var position = CGPoint(x: -origin.x, y: -origin.y)
+            CTFontDrawGlyphs(font, &glyph, &position, 1, context)
+        }
+        return stride(from: 1, to: pixels.count, by: 4).map { Double(pixels[$0]) / 255 }  // green
+    }
+
+    /// Font smoothing thickens strokes by an amount that depends on the colors; a single white mask drew Metal text
+    /// visibly heavier than CoreGraphics text in light themes. Blending Metal's mask must give CoreGraphics' pixels.
+    @MainActor
+    func testMetalGlyphMasksMatchCoreGraphicsSmoothingForEachColorPair() throws {
+        NativeTerminalFont.registerBundledFonts()
+        let font = CTFontCreateWithName("JetBrainsMono-Regular" as CFString, 24, nil)
+        var character: UniChar = 0x6D, glyph: CGGlyph = 0  // "m"
+        XCTAssertTrue(CTFontGetGlyphsForCharacters(font, &character, &glyph, 1))
+        let pairs: [(name: String, fg: SIMD4<Float>, bg: SIMD4<Float>)] = [
+            ("black on white", [0, 0, 0, 1], [1, 1, 1, 1]), ("grey on white", [0.23, 0.23, 0.23, 1], [1, 1, 1, 1]),
+            ("white on black", [1, 1, 1, 1], [0, 0, 0, 1]), ("green on navy", [0.4, 0.85, 0.5, 1], [0.08, 0.1, 0.2, 1])
+        ]
+        var ink: [String: Double] = [:]
+        for smoothing in [true, false] {
+            for pair in pairs {
+                let mask = try XCTUnwrap(TerminalView.metalGlyphCoverageForTesting(font: font, glyph: glyph, foreground: pair.fg, background: pair.bg, smoothing: smoothing))
+                let reference = try coreGraphicsPixels(font: font, glyph: glyph, fg: pair.fg, bg: pair.bg, width: mask.width, height: mask.height, origin: mask.origin, smoothing: smoothing)
+                // What the gray-atlas shader blends: fg * coverage over bg (green channel).
+                let blended = mask.coverage.map { Double(pair.bg.y) + Double($0) / 255 * Double(pair.fg.y - pair.bg.y) }
+                let worst = zip(blended, reference).map { abs($0 - $1) }.max() ?? 1
+                XCTAssertLessThanOrEqual(worst, 3.0 / 255, "\(pair.name), smoothing \(smoothing): every pixel matches CoreGraphics")
+                if smoothing { ink[pair.name] = mask.coverage.reduce(0) { $0 + Double($1) } }
+            }
+        }
+        XCTAssertLessThan(try XCTUnwrap(ink["black on white"]), try XCTUnwrap(ink["white on black"]) * 0.95, "dark text on light is thickened less than light text on dark")
     }
 }

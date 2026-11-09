@@ -152,6 +152,76 @@ final class AgentLaunchFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testThisTabRunsTheAgentInPlaceOfTheIdleShellOnlyInATabWithoutAnAgent() async throws {
+        let (model, source) = try await makeModel()
+        defer { cleanUp(model) }
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        let terminal = try XCTUnwrap(model.terminals[source])
+        let shellSession = terminal.sessionID
+        var asked: [String] = [], accept = false
+        model.confirmReplaceShell = {
+            asked.append($0); return accept
+        }
+        model.agentPlacement = .currentTab
+        XCTAssertTrue(model.canLaunchAgentInFocusedTab)
+        XCTAssertEqual(model.effectiveAgentPlacement, .currentTab)
+
+        await model.launchAgentFromSidebar("fake", resume: false)
+        XCTAssertNotNil(model.errorMessage, "Without shell marks the shell's state is unknown, so it is never ended")
+        XCTAssertEqual(model.terminals[source]?.sessionState, .running)
+        XCTAssertNil(model.agentLaunch(paneID: source))
+
+        model.errorMessage = nil
+        terminal.onShellIntegrationEvent?(.promptStart(directory: nil))
+        terminal.onShellIntegrationEvent?(.commandStart(commandLine: "make"))
+        await model.launchAgentFromSidebar("fake", resume: false)
+        XCTAssertNotNil(model.errorMessage, "A running command is never cut off")
+        XCTAssertEqual(model.terminals[source]?.sessionState, .running)
+
+        XCTAssertEqual(asked, [], "Refusals never ask")
+
+        model.errorMessage = nil
+        terminal.onShellIntegrationEvent?(.promptStart(directory: nil))
+        await model.launchAgentFromSidebar("fake", resume: false)
+        XCTAssertEqual(asked, ["Fake"], "Replacing a running shell asks first, naming the agent")
+        XCTAssertNil(model.errorMessage, "Cancel is quiet")
+        XCTAssertEqual(model.terminals[source]?.sessionState, .running, "Cancel leaves the shell running")
+        XCTAssertEqual(model.terminals[source]?.sessionID, shellSession)
+        XCTAssertNil(model.agentLaunch(paneID: source))
+
+        accept = true
+        await model.launchAgentFromSidebar("fake", resume: false)
+        XCTAssertEqual(asked, ["Fake", "Fake"])
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.presentation.selectedTab?.id, tab, "No new tab")
+        XCTAssertEqual(model.snapshot.tabs[tab]?.root.paneIDs, [source], "No split: the same pane")
+        XCTAssertEqual(model.agentLaunch(paneID: source)?.agentID, "fake")
+        XCTAssertNotEqual(model.terminals[source]?.sessionID, shellSession, "A new session replaces the shell's")
+        try await waitFor { self.text(model, source).contains("FAKE-AGENT-UP") }
+        XCTAssertTrue(text(model, source).contains("/project"), "It starts in the shell's folder")
+
+        XCTAssertTrue(model.agentRunning(inTab: tab))
+        XCTAssertFalse(model.canLaunchAgentInFocusedTab, "This Tab isn't offered while the tab runs an agent")
+        XCTAssertEqual(model.effectiveAgentPlacement, .tab, "New Tab stands in for it")
+        XCTAssertEqual(model.agentPlacement, .currentTab, "The choice itself is kept")
+        await model.launchAgent("fake", from: source, placement: .currentTab)
+        XCTAssertNotNil(model.errorMessage, "A second agent never replaces the first")
+        XCTAssertEqual(model.terminals[source]?.sessionState, .running)
+
+        // Once the agent exits, the pane is reused without asking: nothing runs in it.
+        model.errorMessage = nil
+        model.terminals[source]?.requestTermination(force: true)
+        try await waitFor { [.exited, .failed].contains(model.terminals[source]?.sessionState) }
+        XCTAssertTrue(model.canLaunchAgentInFocusedTab)
+        await model.launchAgentFromSidebar("fake", resume: true)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(asked.count, 2, "A finished pane is reused without a confirmation")
+        XCTAssertEqual(model.snapshot.tabs[tab]?.root.paneIDs, [source])
+        try await waitFor { self.text(model, source).contains("--continue") }
+        XCTAssertEqual(model.terminals[source]?.sessionState, .running)
+    }
+
+    @MainActor
     func testTheCommandPaletteListsAgentsForTheFocusedPane() async throws {
         let (model, source) = try await makeModel()
         defer { cleanUp(model) }

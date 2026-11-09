@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0-beta.2] - 2026-11-09
+
+The second 1.2 beta.
+
+### Added
+
+- **Agents view:** a **This Tab** choice opens the agent in the focused pane, in place of its idle shell, instead of a new tab or split. It's shown only while no agent runs in that tab. It replaces a running shell only while the shell is waiting at its prompt, and asks first, since any background jobs end with it. **Split Beside Pane** is now labelled **Split**. See [Coding agents](docs/features/agents.md) (FR-AG17).
+
+### Changed
+
+- **Settings:** the sidebar icons are redrawn as full-colour, layered tiles in the style of the macOS System Settings sidebar.
+- **Pane headers:** the Git icon and its hover card are gone; the Changes icon in the dock shows the focused pane's git changes instead.
+- **Pane headers:** an agent's name and state ("Claude Code · Working") are no longer repeated in the pane header; the tab already shows the agent's icon, state and title.
+- **Sidebar hover card and Agents view:** busy tabs and working agents show a small spinner instead of the **Busy** label and **Working** capsule. It holds still with Reduce Motion on.
+- **Agents view:** **Open** is now a play button, and it and Resume are drawn without a box.
+- **Background opacity:** now applies to the whole window, not only the terminal panes. The sidebar, dock, tab bar, pane headers, side panels and status bar follow the setting, but never go below 60 % so their labels stay readable. The blur covers the whole window.
+
+### Fixed
+
+- **GPU rendering:** text drawn with Metal was noticeably bolder than with GPU rendering off, most of all in light themes. Both renderers now draw the same stroke weight.
+- **Translucent panes:** with GPU rendering, the terminal area was lighter than the padding around it, which looked like a frame, and a thin dark line ran along the top of the terminal. Both are gone.
+- **Terminal panes:** an empty strip about 15 pt wide ran down the right of every pane, kept free for the scroll bar even though it only appears while you scroll. Text now uses that width, and the scroll bar floats over it when shown.
+
 ## [1.2.0-beta.1] - 2026-11-06
 
 The first 1.2 beta.
@@ -329,7 +352,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.2...HEAD
+[1.2.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...v1.2.0-beta.2
 [1.2.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.1.0...v1.2.0-beta.1
 [1.1.0]: https://github.com/bearstouch/trellis/compare/v1.1.0-beta.1...v1.1.0
 [1.1.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.0.0...v1.1.0-beta.1
