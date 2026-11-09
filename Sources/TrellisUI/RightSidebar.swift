@@ -160,12 +160,16 @@ struct AgentsSidebarView: View {
                     Text("· \(target.machine)").font(.system(size: 12)).foregroundStyle(muted).lineLimit(1).fixedSize()
                 }.accessibilityElement(children: .combine)
             }
-            Picker("Open agent in", selection: $model.agentPlacement) {
+            // This Tab (FR-AG17) only while the focused tab has no agent; New Tab stands in for it meanwhile.
+            let placement = Binding(get: { model.effectiveAgentPlacement }, set: { model.agentPlacement = $0 })
+            Picker("Open agent in", selection: placement) {
                 Text("New Tab").tag(AppWorkspaceModel.AgentPlacement.tab)
-                Text("Split Beside Pane").tag(AppWorkspaceModel.AgentPlacement.split)
+                if model.canLaunchAgentInFocusedTab { Text("This Tab").tag(AppWorkspaceModel.AgentPlacement.currentTab) }
+                Text("Split").tag(AppWorkspaceModel.AgentPlacement.split)
             }
             .pickerStyle(.segmented).labelsHidden().controlSize(.small)
-            .help("Where ▶ starts the agent; ⌥-click ▶ for the other")
+            .help(
+                "Where ▶ starts the agent: a new tab, this tab's focused pane in place of its idle shell, or a split beside it. ⌥-click ▶ for a split, or a new tab from Split")
         }
     }
 
