@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0-beta.2] - 2026-11-09
+
+The second 1.2 beta.
+
 ### Added
 
-- **Agents view:** a **This Tab** choice opens the agent in the focused pane, in place of its idle shell, instead of a new tab or split. It's shown only while no agent runs in that tab, It replaces a running shell only while the shell is waiting at its prompt, and asks first, since any background jobs end with it. **Split Beside Pane** is now labelled **Split**. See [Coding agents](docs/features/agents.md) (FR-AG17).
+- **Agents view:** a **This Tab** choice opens the agent in the focused pane, in place of its idle shell, instead of a new tab or split. It's shown only while no agent runs in that tab. It replaces a running shell only while the shell is waiting at its prompt, and asks first, since any background jobs end with it. **Split Beside Pane** is now labelled **Split**. See [Coding agents](docs/features/agents.md) (FR-AG17).
 
 ### Changed
 
@@ -348,7 +352,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.2...HEAD
+[1.2.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...v1.2.0-beta.2
 [1.2.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.1.0...v1.2.0-beta.1
 [1.1.0]: https://github.com/bearstouch/trellis/compare/v1.1.0-beta.1...v1.1.0
 [1.1.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.0.0...v1.1.0-beta.1
