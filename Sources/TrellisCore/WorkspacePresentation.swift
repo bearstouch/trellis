@@ -3,11 +3,11 @@ import Foundation
 public struct WorkspacePresentation: Sendable {
     public let snapshot: WorkspaceSnapshot
     public init(snapshot: WorkspaceSnapshot) { self.snapshot = snapshot }
-    public var selectedWindow: ManagedWindow? { snapshot.windows.first { $0.id == snapshot.activeWindowID } }
-    public var visibleTabs: [WorkspaceTab] { selectedWindow?.tabIDs.compactMap { snapshot.tabs[$0] } ?? [] }
-    public var selectedTab: WorkspaceTab? { selectedWindow.flatMap { snapshot.tabs[$0.activeTabID] } }
+    public var selectedSpace: Space? { snapshot.spaces.first { $0.id == snapshot.activeSpaceID } }
+    public var visibleTabs: [WorkspaceTab] { selectedSpace?.tabIDs.compactMap { snapshot.tabs[$0] } ?? [] }
+    public var selectedTab: WorkspaceTab? { selectedSpace.flatMap { snapshot.tabs[$0.activeTabID] } }
     public var activePane: WorkspacePane? { selectedTab.flatMap { snapshot.panes[$0.activePaneID] } }
-    public var isEmpty: Bool { snapshot.windows.isEmpty }
+    public var isEmpty: Bool { snapshot.spaces.isEmpty }
 }
 
 public struct CanvasDimensions: Equatable, Sendable {

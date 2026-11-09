@@ -76,7 +76,7 @@ public struct ProjectLibraryView: View {
         .confirmationDialog("Delete “\(stored?.name ?? "")”?", isPresented: $confirmingDelete) {
             Button("Delete Project", role: .destructive, action: delete)
         } message: {
-            Text("Only the project definition is removed. Its folders, repositories and open windows are not changed.")
+            Text("Only the project definition is removed. Its folders, repositories and open spaces are not changed.")
         }
         .confirmationDialog(
             "Save changes to “\(draft.name)”?", isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } })
@@ -114,8 +114,8 @@ public struct ProjectLibraryView: View {
                 }
             }
             sidebarAction("New Project", symbol: "plus") { select(nil) }
-            sidebarAction("New from Window…", symbol: "macwindow") { captureActiveWindow() }
-                .disabled(workspace.snapshot.activeWindowID == nil).help("Make a project from the workspace's active window")
+            sidebarAction("New from Space…", symbol: "macwindow") { captureActiveSpace() }
+                .disabled(workspace.snapshot.activeSpaceID == nil).help("Make a project from the workspace's active space")
             sidebarAction("Import JSON…", symbol: "square.and.arrow.down") { importJSON() }
             sidebarAction("Export JSON…", symbol: "square.and.arrow.up") { exportJSON() }
                 .disabled(stored == nil).help(stored == nil ? "Save the project first" : "Save the selected project as a JSON file")
@@ -528,9 +528,9 @@ public struct ProjectLibraryView: View {
         message = "Not saved yet. Review the project, then add it."
     }
 
-    private func captureActiveWindow() {
-        guard let id = workspace.snapshot.activeWindowID else { return }
-        guard let capture = workspace.captureProject(windowID: id) else { message = "That window can't be captured."; return }
+    private func captureActiveSpace() {
+        guard let id = workspace.snapshot.activeSpaceID else { return }
+        guard let capture = workspace.captureProject(spaceID: id) else { message = "That space can't be captured."; return }
         model.pendingDraft = capture
     }
 

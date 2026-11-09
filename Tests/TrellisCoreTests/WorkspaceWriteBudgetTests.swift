@@ -42,7 +42,7 @@ final class WorkspaceWriteBudgetTests: XCTestCase {
         let persistence = WorkspacePersistence(directory: directory)
         guard case .missing = await persistence.load() else { return XCTFail("Expected an empty directory") }
         let store = try WorkspaceStore()
-        _ = try await store.execute(.createWindow(name: "Budget"))
+        _ = try await store.execute(.createSpace(name: "Budget"))
         let snapshot = await store.snapshot()
         let settings = WorkspaceSettings(shell: "/bin/zsh", directory: "/tmp")
 
@@ -68,7 +68,7 @@ final class WorkspaceWriteBudgetTests: XCTestCase {
         let persistence = WorkspacePersistence(directory: directory)
         _ = await persistence.load()
         let store = try WorkspaceStore()
-        _ = try await store.execute(.createWindow(name: "Budget"))
+        _ = try await store.execute(.createSpace(name: "Budget"))
         let snapshot = await store.snapshot()
         let settings = WorkspaceSettings(shell: "/bin/zsh", directory: "/tmp")
         let size = try await persistence.save(snapshot, settings: settings, sequence: 1)
@@ -84,7 +84,7 @@ final class WorkspaceWriteBudgetTests: XCTestCase {
         let first = WorkspacePersistence(directory: directory)
         _ = await first.load()
         let store = try WorkspaceStore()
-        _ = try await store.execute(.createWindow(name: "Budget"))
+        _ = try await store.execute(.createSpace(name: "Budget"))
         try await first.save(await store.snapshot(), settings: WorkspaceSettings(shell: "/bin/zsh", directory: "/tmp"), sequence: 1)
 
         let second = WorkspacePersistence(directory: directory)

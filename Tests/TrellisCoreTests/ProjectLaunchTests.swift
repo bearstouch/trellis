@@ -22,7 +22,7 @@ final class ProjectLaunchTests: XCTestCase {
         let remote = try XCTUnwrap(ProjectLaunch.resolve(project, target: .host(host), folder: "code/shop", home: "/home/dev"))
         XCTAssertEqual(remote.root, "/home/dev/code/shop")
         XCTAssertEqual(remote.folder, "code/shop")
-        XCTAssertNotEqual(local.namespace, remote.namespace, "Each target and folder has its own window")
+        XCTAssertNotEqual(local.namespace, remote.namespace, "Each target and folder has its own space")
         for folder in ["code/shop", "~", "/", "/Users/me/a\"b", "/tmp/$(id)", "/tmp/a'b", "/tmp/a!b"] {
             XCTAssertNil(ProjectLaunch.resolve(project, target: .local, folder: folder, home: "/Users/me"), folder)
         }
@@ -35,13 +35,13 @@ final class ProjectLaunchTests: XCTestCase {
 
     func testTheLayoutStartsPanesInTheirFoldersAndKeepsCommands() throws {
         let launch = try XCTUnwrap(ProjectLaunch.resolve(project, target: .local, folder: "/w/shop", home: "/Users/me"))
-        guard case .split(_, _, _, let children) = launch.layout.windows[0].tabs[0].root else { return XCTFail("No split") }
+        guard case .split(_, _, _, let children) = launch.layout.spaces[0].tabs[0].root else { return XCTFail("No split") }
         XCTAssertEqual(children.map(\.key), ["t1-1", "t1-2"])
         guard case .pane(_, _, .shell(let first?)) = children[0], case .pane(_, "Logs", .shell(let second?)) = children[1] else { return XCTFail("\(children)") }
         XCTAssertEqual(first, "/w/shop/api", "A pane without a folder starts in its tab's")
         XCTAssertEqual(second, "/w/shop/logs")
         XCTAssertEqual(launch.commands, ["t1-1": "make dev", "t2-0": "npm run dev"])
-        XCTAssertEqual(launch.layout.windows[0].name, "My Shop")
+        XCTAssertEqual(launch.layout.spaces[0].name, "My Shop")
     }
 
     func testCheckingSortsCheckoutsIntoCloneKeepAndBlocked() throws {

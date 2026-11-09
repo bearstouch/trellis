@@ -14,10 +14,10 @@ private final class RecordingNotifier: DesktopNotifier {
 final class DesktopNotificationTests: XCTestCase {
     @MainActor
     private func makeTabs(_ h: Harness) async throws -> (a: UUID, b: UUID, paneA: UUID, paneB: UUID) {
-        let created = await h.model.createWindow(name: "W", startSession: false)
-        let windowID = try XCTUnwrap(created)
+        let created = await h.model.createSpace(name: "W", startSession: false)
+        let spaceID = try XCTUnwrap(created)
         let a = try XCTUnwrap(h.model.presentation.selectedTab?.id)
-        let tab = await h.model.createTab(windowID: windowID, startSessions: false)
+        let tab = await h.model.createTab(spaceID: spaceID, startSessions: false)
         let b = try XCTUnwrap(tab)
         let paneA = try XCTUnwrap(h.model.snapshot.tabs[a]?.activePaneID), paneB = try XCTUnwrap(h.model.snapshot.tabs[b]?.activePaneID)
         await h.model.selectTab(a)
@@ -242,12 +242,12 @@ final class DesktopNotificationTests: XCTestCase {
     }
 
     @MainActor
-    func testNotificationSubtitleNamesTheWindowTabAndRunningProgram() async throws {
+    func testNotificationSubtitleNamesTheSpaceTabAndRunningProgram() async throws {
         let h = try Harness()
         let notifier = setUp(h)
         let t = try await makeTabs(h)
-        let windowID = try XCTUnwrap(h.model.snapshot.tabs[t.b]?.windowID)
-        await h.model.renameWindow(windowID, name: "api")
+        let spaceID = try XCTUnwrap(h.model.snapshot.tabs[t.b]?.spaceID)
+        await h.model.renameSpace(spaceID, name: "api")
         await h.model.renameTab(t.b, title: "Build")
         let terminal = try XCTUnwrap(h.model.terminals[t.paneB])
         terminal.onShellIntegrationEvent?(.commandStart(commandLine: "TOKEN=s3cret /usr/bin/make release"))
@@ -284,11 +284,11 @@ final class DesktopNotificationTests: XCTestCase {
     }
 
     @MainActor
-    func testRevealPaneSelectsItsWindowTabAndPane() async throws {
+    func testRevealPaneSelectsItsSpaceTabAndPane() async throws {
         let h = try Harness()
         let t = try await makeTabs(h)
-        let other = await h.model.createWindow(name: "Other", startSession: false)
-        XCTAssertEqual(h.model.snapshot.activeWindowID, other)
+        let other = await h.model.createSpace(name: "Other", startSession: false)
+        XCTAssertEqual(h.model.snapshot.activeSpaceID, other)
         await h.model.revealPane(t.paneB)
         XCTAssertEqual(h.model.presentation.selectedTab?.id, t.b)
         XCTAssertEqual(h.model.presentation.activePane?.id, t.paneB)

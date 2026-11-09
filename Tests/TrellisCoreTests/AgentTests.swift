@@ -53,7 +53,7 @@ final class AgentCatalogTests: XCTestCase {
         XCTAssertTrue(refused { $0.arguments = ["--x\nrm"] })
         XCTAssertTrue(refused { $0.id = "Has Spaces" })
         XCTAssertTrue(refused { $0.name = "" })
-        XCTAssertTrue(refused { $0.install = ["windows": AgentInstallRecipe(command: "x")] })
+        XCTAssertTrue(refused { $0.install = ["spaces": AgentInstallRecipe(command: "x")] })
         XCTAssertTrue(refused { $0.install = ["linux": AgentInstallRecipe(command: "a\nb")] })
         XCTAssertTrue(refused { $0.install = ["linux": AgentInstallRecipe(command: "x", requires: ["npm; curl"])] })
         XCTAssertTrue(refused { $0.icon = .image("../logo.svg") })
@@ -261,14 +261,14 @@ final class AgentStateReducerTests: XCTestCase {
 final class AgentWorkspaceTests: XCTestCase {
     func testAnAgentPaneIsSavedByIDAndDirectoryAndRestoresStoppedAndFresh() async throws {
         let store = try WorkspaceStore()
-        let made = try await store.execute(.createWindow(name: "Agents")).snapshot
+        let made = try await store.execute(.createSpace(name: "Agents")).snapshot
         let pane = try XCTUnwrap(made.panes.keys.first)
         _ = try await store.execute(
             .configureStoppedSession(paneID: pane, launch: .agent(AgentLaunch(agentID: "trellis-claude-code", directory: "/tmp", resume: true))))
         let snapshot = await store.snapshot()
         let data = try WorkspaceSnapshotCodec.encode(snapshot, settings: WorkspaceSettings())
         let header = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(header["schemaVersion"] as? Int, 3, "Older builds open it read-only")
+        XCTAssertEqual(header["schemaVersion"] as? Int, WorkspaceSnapshotCodec.currentVersion, "Older builds open it read-only")
         XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("resume"), "A restored agent never continues a conversation by itself")
         let restored = try WorkspaceSnapshotCodec.decode(data).snapshot
         let session = try XCTUnwrap(restored.panes[pane].flatMap { restored.sessions[$0.sessionID] })
@@ -276,19 +276,19 @@ final class AgentWorkspaceTests: XCTestCase {
         XCTAssertEqual(session.launch, .agent(AgentLaunch(agentID: "trellis-claude-code", directory: "/tmp")))
     }
 
-    func testAnAgentRunsOnlyWhereItsWindowRuns() async throws {
+    func testAnAgentRunsOnlyWhereItsSpaceRuns() async throws {
         let host = UUID()
         let store = try WorkspaceStore()
-        let remote = try await store.execute(.createRemoteWindow(name: "box", hostID: host)).snapshot
+        let remote = try await store.execute(.createRemoteSpace(name: "box", hostID: host)).snapshot
         let remotePane = try XCTUnwrap(remote.panes.keys.first)
         let localAgent = SessionLaunch.agent(AgentLaunch(agentID: "trellis-pi", directory: nil))
         let result = try? await store.execute(.configureStoppedSession(paneID: remotePane, launch: localAgent))
-        XCTAssertNil(result, "A local agent in a remote window")
+        XCTAssertNil(result, "A local agent in a remote space")
         _ = try await store.execute(.configureStoppedSession(paneID: remotePane, launch: .agent(AgentLaunch(agentID: "trellis-pi", directory: "/srv", hostID: host))))
-        let local = try await store.execute(.createWindow(name: "Local")).snapshot
+        let local = try await store.execute(.createSpace(name: "Local")).snapshot
         let localPane = try XCTUnwrap(local.panes.keys.first { $0 != remotePane })
         let misplaced = try? await store.execute(.configureStoppedSession(paneID: localPane, launch: .agent(AgentLaunch(agentID: "trellis-pi", directory: nil, hostID: host))))
-        XCTAssertNil(misplaced, "A remote agent in a local window")
+        XCTAssertNil(misplaced, "A remote agent in a local space")
     }
 
     func testOnlyTheAppPlannedHookVariablesReachAnAgent() throws {
@@ -357,14 +357,14 @@ final class ProjectAgentTests: XCTestCase {
         XCTAssertTrue(launch.commands.isEmpty)
     }
 
-    func testCapturingAWindowKeepsItsAgentPanes() async throws {
+    func testCapturingASpaceKeepsItsAgentPanes() async throws {
         let store = try WorkspaceStore()
-        let made = try await store.execute(.createWindow(name: "Agents")).snapshot
-        let window = try XCTUnwrap(made.windows.first)
+        let made = try await store.execute(.createSpace(name: "Agents")).snapshot
+        let space = try XCTUnwrap(made.spaces.first)
         let pane = try XCTUnwrap(made.panes.keys.first)
         _ = try await store.execute(.configureStoppedSession(paneID: pane, launch: .agent(AgentLaunch(agentID: "trellis-claude-code", directory: "/tmp/shop"))))
         let snapshot = await store.snapshot()
-        let capture = try XCTUnwrap(ProjectCapture.capture(window: window.id, snapshot: snapshot, home: "/Users/me") { _ in "/tmp/shop" })
+        let capture = try XCTUnwrap(ProjectCapture.capture(space: space.id, snapshot: snapshot, home: "/Users/me") { _ in "/tmp/shop" })
         XCTAssertEqual(capture.project.tabs.first?.root.panes.first?.pane.agent, "trellis-claude-code")
         XCTAssertTrue(capture.warnings.isEmpty)
     }

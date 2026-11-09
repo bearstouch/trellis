@@ -39,14 +39,14 @@ final class LifecycleCleanupTests: XCTestCase {
         XCTAssertEqual(alive(), [], "No spawned process survives as an orphan")
         XCTAssertLessThanOrEqual(openDescriptors(), baselineDescriptors, "Descriptor count returned to baseline")
         XCTAssertTrue(h.model.terminals.isEmpty, "No terminal or PTY objects are retained")
-        XCTAssertTrue(h.model.snapshot.windows.isEmpty)
+        XCTAssertTrue(h.model.snapshot.spaces.isEmpty)
         XCTAssertFalse(h.model.outputJournal.retainedBytes > 0, "Closed sessions keep no output")
     }
 
     /// One live session (or a failed launch every tenth cycle), then a full close.
     @MainActor
     private func cycle(_ h: Harness, index: Int) async throws -> Set<pid_t> {
-        let window: String = try await h.value("windowId", "window.create", ["name": "Cycle \(index)"])
+        let space: String = try await h.value("spaceId", "space.create", ["name": "Cycle \(index)"])
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         let launch: [String: Any] =
             index % 10 == 9
@@ -63,7 +63,7 @@ final class LifecycleCleanupTests: XCTestCase {
             live = Set(childProcesses()).subtracting(before)
             XCTAssertFalse(live.isEmpty, "cycle \(index): a live child exists before closing")
         }
-        let closed = try await h.call("window.close", ["id": window, "allowRunning": true])
+        let closed = try await h.call("space.close", ["id": space, "allowRunning": true])
         XCTAssertNotNil(closed["result"], "cycle \(index): \(closed)")
         return live
     }

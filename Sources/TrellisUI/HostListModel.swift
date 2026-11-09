@@ -18,7 +18,7 @@ public final class HostListModel: ObservableObject {
     /// The remote helper on each host (FR-RW17); nil hides its actions.
     public var remote: RemoteHostsModel?
 
-    /// Opens the host as a remote workspace window (FR-RW01); set by the app.
+    /// Opens the host as a remote workspace (FR-RW01); set by the app.
     public var onOpenRemoteWorkspace: ((SavedHost) -> Void)?
 
     /// Opens a connection; set by the app to the workspace model.

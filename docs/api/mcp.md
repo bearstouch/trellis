@@ -2,7 +2,7 @@
 
 Trellis can run a [Model Context Protocol](https://modelcontextprotocol.io) server, so agents such as Claude Code can control it with MCP tools instead of the socket protocol. The server is **off by default**. Turn it on in **Settings → Remote Control**.
 
-The MCP server is a second transport for the same API, not a second implementation. Each tool runs through the same authorizer (`AuthorizingControlHandler`) and command service as the [Unix socket](index.md). Grants, capabilities, window and host scope, idempotency, output limits and error codes all work exactly as they do there.
+The MCP server is a second transport for the same API, not a second implementation. Each tool runs through the same authorizer (`AuthorizingControlHandler`) and command service as the [Unix socket](index.md). Grants, capabilities, space and host scope, idempotency, output limits and error codes all work exactly as they do there.
 
 The code is in `Sources/TrellisMCP`: an HTTP listener, the endpoint and the tool table. Settings are in `Sources/TrellisCore/RemoteControlSettings.swift`.
 
@@ -67,9 +67,9 @@ Any MCP client that supports Streamable HTTP and custom headers works the same w
 
 ## Tools
 
-Each tool is named after its method, with dots and camel case turned into snake case. For example, `session.sendInput` becomes `session_send_input` and `window.list` becomes `window_list`. The tool's arguments are the method's [parameters](methods.md#method-catalog), and its input schema lists them. Mutating tools also accept `idempotencyKey`.
+Each tool is named after its method, with dots and camel case turned into snake case. For example, `session.sendInput` becomes `session_send_input` and `space.list` becomes `space_list`. The tool's arguments are the method's [parameters](methods.md#method-catalog), and its input schema lists them. Mutating tools also accept `idempotencyKey`.
 
-- `tools/list` returns only tools whose base capabilities the grant holds, and tools that need all-windows scope only for grants that have it. Conditional capabilities, such as `start: true` needing `session.start`, are checked per call, the same as on the socket.
+- `tools/list` returns only tools whose base capabilities the grant holds, and tools that need all-spaces scope only for grants that have it. Conditional capabilities, such as `start: true` needing `session.start`, are checked per call, the same as on the socket.
 - Tool annotations mark read-only tools (`readOnlyHint`) and destructive ones (`destructiveHint`): closing, deleting, restarting, sending input and executing.
 - A successful call returns the method's JSON result as text and as `structuredContent`.
 - An API error is a **tool error** (`isError: true`) with `{"error": {"code", "message", "retryable", "details?"}}`. The `code` is the [API-06 code](errors.md), such as `PERMISSION_DENIED` or `CONFIRMATION_REQUIRED`, or `INVALID_PARAMS` for bad arguments.

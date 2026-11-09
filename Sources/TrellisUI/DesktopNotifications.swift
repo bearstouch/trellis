@@ -3,7 +3,7 @@ import TrellisCore
 import UserNotifications
 
 /// One notification to show (FR-T08). The pane is carried so clicking it can reveal that pane. The subtitle says where it
-/// came from: "Window › Tab", plus the agent or program when known.
+/// came from: "Space › Tab", plus the agent or program when known.
 public struct DesktopNotification: Equatable, Sendable {
     public let paneID: UUID
     public let title: String

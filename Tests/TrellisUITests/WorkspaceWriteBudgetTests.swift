@@ -22,7 +22,7 @@ import TrellisCore
         let fixed = now
         model.activityNow = { fixed }
         _ = await model.loadWorkspace()
-        await model.createWindow(name: "Budget", startSession: false)
+        await model.createSpace(name: "Budget", startSession: false)
         _ = await model.flushWorkspaceSave()
         model.saveSleep = { [unowned self] delay in
             delays.append(delay)
@@ -45,11 +45,11 @@ import TrellisCore
     }
 
     func testSpentBudgetBatchesLaterChangesIntoOneSave() async throws {
-        let window = try XCTUnwrap(model.snapshot.windows.first?.id)
+        let space = try XCTUnwrap(model.snapshot.spaces.first?.id)
         model.writeBudget.record(60_000_000, at: now)
-        await model.renameWindow(window, name: "First change")
+        await model.renameSpace(space, name: "First change")
         await waitFor { !delays.isEmpty }
-        await model.renameWindow(window, name: "Second change")
+        await model.renameSpace(space, name: "Second change")
         for _ in 0..<50 { await Task.yield() }
         XCTAssertEqual(delays, [WorkspaceWriteBudget.throttledInterval], "Both changes wait for one batched save")
         XCTAssertTrue(model.savesThrottled)
@@ -60,18 +60,18 @@ import TrellisCore
     }
 
     func testWithinBudgetChangesSaveAfterTheShortDelay() async throws {
-        let window = try XCTUnwrap(model.snapshot.windows.first?.id)
+        let space = try XCTUnwrap(model.snapshot.spaces.first?.id)
         released = true
-        await model.renameWindow(window, name: "Quick")
+        await model.renameSpace(space, name: "Quick")
         try await waitFor { try savedText().contains("Quick") }
         XCTAssertEqual(delays, [0.3])
         XCTAssertFalse(model.savesThrottled)
     }
 
     func testExplicitSaveIgnoresTheBudget() async throws {
-        let window = try XCTUnwrap(model.snapshot.windows.first?.id)
+        let space = try XCTUnwrap(model.snapshot.spaces.first?.id)
         model.writeBudget.record(60_000_000, at: now)
-        await model.renameWindow(window, name: "Saved now")
+        await model.renameSpace(space, name: "Saved now")
         let saved = await model.flushWorkspaceSave()
         XCTAssertTrue(saved)
         XCTAssertTrue(try savedText().contains("Saved now"))
@@ -89,10 +89,10 @@ import TrellisCore
     }
 
     func testRaisingTheBudgetEndsBatching() async throws {
-        let window = try XCTUnwrap(model.snapshot.windows.first?.id)
+        let space = try XCTUnwrap(model.snapshot.spaces.first?.id)
         model.setSaveBudget(megabytesPerHour: 10)
         model.writeBudget.record(20_000_000, at: now)
-        await model.renameWindow(window, name: "Batched")
+        await model.renameSpace(space, name: "Batched")
         await waitFor { !delays.isEmpty }
         XCTAssertTrue(model.savesThrottled)
         model.setSaveBudget(megabytesPerHour: 100)

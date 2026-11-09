@@ -48,7 +48,7 @@ extension AppWorkspaceModel {
         }
     }
 
-    /// The bottom bar's machine: the focused pane's; a window with no pane yet is on this Mac.
+    /// The bottom bar's machine: the focused pane's; a space with no pane yet is on this Mac.
     var focusedMachine: PaneMachine { presentation.selectedTab.map { paneContext($0.activePaneID).machine } ?? .local }
 
     func paneContext(_ id: UUID) -> (directory: String?, machine: PaneMachine) {

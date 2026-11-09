@@ -110,10 +110,22 @@ public enum ControlMethods {
     /// Methods that never change state. Anything else is treated as mutating,
     /// so a new method is safe by default.
     public static let readOnly: Set<String> = [
-        "system.info", "window.list", "window.get", "tab.list", "tab.get", "session.get", "session.readOutput",
+        "system.info", "space.list", "space.get", "tab.list", "tab.get", "session.get", "session.readOutput",
         "host.list", "host.get", "theme.list", "theme.get", "theme.validate", "theme.export", "appearance.get", "layout.export", "layout.plan", "layout.validate"
     ]
-    public static func isMutating(_ method: String) -> Bool { !readOnly.contains(method) }
+    public static func isMutating(_ method: String) -> Bool { !readOnly.contains(canonical(method, params: nil).method) }
+
+    /// Deprecated names from before windows were renamed spaces (`window.*`, `windowId`, `windowIds`) mapped to the
+    /// current ones. A param already given under its new name wins; replies always use the new names.
+    public static func canonical(_ method: String, params: JSONValue?) -> (method: String, params: JSONValue?) {
+        let method = method.hasPrefix("window.") ? "space." + method.dropFirst("window.".count) : method
+        guard case .object(var object)? = params else { return (method, params) }
+        for (old, new) in [("windowId", "spaceId"), ("windowIds", "spaceIds")] {
+            guard let value = object.removeValue(forKey: old) else { continue }
+            if object[new] == nil { object[new] = value }
+        }
+        return (method, .object(object))
+    }
 }
 
 /// Socket-independent protocol state for one connection: framing, JSON-RPC

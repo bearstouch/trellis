@@ -92,7 +92,7 @@ final class ChangesSidebarTests: XCTestCase {
         model.applicationURL = { _ in nil }
         let saved = await model.saveLaunchSettings(shell: shell, directory: directory ?? repo + "/Sources")
         XCTAssertTrue(saved)
-        _ = await model.createWindow(name: "W")
+        _ = await model.createSpace(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         return (model, pane, recorder)
@@ -137,17 +137,17 @@ final class ChangesSidebarTests: XCTestCase {
         model.gitStatuses[local] = BrokerGitStatus(branch: "main", commit: nil, changes: 5, ahead: 0, behind: 0)
         XCTAssertEqual(model.changedFileCount, 5, "The badge counts the header status's changes")
 
-        let created = try await model.service.execute(.createRemoteWindow(name: "Remote", hostID: UUID()))
-        let remoteWindow = try XCTUnwrap(created.snapshot.windows.last)
-        let remote = try XCTUnwrap(created.snapshot.tabs[remoteWindow.activeTabID]?.activePaneID)
-        model.publish(try await model.service.execute(.configureStoppedSession(paneID: remote, launch: .remoteShell(hostID: remoteWindow.remoteHostID!, directory: "/srv/app"))).snapshot)
-        await model.selectWindow(remoteWindow.id)
+        let created = try await model.service.execute(.createRemoteSpace(name: "Remote", hostID: UUID()))
+        let remoteSpace = try XCTUnwrap(created.snapshot.spaces.last)
+        let remote = try XCTUnwrap(created.snapshot.tabs[remoteSpace.activeTabID]?.activePaneID)
+        model.publish(try await model.service.execute(.configureStoppedSession(paneID: remote, launch: .remoteShell(hostID: remoteSpace.remoteHostID!, directory: "/srv/app"))).snapshot)
+        await model.selectSpace(remoteSpace.id)
         XCTAssertEqual(model.sidebarUnavailableReason(.changes), "Changes reads git only in panes on this Mac.")
         XCTAssertNil(model.visibleSidebarView, "Changes hides on a remote workspace pane")
         await model.refreshGitChanges(paneID: remote)
         XCTAssertEqual(model.gitChanges.load, .idle, "Nothing is read for a remote pane")
 
-        await model.selectWindow(try XCTUnwrap(model.snapshot.windows.first?.id))
+        await model.selectSpace(try XCTUnwrap(model.snapshot.spaces.first?.id))
         XCTAssertEqual(model.visibleSidebarView, .changes, "and comes back with focus")
     }
 
@@ -271,15 +271,15 @@ final class ChangesSidebarTests: XCTestCase {
         await model.refreshGitChanges(paneID: pane)
         let staging = Task { await model.toggleGitChangeStaged("Sources/UI/Right.swift") }
         try await waitFor { !model.gitChanges.staging.isEmpty }
-        _ = await model.createWindow(name: "Other", startSession: false)
+        _ = await model.createSpace(name: "Other", startSession: false)
         let other = try XCTUnwrap(model.presentation.activePane?.id)
         XCTAssertNotEqual(other, pane)
-        await model.selectWindow(try XCTUnwrap(model.snapshot.windows.first?.id))
+        await model.selectSpace(try XCTUnwrap(model.snapshot.spaces.first?.id))
         XCTAssertEqual(model.presentation.activePane?.id, pane)
         await model.refreshGitChanges(paneID: pane)
         let shown = model.gitChanges
         XCTAssertNotNil(shown.list)
-        await model.selectWindow(try XCTUnwrap(model.snapshot.windows.last?.id))
+        await model.selectSpace(try XCTUnwrap(model.snapshot.spaces.last?.id))
         await model.refreshGitChanges(paneID: other)
         XCTAssertEqual(model.gitChanges.load, .idle, "A pane that hasn't started has no folder yet")
         await model.refreshGitChanges(paneID: pane)
@@ -355,7 +355,7 @@ final class ChangesSidebarTests: XCTestCase {
         XCTAssertEqual(model.currentReview?.file.path, "Sources/New.swift", "] reviews the next file in tree order, after the folder's folders")
         guard case .lines(let created)? = model.currentReview?.diff?.body else { return XCTFail() }
         XCTAssertEqual(created.filter { $0.kind == .added }.map(\.text), ["new", "file"], "A new file diffs against nothing")
-        XCTAssertEqual(model.reviewTabs.count, 1, "One Review tab per window; reviewing replaces it")
+        XCTAssertEqual(model.reviewTabs.count, 1, "One Review tab per space; reviewing replaces it")
 
         await model.reviewGitChange("gone.md")
         guard case .lines(let removed)? = model.currentReview?.diff?.body else { return XCTFail() }
@@ -377,11 +377,11 @@ final class ChangesSidebarTests: XCTestCase {
     }
 
     @MainActor
-    func testANewTabHidesTheReviewAndADeletedWindowDropsIt() async throws {
+    func testANewTabHidesTheReviewAndADeletedSpaceDropsIt() async throws {
         try makeChangedRepository()
         let (model, pane, _) = try await makeModel()
         defer { cleanUp(model) }
-        let first = try XCTUnwrap(model.presentation.selectedWindow?.id)
+        let first = try XCTUnwrap(model.presentation.selectedSpace?.id)
         await model.refreshGitChanges(paneID: pane)
         await model.reviewGitChange("Sources/UI/Right.swift")
         XCTAssertTrue(model.reviewVisible)
@@ -389,18 +389,18 @@ final class ChangesSidebarTests: XCTestCase {
         XCTAssertFalse(model.reviewVisible, "A new tab shows its terminal, never stays behind the Review tab")
         XCTAssertNotNil(model.currentReview)
 
-        let created = await model.createWindow(name: "Second", startSession: false)
+        let created = await model.createSpace(name: "Second", startSession: false)
         let second = try XCTUnwrap(created)
-        XCTAssertNil(model.currentReview, "The Review tab belongs to its window")
-        await model.selectWindow(first)
+        XCTAssertNil(model.currentReview, "The Review tab belongs to its space")
+        await model.selectSpace(first)
         model.showReview()
         XCTAssertTrue(model.reviewVisible)
-        await model.selectWindow(second)
-        await model.selectWindow(first)
-        XCTAssertTrue(model.reviewVisible, "Switching windows keeps each window's Review tab as it was")
-        await model.deleteWindow(first)
-        XCTAssertNil(model.reviewTabs[first], "A deleted window's Review tab goes with it")
-        XCTAssertFalse(model.reviewShownWindows.contains(first))
+        await model.selectSpace(second)
+        await model.selectSpace(first)
+        XCTAssertTrue(model.reviewVisible, "Switching spaces keeps each space's Review tab as it was")
+        await model.deleteSpace(first)
+        XCTAssertNil(model.reviewTabs[first], "A deleted space's Review tab goes with it")
+        XCTAssertFalse(model.reviewShownSpaces.contains(first))
     }
 
     @MainActor
@@ -414,25 +414,25 @@ final class ChangesSidebarTests: XCTestCase {
             diff: { root, file, hasCommits in
                 Thread.sleep(forTimeInterval: 0.3); return local.diff(root, file, hasCommits)
             }, stage: local.stage)
-        let first = try XCTUnwrap(model.presentation.selectedWindow?.id)
+        let first = try XCTUnwrap(model.presentation.selectedSpace?.id)
         await model.refreshGitChanges(paneID: pane)
         await model.reviewGitChange("Sources/UI/Right.swift")
-        let created = await model.createWindow(name: "Second", startSession: false)
+        let created = await model.createSpace(name: "Second", startSession: false)
         let second = try XCTUnwrap(created)
         await model.reviewGitChange("Sources/UI/Right.swift")
         XCTAssertEqual(Set(model.reviewTabs.keys), [first, second])
-        await model.selectWindow(first)
+        await model.selectSpace(first)
         let firstPane = try XCTUnwrap(model.presentation.activePane?.id)
         XCTAssertEqual(firstPane, pane)
         try write("one\nTWO\nthree\nfour\nfive\n", "Sources/UI/Right.swift")
         let refresh = Task { await model.refreshGitChanges(paneID: pane) }
         try await waitFor { model.reviewTabs.values.contains { $0.diff == nil } }
-        await model.selectWindow(second)
+        await model.selectSpace(second)
         model.closeReview()
-        await model.selectWindow(first)
+        await model.selectSpace(first)
         await refresh.value
         XCTAssertNil(model.reviewTabs[second], "A closed Review tab stays closed")
-        XCTAssertEqual(model.reviewTabs[first]?.file.added, 3, "The other window's review takes the new counts")
+        XCTAssertEqual(model.reviewTabs[first]?.file.added, 3, "The other space's review takes the new counts")
     }
 
     @MainActor

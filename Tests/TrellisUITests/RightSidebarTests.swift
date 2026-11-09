@@ -41,7 +41,7 @@ final class RightSidebarTests: XCTestCase {
         let saved = await model.saveLaunchSettings(shell: shell, directory: project)
         XCTAssertTrue(saved)
         model.agentCatalog = AgentCatalogSnapshot(definitions: [fake])
-        _ = await model.createWindow(name: "W")
+        _ = await model.createSpace(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         return (model, pane)
@@ -120,7 +120,7 @@ final class RightSidebarTests: XCTestCase {
     }
 
     @MainActor
-    func testTheBadgesAndRunningListCountAcrossPanesAndWindows() async throws {
+    func testTheBadgesAndRunningListCountAcrossPanesAndSpaces() async throws {
         let (model, source) = try await makeModel()
         defer { cleanUp(model) }
         XCTAssertEqual(model.activeTaskCount, 0)
@@ -138,7 +138,7 @@ final class RightSidebarTests: XCTestCase {
         let session = try XCTUnwrap(model.terminals[agentPane]?.sessionID)
 
         XCTAssertEqual(model.agentSessionRows.map(\.id), [agentPane])
-        XCTAssertEqual(model.agentSessionRows.first?.windowName, "W")
+        XCTAssertEqual(model.agentSessionRows.first?.spaceName, "W")
         XCTAssertEqual(model.agentSessionRows.first?.status, "Ready")
         XCTAssertEqual(model.agentsNeedingYouCount, 0)
         model.receiveAgentEvent(sessionID: session, event: "needs-input")
@@ -146,10 +146,10 @@ final class RightSidebarTests: XCTestCase {
         XCTAssertEqual(model.agentSessionRows.first?.state, .needsInput)
         XCTAssertEqual(model.agentSessionRows.first?.status, "Needs you")
 
-        _ = await model.createWindow(name: "Other")
-        XCTAssertNotEqual(model.snapshot.activeWindowID, model.snapshot.panes[agentPane].flatMap { model.snapshot.tabs[$0.tabID]?.windowID })
-        XCTAssertEqual(model.agentsNeedingYouCount, 1, "Counted in every window")
-        XCTAssertEqual(model.agentSessionRows.map(\.id), [agentPane], "Listed from every window")
+        _ = await model.createSpace(name: "Other")
+        XCTAssertNotEqual(model.snapshot.activeSpaceID, model.snapshot.panes[agentPane].flatMap { model.snapshot.tabs[$0.tabID]?.spaceID })
+        XCTAssertEqual(model.agentsNeedingYouCount, 1, "Counted in every space")
+        XCTAssertEqual(model.agentSessionRows.map(\.id), [agentPane], "Listed from every space")
         await model.revealPane(agentPane)
         XCTAssertEqual(model.presentation.activePane?.id, agentPane, "Choosing a row shows its pane")
 

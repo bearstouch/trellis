@@ -1,6 +1,6 @@
 import Foundation
 
-/// A project resolved for one target and folder (FR-PL06–FR-PL08): its window layout, the commands typed into new
+/// A project resolved for one target and folder (FR-PL06–FR-PL08): its space layout, the commands typed into new
 /// panes, what setup must do, and the setup script.
 public struct ProjectLaunch: Equatable, Sendable {
     /// One repository checkout at its absolute folder on the target.
@@ -33,11 +33,12 @@ public struct ProjectLaunch: Equatable, Sendable {
     public var checkouts: [Checkout]
     public var rootExists = true
 
-    /// Where this launch's window bindings live, so launching the same project, target and folder reconciles its window.
+    /// Where this launch's space bindings live, so launching the same project, target and folder reconciles its space.
     public var namespace: String { "project:\(project.id.uuidString):\(target.key):\(root)" }
     public var needsSetup: Bool { !rootExists || checkouts.contains { $0.state == .clone } }
 
-    public static func windowKey() -> String { "trellis-window" }
+    // The value predates the rename of windows to spaces; changing it would orphan every saved project binding.
+    public static func spaceKey() -> String { "trellis-window" }
 
     /// Nil when the folder isn't usable for the target: on this Mac an absolute path (or `~/…`), on a host a path
     /// relative to its home. Either way, nothing the setup script can't quote.
@@ -77,7 +78,7 @@ public struct ProjectLaunch: Equatable, Sendable {
         let remembered = target == .local ? root : String(root.dropFirst(home.count + 1))
         var launch = ProjectLaunch(
             project: project, target: target, root: root, folder: remembered,
-            layout: LayoutDocument(windows: [LayoutWindow(key: windowKey(), name: project.name, tabs: tabs)]), commands: commands, checkouts: checkouts)
+            layout: LayoutDocument(spaces: [LayoutSpace(key: spaceKey(), name: project.name, tabs: tabs)]), commands: commands, checkouts: checkouts)
         launch.agents = agents
         return launch
     }

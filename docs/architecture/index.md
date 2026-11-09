@@ -40,7 +40,7 @@ flowchart TD
 | Component | Responsibility | Where |
 | --- | --- | --- |
 | App shell | Scene and window lifecycle, menus, sidebar, tab bar, settings | `TrellisApp`, `TrellisUI` |
-| Workspace store | Authoritative windows, tab order, split trees, selection and revisions | `WorkspaceStore` |
+| Workspace store | Authoritative spaces, tab order, split trees, selection and revisions | `WorkspaceStore` |
 | Command service | Validated domain operations shared by the UI, the CLI and agents | `WorkspaceCommandService` |
 | Terminal adapter | Engine-independent view, selection, paste, resize and screen access | `TrellisTerminal` |
 | Session manager | PTY allocation, launch, size, I/O, exit and teardown | `LocalSessionController`, `PTYProcess` |

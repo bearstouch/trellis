@@ -88,11 +88,11 @@ class App:
             json.dump([grant], handle)
         os.chmod(path, 0o600)
         self.started = time.perf_counter()
-        # --fixture: the initial window runs a fixed `zsh -f` demo, never the user's login shell.
+        # --fixture: the initial space runs a fixed `zsh -f` demo, never the user's login shell.
         self.process = subprocess.Popen([binary, "--fixture", "--state-directory", self.state, *extra_args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def wait_ready(self, timeout=20):
-        """Seconds from exec until the control API answers and the startup workspace window exists."""
+        """Seconds from exec until the control API answers and the startup space exists."""
         deadline = time.time() + timeout
         discovery = os.path.join(self.state, "control.json")
         while time.time() < deadline:
@@ -102,8 +102,8 @@ class App:
                 if not hasattr(self, "client"):
                     self.client = Client(self.socket_path, self.token)
                 # The app window is ordered front before the socket starts; the
-                # workspace window is created after state load, so wait for it too.
-                if self.client.result("window.list")["windows"]:
+                # startup space is created after state load, so wait for it too.
+                if self.client.result("space.list")["spaces"]:
                     return time.perf_counter() - self.started
                 time.sleep(0.005)
             except (OSError, ValueError, KeyError, ConnectionError, AssertionError):
@@ -159,7 +159,7 @@ def start_process(client, pane, script, executable="/bin/sh", arguments=None):
 
 
 def first_pane(client, window_id):
-    tab = client.result("window.get", {"id": window_id})["activeTabId"]
+    tab = client.result("space.get", {"id": window_id})["activeTabId"]
     return client.result("tab.get", {"id": tab})["paneIds"][0]
 
 
@@ -197,18 +197,18 @@ def main():
         c = app.client
         pid = app.process.pid
 
-        # Start from an empty workspace: wait for the startup fixture window, then close it.
+        # Start from an empty workspace: wait for the startup fixture space, then close it.
         deadline = time.time() + 15
-        while not c.result("window.list")["windows"] and time.time() < deadline:
+        while not c.result("space.list")["spaces"] and time.time() < deadline:
             time.sleep(0.05)
-        for window in c.result("window.list")["windows"]:
-            c.result("window.close", {"id": window["id"], "allowRunning": True})
+        for window in c.result("space.list")["spaces"]:
+            c.result("space.close", {"id": window["id"], "allowRunning": True})
 
         # 10 idle panes (cat waiting for input, no output, no blinking).
         windows = []
         for index in range(10):
-            created = c.result("window.create", {"name": f"Q{index}"})
-            windows.append(created["windowId"])
+            created = c.result("space.create", {"name": f"Q{index}"})
+            windows.append(created["spaceId"])
             start_process(c, created["panes"][0]["paneId"], "exec /bin/cat")
         time.sleep(5)
         cpu_before = app.cpu_seconds()
@@ -217,18 +217,18 @@ def main():
         results["idle_rss_mib"] = round(app.rss_mib(), 1)
         results["idle_children_rss_mib"] = round(app.children_rss_mib(), 1)
 
-        # 10 windows, 50 tabs, 100 sessions.
+        # 10 spaces, 50 tabs, 100 sessions.
         for window in windows:
             for _ in range(4):
-                tab = c.result("tab.create", {"windowId": window})
+                tab = c.result("tab.create", {"spaceId": window})
                 start_process(c, tab["paneIds"][0], "exec /bin/cat")
         for window in windows:
-            for tab in c.result("tab.list", {"windowId": window})["tabs"]:
+            for tab in c.result("tab.list", {"spaceId": window})["tabs"]:
                 pane = tab["paneIds"][0]
                 split = c.result("pane.split", {"paneId": pane, "axis": "x"})
                 start_process(c, split["pane"]["paneId"], "exec /bin/cat")
-        listed = c.result("window.list")["windows"]
-        tabs = [t for w in listed for t in c.result("tab.list", {"windowId": w["id"]})["tabs"]]
+        listed = c.result("space.list")["spaces"]
+        tabs = [t for w in listed for t in c.result("tab.list", {"spaceId": w["id"]})["tabs"]]
         panes = [p for t in tabs for p in t["paneIds"]]
         sessions = [c.result("tab.get", {"id": t["id"]}) for t in tabs]
         running = 0
@@ -240,7 +240,7 @@ def main():
                     stack.extend(node["children"])
                 elif node["state"] == "running":
                     running += 1
-        results["capacity"] = {"windows": len(listed), "tabs": len(tabs), "panes": len(panes), "unique_ids": len(set(panes)) == len(panes), "running": running}
+        results["capacity"] = {"spaces": len(listed), "tabs": len(tabs), "panes": len(panes), "unique_ids": len(set(panes)) == len(panes), "running": running}
         results["capacity_rss_mib"] = round(app.rss_mib(), 1)
         results["capacity_children_rss_mib"] = round(app.children_rss_mib(), 1)
 
@@ -272,10 +272,10 @@ def main():
         results["echo_proxy_ms"] = p95(echo)
 
         # 10 MiB/s for the flood period in one pane, navigation sampled meanwhile.
-        # Free one window (10 panes) for the flood; 90 live panes remain.
-        c.result("window.close", {"id": windows[-1], "allowRunning": True})
-        tabs = [t for t in tabs if t["windowId"] != windows[-1]]
-        flood_window = c.result("window.create", {"name": "Flood"})
+        # Free one space (10 panes) for the flood; 90 live panes remain.
+        c.result("space.close", {"id": windows[-1], "allowRunning": True})
+        tabs = [t for t in tabs if t["spaceId"] != windows[-1]]
+        flood_window = c.result("space.create", {"name": "Flood"})
         flood_pane = flood_window["panes"][0]["paneId"]
         # 10 MiB per wall-clock second (sub-second timer), paced; a slow reader blocks the writer, so the
         # achieved rate is what the app actually consumed. The writer records it for the report.
@@ -314,17 +314,17 @@ def main():
         }
 
         # 100 create/close cycles leave no descriptors or children behind.
-        for window in [w["id"] for w in c.result("window.list")["windows"]]:
-            c.call("window.close", {"id": window, "allowRunning": True})
+        for window in [w["id"] for w in c.result("space.list")["spaces"]]:
+            c.call("space.close", {"id": window, "allowRunning": True})
         time.sleep(3)
         fds_before, children_before = app.descriptors(), len(app.children())
         spawned = set()
         for index in range(100):
-            created = c.result("window.create", {"name": f"Cycle {index}"})
+            created = c.result("space.create", {"name": f"Cycle {index}"})
             existing = set(app.children())
             start_process(c, created["panes"][0]["paneId"], "exec /bin/sleep 30")
             spawned |= set(app.children()) - existing
-            reply = c.call("window.close", {"id": created["windowId"], "allowRunning": True})
+            reply = c.call("space.close", {"id": created["spaceId"], "allowRunning": True})
             if "result" not in reply:
                 notes.append(f"cycle {index}: {reply.get('error')}")
         time.sleep(3)
@@ -417,7 +417,7 @@ def write_report(args, results, notes):
         "- Conditions: an interactive desktop session with other applications open; warm OS file cache after the first launch.", "",
         "## Results", "",
         "| Requirement | Measurement | Result |", "| --- | --- | --- |",
-        f"| cold launch ≤2 s p95 | exec → control API answering with the startup workspace window created (no frame-presentation timestamp) | {verdict(r['launch_ms'], 2000)} |",
+        f"| cold launch ≤2 s p95 | exec → control API answering with the startup space created (no frame-presentation timestamp) | {verdict(r['launch_ms'], 2000)} |",
         f"| typing echo ≤50 ms p95 | **proxy**: API sendInput → PTY echo received by the app (excludes frame rendering) | {verdict(r['echo_proxy_ms'], 50)} |",
         f"| switch ≤100 ms p95 @ 50 live panes | **proxy**: `tab.focus` round trip with 100 live panes (excludes frame rendering) | {verdict(r['switch_proxy_ms'], 100)} |",
         f"| 10 windows / 50 tabs / 100 sessions | API-built workspace | {r['capacity']} |",

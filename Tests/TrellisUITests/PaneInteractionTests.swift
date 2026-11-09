@@ -7,7 +7,7 @@ import TrellisCore
 final class PaneInteractionTests: XCTestCase {
     func testRejectInvalidRatios() async throws {
         let store = try WorkspaceStore()
-        let initial = try await store.execute(.createWindow(name: "Project")).snapshot
+        let initial = try await store.execute(.createSpace(name: "Project")).snapshot
         let first = try XCTUnwrap(initial.panes.keys.first)
         let split = try await store.execute(.splitPane(id: first, axis: .x, availableSize: TerminalSize(columns: 80, rows: 24))).snapshot
         let tab = try XCTUnwrap(split.tabs.values.first)
@@ -51,7 +51,7 @@ final class PaneInteractionTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow()
+        await model.createSpace()
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x)
         let second = try XCTUnwrap(model.presentation.activePane?.id)
@@ -73,8 +73,8 @@ final class PaneInteractionTests: XCTestCase {
 
     func testClosedFocusChoosesSurvivor() async throws {
         let store = try WorkspaceStore()
-        let initial = try await store.execute(.createWindow(name: "First")).snapshot
-        let firstWindow = try XCTUnwrap(initial.activeWindowID)
+        let initial = try await store.execute(.createSpace(name: "First")).snapshot
+        let firstSpace = try XCTUnwrap(initial.activeSpaceID)
         let left = try XCTUnwrap(initial.panes.keys.first)
         let x = try await store.execute(.splitPane(id: left, axis: .x, availableSize: TerminalSize(columns: 80, rows: 24)))
         let top = try XCTUnwrap(x.createdPaneID)
@@ -83,11 +83,11 @@ final class PaneInteractionTests: XCTestCase {
         let after = try await store.execute(.deletePane(id: bottom)).snapshot
         XCTAssertEqual(after.tabs.values.first?.activePaneID, top)
         _ = try await store.execute(.deletePane(id: top))
-        let fallback = try await store.execute(.createWindow(name: "Second"))
-        let other = fallback.createdWindowID
-        _ = try await store.execute(.selectWindow(id: firstWindow))
+        let fallback = try await store.execute(.createSpace(name: "Second"))
+        let other = fallback.createdSpaceID
+        _ = try await store.execute(.selectSpace(id: firstSpace))
         let last = try await store.execute(.deletePane(id: left)).snapshot
-        XCTAssertEqual(last.activeWindowID, other)
+        XCTAssertEqual(last.activeSpaceID, other)
         try last.validate()
     }
 
@@ -96,7 +96,7 @@ final class PaneInteractionTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x, startSession: false)
         let second = try XCTUnwrap(model.presentation.activePane?.id)
@@ -125,7 +125,7 @@ final class PaneInteractionTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let left = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(left, axis: .x, startSession: false)
         let right = try XCTUnwrap(model.presentation.activePane?.id)
@@ -153,7 +153,7 @@ final class PaneInteractionTests: XCTestCase {
         for _ in 0..<12 {
             let model = AppWorkspaceModel(store: try WorkspaceStore())
             model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-            await model.createWindow(startSession: false)
+            await model.createSpace(startSession: false)
             let first = try XCTUnwrap(model.presentation.activePane?.id)
             await model.splitPane(first, axis: .x, startSession: false)
             let second = try XCTUnwrap(model.presentation.activePane?.id)
@@ -180,7 +180,7 @@ final class PaneInteractionTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         await model.splitPane(first, axis: .x, startSession: false)
         let originalTab = try XCTUnwrap(model.presentation.selectedTab?.id)

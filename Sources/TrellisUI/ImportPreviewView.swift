@@ -2,8 +2,8 @@ import SwiftUI
 import TrellisControl
 import TrellisCore
 
-/// Review before any change: counts, launch references, host collisions, and
-/// an explicit collision policy. Import stays disabled until it is valid.
+/// Review before any change: counts, host and project collisions, and an
+/// explicit host collision policy. Import stays disabled until it is valid.
 public struct ImportPreviewView: View {
     private let transfer: PortableTransfer
     private let parsed: PortableDocument.Parsed
@@ -20,14 +20,18 @@ public struct ImportPreviewView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Import Windows & Hosts").font(.headline)
-            Text("\(preview.windows) window(s), \(preview.tabs) tab(s), \(preview.panes) pane(s), \(preview.hosts) saved host(s)" + (preview.projects > 0 ? ", \(preview.projects) project(s)" : ""))
-            Text("Everything imports with new IDs. Panes start stopped; nothing runs until you start it.").font(.caption).foregroundStyle(.secondary)
-            if !preview.directories.isEmpty {
-                Text("Directories: " + preview.directories.joined(separator: ", ")).font(.caption).lineLimit(3)
+            Text("Import Projects & Hosts").font(.headline)
+            Text("\(preview.projects) project(s), \(preview.hosts) saved host(s)")
+            Text("Everything imports with new IDs. Nothing opens or runs until you launch a project.").font(.caption).foregroundStyle(.secondary)
+            if preview.skippedSpaces > 0 {
+                Label(
+                    "This file was made by an older Trellis; its \(preview.skippedSpaces) window(s) are not imported. Spaces now come from projects.",
+                    systemImage: "info.circle"
+                ).font(.caption)
             }
-            if !preview.hostReferences.isEmpty {
-                Text("Hosts used by panes: " + preview.hostReferences.joined(separator: ", ")).font(.caption).lineLimit(3)
+            if !preview.projectCollisions.isEmpty {
+                Text("You already have project(s) named " + preview.projectCollisions.map { "“\($0)”" }.joined(separator: ", ") + "; they're added as copies named “… (imported)”.")
+                    .font(.caption).lineLimit(4)
             }
             if !preview.errors.isEmpty {
                 ForEach(Array(preview.errors.enumerated()), id: \.offset) { _, issue in
@@ -62,7 +66,7 @@ public struct ImportPreviewView: View {
         Task {
             switch await transfer.commit(parsed, policy: policy) {
             case .success(let summary):
-                message = "Imported \(summary.windows) window(s); \(summary.hostsCreated) host(s) added, \(summary.hostsReplaced) replaced."
+                message = "Imported \(summary.projectsCreated) project(s); \(summary.hostsCreated) host(s) added, \(summary.hostsReplaced) replaced."
                 done = true
             case .failure(let error): message = error.message
             }

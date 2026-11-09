@@ -6,20 +6,20 @@ import class SwiftTerm.TerminalView
 
 public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
-    @State private var windowToRename: ManagedWindow?
+    @State private var spaceToRename: Space?
     /// The scratchpad's width; layout only, never persisted.
     @State private var sidebarWidth: CGFloat = 380
     @State private var sidebarDragStart: CGFloat?
     /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
     @State private var sidebarCursorPushed = false
     static let sidebarWidths: ClosedRange<CGFloat> = 280...640
-    @State private var windowName = ""
+    @State private var spaceName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var draggedTabID: UUID?
     @State private var tabDropTargetID: UUID?
-    @State private var draggedWindowID: UUID?
-    @State private var windowDropTargetID: UUID?
-    @State private var windowDragStarts = 0
+    @State private var draggedSpaceID: UUID?
+    @State private var spaceDropTargetID: UUID?
+    @State private var spaceDragStarts = 0
     public init(model: AppWorkspaceModel) { self.model = model }
     public var body: some View {
         VStack(spacing: 0) {
@@ -45,11 +45,11 @@ public struct WorkspaceRootView: View {
                 Text(model.accessibility.status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(model.accessibility.status)")
                 Text("·  UTF-8  ·")
                 PaneMachineLabel(machine: model.focusedMachine, model: model)
-                if let name = model.presentation.selectedWindow?.name {
+                if let name = model.presentation.selectedSpace?.name {
                     Text("·").accessibilityHidden(true)
                     HStack(spacing: 4) {
                         Image(systemName: "folder").accessibilityHidden(true)
-                        Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Window \(name)")
+                        Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Space \(name)")
                     }
                 }
             }
@@ -67,26 +67,26 @@ public struct WorkspaceRootView: View {
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
-        .onChange(of: model.windowRenameRequest) { _, _ in
-            if let window = model.presentation.selectedWindow { beginWindowRename(window) }
+        .onChange(of: model.spaceRenameRequest) { _, _ in
+            if let space = model.presentation.selectedSpace { beginSpaceRename(space) }
         }
-        // A cancelled drag leaves its ID behind; starting one in the other list clears it, so a tab over a window row
-        // (or a window over the tab bar) never shows a landing bar.
-        .onChange(of: draggedTabID) { _, value in if value != nil { draggedWindowID = nil; windowDropTargetID = nil } }
-        .onChange(of: draggedWindowID) { _, value in if value != nil { draggedTabID = nil; tabDropTargetID = nil } }
+        // A cancelled drag leaves its ID behind; starting one in the other list clears it, so a tab over a space row
+        // (or a space over the tab bar) never shows a landing bar.
+        .onChange(of: draggedTabID) { _, value in if value != nil { draggedSpaceID = nil; spaceDropTargetID = nil } }
+        .onChange(of: draggedSpaceID) { _, value in if value != nil { draggedTabID = nil; tabDropTargetID = nil } }
         .onChange(of: model.editingTabID) { _, value in
             if value == nil, let terminal = model.activeTerminal {
                 DispatchQueue.main.async { terminal.view.window?.makeFirstResponder(terminal.view) }
             }
         }
-        .sheet(item: $windowToRename) { window in
+        .sheet(item: $spaceToRename) { space in
             VStack(alignment: .leading, spacing: 16) {
-                Text("Rename Window").font(.headline)
-                TextField("Window name", text: $windowName).onSubmit { rename(window) }
+                Text("Rename Space").font(.headline)
+                TextField("Space name", text: $spaceName).onSubmit { rename(space) }
                 HStack {
                     Spacer()
-                    Button("Cancel") { windowToRename = nil }.keyboardShortcut(.cancelAction)
-                    Button("Rename") { rename(window) }.keyboardShortcut(.defaultAction)
+                    Button("Cancel") { spaceToRename = nil }.keyboardShortcut(.cancelAction)
+                    Button("Rename") { rename(space) }.keyboardShortcut(.defaultAction)
                 }
             }.padding(24).frame(width: 330)
         }
@@ -146,31 +146,31 @@ public struct WorkspaceRootView: View {
         .accessibilityLabel(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar")
     }
 
-    private var newWindowButton: some View {
+    private var newSpaceButton: some View {
         Button {
-            Task { await model.createWindow() }
+            Task { await model.createSpace() }
         } label: {
             Image(systemName: "plus")
         }
-        .buttonStyle(.plain).help(shortcutHelp("New Window", .newWindow)).accessibilityLabel("New Window")
+        .buttonStyle(.plain).help(shortcutHelp("New Space", .newSpace)).accessibilityLabel("New Space")
     }
 
     private var expandedSidebar: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 sidebarToggle
-                Text("WINDOWS").font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
+                Text("SPACES").font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
                 Spacer()
-                newWindowButton
+                newSpaceButton
             }.padding(.horizontal, 10).padding(.bottom, 8)
             ScrollView {
-                let descriptors = model.accessibility.windows
+                let descriptors = model.accessibility.spaces
                 VStack(spacing: 6) {
-                    ForEach(model.snapshot.windows) { window in
-                        windowRow(window, descriptor: descriptors.first { $0.id == window.id })
+                    ForEach(model.snapshot.spaces) { space in
+                        spaceRow(space, descriptor: descriptors.first { $0.id == space.id })
                     }
-                }.accessibilityElement(children: .contain).accessibilityLabel("Windows")
+                }.accessibilityElement(children: .contain).accessibilityLabel("Spaces")
             }
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
@@ -199,15 +199,15 @@ public struct WorkspaceRootView: View {
     private var collapsedSidebar: some View {
         VStack(spacing: 10) {
             sidebarToggle.padding(.bottom, 8)
-            newWindowButton
+            newSpaceButton
             // Padding leaves room for the tile corner markers, which the scroll view would otherwise clip.
             ScrollView {
-                let descriptors = model.accessibility.windows
+                let descriptors = model.accessibility.spaces
                 VStack(spacing: 8) {
-                    ForEach(model.snapshot.windows) { window in
-                        windowTile(window, descriptor: descriptors.first { $0.id == window.id })
+                    ForEach(model.snapshot.spaces) { space in
+                        spaceTile(space, descriptor: descriptors.first { $0.id == space.id })
                     }
-                }.padding(.vertical, 8).frame(maxWidth: .infinity).accessibilityElement(children: .contain).accessibilityLabel("Windows")
+                }.padding(.vertical, 8).frame(maxWidth: .infinity).accessibilityElement(children: .contain).accessibilityLabel("Spaces")
             }.scrollIndicators(.hidden)
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
@@ -233,18 +233,24 @@ public struct WorkspaceRootView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func windowRow(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
-        let selected = window.id == model.snapshot.activeWindowID
+    private func spaceRow(_ space: Space, descriptor: AccessibilityDescriptor?) -> some View {
+        let selected = space.id == model.snapshot.activeSpaceID
         return Button {
-            Task { await model.selectWindow(window.id) }
+            Task { await model.selectSpace(space.id) }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: window.remoteHostID == nil ? "macwindow" : "server.rack").foregroundStyle(model.themeColor(.mutedForeground))
-                    .accessibilityHidden(true)
+                let project = model.projectName(of: space)
+                Image(systemName: space.remoteHostID != nil ? "server.rack" : project != nil ? "folder" : "macwindow")
+                    .foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(window.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
+                    Text(space.name).lineLimit(1).fontWeight(selected ? .semibold : .regular)
+                    // FR-W08: the project this space was loaded from, when it isn't simply its name.
+                    if let project, project != space.name {
+                        Label(project, systemImage: "folder").font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
+                            .help("Loaded from the project \(project)")
+                    }
                     // FR-RW16: the link in words and a symbol, never color alone.
-                    if let host = window.remoteHostID {
+                    if let host = space.remoteHostID {
                         let link = model.remoteLinks[host] ?? .disconnected(nil)
                         Label("\(model.remoteHostName(host)) · \(link.label)", systemImage: link.symbol)
                             .font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
@@ -252,42 +258,42 @@ public struct WorkspaceRootView: View {
                     }
                 }
                 Spacer()
-                if model.windowsNeedingInput.contains(window.id) {
+                if model.spacesNeedingInput.contains(space.id) {
                     Image(systemName: "keyboard").font(.system(size: 10)).help("Waiting for input")
                 }
-                if model.activity[window.id]?.hasExit == true {
+                if model.activity[space.id]?.hasExit == true {
                     Image(systemName: "stop.circle").help("A session exited")
-                } else if model.activity[window.id]?.hasOutput == true {
+                } else if model.activity[space.id]?.hasOutput == true {
                     Circle().fill(model.themeColor(.accent)).frame(width: 6, height: 6).help("New terminal output")
                 }
-                Text("\(window.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
+                Text("\(space.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
             }.padding(.horizontal, 10).padding(.vertical, 8)
                 .background(selected ? model.sidebarSelectionBackground : .clear, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .modifier(windowDrag(window))
-        .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
+        .modifier(spaceDrag(space))
+        .modifier(SpaceItemActions(space: space, descriptor: descriptor, selected: selected, model: model, rename: beginSpaceRename))
     }
 
     private func linkHelp(_ link: RemoteLinkDisplay) -> String {
-        [link.label, link.detail, link.isUp ? nil : "The window’s menu has Retry Now and Reconnect…."].compactMap { $0 }.joined(separator: " ")
+        [link.label, link.detail, link.isUp ? nil : "The space’s menu has Retry Now and Reconnect…."].compactMap { $0 }.joined(separator: " ")
     }
 
-    private func windowDrag(_ window: ManagedWindow) -> DragReorder {
+    private func spaceDrag(_ space: Space) -> DragReorder {
         DragReorder(
-            id: window.id, order: model.snapshot.windows.map(\.id), axis: .vertical, enabled: true, marker: model.themeColor(.accent),
-            draggedID: $draggedWindowID, dropTargetID: $windowDropTargetID, onStart: { windowDragStarts += 1 },
-            move: { [model] in await model.moveWindow($0, to: $1) })
+            id: space.id, order: model.snapshot.spaces.map(\.id), axis: .vertical, enabled: true, marker: model.themeColor(.accent),
+            draggedID: $draggedSpaceID, dropTargetID: $spaceDropTargetID, onStart: { spaceDragStarts += 1 },
+            move: { [model] in await model.moveSpace($0, to: $1) })
     }
 
-    private func windowTile(_ window: ManagedWindow, descriptor: AccessibilityDescriptor?) -> some View {
-        let selected = window.id == model.snapshot.activeWindowID
+    private func spaceTile(_ space: Space, descriptor: AccessibilityDescriptor?) -> some View {
+        let selected = space.id == model.snapshot.activeSpaceID
         let shape = RoundedRectangle(cornerRadius: 7)
         return Button {
-            Task { await model.selectWindow(window.id) }
+            Task { await model.selectSpace(space.id) }
         } label: {
-            Text(WorkspaceAccessibility.initials(for: window.name))
+            Text(WorkspaceAccessibility.initials(for: space.name))
                 .font(.system(size: 12, weight: selected ? .bold : .medium)).lineLimit(1).minimumScaleFactor(0.6)
                 .foregroundStyle(selected ? AnyShapeStyle(model.accentForeground) : AnyShapeStyle(.foreground))
                 .frame(width: 32, height: 32)
@@ -295,23 +301,23 @@ public struct WorkspaceRootView: View {
                 // Selection is a filled square with bold initials and a border, never color alone.
                 .overlay(shape.strokeBorder(selected ? model.themeColor(.accent) : model.themeColor(.border).opacity(0.6), lineWidth: selected ? 2 : 1))
                 .overlay(alignment: .bottomTrailing) {
-                    if model.windowsNeedingInput.contains(window.id) {
+                    if model.spacesNeedingInput.contains(space.id) {
                         Image(systemName: "keyboard.fill").font(.system(size: 8)).foregroundStyle(model.themeColor(.accent))
                             .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: 4, y: 4).help("Waiting for input")
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
-                    if let host = window.remoteHostID {
+                    if let host = space.remoteHostID {
                         Image(systemName: (model.remoteLinks[host] ?? .disconnected(nil)).symbol).font(.system(size: 8))
                             .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: -4, y: 4)
                             .help("\(model.remoteHostName(host)) · \((model.remoteLinks[host] ?? .disconnected(nil)).label)")
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if model.activity[window.id]?.hasExit == true {
+                    if model.activity[space.id]?.hasExit == true {
                         Image(systemName: "stop.circle.fill").font(.system(size: 9)).foregroundStyle(model.themeColor(.mutedForeground))
                             .background(Circle().fill(model.themeColor(.sidebarBackground))).offset(x: 4, y: -4).help("A session exited")
-                    } else if model.activity[window.id]?.hasOutput == true {
+                    } else if model.activity[space.id]?.hasOutput == true {
                         Circle().fill(model.themeColor(.accent)).frame(width: 7, height: 7).offset(x: 3, y: -3).help("New terminal output")
                     }
                 }
@@ -319,20 +325,20 @@ public struct WorkspaceRootView: View {
         }
         // The hover card carries the full name (FR-W06), so no tooltip competes with it.
         .buttonStyle(.plain)
-        .modifier(windowDrag(window))
-        .modifier(WindowItemActions(window: window, descriptor: descriptor, selected: selected, model: model, rename: beginWindowRename))
-        .modifier(WindowHoverPreview(window: window, model: model, dragStarts: windowDragStarts))
+        .modifier(spaceDrag(space))
+        .modifier(SpaceItemActions(space: space, descriptor: descriptor, selected: selected, model: model, rename: beginSpaceRename))
+        .modifier(SpaceHoverPreview(space: space, model: model, dragStarts: spaceDragStarts))
     }
 
-    private func beginWindowRename(_ window: ManagedWindow) {
-        windowName = window.name
-        windowToRename = window
+    private func beginSpaceRename(_ space: Space) {
+        spaceName = space.name
+        spaceToRename = space
     }
 
-    private func rename(_ window: ManagedWindow) {
-        let name = windowName
-        windowToRename = nil
-        Task { await model.renameWindow(window.id, name: name) }
+    private func rename(_ space: Space) {
+        let name = spaceName
+        spaceToRename = nil
+        Task { await model.renameSpace(space.id, name: name) }
     }
 
     @ViewBuilder private var mainArea: some View {
@@ -352,7 +358,7 @@ public struct WorkspaceRootView: View {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
                 Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
                 // A view's key equivalent runs before the menu's, which the open palette or tour disables (FR-CP02, FR-ON04).
-                Button("New Window") { Task { await model.createWindow() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
+                Button("New Space") { Task { await model.createSpace() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeFill(.background))
         } else {
             HStack(spacing: 0) {
@@ -423,7 +429,7 @@ public struct WorkspaceRootView: View {
             }
     }
 
-    /// The window's Review tab (FR-GC05): after the terminal tabs, never saved, not reorderable.
+    /// The space's Review tab (FR-GC05): after the terminal tabs, never saved, not reorderable.
     private func reviewTabLabel(_ review: ReviewTab) -> some View {
         let selected = model.reviewVisible
         return HStack(spacing: 8) {
@@ -459,8 +465,9 @@ public struct WorkspaceRootView: View {
         let agentBadge = model.agentBadge(tabID: tab.id)
         let agent = model.tabAgent(tabID: tab.id)
         let linkDown = model.tabLinkDown(tabID: tab.id)
+        let temporary = model.isTemporaryTab(tab)
         let parts: [String] = [
-            descriptor?.value ?? "", linkDown.map { "\($0.hostName), \($0.link.label)" } ?? "", agentBadge.map { "\($0.agent.name) \($0.state.spokenText)" } ?? "",
+            descriptor?.value ?? "", temporary ? "temporary tab" : "", linkDown.map { "\($0.hostName), \($0.link.label)" } ?? "", agentBadge.map { "\($0.agent.name) \($0.state.spokenText)" } ?? "",
             wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""
         ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
@@ -498,7 +505,9 @@ public struct WorkspaceRootView: View {
                     }
             } else {
                 // Simultaneous double-tap: an exclusive one delays every single click by the double-click interval.
-                Text(model.displayTitle(tab)).lineLimit(1)
+                // FR-W08: a tab the space's project doesn't define reads as temporary, in italics and in words.
+                Text(model.displayTitle(tab)).lineLimit(1).italic(temporary)
+                    .help(temporary ? "Temporary tab: not part of this space's project" : "")
                     .onTapGesture { Task { await model.selectTab(tab.id) } }
                     .simultaneousGesture(TapGesture(count: 2).onEnded { beginTabRename(tab) })
             }
@@ -676,9 +685,9 @@ extension TabColor {
         })
 }
 
-/// Drag reordering of tabs (FR-T10) and windows (FR-W07): the dragged item takes the target's place, so it lands on
+/// Drag reordering of tabs (FR-T10) and spaces (FR-W07): the dragged item takes the target's place, so it lands on
 /// the side it comes from, where an accent bar marks it. The payload is the item's UUID and the drop reads it back, so
-/// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a window never moves
+/// text dragged in from another app, the state a cancelled drag leaves behind, or a tab dropped on a space never moves
 /// anything. Off while renaming, so a drag in the name field selects text.
 /// The task review (FR-TK06) and project launch (FR-PL06) sheets, apart so the root's modifier chain type-checks.
 private struct TaskSheets: ViewModifier {
@@ -783,7 +792,7 @@ private struct TabContextMenu: View, Equatable {
                 }.tag(TabColor?.some(color))
             }
         }
-        Button("Duplicate Tab") { Task { await model.createTab(windowID: tab.windowID, duplicate: tab.id) } }
+        Button("Duplicate Tab") { Task { await model.createTab(spaceID: tab.spaceID, duplicate: tab.id) } }
         Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
         Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
         Divider().overlay(separator)
@@ -921,59 +930,59 @@ private struct TabProgressBar: View {
 }
 
 /// Shared by the expanded row and the collapsed tile so both expose the same
-/// VoiceOver description and window commands.
-private struct WindowItemActions: ViewModifier {
-    let window: ManagedWindow
+/// VoiceOver description and space commands.
+private struct SpaceItemActions: ViewModifier {
+    let space: Space
     let descriptor: AccessibilityDescriptor?
     let selected: Bool
     @ObservedObject var model: AppWorkspaceModel
-    let rename: (ManagedWindow) -> Void
+    let rename: (Space) -> Void
 
     /// FR-RW16: VoiceOver hears the host and its link, for example "build-box, Disconnected".
     private var value: String {
-        guard let host = window.remoteHostID else { return descriptor?.value ?? "" }
+        guard let host = space.remoteHostID else { return descriptor?.value ?? "" }
         let state = model.remoteLinks[host] ?? .disconnected(nil)
         let link = ["\(model.remoteHostName(host)), \(state.label)", state.detail].compactMap { $0 }.joined(separator: ". ")
         return [descriptor?.value, link].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     private var canReconnect: Bool {
-        guard let host = window.remoteHostID else { return false }
+        guard let host = space.remoteHostID else { return false }
         return !(model.remoteLinks[host] ?? .disconnected(nil)).isUp
     }
 
     func body(content: Content) -> some View {
         content
-            .accessibilityLabel(descriptor?.label ?? window.name)
+            .accessibilityLabel(descriptor?.label ?? space.name)
             .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected] : [])
-            .accessibilityAction(named: "Retry Now") { if canReconnect, let host = window.remoteHostID { model.remoteReconnector.retryNow(host) } }
-            .accessibilityAction(named: "Reconnect") { if canReconnect, let host = window.remoteHostID { Task { await model.reconnectRemote(hostID: host) } } }
-            .accessibilityAction(named: "Rename") { rename(window) }
-            .accessibilityAction(named: "Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
-            .accessibilityAction(named: "Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
+            .accessibilityAction(named: "Retry Now") { if canReconnect, let host = space.remoteHostID { model.remoteReconnector.retryNow(host) } }
+            .accessibilityAction(named: "Reconnect") { if canReconnect, let host = space.remoteHostID { Task { await model.reconnectRemote(hostID: host) } } }
+            .accessibilityAction(named: "Rename") { rename(space) }
+            .accessibilityAction(named: "Move Up") { Task { await model.moveSpace(space.id, offset: -1) } }
+            .accessibilityAction(named: "Move Down") { Task { await model.moveSpace(space.id, offset: 1) } }
             .contextMenu {
-                if let host = window.remoteHostID {
+                if let host = space.remoteHostID {
                     // Retry Now never prompts; Reconnect… lets ssh ask for a password or a host-key decision (FR-RW07).
                     Button("Retry Now") { model.remoteReconnector.retryNow(host) }.disabled(!canReconnect)
                     Button("Reconnect to \(model.remoteHostName(host))…") { Task { await model.reconnectRemote(hostID: host) } }.disabled(!canReconnect)
                     Divider().overlay(model.separatorOverlay)
                 }
-                Button("Rename…") { rename(window) }
-                Button("Move Up") { Task { await model.moveWindow(window.id, offset: -1) } }
-                    .disabled(model.snapshot.windows.first?.id == window.id)
-                Button("Move Down") { Task { await model.moveWindow(window.id, offset: 1) } }
-                    .disabled(model.snapshot.windows.last?.id == window.id)
+                Button("Rename…") { rename(space) }
+                Button("Move Up") { Task { await model.moveSpace(space.id, offset: -1) } }
+                    .disabled(model.snapshot.spaces.first?.id == space.id)
+                Button("Move Down") { Task { await model.moveSpace(space.id, offset: 1) } }
+                    .disabled(model.snapshot.spaces.last?.id == space.id)
                 Divider().overlay(model.separatorOverlay)
-                Button("Delete Window…", role: .destructive) { Task { await model.deleteWindow(window.id) } }
+                Button("Delete Space…", role: .destructive) { Task { await model.deleteSpace(space.id) } }
             }
     }
 }
 
-/// Hovering a rail tile opens a card of the window's tabs (FR-W06). A short grace lets the
+/// Hovering a rail tile opens a card of the space's tabs (FR-W06). A short grace lets the
 /// pointer cross from the tile into the card without closing it.
-private struct WindowHoverPreview: ViewModifier {
-    let window: ManagedWindow
+private struct SpaceHoverPreview: ViewModifier {
+    let space: Space
     @ObservedObject var model: AppWorkspaceModel
     let dragStarts: Int
     @State private var presented = false
@@ -993,15 +1002,15 @@ private struct WindowHoverPreview: ViewModifier {
             // A card dismissed by an outside click may never report the pointer leaving it.
             .onChange(of: presented) { _, shown in if !shown { overCard = false } }
             .onChange(of: model.sidebarCollapsed) { _, _ in close() }
-            // Dragging a window (FR-W07) closes the card and drops a pending open, so it never pops up mid-drag.
+            // Dragging a space (FR-W07) closes the card and drops a pending open, so it never pops up mid-drag.
             .onChange(of: dragStarts) { _, _ in close() }
             .onDisappear { close() }
     }
 
     private var card: some View {
-        WindowTabsPreviewCard(window: window, model: model) { tabID in
+        SpaceTabsPreviewCard(space: space, model: model) { tabID in
             close()
-            Task { await model.selectWindowTab(windowID: window.id, tabID: tabID) }
+            Task { await model.selectSpaceTab(spaceID: space.id, tabID: tabID) }
         }
         .onHover {
             overCard = $0; schedule()
@@ -1025,16 +1034,16 @@ private struct WindowHoverPreview: ViewModifier {
     }
 }
 
-private struct WindowTabsPreviewCard: View {
-    let window: ManagedWindow
+private struct SpaceTabsPreviewCard: View {
+    let space: Space
     @ObservedObject var model: AppWorkspaceModel
     let select: (UUID) -> Void
 
     var body: some View {
-        let tabs = model.tabPreviews(windowID: window.id)
+        let tabs = model.tabPreviews(spaceID: space.id)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(window.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Text(space.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 12)
                 Text("\(tabs.count) \(tabs.count == 1 ? "tab" : "tabs")").font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
             }.padding(.horizontal, 6).padding(.bottom, 4).accessibilityElement(children: .combine)
@@ -1050,10 +1059,10 @@ private struct WindowTabsPreviewCard: View {
         .padding(10).frame(width: 280, alignment: .leading)
         .foregroundStyle(model.themeColor(.foreground))
         .background(model.themeColor(.surface))
-        .accessibilityElement(children: .contain).accessibilityLabel("Tabs in \(window.name)")
+        .accessibilityElement(children: .contain).accessibilityLabel("Tabs in \(space.name)")
     }
 
-    private func row(_ tab: WindowTabPreview) -> some View {
+    private func row(_ tab: SpaceTabPreview) -> some View {
         HStack(spacing: 6) {
             // The active tab is marked by a chevron and weight, never color alone.
             Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).opacity(tab.isActive ? 1 : 0)
@@ -1085,7 +1094,7 @@ private struct WindowTabsPreviewCard: View {
         .contentShape(Rectangle())
     }
 
-    static func spoken(_ tab: WindowTabPreview) -> String {
+    static func spoken(_ tab: SpaceTabPreview) -> String {
         var parts = ["Tab \(tab.title)"]
         if tab.isActive { parts.append("active") }
         if let color = tab.color { parts.append("\(color.displayName.lowercased()) label") }
@@ -1317,7 +1326,7 @@ public struct LaunchSettingsView: View {
             caption(
                 model.savesThrottled
                     ? "Limit reached: changes are now saved together every 5 minutes. Quit and ⌘S still save at once."
-                    : "Past this, changes to windows, tabs and settings are saved together every 5 minutes instead of right away."
+                    : "Past this, changes to spaces, tabs and settings are saved together every 5 minutes instead of right away."
             ).accessibilityIdentifier("settings.saveBudgetNote")
             Toggle("Desktop notifications", isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
             caption("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane.")

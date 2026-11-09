@@ -14,8 +14,8 @@ final class CLIHelpTests: XCTestCase {
 
     func testEveryHelpFormGoesToStdoutAndExitsZeroWithoutTouchingTheApp() {
         for arguments in [
-            ["--help"], ["-h"], ["help"], ["--help", "--json"], ["--json", "--help"], ["help", "--help"], ["window", "--help"], ["window", "-h"], ["help", "window"], ["window", "--json", "--help"],
-            ["window", "create", "--help"], ["window", "create", "-h"], ["help", "window", "create"], ["layout", "apply", "--help"], ["window", "rename", "--window", "x", "--help"]
+            ["--help"], ["-h"], ["help"], ["--help", "--json"], ["--json", "--help"], ["help", "--help"], ["space", "--help"], ["space", "-h"], ["help", "space"], ["space", "--json", "--help"],
+            ["space", "create", "--help"], ["space", "create", "-h"], ["help", "space", "create"], ["layout", "apply", "--help"], ["space", "rename", "--space", "x", "--help"]
         ] {
             let h = CLIHarness()
             XCTAssertEqual(h.run(arguments), 0, "\(arguments)")
@@ -36,13 +36,13 @@ final class CLIHelpTests: XCTestCase {
         for noun in CLICommands.table.keys { XCTAssertTrue(overview.contains("\n  \(noun) "), noun) }
 
         let noun = CLIHarness()
-        XCTAssertEqual(noun.run(["window", "--help"]), 0)
-        XCTAssertTrue(noun.out[0].hasPrefix("trellis window - "))
-        for verb in try XCTUnwrap(CLICommands.table["window"]).keys { XCTAssertTrue(noun.out[0].contains("\n  \(verb) "), verb) }
+        XCTAssertEqual(noun.run(["space", "--help"]), 0)
+        XCTAssertTrue(noun.out[0].hasPrefix("trellis space - "))
+        for verb in try XCTUnwrap(CLICommands.table["space"]).keys { XCTAssertTrue(noun.out[0].contains("\n  \(verb) "), verb) }
 
         let command = CLIHarness()
-        XCTAssertEqual(command.run(["window", "rename", "--help"]), 0)
-        XCTAssertTrue(command.out[0].contains("trellis window rename --window WINDOW --name NAME"))
+        XCTAssertEqual(command.run(["space", "rename", "--help"]), 0)
+        XCTAssertTrue(command.out[0].contains("trellis space rename --space SPACE --name NAME"))
         XCTAssertTrue(command.out[0].contains("--idempotency-key KEY"), "Flags the synopsis omits are still listed")
         XCTAssertTrue(command.out[0].contains("--token-stdin"))
 
@@ -108,7 +108,7 @@ final class CLIHelpTests: XCTestCase {
     }
 
     func testJsonModeKeepsTheEnvelope() throws {
-        for (arguments, key) in [(["--help", "--json"], "help"), (["window", "list", "--help", "--json"], "help"), (["--version", "--json"], "version")] {
+        for (arguments, key) in [(["--help", "--json"], "help"), (["space", "list", "--help", "--json"], "help"), (["--version", "--json"], "version")] {
             let h = CLIHarness()
             XCTAssertEqual(h.run(arguments), 0)
             XCTAssertEqual(h.out.count, 1)
@@ -129,9 +129,9 @@ final class CLIHelpTests: XCTestCase {
     func testUsageErrorsPointAtTheNarrowestHelpOnStderr() {
         let cases: [([String], String)] = [
             ([], "Try 'trellis --help'"), (["--json"], ""), (["nope"], "Try 'trellis --help'"), (["nope", "--help"], "Try 'trellis --help'"), (["help", "nope"], "Try 'trellis --help'"),
-            (["window"], "Try 'trellis window --help'"), (["window", "explode"], "Try 'trellis window --help'"), (["help", "window", "explode"], "Try 'trellis window --help'"),
-            (["window", "explode", "--help"], "Try 'trellis window --help'"), (["help", "window", "list", "extra"], "Try 'trellis window list --help'"),
-            (["window", "list", "--bogus"], "Try 'trellis window list --help'")
+            (["space"], "Try 'trellis space --help'"), (["space", "explode"], "Try 'trellis space --help'"), (["help", "space", "explode"], "Try 'trellis space --help'"),
+            (["space", "explode", "--help"], "Try 'trellis space --help'"), (["help", "space", "list", "extra"], "Try 'trellis space list --help'"),
+            (["space", "list", "--bogus"], "Try 'trellis space list --help'")
         ]
         for (arguments, hint) in cases {
             let h = CLIHarness()
@@ -152,17 +152,17 @@ final class CLIHelpTests: XCTestCase {
 
         // Argument errors found after parsing get the hint too.
         let noCredentials = CLIHarness()
-        XCTAssertEqual(noCredentials.run(["window", "list"]), 2)
-        XCTAssertEqual(noCredentials.err.last, "Try 'trellis window list --help' for more information.")
+        XCTAssertEqual(noCredentials.run(["space", "list"]), 2)
+        XCTAssertEqual(noCredentials.err.last, "Try 'trellis space list --help' for more information.")
         let missingOption = CLIHarness()
-        XCTAssertEqual(missingOption.run(["window", "get", "--token-stdin"]), 2)
+        XCTAssertEqual(missingOption.run(["space", "get", "--token-stdin"]), 2)
         XCTAssertEqual(missingOption.err.count, 2)
-        XCTAssertEqual(missingOption.err.last, "Try 'trellis window get --help' for more information.")
+        XCTAssertEqual(missingOption.err.last, "Try 'trellis space get --help' for more information.")
 
         // Failures from the app are not usage errors: no hint.
         let app = CLIHarness()
         app.discovery = nil
-        XCTAssertEqual(app.run(["window", "list", "--token-stdin"]), 7)
+        XCTAssertEqual(app.run(["space", "list", "--token-stdin"]), 7)
         XCTAssertEqual(app.err.count, 1)
     }
 
@@ -176,11 +176,11 @@ final class CLIHelpTests: XCTestCase {
 
     func testHintNeverEchoesAnArgument() {
         let secret = "trl_STDIN_SECRET_123"
-        for arguments in [["window", "list", "--token", secret], ["window", "list", "--token-stdin", secret], ["window", secret, "--token-stdin"]] {
+        for arguments in [["space", "list", "--token", secret], ["space", "list", "--token-stdin", secret], ["space", secret, "--token-stdin"]] {
             XCTAssertFalse(CLIHelp.hint(arguments).contains(secret), "\(arguments)")
         }
         // A secret in a command position, as when --token=VALUE comes first, isn't echoed in the message either.
-        for arguments in [[secret], ["--token=\(secret)", "window", "list"], ["window", "--token=\(secret)"], ["help", secret], ["help", "window", secret], [secret, "--help"]] {
+        for arguments in [[secret], ["--token=\(secret)", "space", "list"], ["space", "--token=\(secret)"], ["help", secret], ["help", "space", secret], [secret, "--help"]] {
             for mode in [arguments, arguments + ["--json"]] {
                 let h = CLIHarness()
                 XCTAssertEqual(h.run(mode), 2, "\(mode)")
@@ -188,7 +188,7 @@ final class CLIHelpTests: XCTestCase {
             }
         }
         let h = CLIHarness()
-        XCTAssertEqual(h.run(["window", "list", "--help", "--token", secret]), 0, "Help is answered first; the rest is ignored")
+        XCTAssertEqual(h.run(["space", "list", "--help", "--token", secret]), 0, "Help is answered first; the rest is ignored")
         XCTAssertFalse((h.out + h.err).joined().contains(secret))
     }
 }

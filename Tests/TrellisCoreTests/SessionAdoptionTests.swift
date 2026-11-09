@@ -18,7 +18,7 @@ private final class KeptTransport: LocalSessionTransport {
 final class SessionAdoptionTests: XCTestCase {
     func testStoreAdoptsOnlyAStoppedSessionWithAUniqueProcess() async throws {
         let store = try WorkspaceStore()
-        let first = try await store.execute(.createWindow(name: "One")).snapshot
+        let first = try await store.execute(.createSpace(name: "One")).snapshot
         let sessionID = try XCTUnwrap(first.sessions.keys.first)
         let adopted = try await store.execute(.adoptRunningSession(sessionID: sessionID, processID: 4242))
         XCTAssertEqual(adopted.snapshot.sessions[sessionID]?.state, .running)
@@ -28,7 +28,7 @@ final class SessionAdoptionTests: XCTestCase {
         do { _ = try await store.execute(.adoptRunningSession(sessionID: sessionID, processID: 4243)); XCTFail("Running sessions can't adopt") } catch {
             XCTAssertEqual(error as? WorkspaceError, .invalidTransition)
         }
-        let second = try await store.execute(.createWindow(name: "Two")).snapshot
+        let second = try await store.execute(.createSpace(name: "Two")).snapshot
         let other = try XCTUnwrap(second.sessions.keys.first { $0 != sessionID })
         let before = await store.snapshot()
         do { _ = try await store.execute(.adoptRunningSession(sessionID: other, processID: 4242)); XCTFail("A PID has one owner") } catch {}
@@ -87,7 +87,7 @@ final class SessionAdoptionTests: XCTestCase {
         let persistence = WorkspacePersistence(directory: directory)
         _ = await persistence.load()
         let store = try WorkspaceStore()
-        let created = try await store.execute(.createWindow(name: "Kept")).snapshot
+        let created = try await store.execute(.createSpace(name: "Kept")).snapshot
         let sessionID = try XCTUnwrap(created.sessions.keys.first)
         let running = try await store.execute(.adoptRunningSession(sessionID: sessionID, processID: 31337)).snapshot
         var settings = WorkspaceSettings()

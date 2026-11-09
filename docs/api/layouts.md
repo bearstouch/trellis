@@ -1,6 +1,6 @@
 # Declarative layouts
 
-A layout document describes windows, tabs and split trees, plus safe launch references. It is **data, not shell code**. A layout can't embed commands, and validating or applying one never runs anything; starting work is always a separate, explicit API call.
+A layout document describes spaces, tabs and split trees, plus safe launch references. It is **data, not shell code**. A layout can't embed commands, and validating or applying one never runs anything; starting work is always a separate, explicit API call.
 
 Projects in the [project library](../features/project-library.md) are a separate, in-app format for people rather than agents; they can carry commands and repositories, and automation can't launch them.
 
@@ -9,8 +9,8 @@ Projects in the [project library](../features/project-library.md) are a separate
 
 ```json
 {
-  "version": 1,
-  "windows": [{
+  "version": 2,
+  "spaces": [{
     "key": "project", "name": "Project",
     "tabs": [{
       "key": "development", "title": "Development",
@@ -30,8 +30,8 @@ Projects in the [project library](../features/project-library.md) are a separate
 
 | Element | Rules |
 | --- | --- |
-| `version` | Must be `1` |
-| `windows` | At most 10. Each has `key`, `name` (1–200 characters) and 1–50 `tabs`. |
+| `version` | `2`. Version `1`, from before windows were renamed spaces, names the list `windows` instead of `spaces` and is still accepted; `layout.export` writes version 2. |
+| `spaces` | At most 10. Each has `key`, `name` (1–200 characters) and 1–50 `tabs`. |
 | `tab` | `key`, `title` (1–200 characters) and `root` |
 | Node | Either `{type: "pane", key, title?, launch}` or `{type: "split", key, axis: x\|y, ratio: 0.1–0.9, children: [node, node]}` |
 | `launch` | `{kind: "shell", directory?}` or `{kind: "host", hostId}` |
@@ -55,7 +55,7 @@ trellis layout apply ./project-layout.json --namespace project --expected-revisi
 
 1. **`layout.validate`** reports errors and warnings without changing anything. It needs `metadata.read`.
 2. **`layout.plan`** shows the keyed changes and conflicts for a namespace, plus a `baseRevision`. A plan is advisory.
-3. **`layout.apply`** needs `layout.write` and all-windows scope, and `expectedRevision` must equal the plan's `baseRevision`. If the workspace changed since the plan, the call returns `CONFLICT`. The model changes are validated and committed atomically, and any requested launches happen afterwards, each one independently. Apply isn't a transaction over process execution, and it never retries a launch.
+3. **`layout.apply`** needs `layout.write` and all-spaces scope, and `expectedRevision` must equal the plan's `baseRevision`. If the workspace changed since the plan, the call returns `CONFLICT`. The model changes are validated and committed atomically, and any requested launches happen afterwards, each one independently. Apply isn't a transaction over process execution, and it never retries a launch.
 
 ## Matching and idempotency (FR-A04)
 

@@ -131,11 +131,11 @@ public struct HostLibraryView: View {
                 HStack {
                     Button("Connect in New Tab") { model.onConnect?(host, .newTab) }
                         .accessibilityHint("Starts a new ssh process for \(host.name)")
-                    Button("Connect in New Window") { model.onConnect?(host, .newWindow) }
-                        .accessibilityHint("Opens a new window and starts a new ssh process for \(host.name)")
+                    Button("Connect in New Space") { model.onConnect?(host, .newSpace) }
+                        .accessibilityHint("Opens a new space and starts a new ssh process for \(host.name)")
                     if model.remote != nil, let open = model.onOpenRemoteWorkspace {
                         Button("Open Remote Workspace") { open(host) }
-                            .accessibilityHint("Opens a window whose sessions run on \(host.name) and keep running when the connection drops")
+                            .accessibilityHint("Opens a space whose sessions run on \(host.name) and keep running when the connection drops")
                     }
                 }
                 .disabled(model.onConnect == nil || hasUnsavedChanges(host))

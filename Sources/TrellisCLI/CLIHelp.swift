@@ -29,29 +29,29 @@ enum CLIHelp {
         "system": "Show app and API information",
         "tab": "List, create, rename, color and close tabs",
         "theme": "Manage the theme library",
-        "window": "List, create, rename, reorder and close windows"
+        "space": "List, create, rename, reorder and close spaces"
     ]
 
     private static let launchForms = ["--pane PANE [--shell [--directory DIR]]", "--pane PANE --process PATH --directory DIR [--arg ARG]...", "--pane PANE --host-launch HOST"]
 
     static let commands: [String: [String: Command]] = [
         "system": ["info": Command("Show the API and app versions, grant capabilities and limits", "")],
-        "window": [
-            "list": Command("List the windows this grant can see", ""),
-            "get": Command("Show one window", "--window WINDOW"),
-            "create": Command("Create a window with one tab and one pane", "--name NAME [--start]"),
-            "rename": Command("Rename a window", "--window WINDOW --name NAME [--expected-revision N]"),
-            "reorder": Command("Set the order of all windows", "--ids IDS [--expected-revision N]"),
-            "focus": Command("Select a window", "--window WINDOW [--activate]"),
-            "close": Command("Close a window", "--window WINDOW [--expected-revision N] [--allow-running] [--force]")
+        "space": [
+            "list": Command("List the spaces this grant can see", ""),
+            "get": Command("Show one space", "--space SPACE"),
+            "create": Command("Create a space with one tab and one pane", "--name NAME [--start]"),
+            "rename": Command("Rename a space", "--space SPACE --name NAME [--expected-revision N]"),
+            "reorder": Command("Set the order of all spaces", "--ids IDS [--expected-revision N]"),
+            "focus": Command("Select a space", "--space SPACE [--activate]"),
+            "close": Command("Close a space", "--space SPACE [--expected-revision N] [--allow-running] [--force]")
         ],
         "tab": [
-            "list": Command("List a window's tabs", "--window WINDOW"),
+            "list": Command("List a space's tabs", "--space SPACE"),
             "get": Command("Show one tab and its split tree", "--tab TAB"),
-            "create": Command("Create a tab with one pane", "--window WINDOW [--title TITLE] [--start]"),
+            "create": Command("Create a tab with one pane", "--space SPACE [--title TITLE] [--start]"),
             "rename": Command("Rename a tab", "--tab TAB --title TITLE [--expected-revision N]"),
             "color": Command("Set or remove a tab's color label", "--tab TAB --color COLOR [--expected-revision N]"),
-            "reorder": Command("Set the order of a window's tabs", "--window WINDOW --ids IDS [--expected-revision N]"),
+            "reorder": Command("Set the order of a space's tabs", "--space SPACE --ids IDS [--expected-revision N]"),
             "focus": Command("Select a tab", "--tab TAB"),
             "close": Command("Close a tab", "--tab TAB [--expected-revision N] [--allow-running] [--force]")
         ],
@@ -78,13 +78,13 @@ enum CLIHelp {
             "create": Command("Save a new host", "--name NAME --destination DEST [--user USER] [--port PORT] [--identity-file PATH] [--tags TAGS]"),
             "update": Command("Change a saved host", "--host HOST [--name NAME] [--destination DEST] [--user USER] [--port PORT] [--identity-file PATH] [--tags TAGS] [--expected-revision N]"),
             "delete": Command("Delete a saved host", "--host HOST [--expected-revision N]"),
-            "connect": Command("Open a host in a new tab, or in a split of a pane", "--host HOST --window WINDOW [--pane PANE [--axis x|y]]")
+            "connect": Command("Open a host in a new tab, or in a split of a pane", "--host HOST --space SPACE [--pane PANE [--axis x|y]]")
         ],
         "layout": [
             "validate": Command("Check a layout document without changing anything", "FILE"),
             "plan": Command("Show what applying a layout would change", "FILE --namespace NS"),
             "apply": Command("Apply a layout; take the revision from 'layout plan'", "FILE --namespace NS --expected-revision N [--start-new]"),
-            "export": Command("Print a layout document for all or some windows", "[--window WINDOW]...")
+            "export": Command("Print a layout document for all or some spaces", "[--space SPACE]...")
         ],
         "events": ["subscribe": Command("Print events, one JSON object per line, until the app closes the stream", "[--topics TOPICS] [--resource ID]... [--after-sequence N] [--instance ID]")],
         "theme": [
@@ -157,7 +157,7 @@ enum CLIHelp {
         "topics": Option("TOPICS", "Comma-separated topics (default: resources,selection,session)"),
         "user": Option("USER", "SSH user"),
         "view": Option("VIEW", "screen, scrollback or stream"),
-        "window": Option("WINDOW", "Window UUID or exact name")
+        "space": Option("SPACE", "Space UUID or exact name")
     ]
 
     /// Where the same flag means something else on one command.
@@ -165,10 +165,10 @@ enum CLIHelp {
         "appearance set --mode": Option("MODE", "system, dark or light"),
         "host create --name": Option("NAME", "Host name"),
         "host update --name": Option("NAME", "Host name"),
-        "layout export --window": Option("WINDOW", "Only this window: UUID or exact name (repeatable; default: all)"),
+        "layout export --space": Option("SPACE", "Only this space: UUID or exact name (repeatable; default: all)"),
         "layout apply --expected-revision": Option("N", "Required: the baseRevision from 'layout plan'"),
         "session restart --allow-running": Option("Stop a running session too, instead of failing with CONFIRMATION_REQUIRED"),
-        "window create --start": Option("Start the new pane's session; it is created stopped otherwise"),
+        "space create --start": Option("Start the new pane's session; it is created stopped otherwise"),
         "tab create --start": Option("Start the new pane's session; it is created stopped otherwise"),
         "pane split --start": Option("Start the new pane's session; it is created stopped otherwise")
     ]
@@ -225,8 +225,8 @@ enum CLIHelp {
         ]))
 
         Examples:
-          trellis window list --keychain-grant GRANT_ID
-          trellis window create --name Project --token-stdin < token-file
+          trellis space list --keychain-grant GRANT_ID
+          trellis space create --name Project --token-stdin < token-file
           trellis layout plan ./layout.json --namespace dev --keychain-grant GRANT_ID
 
         Run 'trellis <noun> --help' for a noun's verbs, and

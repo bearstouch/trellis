@@ -114,7 +114,7 @@ struct SidebarHeader<Accessory: View>: View {
 }
 
 /// The sidebar's Agents view (FR-AG07, FR-AG16): where agents open for the focused pane, each agent with its status and
-/// Open and Resume, and every agent pane in every window with its state in words.
+/// Open and Resume, and every agent pane in every space with its state in words.
 struct AgentsSidebarView: View {
     @ObservedObject var model: AppWorkspaceModel
 
@@ -212,7 +212,7 @@ struct AgentsSidebarView: View {
                 AgentIconView(icon: row.agent.icon, directory: model.agentCatalog.iconDirectories[row.agent.id], size: 12).frame(width: 18).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))
-                    Text("\(row.windowName) · \(row.agent.name)\(row.typed ? " · in a shell" : "")").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
+                    Text("\(row.spaceName) · \(row.agent.name)\(row.typed ? " · in a shell" : "")").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -229,7 +229,7 @@ struct AgentsSidebarView: View {
         .buttonStyle(.plain)
         .help("Show this agent's pane")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(row.agent.name)\(row.typed ? " in a shell" : ""), \(row.tabTitle), \(row.windowName)")
+        .accessibilityLabel("\(row.agent.name)\(row.typed ? " in a shell" : ""), \(row.tabTitle), \(row.spaceName)")
         .accessibilityValue(row.status).accessibilityHint("Shows this pane").accessibilityAddTraits(.isButton)
     }
 

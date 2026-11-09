@@ -72,13 +72,13 @@ final class OutputJournalTests: XCTestCase {
         let store = try WorkspaceStore()
         var events: [WorkspaceEvent] = []
         let empty = await store.snapshot()
-        let created = try await store.execute(.createWindow(name: "A")).snapshot
+        let created = try await store.execute(.createSpace(name: "A")).snapshot
         events += WorkspaceEvents.diff(empty, created)
         let pane = try XCTUnwrap(created.panes.keys.first)
         let split = try await store.execute(.splitPane(id: pane, axis: .x, availableSize: try TerminalSize(columns: 120, rows: 40))).snapshot
         events += WorkspaceEvents.diff(created, split)
-        XCTAssertEqual(events.map(\.type), ["window.created", "tab.created", "pane.created", "selection.window", "tab.layoutChanged", "pane.created", "selection.pane"])
-        XCTAssertTrue(events.allSatisfy { $0.windowID != nil })
+        XCTAssertEqual(events.map(\.type), ["space.created", "tab.created", "pane.created", "selection.space", "tab.layoutChanged", "pane.created", "selection.pane"])
+        XCTAssertTrue(events.allSatisfy { $0.spaceID != nil })
         XCTAssertTrue(events.allSatisfy { !$0.data.keys.contains("executable") && !$0.data.keys.contains("directory") })
         XCTAssertEqual(WorkspaceEvents.diff(WorkspaceSnapshot(), WorkspaceSnapshot()), [])
     }

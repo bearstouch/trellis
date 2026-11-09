@@ -147,7 +147,7 @@ extension AppWorkspaceModel {
 
     // MARK: Setup (FR-PL07)
 
-    /// Runs the setup script in a terminal on the target; when it succeeds the window opens.
+    /// Runs the setup script in a terminal on the target; when it succeeds the space opens.
     public func runProjectSetup(_ session: ProjectLaunchSession) async {
         guard projectLaunch === session else { return }
         let launch: ProjectLaunch
@@ -209,7 +209,7 @@ extension AppWorkspaceModel {
 
     // MARK: Opening (FR-PL08)
 
-    /// Creates or reconciles the project's window, starts the panes this launch created and types their commands once.
+    /// Creates or reconciles the project's space, starts the panes this launch created and types their commands once.
     public func openProjectLaunch(_ session: ProjectLaunchSession, _ launch: ProjectLaunch) async {
         guard projectLaunch === session else { return }
         session.checkGeneration += 1
@@ -232,7 +232,7 @@ extension AppWorkspaceModel {
                 directoryExists: { path in
                     var isDirectory: ObjCBool = false; return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
                 },
-                keepLiveLaunches: true, keepOmittedPanes: true)
+                keepLiveLaunches: true, keepOmittedPanes: true, projectID: launch.project.id)
         case .host(let hostID):
             guard let connection = remoteHosts?.workspaceConnection(hostID), let home = connection.hostInfo?.home else {
                 session.stage = .failed(launch, "\(remoteHostName(hostID)) isn't connected. Reconnect, then try again.")
@@ -241,7 +241,7 @@ extension AppWorkspaceModel {
             plan = await RemoteFacts(connection: connection).evaluate { lookup in
                 LayoutPlanner.plan(
                     launch.layout, bindings: bindings, snapshot: snapshot, home: home, hostExists: { _ in false }, directoryExists: lookup.isDirectory,
-                    keepLiveLaunches: true, keepOmittedPanes: true, remoteHostID: hostID)
+                    keepLiveLaunches: true, keepOmittedPanes: true, remoteHostID: hostID, projectID: launch.project.id)
             }
         }
         guard plan.canApply, projectLaunch === session else {
@@ -254,13 +254,13 @@ extension AppWorkspaceModel {
         }
         // A cancel during the apply may have let another launch begin; its sheet stays.
         if projectLaunch === session { projectLaunch = nil }
-        guard let windowID = plan.bindings[ProjectLaunch.windowKey()]?.id else { return }
+        guard let spaceID = plan.bindings[ProjectLaunch.spaceKey()]?.id else { return }
         pruneProjectState()
         for (key, paneID) in plan.createdPanes {
             if let command = launch.commands[key], let sessionID = sessionID(ofPane: paneID) { pendingProjectCommands[sessionID] = command }
             if let agent = launch.agents[key] { await configureProjectAgent(paneID: paneID, agentID: agent) }
         }
-        await selectWindow(windowID)
+        await selectSpace(spaceID)
         let integration: Bool
         switch launch.target {
         case .local: integration = shellGetsIntegration

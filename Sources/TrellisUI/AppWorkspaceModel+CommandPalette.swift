@@ -135,11 +135,11 @@ extension AppWorkspaceModel {
         case .settings: openSettings?()
         case .welcomeTour: openWelcomeTour()
         case .scope: break
-        case .window(let id):
-            await selectWindow(id)
+        case .space(let id):
+            await selectSpace(id)
             focusActiveTerminal()
-        case .tab(let windowID, let tabID):
-            await selectWindowTab(windowID: windowID, tabID: tabID)
+        case .tab(let spaceID, let tabID):
+            await selectSpaceTab(spaceID: spaceID, tabID: tabID)
             focusActiveTerminal()
         case .pane(let id):
             await revealPane(id)
@@ -149,7 +149,7 @@ extension AppWorkspaceModel {
             let placement: HostPlacement =
                 switch modifier {
                 case .none: .newTab
-                case .command: .newWindow
+                case .command: .newSpace
                 case .option: .split(.x)
                 }
             await connect(host: host, placement: placement)
@@ -206,9 +206,9 @@ extension AppWorkspaceModel {
     // MARK: Items (FR-CP03)
 
     var commandPaletteItems: [CommandPaletteItem] {
-        let windows = snapshot.windows
-        // The current window's tabs and panes are listed first.
-        let ordered = windows.filter { $0.id == snapshot.activeWindowID } + windows.filter { $0.id != snapshot.activeWindowID }
+        let spaces = snapshot.spaces
+        // The current space's tabs and panes are listed first.
+        let ordered = spaces.filter { $0.id == snapshot.activeSpaceID } + spaces.filter { $0.id != snapshot.activeSpaceID }
         var actions = commandPaletteActions.map { action in
             CommandPaletteItem(
                 target: .action(action), kind: .action, title: commandPaletteTitle(action), subtitle: action.menu.rawValue.capitalized,
@@ -218,25 +218,25 @@ extension AppWorkspaceModel {
             actions.append(CommandPaletteItem(target: .settings, kind: .action, title: "Settings…", subtitle: "Trellis", keywords: ["preferences"], shortcut: KeyChord(",")))
         }
         actions.append(CommandPaletteItem(target: .welcomeTour, kind: .action, title: "Welcome Tour", subtitle: "Help", keywords: ["onboarding", "introduction", "getting started"]))
-        let windowItems = windows.map { window in
-            let current = window.id == snapshot.activeWindowID ? " · current" : ""
-            return CommandPaletteItem(target: .window(window.id), kind: .window, title: window.name, subtitle: Self.count(window.tabIDs.count, "tab") + current)
+        let spaceItems = spaces.map { space in
+            let current = space.id == snapshot.activeSpaceID ? " · current" : ""
+            return CommandPaletteItem(target: .space(space.id), kind: .space, title: space.name, subtitle: Self.count(space.tabIDs.count, "tab") + current)
         }
         var tabItems: [CommandPaletteItem] = [], paneItems: [CommandPaletteItem] = []
-        for window in ordered {
-            let tabs = window.tabIDs.compactMap { snapshot.tabs[$0] }
+        for space in ordered {
+            let tabs = space.tabIDs.compactMap { snapshot.tabs[$0] }
             for (index, tab) in tabs.enumerated() {
                 let title = displayTitle(tab)
                 tabItems.append(
                     CommandPaletteItem(
-                        target: .tab(windowID: window.id, tabID: tab.id), kind: .tab, title: title,
-                        subtitle: "\(window.name) › \(index + 1) of \(tabs.count) · \(commandPaletteStatus(tab.activePaneID))",
-                        groupID: window.id.uuidString, groupTitle: window.name))
+                        target: .tab(spaceID: space.id, tabID: tab.id), kind: .tab, title: title,
+                        subtitle: "\(space.name) › \(index + 1) of \(tabs.count) · \(commandPaletteStatus(tab.activePaneID))",
+                        groupID: space.id.uuidString, groupTitle: space.name))
                 for paneID in tab.root.paneIDs {
                     paneItems.append(
                         CommandPaletteItem(
-                            target: .pane(paneID), kind: .pane, title: paneTitle(paneID), subtitle: "\(window.name) › \(title) · \(commandPaletteStatus(paneID))",
-                            groupID: window.id.uuidString, groupTitle: window.name))
+                            target: .pane(paneID), kind: .pane, title: paneTitle(paneID), subtitle: "\(space.name) › \(title) · \(commandPaletteStatus(paneID))",
+                            groupID: space.id.uuidString, groupTitle: space.name))
                 }
             }
         }
@@ -282,8 +282,8 @@ extension AppWorkspaceModel {
             }
         let directoryItems = directoryPaletteItems
         let counts: [CommandPaletteScope: (Int, String)] = [
-            .windows: (windowItems.count, Self.count(windowItems.count, "window")),
-            .tabs: (tabItems.count, Self.count(tabItems.count, "tab") + " in " + Self.count(windows.count, "window")),
+            .spaces: (spaceItems.count, Self.count(spaceItems.count, "space")),
+            .tabs: (tabItems.count, Self.count(tabItems.count, "tab") + " in " + Self.count(spaces.count, "space")),
             .panes: (paneItems.count, Self.count(paneItems.count, "pane")),
             .hosts: (hostItems.count, Self.count(commandPaletteHosts().count, "saved host")),
             .projects: (projectItems.count, Self.count(projectItems.count, "project")),
@@ -298,7 +298,7 @@ extension AppWorkspaceModel {
             let keywords = scope == .directories ? ["go to jump switch", "cd folder recent"] : ["go to jump switch"]
             return CommandPaletteItem(target: .scope(scope), kind: .action, title: scope.title, subtitle: text, keywords: keywords, shortcut: shortcut)
         }
-        return scopes + actions + tabItems + windowItems + paneItems + hostItems + projectItems + taskItems + themeItems + agentItems + directoryItems
+        return scopes + actions + tabItems + spaceItems + paneItems + hostItems + projectItems + taskItems + themeItems + agentItems + directoryItems
     }
 
     /// The menu's own title where it changes with state.

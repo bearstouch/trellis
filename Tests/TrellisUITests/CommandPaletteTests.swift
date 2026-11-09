@@ -8,7 +8,7 @@ final class CommandPaletteTests: XCTestCase {
     private func makeModel() async throws -> AppWorkspaceModel {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())")))
-        await model.createWindow(name: "api-server", startSession: false)
+        await model.createSpace(name: "api-server", startSession: false)
         return model
     }
 
@@ -73,33 +73,33 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(model.commandPaletteQuery, "")
     }
 
-    func testGoToTabJumpsAcrossWindowsAndAScopeIsEnteredAndLeft() async throws {
+    func testGoToTabJumpsAcrossSpacesAndAScopeIsEnteredAndLeft() async throws {
         let model = try await makeModel()
-        let first = try XCTUnwrap(model.snapshot.activeWindowID)
+        let first = try XCTUnwrap(model.snapshot.activeSpaceID)
         let firstTab = try XCTUnwrap(model.presentation.selectedTab?.id)
-        await model.createWindow(name: "web-client", startSession: false)
-        let second = try XCTUnwrap(model.snapshot.activeWindowID)
+        await model.createSpace(name: "web-client", startSession: false)
+        let second = try XCTUnwrap(model.snapshot.activeSpaceID)
         XCTAssertNotEqual(first, second)
         model.openCommandPalette()
         let scopes = model.commandPaletteSections.flatMap(\.matches).compactMap { if case .scope(let scope) = $0.item.target { scope } else { nil } }
-        XCTAssertEqual(scopes.prefix(3), [.windows, .tabs, .panes])
+        XCTAssertEqual(scopes.prefix(3), [.spaces, .tabs, .panes])
         model.runCommandPaletteItem("scope:tabs")
         XCTAssertTrue(model.commandPaletteVisible)
         XCTAssertEqual(model.commandPaletteScope, .tabs)
-        // The current window's tabs come first, under its name.
+        // The current space's tabs come first, under its name.
         XCTAssertEqual(model.commandPaletteSections.map(\.title), ["web-client", "api-server"])
         XCTAssertTrue(model.leaveCommandPaletteScope())
         XCTAssertNil(model.commandPaletteScope)
         XCTAssertFalse(model.leaveCommandPaletteScope())
         model.enterCommandPaletteScope(.tabs)
         model.moveCommandPaletteSelection(by: 1)
-        XCTAssertEqual(model.commandPaletteSelectedMatch(in: model.commandPaletteSections)?.item.target, .tab(windowID: first, tabID: firstTab))
+        XCTAssertEqual(model.commandPaletteSelectedMatch(in: model.commandPaletteSections)?.item.target, .tab(spaceID: first, tabID: firstTab))
         // Wraps at both ends.
         model.moveCommandPaletteSelection(by: 1)
         XCTAssertEqual(model.commandPaletteSelectedMatch(in: model.commandPaletteSections)?.item.groupTitle, "web-client")
         model.moveCommandPaletteSelection(by: -1)
         model.runCommandPaletteItem()
-        try await eventually { model.snapshot.activeWindowID == first }
+        try await eventually { model.snapshot.activeSpaceID == first }
         XCTAssertEqual(model.presentation.selectedTab?.id, firstTab)
     }
 
@@ -108,7 +108,7 @@ final class CommandPaletteTests: XCTestCase {
         model.openCommandPalette()
         model.setCommandPaletteQuery("zebra")
         XCTAssertTrue(model.commandPaletteSections.isEmpty)
-        await model.createWindow(name: "zebra", startSession: false)
+        await model.createSpace(name: "zebra", startSession: false)
         XCTAssertEqual(model.commandPaletteSections.first?.matches.first?.item.title, "zebra", "A cached search never hides a change")
     }
 

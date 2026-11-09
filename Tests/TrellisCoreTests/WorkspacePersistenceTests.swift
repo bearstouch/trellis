@@ -8,7 +8,7 @@ final class WorkspacePersistenceTests: XCTestCase {
 
     private static func fixture() async throws -> WorkspaceSnapshot {
         let store = try WorkspaceStore()
-        let made = try await store.execute(.createWindow(name: "Project")).snapshot
+        let made = try await store.execute(.createSpace(name: "Project")).snapshot
         let first = try XCTUnwrap(made.panes.keys.first)
         _ = try await store.execute(.splitPane(id: first, axis: .x, availableSize: TerminalSize(columns: 80, rows: 24)))
         var state = await store.snapshot()
@@ -32,7 +32,7 @@ final class WorkspacePersistenceTests: XCTestCase {
         let settings = WorkspaceSettings(shell: "/bin/zsh", directory: "/tmp", windowFrame: "{{10, 20}, {900, 600}}")
         let data = try WorkspaceSnapshotCodec.encode(state, settings: settings)
         let restored = try WorkspaceSnapshotCodec.decode(data)
-        XCTAssertEqual(restored.snapshot.windows, state.windows)
+        XCTAssertEqual(restored.snapshot.spaces, state.spaces)
         XCTAssertEqual(restored.snapshot.tabs, state.tabs)
         XCTAssertEqual(restored.snapshot.panes, state.panes)
         XCTAssertEqual(restored.settings, settings)
@@ -75,7 +75,7 @@ final class WorkspacePersistenceTests: XCTestCase {
                 if target.lastPathComponent == "workspace.json" { throw InjectedFailure.beforeReplace }
             })
         _ = await failing.load()
-        var next = state; next.windows[0].name = "Changed"
+        var next = state; next.spaces[0].name = "Changed"
         do { try await failing.save(next, settings: WorkspaceSettings(), sequence: 2); XCTFail("Write did not fail") } catch {}
         XCTAssertEqual(try Data(contentsOf: failing.currentURL), original)
         XCTAssertEqual(try Data(contentsOf: failing.backupURL), original)
@@ -154,7 +154,7 @@ final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: persistence.currentURL), old)
         try await persistence.save(restored.snapshot, settings: restored.settings, sequence: 1)
         let updated = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: persistence.currentURL)) as? [String: Any])
-        XCTAssertEqual(updated["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(updated["schemaVersion"] as? Int, WorkspaceSnapshotCodec.currentVersion)
         XCTAssertEqual(try Data(contentsOf: persistence.backupURL), old)
     }
 

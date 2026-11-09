@@ -32,7 +32,7 @@ extension AppWorkspaceModel {
         try requireAvailable()
         // Same gates as the UI: nothing new is added inside a closing hierarchy.
         switch command {
-        case .createTab(let windowID): guard !closingWindowIDs.contains(windowID) else { throw .unavailable }
+        case .createTab(let spaceID): guard !closingSpaceIDs.contains(spaceID) else { throw .unavailable }
         case .splitPane(let id, _, _): guard !isClosing(paneID: id) else { throw .unavailable }
         default: break
         }
@@ -53,13 +53,13 @@ extension AppWorkspaceModel {
         return result
     }
 
-    /// Closes panes, tabs, or windows for automation. Running sessions require
+    /// Closes panes, tabs, or spaces for automation. Running sessions require
     /// `allowRunning`; force is honored only after the graceful window, exactly
     /// as in the UI. Nothing here blocks on a dialog.
     public func automationClose(_ command: WorkspaceCommand, allowRunning: Bool, force: Bool, expecting: ResourceExpectation? = nil) async throws(AutomationModelError) -> AutomationCloseResult {
         try requireAvailable()
         guard !closureInProgress else { throw .unavailable }
-        var windowGate: UUID?, tabGate: UUID?, paneGate: UUID?
+        var spaceGate: UUID?, tabGate: UUID?, paneGate: UUID?
         switch command {
         case .deletePane(let id):
             guard snapshot.panes[id] != nil, !isClosing(paneID: id) else { throw .store(.notFound) }
@@ -67,20 +67,20 @@ extension AppWorkspaceModel {
         case .deleteTab(let id):
             guard snapshot.tabs[id] != nil else { throw .store(.notFound) }
             tabGate = id
-        case .deleteWindow(let id):
-            guard snapshot.windows.contains(where: { $0.id == id }) else { throw .store(.notFound) }
-            windowGate = id
+        case .deleteSpace(let id):
+            guard snapshot.spaces.contains(where: { $0.id == id }) else { throw .store(.notFound) }
+            spaceGate = id
         default: throw .store(.invalidTransition)
         }
         // Mirror the UI closure: set gates first, let committed creations and
         // launches settle, then compute the affected panes from current state.
         closureInProgress = true
         defer { closureInProgress = false }
-        if let windowGate { closingWindowIDs.insert(windowGate) }
+        if let spaceGate { closingSpaceIDs.insert(spaceGate) }
         if let tabGate { closingTabIDs.insert(tabGate) }
         if let paneGate { closingPaneIDs.insert(paneGate) }
         defer {
-            if let windowGate { closingWindowIDs.remove(windowGate) }
+            if let spaceGate { closingSpaceIDs.remove(spaceGate) }
             if let tabGate { closingTabIDs.remove(tabGate) }
             if let paneGate { closingPaneIDs.remove(paneGate) }
         }
@@ -92,9 +92,9 @@ extension AppWorkspaceModel {
         do { try expecting?.verify(in: current) } catch let error as WorkspaceError { throw .store(error) } catch { throw .store(.invalidState("Close failed")) }
         let panes: Set<UUID>
         switch command {
-        case .deleteWindow(let id):
-            guard let window = current.windows.first(where: { $0.id == id }) else { throw .store(.notFound) }
-            panes = Set(window.tabIDs.flatMap { current.tabs[$0]?.root.paneIDs ?? [] })
+        case .deleteSpace(let id):
+            guard let space = current.spaces.first(where: { $0.id == id }) else { throw .store(.notFound) }
+            panes = Set(space.tabIDs.flatMap { current.tabs[$0]?.root.paneIDs ?? [] })
         case .deleteTab(let id):
             guard let tab = current.tabs[id] else { throw .store(.notFound) }
             panes = Set(tab.root.paneIDs)
@@ -281,8 +281,8 @@ extension AppWorkspaceModel {
         guard let target = plan.target else { throw .store(.invalidState("The layout plan cannot be applied")) }
         // One apply at a time, so pruning never drops another apply's uncommitted bindings.
         guard !layoutApplyInFlight else { throw .unavailable }
-        // Never add to, or edit inside, a window that is being closed.
-        guard target.windows.allSatisfy({ !closingWindowIDs.contains($0.id) }), target.tabs.keys.allSatisfy({ !closingTabIDs.contains($0) }) else {
+        // Never add to, or edit inside, a space that is being closed.
+        guard target.spaces.allSatisfy({ !closingSpaceIDs.contains($0.id) }), target.tabs.keys.allSatisfy({ !closingTabIDs.contains($0) }) else {
             throw .unavailable
         }
         layoutApplyInFlight = true

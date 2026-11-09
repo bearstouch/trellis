@@ -10,7 +10,7 @@ final class WelcomeTourTests: XCTestCase {
         _ = NSApplication.shared
         let defaults = try preferences ?? XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: defaults)
-        await model.createWindow(name: "api-server", startSession: false)
+        await model.createSpace(name: "api-server", startSession: false)
         return model
     }
 
@@ -95,7 +95,7 @@ final class WelcomeTourTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: defaults, persistence: WorkspacePersistence(directory: directory))
         _ = await model.loadWorkspace()
-        await model.createWindow(name: "Terminal", startSession: false)
+        await model.createSpace(name: "Terminal", startSession: false)
         model.openWelcomeTour()
         model.goToWelcomeTourStep(.setup)
         model.setChromeModeFromWelcomeTour(.light)
@@ -123,7 +123,7 @@ final class WelcomeTourTests: XCTestCase {
     func testPaneCreatedWhileOpenTakesNoInputUntilItCloses() async throws {
         let model = try await makeModel()
         model.openWelcomeTour()
-        await model.createWindow(name: "from-automation", startSession: false)
+        await model.createSpace(name: "from-automation", startSession: false)
         let terminal = try XCTUnwrap(model.activeTerminal)
         XCTAssertTrue(terminal.inputSuspended)
         model.closeWelcomeTour()
@@ -361,7 +361,7 @@ final class WelcomeTourTests: XCTestCase {
     }
 
     func testFooterKeepsItsDotsOnlyWhereTheyFit() {
-        XCTAssertTrue(WelcomeTourView.showsDots(in: CGSize(width: 1040, height: 660)), "The default window")
+        XCTAssertTrue(WelcomeTourView.showsDots(in: CGSize(width: 1040, height: 660)), "The default space")
         XCTAssertTrue(WelcomeTourView.showsDots(in: CGSize(width: 600, height: 400)), "No illustration, so the panel has the whole dialog")
         XCTAssertFalse(WelcomeTourView.showsDots(in: CGSize(width: 800, height: 600)), "The illustration leaves too little beside it")
         for width in stride(from: 400, through: 1400, by: 20) {

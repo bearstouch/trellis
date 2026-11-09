@@ -87,12 +87,12 @@ extension AppWorkspaceModel {
         await scrollbackStore.retain(kept)
     }
 
-    /// FR-R04: every pane's retained plain text, redacted, in window and tab order. Never journaled or exported.
+    /// FR-R04: every pane's retained plain text, redacted, in space and tab order. Never journaled or exported.
     public func saveScrollback() async {
         guard restoreScrollback, let scrollbackStore, !persistenceReadOnly, recoveryMessage == nil else { return }
         var texts: [(sessionID: UUID, text: String)] = []
-        for window in snapshot.windows {
-            for paneID in window.tabIDs.flatMap({ snapshot.tabs[$0]?.root.paneIDs ?? [] }) {
+        for space in snapshot.spaces {
+            for paneID in space.tabIDs.flatMap({ snapshot.tabs[$0]?.root.paneIDs ?? [] }) {
                 guard let pane = snapshot.panes[paneID], let terminal = terminals[paneID], terminal.sessionID == pane.sessionID else { continue }
                 var text = terminal.retainedText
                 while let last = text.last, last.isWhitespace { text.removeLast() }

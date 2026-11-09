@@ -22,7 +22,7 @@ public enum LinkPolicy {
         return url
     }
 
-    /// True only for an allowed link requested within the gesture window.
+    /// True only for an allowed link requested within the gesture space.
     public static func mayOpen(_ link: String, lastGesture: Date?, now: Date) -> URL? {
         guard gestureIsFresh(lastGesture: lastGesture, now: now) else { return nil }
         return url(link)
@@ -63,7 +63,7 @@ public struct DiagnosticsReport: Equatable, Sendable {
     public var appVersion: String
     public var systemVersion: String
     public var architecture: String
-    public var windows = 0, tabs = 0, panes = 0
+    public var spaces = 0, tabs = 0, panes = 0
     public var sessionStates: [String: Int] = [:]
     public var savedHosts = 0
     public var activeGrants = 0
@@ -85,7 +85,7 @@ public struct DiagnosticsReport: Equatable, Sendable {
     }
 
     public mutating func count(_ snapshot: WorkspaceSnapshot) {
-        windows = snapshot.windows.count
+        spaces = snapshot.spaces.count
         tabs = snapshot.tabs.count
         panes = snapshot.panes.count
         sessionStates = Dictionary(grouping: snapshot.sessions.values, by: \.state.rawValue).mapValues(\.count)
@@ -100,7 +100,7 @@ public struct DiagnosticsReport: Equatable, Sendable {
             "App version: \(appVersion)",
             "macOS: \(systemVersion)",
             "Architecture: \(architecture)",
-            "Workspace: \(windows) window(s), \(tabs) tab(s), \(panes) pane(s)",
+            "Workspace: \(spaces) space(s), \(tabs) tab(s), \(panes) pane(s)",
             "Sessions: \(states.isEmpty ? "none" : states)",
             "Saved hosts: \(savedHosts)",
             "Active automation grants: \(activeGrants)",
@@ -110,7 +110,7 @@ public struct DiagnosticsReport: Equatable, Sendable {
             "MCP server: \(mcpServer)",
             "Recent error codes: \(codes.isEmpty ? "none" : codes.joined(separator: ", "))",
             "",
-            "Not included: window/tab/pane names, directories, commands, terminal output, typed input, hosts, keys, tokens, or clipboard contents."
+            "Not included: space/tab/pane names, directories, commands, terminal output, typed input, hosts, keys, tokens, or clipboard contents."
         ]
         return SecretRedactor.redact(lines.joined(separator: "\n"))
     }

@@ -12,7 +12,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 
 - **One mutation path.** The UI, the CLI and automation all change state through `WorkspaceCommandService` and `WorkspaceStore`. Tree invariants and lifecycle rules live there, never in views or in `AutomationService`. See [Architecture](../architecture/index.md#one-mutation-path).
 - **Commands don't do I/O.** A process launch is an effect that happens after the commit, and its result is reported back with the launch attempt ID.
-- **Domain shape:** Window → ordered Tabs → binary split tree (`PaneLayout`, axis `x|y`, ratio = first child's share) → Pane → Session. UUIDs stay stable across saves and stopped restores.
+- **Domain shape:** Space → ordered Tabs → binary split tree (`PaneLayout`, axis `x|y`, ratio = first child's share) → Pane → Session. UUIDs stay stable across saves and stopped restores.
 - **Session lifecycle:** `stopped → starting → running → exited|failed`, and `running → closing → exited`. Restarting creates a new session UUID in the same pane. Restored workspaces start **stopped**, and typed input is never replayed. A stopped pane may afterwards adopt a session the broker kept running (`stopped → running`, FR-R03); nothing is spawned for it.
 - **Closing a running pane** needs confirmation. Terminate the process group gracefully, wait 2 seconds, and force only when explicitly asked. **Never signal a reused PID.** Check `OwnedProcessIdentity` first.
 - **Threading:** PTY I/O and parsing run off the main thread, and view updates run on `@MainActor`. Bound every buffer that grows with output.

@@ -135,7 +135,7 @@ struct CommandPaletteView: View {
         .padding(.horizontal, 8)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            // A scope row reads "Go to Tab…, 3 tabs in 2 windows", not "… windows action".
+            // A scope row reads "Go to Tab…, 3 tabs in 2 spaces", not "… spaces action".
             [item.title, item.isScope ? subtitle : item.kind == .action ? "\(item.subtitle) action" : "\(item.kind.noun), \(subtitle)", item.shortcut?.description]
                 .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         )
@@ -169,7 +169,7 @@ struct CommandPaletteView: View {
                         ? "Directories your shells visit appear here. This needs shell integration."
                         : "Remember directories is turned off in Settings.")
                     : model.commandPaletteScope == nil
-                        ? "Search covers actions, windows, tabs, panes, saved hosts, tasks, themes and directories. Try fewer letters."
+                        ? "Search covers actions, spaces, tabs, panes, saved hosts, tasks, themes and directories. Try fewer letters."
                         : "Press ⌫ in the empty field to search everything."
             )
             .font(.system(size: 13)).foregroundStyle(model.themeColor(.mutedForeground)).multilineTextAlignment(.center).frame(maxWidth: 380)
@@ -183,7 +183,7 @@ struct CommandPaletteView: View {
         if let selected {
             switch selected.item.target {
             case .scope: hints.append("↩ Open")
-            case .host: hints += ["↩ Connect", "⌘↩ New Window", "⌥↩ Split"]
+            case .host: hints += ["↩ Connect", "⌘↩ New Space", "⌥↩ Split"]
             case .remoteWorkspace: hints.append("↩ Open")
             case .project: hints.append("↩ Launch")
             case .directory: hints += ["↩ Jump", "⌘↩ New Tab", "⌥↩ Split"]
@@ -207,7 +207,7 @@ struct CommandPaletteView: View {
         switch item.target {
         case .action, .settings, .welcomeTour: item.title
         case .scope(let scope): scope.title
-        case .window: "Go to Window"
+        case .space: "Go to Space"
         case .tab: "Go to Tab"
         case .pane: "Go to Pane"
         case .host: "Connect"
@@ -226,7 +226,7 @@ struct CommandPaletteView: View {
         case .settings: "gearshape"
         case .welcomeTour: "sparkles"
         case .scope: "arrow.forward.square"
-        case .window: "macwindow"
+        case .space: "macwindow"
         case .tab: "menubar.rectangle"
         case .pane: "rectangle.split.2x1"
         case .host: "server.rack"
@@ -278,7 +278,7 @@ private struct CommandPaletteField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> Field {
         let field = Field()
-        field.placeholderString = "Search actions, windows, tabs, hosts…"
+        field.placeholderString = "Search actions, spaces, tabs, hosts…"
         field.setAccessibilityLabel("Search commands")
         field.isBordered = false
         field.drawsBackground = false
@@ -294,7 +294,7 @@ private struct CommandPaletteField: NSViewRepresentable {
 
     func updateNSView(_ field: Field, context: Context) {
         if field.stringValue != model.commandPaletteQuery { field.stringValue = model.commandPaletteQuery }
-        field.placeholderString = model.commandPaletteScope.map { "Search \($0.chipTitle.lowercased())…" } ?? "Search actions, windows, tabs, hosts…"
+        field.placeholderString = model.commandPaletteScope.map { "Search \($0.chipTitle.lowercased())…" } ?? "Search actions, spaces, tabs, hosts…"
         field.requestFocus(model.commandPaletteFocusRequest)
     }
 

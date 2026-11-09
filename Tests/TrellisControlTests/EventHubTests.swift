@@ -23,18 +23,18 @@ final class EventHubTests: XCTestCase {
     private let clock = TestClock()
     private let secrets = MemorySecrets()
 
-    private func event(_ window: UUID, _ type: String = "window.updated") -> WorkspaceEvent {
-        WorkspaceEvent(type: type, resourceID: window, windowID: window, data: ["revision": "1"])
+    private func event(_ space: UUID, _ type: String = "space.updated") -> WorkspaceEvent {
+        WorkspaceEvent(type: type, resourceID: space, spaceID: space, data: ["revision": "1"])
     }
 
     func testMetadataReplayGap() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         let log = DeliveryLog()
         await hub.setDelivery { _, data in log.deliver(data) }
-        let window = UUID()
-        await hub.publish((0..<1_001).map { _ in event(window) })
+        let space = UUID()
+        await hub.publish((0..<1_001).map { _ in event(space) })
         let current = await hub.currentSequence
         XCTAssertEqual(current, 1_001)
 
@@ -56,12 +56,12 @@ final class EventHubTests: XCTestCase {
 
     func testReplayKeepsToTheSubscribedTopics() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         let log = DeliveryLog()
         await hub.setDelivery { _, data in log.deliver(data) }
-        let window = UUID()
-        await hub.publish([event(window), event(window, "selection.changed"), event(window, "session.state"), event(window, "selection.changed")])
+        let space = UUID()
+        await hub.publish([event(space), event(space, "selection.changed"), event(space, "session.state"), event(space, "selection.changed")])
         _ = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["selection"], resourceIDs: [], afterSequence: 0)
         let replayed = log.messages.compactMap { ($0["params"] as? [String: Any])?["sequence"] as? Int }
         XCTAssertEqual(replayed, [2, 4], "Only selection events replay, as they would have been delivered live")
@@ -69,30 +69,30 @@ final class EventHubTests: XCTestCase {
 
     func testSlowOrRevokedSubscriberStops() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead, .sessionOutputRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead, .sessionOutputRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         let slow = DeliveryLog()
         slow.budget = 2_000
         let slowConnection = UUID()
         await hub.setDelivery { _, data in slow.deliver(data) }
         _ = await hub.subscribe(connectionID: slowConnection, grant: grant, topics: ["resources", "output"], resourceIDs: [], afterSequence: nil)
-        let window = UUID()
-        for _ in 0..<50 { await hub.publish([event(window)]) }
+        let space = UUID()
+        for _ in 0..<50 { await hub.publish([event(space)]) }
         let delivered = slow.messages.count
         XCTAssertLessThan(delivered, 50, "Delivery stopped at the queue budget")
         let remaining = await hub.subscriptionCount
         XCTAssertEqual(remaining, 0, "The slow subscriber was dropped, retaining nothing")
-        await hub.publishOutput(session: UUID(), windowID: window, data: Data(repeating: 1, count: 10), next: OutputCursor(instanceID: UUID(), sessionID: UUID(), offset: 10))
+        await hub.publishOutput(session: UUID(), spaceID: space, data: Data(repeating: 1, count: 10), next: OutputCursor(instanceID: UUID(), sessionID: UUID(), offset: 10))
         XCTAssertEqual(slow.messages.count, delivered)
 
         // Revocation ends observation at the next event.
         let log = DeliveryLog()
         await hub.setDelivery { _, data in log.deliver(data) }
         _ = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["resources"], resourceIDs: [], afterSequence: nil)
-        await hub.publish([event(window)])
+        await hub.publish([event(space)])
         XCTAssertEqual(log.messages.count, 1)
         try await store.revoke(grant.id)
-        await hub.publish([event(window)])
+        await hub.publish([event(space)])
         XCTAssertEqual(log.messages.count, 1)
         let afterRevoke = await hub.subscriptionCount
         XCTAssertEqual(afterRevoke, 0)
@@ -101,20 +101,20 @@ final class EventHubTests: XCTestCase {
     func testRedactionByScopeAndOutputCapability() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
         let visible = UUID(), hidden = UUID()
-        let (scoped, _) = try await store.create(name: "s", capabilities: [.metadataRead], windowScope: .windows([visible]), hostScope: .all, lifetime: 3600)
+        let (scoped, _) = try await store.create(name: "s", capabilities: [.metadataRead], spaceScope: .spaces([visible]), hostScope: .all, lifetime: 3600)
         let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         let log = DeliveryLog()
         await hub.setDelivery { _, data in log.deliver(data) }
         _ = await hub.subscribe(connectionID: UUID(), grant: scoped, topics: ["resources", "session", "output"], resourceIDs: [], afterSequence: nil)
-        await hub.publish([event(hidden), event(visible), WorkspaceEvent(type: "session.state", resourceID: UUID(), windowID: hidden, data: ["state": "running"])])
-        await hub.publishOutput(session: UUID(), windowID: visible, data: Data("secret".utf8), next: OutputCursor(instanceID: UUID(), sessionID: UUID(), offset: 6))
+        await hub.publish([event(hidden), event(visible), WorkspaceEvent(type: "session.state", resourceID: UUID(), spaceID: hidden, data: ["state": "running"])])
+        await hub.publishOutput(session: UUID(), spaceID: visible, data: Data("secret".utf8), next: OutputCursor(instanceID: UUID(), sessionID: UUID(), offset: 6))
         XCTAssertEqual(log.messages.compactMap { ($0["params"] as? [String: Any])?["resourceId"] as? String }, [visible.uuidString])
         XCTAssertFalse(log.messages.description.contains(hidden.uuidString))
     }
 
     func testOutputEventsCarryStartCursorAndGap() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "o", capabilities: [.metadataRead, .sessionOutputRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (grant, _) = try await store.create(name: "o", capabilities: [.metadataRead, .sessionOutputRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let instance = UUID()
         let hub = EventHub(instanceID: instance, grants: store, now: { [clock] in clock.now })
         let log = DeliveryLog()
@@ -124,14 +124,14 @@ final class EventHubTests: XCTestCase {
             return XCTFail("Subscribe failed")
         }
         let session = UUID()
-        await hub.publishOutput(session: session, windowID: UUID(), data: Data("abc".utf8), next: OutputCursor(instanceID: instance, sessionID: session, offset: 10), gap: true)
+        await hub.publishOutput(session: session, spaceID: UUID(), data: Data("abc".utf8), next: OutputCursor(instanceID: instance, sessionID: session, offset: 10), gap: true)
         let data = try XCTUnwrap((log.messages.last?["params"] as? [String: Any])?["data"] as? [String: Any])
         XCTAssertEqual(data["cursor"] as? String, OutputCursor(instanceID: instance, sessionID: session, offset: 7).token)
         XCTAssertEqual(data["gap"] as? Bool, true)
         // Unsubscribed (or disconnected) subscribers receive nothing further.
         let removed = await hub.unsubscribe(subscription.id, connectionID: connection)
         XCTAssertTrue(removed)
-        await hub.publishOutput(session: session, windowID: nil, data: Data("d".utf8), next: OutputCursor(instanceID: instance, sessionID: session, offset: 11))
+        await hub.publishOutput(session: session, spaceID: nil, data: Data("d".utf8), next: OutputCursor(instanceID: instance, sessionID: session, offset: 11))
         XCTAssertEqual(log.messages.count, 1)
     }
 

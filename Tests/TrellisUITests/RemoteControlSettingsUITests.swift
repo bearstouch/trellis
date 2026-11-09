@@ -13,7 +13,7 @@ final class RemoteControlSettingsUITests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory))
         _ = await model.loadWorkspace()
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         var applied: [RemoteControlSettings] = []
         model.onRemoteControlSettingsChanged = { applied.append($0) }
         let settings = RemoteControlSettings(mcpEnabled: true, bindAddress: "::1", port: 8124)
@@ -50,7 +50,7 @@ final class RemoteControlSettingsUITests: XCTestCase {
     func testMCPToolsDriveTheWorkspaceEndToEnd() async throws {
         let h = try Harness()
         defer { h.discardPreferences() }
-        let token = try await h.grants.create(name: "mcp", capabilities: Set(Capability.allCases), windowScope: .all, hostScope: .all, lifetime: 3600).token
+        let token = try await h.grants.create(name: "mcp", capabilities: Set(Capability.allCases), spaceScope: .all, hostScope: .all, lifetime: 3600).token
         let endpoint = MCPEndpoint(handler: h.handler, serverVersion: "test", loopbackOnly: true)
         func post(_ body: [String: Any], session: String?) async throws -> HTTPResponse {
             var headers = ["Host": "127.0.0.1", "Content-Type": "application/json", "Authorization": "Bearer \(token)"]
@@ -68,8 +68,8 @@ final class RemoteControlSettingsUITests: XCTestCase {
             return try XCTUnwrap(result["structuredContent"] as? [String: Any])
         }
 
-        let created = try await tool("window_create", ["name": "From MCP"])
-        XCTAssertTrue(h.model.snapshot.windows.contains { $0.name == "From MCP" })
+        let created = try await tool("space_create", ["name": "From MCP"])
+        XCTAssertTrue(h.model.snapshot.spaces.contains { $0.name == "From MCP" })
         let pane = try XCTUnwrap(((created["panes"] as? [[String: Any]])?.first)?["paneId"] as? String)
         defer {
             h.model.terminals.values.forEach {

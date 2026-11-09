@@ -21,7 +21,7 @@ public enum Capability: String, Codable, CaseIterable, Sendable, Comparable {
     /// Plain-language description shown when creating a grant.
     public var summary: String {
         switch self {
-        case .metadataRead: "List windows, tabs, panes, and session states"
+        case .metadataRead: "List spaces, tabs, panes, and session states"
         case .layoutWrite: "Create, rename, split, resize, and focus layout (new panes stay stopped)"
         case .sessionStart: "Start stopped sessions with the default shell or an approved host"
         case .sessionInput: "Type into terminals, including control keys (can run commands)"
@@ -29,16 +29,18 @@ public enum Capability: String, Codable, CaseIterable, Sendable, Comparable {
         case .sessionOutputRead: "Read terminal screens, scrollback, and output"
         case .sessionClose: "Terminate running sessions"
         case .themeRead: "Read themes and appearance (global)"
-        case .themeWrite: "Change themes and appearance for every window (global)"
+        case .themeWrite: "Change themes and appearance for every space (global)"
         case .hostRead: "Read saved hosts, aliases, and identity-file paths"
         case .hostWrite: "Create, edit, and delete saved hosts"
         }
     }
 }
 
-public enum WindowScope: Codable, Equatable, Sendable {
+public enum SpaceScope: Codable, Equatable, Sendable {
     case all
-    case windows(Set<UUID>)
+    case spaces(Set<UUID>)
+    // Stored under the name from before windows were renamed spaces, so grants.json reads the same in every build.
+    private enum CodingKeys: String, CodingKey { case all, spaces = "windows" }
 }
 
 /// A host approved for this grant at a specific connection revision.
@@ -59,11 +61,14 @@ public struct AutomationGrant: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public let tokenHash: String
     public var capabilities: Set<Capability>
-    public var windowScope: WindowScope
+    public var spaceScope: SpaceScope
     public var hostScope: HostScope
     public let createdAt: Date
     public let expiresAt: Date
     public var revokedAt: Date?
+
+    // `spaceScope` keeps its stored name from before the rename (see `SpaceScope`).
+    private enum CodingKeys: String, CodingKey { case id, name, tokenHash, capabilities, spaceScope = "windowScope", hostScope, createdAt, expiresAt, revokedAt }
 
     public func isActive(at now: Date) -> Bool { revokedAt == nil && now < expiresAt }
     public func allows(_ capability: Capability) -> Bool { capabilities.contains(capability) }
@@ -173,7 +178,7 @@ public actor GrantStore {
 
     /// Returns the grant and its token. The token is not retrievable later.
     public func create(
-        name: String, capabilities: Set<Capability>, windowScope: WindowScope, hostScope: HostScope, lifetime: TimeInterval
+        name: String, capabilities: Set<Capability>, spaceScope: SpaceScope, hostScope: HostScope, lifetime: TimeInterval
     ) throws(GrantError) -> (grant: AutomationGrant, token: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 100, !trimmed.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) else {
@@ -187,7 +192,7 @@ public actor GrantStore {
         let token = GrantToken.generate()
         let created = now()
         let grant = AutomationGrant(
-            id: UUID(), name: trimmed, tokenHash: GrantToken.hash(token), capabilities: capabilities, windowScope: windowScope,
+            id: UUID(), name: trimmed, tokenHash: GrantToken.hash(token), capabilities: capabilities, spaceScope: spaceScope,
             hostScope: hostScope, createdAt: created, expiresAt: created.addingTimeInterval(lifetime), revokedAt: nil)
         do { try secrets.store(token, grantID: grant.id) } catch { throw .secretStore }
         do {

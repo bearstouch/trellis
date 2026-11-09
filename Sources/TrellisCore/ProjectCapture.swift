@@ -1,19 +1,19 @@
 import Foundation
 
-/// A library project made from an open sidebar window (FR-PL04).
+/// A library project made from an open sidebar space (FR-PL04).
 public struct ProjectCapture: Equatable, Sendable {
     public var project: ProjectDefinition
     public var warnings: [String]
     public init(project: ProjectDefinition, warnings: [String]) { self.project = project; self.warnings = warnings }
 
     /// Tabs, titles, colors, splits and ratios are copied; the project folder becomes the panes' nearest common folder,
-    /// remembered as the last folder for the window's target. `directory` gives a pane's absolute folder (on the host
-    /// for a remote workspace) and `home` that target's home. Commands are never captured. Nil when the window is gone.
-    public static func capture(window id: UUID, snapshot: WorkspaceSnapshot, home: String?, directory: (UUID) -> String?) -> ProjectCapture? {
-        guard let window = snapshot.windows.first(where: { $0.id == id }) else { return nil }
+    /// remembered as the last folder for the space's target. `directory` gives a pane's absolute folder (on the host
+    /// for a remote workspace) and `home` that target's home. Commands are never captured. Nil when the space is gone.
+    public static func capture(space id: UUID, snapshot: WorkspaceSnapshot, home: String?, directory: (UUID) -> String?) -> ProjectCapture? {
+        guard let space = snapshot.spaces.first(where: { $0.id == id }) else { return nil }
         var warnings: [String] = []
         let folders = Dictionary(
-            uniqueKeysWithValues: window.tabIDs.compactMap { snapshot.tabs[$0] }.flatMap(\.root.paneIDs).compactMap { pane in
+            uniqueKeysWithValues: space.tabIDs.compactMap { snapshot.tabs[$0] }.flatMap(\.root.paneIDs).compactMap { pane in
                 // A relative path would resolve against this process's folder, which means nothing on a host.
                 directory(pane).flatMap { $0.hasPrefix("/") ? $0 : nil }.map { (pane, URL(fileURLWithPath: $0).standardizedFileURL.path) }
             })
@@ -43,9 +43,9 @@ public struct ProjectCapture: Equatable, Sendable {
                 return children.first.map { node($0, tab: tab) } ?? .pane(ProjectPane())
             }
         }
-        let tabs = window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in ProjectTab(title: tab.title, color: tab.color, root: node(tab.root, tab: tab)) }
+        let tabs = space.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in ProjectTab(title: tab.title, color: tab.color, root: node(tab.root, tab: tab)) }
         guard !tabs.isEmpty else { return nil }
-        let target: ProjectTarget = window.remoteHostID.map { .host($0) } ?? .local
+        let target: ProjectTarget = space.remoteHostID.map { .host($0) } ?? .local
         var lastFolders: [String: String] = [:]
         // A common folder of "/" or the home folder isn't a project folder: launching asks for one instead.
         if let root, root != "/", root != home {
@@ -59,7 +59,7 @@ public struct ProjectCapture: Equatable, Sendable {
         if root == "/" || (root != nil && root == home) {
             warnings.append("The panes have no project folder in common, so launching asks where the project goes; their folders are kept relative to \(root!).")
         }
-        let name = String(window.name.prefix(200)).trimmingCharacters(in: .whitespaces)
+        let name = String(space.name.prefix(200)).trimmingCharacters(in: .whitespaces)
         return ProjectCapture(project: ProjectDefinition(name: name.isEmpty ? "Project" : name, tabs: tabs, lastFolders: lastFolders), warnings: warnings)
     }
 
