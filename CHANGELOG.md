@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Agents view:** a **This Tab** choice opens the agent in the focused pane, in place of its idle shell, instead of a new tab or split. It's shown only while no agent runs in that tab, It replaces a running shell only while the shell is waiting at its prompt, and asks first, since any background jobs end with it. **Split Beside Pane** is now labelled **Split**. See [Coding agents](docs/features/agents.md) (FR-AG17).
+
 ### Changed
 
 - **Settings:** the sidebar icons are redrawn as full-colour, layered tiles in the style of the macOS System Settings sidebar.

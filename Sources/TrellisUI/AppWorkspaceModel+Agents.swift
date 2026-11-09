@@ -26,7 +26,8 @@ public struct AgentInstallOffer: Identifiable, Equatable, Sendable {
 }
 
 extension AppWorkspaceModel {
-    public enum AgentPlacement: Sendable { case split, tab }
+    /// `currentTab` (FR-AG17): the focused pane itself, in place of its idle shell.
+    public enum AgentPlacement: Sendable { case split, tab, currentTab }
     static let agentNotificationsKey = "agents.notifications"
 
     // MARK: Catalog (FR-AG01–FR-AG03)
@@ -164,9 +165,59 @@ extension AppWorkspaceModel {
             paneID = await splitPane(sourcePaneID, axis: .x, startSession: false)
         case .tab:
             paneID = await createTab(windowID: window.id, startSessions: false).flatMap { snapshot.tabs[$0]?.activePaneID }
+        case .currentTab:
+            paneID = await clearPaneForAgent(sourcePaneID, agentName: agentCatalog.definition(agentID)?.name ?? "the agent") ? sourcePaneID : nil
         }
         guard let paneID, !isClosing(paneID: paneID) else { return }
         await configureAgent(paneID: paneID, launch: launch)
+    }
+
+    /// FR-AG17: an agent is starting, running or typed in one of the tab's panes.
+    public func agentRunning(inTab tabID: UUID) -> Bool {
+        (snapshot.tabs[tabID]?.root.paneIDs ?? []).contains { id in
+            guard let state = terminals[id]?.sessionState, [.starting, .running, .closing].contains(state) else { return false }
+            return agentLaunch(paneID: id) != nil || detectedAgent(paneID: id) != nil
+        }
+    }
+
+    /// FR-AG17: the pane gives its session to the agent. A running shell is ended only while it waits at an authenticated
+    /// prompt, so no command is cut off, only in a tab without an agent, and only after the user confirms, since its marks
+    /// don't report background or stopped jobs. Nothing is forced.
+    private func clearPaneForAgent(_ paneID: UUID, agentName: String) async -> Bool {
+        guard let pane = snapshot.panes[paneID], let terminal = terminals[paneID], !agentRunning(inTab: pane.tabID) else {
+            errorMessage = "An agent is already running in this tab. Open the agent in a new tab or a split."
+            return false
+        }
+        switch terminal.sessionState {
+        case .stopped: return true
+        case .exited, .failed: break
+        case .running:
+            func idle() -> Bool {
+                guard terminals[paneID] === terminal, terminal.sessionState == .running, !isClosing(paneID: paneID), !agentRunning(inTab: pane.tabID),
+                    let state = shellStates[paneID]
+                else { return false }
+                return state.origin == .authenticated && !state.commandRunning && !terminal.isReplaying && taskRuns[paneID]?.isActive != true
+            }
+            guard idle() else {
+                errorMessage = "This pane isn't at its shell prompt. Finish its command first, or open the agent in a new tab."
+                return false
+            }
+            guard confirmReplaceShell(agentName) else { return false }
+            // Marks keep arriving while the alert is up; a command started meanwhile is never cut off.
+            guard idle() else {
+                errorMessage = "This pane's shell started a command, so the agent wasn't opened there."
+                return false
+            }
+            guard await endRunningSession(terminal, paneID: paneID, force: false), [.exited, .failed].contains(terminal.sessionState) else {
+                errorMessage = "The shell in this pane didn't exit, so the agent wasn't opened there."
+                return false
+            }
+        default:
+            errorMessage = "This pane's session is still starting or closing. Try again in a moment."
+            return false
+        }
+        await restartPane(paneID, startSession: false)
+        return terminals[paneID]?.sessionState == .stopped
     }
 
     /// Restart or Resume (FR-AG06): a new session in the same pane; `resume` continues the agent's last conversation.
