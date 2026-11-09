@@ -69,6 +69,10 @@ final class RemoteReconnectTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        // A test can end mid-outage. Once the fail file is gone, a pending retry can list the host's sessions while the
+        // stop-all below ends them; sessions that are still running but whose panes have ended aren't orphans.
+        model?.remoteReconnector.cancelAll()
+        model?.confirmStopOrphans = { _ in false }
         try? FileManager.default.removeItem(atPath: root + "/fail")
         if let remote = model?.remoteHosts, case .success(let link) = await remote.workspaceLink(host, interactive: false) {
             link.connection?.sendStopAll()
