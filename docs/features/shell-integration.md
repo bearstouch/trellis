@@ -22,7 +22,7 @@ Shell integration lets a local zsh, bash or fish shell report its current direct
 
 ## Protocol (version 1)
 
-Trellis starts a supported login shell with `TRELLIS_SHELL_INTEGRATION=1` (the protocol version) and `TRELLIS_SHELL_INTEGRATION_NONCE`, a fresh 128-bit hex value for each session. The script copies both into unexported shell variables and unsets them before any user command runs.
+Trellis starts a supported login shell with `TRELLIS_SHELL_INTEGRATION=1` (the protocol version) and `TRELLIS_SHELL_INTEGRATION_NONCE`, a fresh 128-bit hex value for each session. The script copies both into unexported shell variables and unsets them before any user command runs. A local shell with typed-agent wiring on (FR-AG18) also gets `TRELLIS_AGENT_SOCKET`, `TRELLIS_AGENT_NONCE` and `TRELLIS_AGENT_WIRING` (one line per agent, tab-separated: the executable, how many `NAME=value` words follow, then those words and the hook arguments). The script handles them the same way, then defines a function per agent after your startup files, unless you already have a function or alias of that name; only the agent that function runs gets the socket and nonce.
 
 How each shell loads its script:
 

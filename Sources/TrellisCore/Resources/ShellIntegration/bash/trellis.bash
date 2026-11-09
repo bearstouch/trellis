@@ -5,8 +5,12 @@
 __trellis_si_nonce="${TRELLIS_SHELL_INTEGRATION_NONCE-}"
 __trellis_si_version="${TRELLIS_SHELL_INTEGRATION-}"
 __trellis_si_login="${TRELLIS_BASH_LOGIN-}"
-builtin unset TRELLIS_SHELL_INTEGRATION_NONCE TRELLIS_SHELL_INTEGRATION TRELLIS_BASH_LOGIN
-builtin export -n __trellis_si_nonce __trellis_si_version __trellis_si_login 2>/dev/null
+# The typed-agent hook channel (FR-AG18) reaches only the agents the functions below run.
+__trellis_si_agent_socket="${TRELLIS_AGENT_SOCKET-}"
+__trellis_si_agent_nonce="${TRELLIS_AGENT_NONCE-}"
+__trellis_si_agent_wiring="${TRELLIS_AGENT_WIRING-}"
+builtin unset TRELLIS_SHELL_INTEGRATION_NONCE TRELLIS_SHELL_INTEGRATION TRELLIS_BASH_LOGIN TRELLIS_AGENT_SOCKET TRELLIS_AGENT_NONCE TRELLIS_AGENT_WIRING
+builtin export -n __trellis_si_nonce __trellis_si_version __trellis_si_login __trellis_si_agent_socket __trellis_si_agent_nonce __trellis_si_agent_wiring 2>/dev/null
 
 if [ -n "$__trellis_si_login" ]; then
     [ -r /etc/profile ] && builtin source /etc/profile
@@ -87,5 +91,38 @@ if [[ $- == *i* && -n "$__trellis_si_nonce" && "$__trellis_si_version" == 1 && -
     fi
     builtin trap "${__trellis_si_debug:+$__trellis_si_debug; }__trellis_si_preexec" DEBUG
     builtin unset __trellis_si_trap __trellis_si_debug
+
+    # Runs a typed agent with Trellis's hook wiring (FR-AG18). A record is
+    # `<executable>\t<count>\t<count environment words>\t<arguments>`.
+    __trellis_si_agent() {
+        local exe="$1" line= found= n
+        shift
+        while IFS= read -r line; do
+            case "$line" in "$exe"$'\t'*) found=1; break ;; esac
+        done <<< "$__trellis_si_agent_wiring"
+        local -a rec
+        [ -n "$found" ] && IFS=$'\t' read -r -a rec <<< "$line"
+        n="${rec[1]-}"
+        case "$n" in '' | *[!0-9]*) found= ;; esac
+        if [ -z "$found" ] || [ -z "$__trellis_si_agent_nonce" ]; then
+            command "$exe" "$@"
+            return
+        fi
+        command env "TRELLIS_AGENT_SOCKET=$__trellis_si_agent_socket" "TRELLIS_AGENT_NONCE=$__trellis_si_agent_nonce" \
+            "${rec[@]:2:n}" "$exe" "${rec[@]:2+n}" "$@"
+    }
+
+    # The user's files have run, so their own function or alias of the same name wins.
+    if [ -n "$__trellis_si_agent_wiring" ]; then
+        while IFS= read -r __trellis_si_line; do
+            __trellis_si_exe="${__trellis_si_line%%$'\t'*}"
+            [ -n "$__trellis_si_exe" ] && [ "$__trellis_si_exe" != "$__trellis_si_line" ] || continue
+            # Trellis sends letters, digits and `._+-` only; checked again since the name is eval'd.
+            case "$__trellis_si_exe" in *[!A-Za-z0-9._+-]* | [-.]*) continue ;; esac
+            case "$(builtin type -t "$__trellis_si_exe" 2>/dev/null)" in alias | function | keyword | builtin) continue ;; esac
+            builtin eval "$__trellis_si_exe() { __trellis_si_agent $__trellis_si_exe \"\$@\"; }"
+        done <<< "$__trellis_si_agent_wiring"
+        builtin unset __trellis_si_line __trellis_si_exe
+    fi
 fi
 builtin unset __trellis_si_version

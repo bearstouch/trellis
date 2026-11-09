@@ -22,6 +22,8 @@ public struct ShellIntegrationInjection: Equatable, Sendable {
     /// The script the shell will load; injection is skipped when it is missing.
     public let scriptPath: String
 
+    public static let agentWiringVariable = "TRELLIS_AGENT_WIRING"
+
     /// Plans injection for a login shell (`-l`) only; custom argument lists are left alone.
     public static func plan(
         kind: ShellIntegrationKind, arguments: [String], inheritedEnvironment: [String: String], resourceDirectory: String, nonce: String
@@ -49,6 +51,15 @@ public struct ShellIntegrationInjection: Equatable, Sendable {
         }
     }
 
+    /// The script gives the shell a function per typed agent (FR-AG18); unusable records are dropped, and none left
+    /// changes nothing.
+    public func addingAgentWiring(_ wirings: [TypedAgentWiring]) -> Self {
+        guard let encoded = TypedAgentWiring.encode(wirings) else { return self }
+        var environment = environment
+        environment[Self.agentWiringVariable] = encoded
+        return Self(kind: kind, nonce: nonce, arguments: arguments, environment: environment, scriptPath: scriptPath)
+    }
+
     /// 128 random bits as lowercase hex.
     public static func makeNonce() -> String {
         var generator = SystemRandomNumberGenerator()
@@ -57,6 +68,48 @@ public struct ShellIntegrationInjection: Equatable, Sendable {
 
     static func isValidNonce(_ nonce: String) -> Bool {
         nonce.utf8.count == 32 && nonce.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+    }
+}
+
+/// What a shell function adds to an agent typed in a shell (FR-AG18): `NAME=value` words for that command's environment
+/// and arguments placed right after the executable. The script receives one line per agent,
+/// `<executable>\t<environment count>\t<word>\t…`, so no word is ever re-parsed as shell syntax.
+public struct TypedAgentWiring: Equatable, Sendable {
+    public var executable: String
+    public var environment: [String]
+    public var arguments: [String]
+
+    public init(executable: String, environment: [String], arguments: [String]) {
+        self.executable = executable; self.environment = environment; self.arguments = arguments
+    }
+
+    /// A function name every supported shell accepts and that can't be a keyword or option.
+    static func isFunctionName(_ name: String) -> Bool {
+        guard let first = name.utf8.first, first != UInt8(ascii: "-"), first != UInt8(ascii: "."), name.utf8.count <= 64 else { return false }
+        return name.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [0x2e, 0x5f, 0x2d, 0x2b].contains($0) }
+    }
+
+    var isEncodable: Bool {
+        // The fish script relies on at least one argument; every integration with live state has one.
+        guard Self.isFunctionName(executable), !arguments.isEmpty else { return false }
+        let wordsSafe = (environment + arguments).allSatisfy { word in
+            !word.isEmpty && !word.unicodeScalars.contains { $0 == "\t" || $0 == "\n" || $0 == "\r" || $0 == "\0" }
+        }
+        // An environment word must be `NAME=value` with a plain name, or the shell would run it as a command.
+        let namesSafe = environment.allSatisfy { word in
+            guard let equals = word.firstIndex(of: "="), equals != word.startIndex else { return false }
+            return word[..<equals].utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 0x5f }
+        }
+        return wordsSafe && namesSafe
+    }
+
+    /// Unusable records are dropped; nil when none is left. Each executable is wired once.
+    static func encode(_ wirings: [Self]) -> String? {
+        var seen = Set<String>()
+        let lines = wirings.filter { $0.isEncodable && seen.insert($0.executable).inserted }.map {
+            ([$0.executable, String($0.environment.count)] + $0.environment + $0.arguments).joined(separator: "\t")
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 }
 

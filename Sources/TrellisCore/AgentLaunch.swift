@@ -40,24 +40,22 @@ public struct AgentCommand: Equatable, Sendable {
 
     /// `env [TRELLIS_AGENT_HOOK=…] <executable> <wiring…> <arguments…> [resume…] [extra…]`.
     public var words: [String] {
-        var words = ["env"]
-        var wiring: [String] = []
-        if let helper = hookHelper {
-            switch definition.integration {
-            case .claudeHooks: wiring = ["--settings", Self.claudeSettings(helper: helper)]
-            case .codexNotify: wiring = ["-c", "notify=" + Self.tomlArray([helper, "agent-hook", "done"])]
-            case .piExtension:
-                if let piExtension {
-                    words.append(Self.hookVariable + "=" + helper)
-                    wiring = ["-e", piExtension]
-                }
-            case .none: break
-            }
-        }
-        words.append(definition.executable)
+        let wiring = wiring
         // pi takes `-e` before its own flags; Claude Code and Codex accept their wiring anywhere before a prompt.
-        words += wiring + definition.arguments + (resume ? definition.resumeArguments : []) + extraArguments
-        return words
+        return ["env"] + wiring.environment + [definition.executable] + wiring.arguments + definition.arguments + (resume ? definition.resumeArguments : [])
+            + extraArguments
+    }
+
+    /// The hook wiring alone: `NAME=value` words for the agent's environment and the arguments that go right after its
+    /// executable. Empty without a helper or for `none`. Also what a shell's typed-agent function adds (FR-AG18).
+    public var wiring: (environment: [String], arguments: [String]) {
+        guard let helper = hookHelper else { return ([], []) }
+        switch definition.integration {
+        case .claudeHooks: return ([], ["--settings", Self.claudeSettings(helper: helper)])
+        case .codexNotify: return ([], ["-c", "notify=" + Self.tomlArray([helper, "agent-hook", "done"])])
+        case .piExtension: return piExtension.map { ([Self.hookVariable + "=" + helper], ["-e", $0]) } ?? ([], [])
+        case .none: return ([], [])
+        }
     }
 
     public var line: String {

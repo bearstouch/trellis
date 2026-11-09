@@ -52,6 +52,8 @@ public struct AgentSessionRow: Identifiable, Equatable, Sendable {
     /// The agent's state while its session runs; nil otherwise, and `status` names the session's state.
     public let state: AgentState?
     public let status: String
+    /// Typed in a shell (FR-AG15) rather than launched; listed only while it runs.
+    public let typed: Bool
 }
 
 extension AppWorkspaceModel {
@@ -112,21 +114,27 @@ extension AppWorkspaceModel {
 
     /// Running agent panes whose state is Needs you, in every window.
     public var agentsNeedingYouCount: Int {
-        agentStates.filter { $0.value.state == .needsInput && terminals[$0.key]?.sessionState == .running && agentDefinition(paneID: $0.key) != nil }.count
+        agentStates.filter { $0.value.state == .needsInput && terminals[$0.key]?.sessionState == .running && paneAgent(paneID: $0.key) != nil }.count
     }
 
     // MARK: Agents view (FR-AG16)
 
-    /// Every agent pane, in window and tab order.
+    /// Every agent pane, and every shell pane running a typed agent (FR-AG18), in window and tab order.
     public var agentSessionRows: [AgentSessionRow] {
         snapshot.windows.flatMap { window in
             window.tabIDs.compactMap { snapshot.tabs[$0] }.flatMap { tab in
                 tab.root.paneIDs.compactMap { id -> AgentSessionRow? in
-                    guard let agent = agentDefinition(paneID: id) else { return nil }
                     let terminal = terminals[id]
-                    let state: AgentState? = terminal?.sessionState == .running ? agentStates[id]?.state ?? .ready : nil
-                    let status = state?.label ?? SessionStatusText.describe(terminal?.sessionState ?? .stopped, exitCode: terminal?.exitCode)
-                    return AgentSessionRow(id: id, agent: agent, tabTitle: displayTitle(tab), windowName: window.name, state: state, status: status)
+                    if let agent = agentDefinition(paneID: id) {
+                        let state: AgentState? = terminal?.sessionState == .running ? agentStates[id]?.state ?? .ready : nil
+                        let status = state?.label ?? SessionStatusText.describe(terminal?.sessionState ?? .stopped, exitCode: terminal?.exitCode)
+                        return AgentSessionRow(id: id, agent: agent, tabTitle: displayTitle(tab), windowName: window.name, state: state, status: status, typed: false)
+                    }
+                    // Without hooks nothing reports its state, so it reads Running rather than a Ready it can't vouch for.
+                    guard terminal?.sessionState == .running, let agent = detectedAgent(paneID: id) else { return nil }
+                    let state = agentStates[id]?.state
+                    return AgentSessionRow(
+                        id: id, agent: agent, tabTitle: displayTitle(tab), windowName: window.name, state: state, status: state?.label ?? "Running", typed: true)
                 }
             }
         }

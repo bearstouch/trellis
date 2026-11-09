@@ -224,6 +224,125 @@ final class ShellIntegrationTests: XCTestCase {
         XCTAssertNil(ShellIntegrationState().durationText)
     }
 
+    // MARK: FR-AG18
+
+    func testTypedAgentWiringIsOneTabSeparatedLinePerAgentAndUnsafeRecordsAreDropped() throws {
+        let plan = try XCTUnwrap(ShellIntegrationInjection.plan(kind: .zsh, arguments: ["-l"], inheritedEnvironment: [:], resourceDirectory: "/R", nonce: nonce))
+        let wired = plan.addingAgentWiring([
+            TypedAgentWiring(executable: "claude", environment: [], arguments: ["--settings", #"{"a b":1}"#]),
+            TypedAgentWiring(executable: "pi", environment: ["TRELLIS_AGENT_HOOK=/A B/helper"], arguments: ["-e", "/x.ts"]),
+            TypedAgentWiring(executable: "claude", environment: [], arguments: ["--other"]),
+            TypedAgentWiring(executable: "-rf", environment: [], arguments: ["x"]),
+            TypedAgentWiring(executable: "a;b", environment: [], arguments: ["x"]),
+            TypedAgentWiring(executable: "tab", environment: [], arguments: ["a\tb"]),
+            TypedAgentWiring(executable: "line", environment: [], arguments: ["a\nb"]),
+            TypedAgentWiring(executable: "empty", environment: [], arguments: [""]),
+            TypedAgentWiring(executable: "bare", environment: [], arguments: []),
+            TypedAgentWiring(executable: "cmd", environment: ["rm -rf /"], arguments: ["x"]),
+            TypedAgentWiring(executable: "cmd2", environment: ["=x"], arguments: ["x"])
+        ])
+        XCTAssertEqual(
+            wired.environment[ShellIntegrationInjection.agentWiringVariable],
+            "claude\t0\t--settings\t{\"a b\":1}\npi\t1\tTRELLIS_AGENT_HOOK=/A B/helper\t-e\t/x.ts", "the first record per executable wins")
+        XCTAssertEqual(wired.arguments, plan.arguments)
+        XCTAssertEqual(wired.scriptPath, plan.scriptPath)
+        XCTAssertEqual(plan.addingAgentWiring([TypedAgentWiring(executable: "-x", environment: [], arguments: ["y"])]), plan, "nothing usable changes nothing")
+    }
+
+    func testTheTypedAgentChannelOnlyCrossesWithTheTrustedInjection() throws {
+        let injection = try XCTUnwrap(ShellIntegrationInjection.plan(kind: .bash, arguments: ["-l"], inheritedEnvironment: [:], resourceDirectory: "/R", nonce: nonce))
+            .addingAgentWiring([TypedAgentWiring(executable: "claude", environment: [], arguments: ["--settings", "{}"])])
+        var configuration = LocalLaunchConfiguration(
+            executable: "/bin/bash", arguments: ["-l"], directory: "/tmp", inheritedEnvironment: ["TRELLIS_AGENT_WIRING": "inherited"], shellIntegration: injection)
+        XCTAssertEqual(try LocalLaunchValidator(files: ScriptFiles()).validate(configuration).environment["TRELLIS_AGENT_WIRING"], "claude\t0\t--settings\t{}")
+        configuration.agentHook = AgentHookEnvironment(socket: "/s/agent.sock", nonce: nonce)
+        XCTAssertEqual(try LocalLaunchValidator(files: ScriptFiles()).validate(configuration).environment["TRELLIS_AGENT_NONCE"], nonce)
+        let plain = try LocalLaunchValidator(files: ScriptFiles(scriptExists: false)).validate(configuration).environment
+        XCTAssertTrue(plain.keys.filter { $0.hasPrefix("TRELLIS_") }.isEmpty, "without the script that hides it, a plain shell gets no channel")
+        configuration.agentHook = nil
+        configuration.shellIntegration = nil
+        XCTAssertNil(try LocalLaunchValidator(files: ScriptFiles()).validate(configuration).environment["TRELLIS_AGENT_WIRING"], "an inherited value never reaches a shell")
+        configuration.environmentOverrides = ["TRELLIS_AGENT_WIRING": "automation"]
+        XCTAssertThrowsError(try LocalLaunchValidator(files: ScriptFiles()).validate(configuration))
+    }
+
+    /// The bundled scripts in a real interactive shell, with commands on stdin and a stand-in agent that prints its
+    /// arguments and channel.
+    private func runTypedAgents(shell: String, commands: String, home files: [String: String] = [:]) throws -> String {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-typed-\(UUID().uuidString.prefix(8))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bin = root.appendingPathComponent("bin"), home = root.appendingPathComponent("home")
+        for folder in [bin, home] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        for (name, text) in files { try text.write(to: home.appendingPathComponent(name), atomically: true, encoding: .utf8) }
+        let agent = """
+            #!/bin/sh
+            printf 'ARGV:'; for a in "$@"; do printf '[%s]' "$a"; done; printf '\\n'
+            printf 'CHANNEL:%s|%s|%s\\n' "${TRELLIS_AGENT_SOCKET-}" "${TRELLIS_AGENT_NONCE-}" "${TRELLIS_AGENT_HOOK-}"
+            """
+        for name in ["claude", "pi"] {
+            try agent.write(to: bin.appendingPathComponent(name), atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.appendingPathComponent(name).path)
+        }
+        let directory = try XCTUnwrap(BundledShellIntegration.directory())
+        let kind = try XCTUnwrap(ShellIntegrationKind(executable: shell))
+        let injection = try XCTUnwrap(ShellIntegrationInjection.plan(kind: kind, arguments: ["-l"], inheritedEnvironment: [:], resourceDirectory: directory, nonce: nonce))
+            .addingAgentWiring([
+                TypedAgentWiring(executable: "claude", environment: [], arguments: ["--settings", #"{"hooks":{"a b":1}}"#]),
+                TypedAgentWiring(executable: "pi", environment: ["TRELLIS_AGENT_HOOK=/A B/helper"], arguments: ["-e", "/x.ts"])
+            ])
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shell)
+        // Interactive without a terminal; login startup is what the bash script emulates and zsh needs no -l here.
+        process.arguments = kind == .bash ? injection.arguments : ["-i"]
+        process.currentDirectoryURL = root
+        process.environment = injection.environment.merging(
+            ["HOME": home.path, "PATH": bin.path + ":/usr/bin:/bin", "TRELLIS_AGENT_SOCKET": "/s/agent.sock", "TRELLIS_AGENT_NONCE": "abcdef0123456789abcdef"]
+        ) { $1 }
+        let input = Pipe(), output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        input.fileHandleForWriting.write(Data((commands + "\nexit\n").utf8))
+        try input.fileHandleForWriting.close()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        // Only whole report lines; the prompt and marks share lines with them.
+        return String(decoding: data, as: UTF8.self).components(separatedBy: "\n").compactMap { line in
+            ["ARGV:", "CHANNEL:", "LEAK:", "USER:"].lazy.compactMap { line.range(of: $0).map { String(line[$0.lowerBound...]) } }.first
+        }.joined(separator: "\n")
+    }
+
+    func testTypedAgentsRunWithTheirWiringAndOnlyTheyGetTheChannel() throws {
+        let commands = """
+            claude hi "two  words"
+            pi go
+            echo "LEAK:$(env | grep -c '^TRELLIS_')"
+            command claude plain
+            """
+        let expected = """
+            ARGV:[--settings][{"hooks":{"a b":1}}][hi][two  words]
+            CHANNEL:/s/agent.sock|abcdef0123456789abcdef|
+            ARGV:[-e][/x.ts][go]
+            CHANNEL:/s/agent.sock|abcdef0123456789abcdef|/A B/helper
+            LEAK:0
+            ARGV:[plain]
+            CHANNEL:||
+            """
+        for shell in ["/bin/zsh", "/bin/bash"] where FileManager.default.isExecutableFile(atPath: shell) {
+            XCTAssertEqual(try runTypedAgents(shell: shell, commands: commands), expected, shell)
+        }
+    }
+
+    func testTheUsersOwnFunctionOfTheSameNameWins() throws {
+        let function = "claude() { echo USER:own; }\n"
+        XCTAssertEqual(try runTypedAgents(shell: "/bin/zsh", commands: "claude x", home: [".zshrc": function]), "USER:own")
+        XCTAssertEqual(try runTypedAgents(shell: "/bin/bash", commands: "claude x", home: [".bash_profile": function]), "USER:own")
+        let alias = "alias claude='echo USER:alias'\n"
+        XCTAssertEqual(try runTypedAgents(shell: "/bin/zsh", commands: "claude x", home: [".zshrc": alias]), "USER:alias x")
+        XCTAssertEqual(try runTypedAgents(shell: "/bin/bash", commands: "claude x", home: [".bash_profile": alias]), "USER:alias x")
+    }
+
     func testBundledScriptsArePackaged() throws {
         let directory = try XCTUnwrap(BundledShellIntegration.directory())
         for kind in ShellIntegrationKind.allCases {

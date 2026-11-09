@@ -1016,6 +1016,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     configuration = LocalLaunchConfiguration(
                         executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
+                var brokered = false
                 // FR-R07: whatever the quit setting, so a crash or force quit never ends a session.
                 if let sessionBroker {
                     let ready = await sessionBroker.prepare()
@@ -1030,14 +1031,19 @@ public final class AppWorkspaceModel: ObservableObject {
                     }
                     if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
                         terminal.useTransport(transport)
+                        brokered = true
                     } else if !quietly {
                         errorMessage = "The session broker could not start, so this session will end when Trellis quits."
                     }
                 }
+                wireTypedAgents(&configuration, sessionID: request.sessionID, brokered: brokered)
                 if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
-                // A launch refused before spawning never reports an exit, so drop its nonce here.
-                if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
+                // A launch refused before spawning never reports an exit, so drop its nonces here.
+                if terminal.processID == nil {
+                    if let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
+                    agentHookNonces = agentHookNonces.filter { $0.value != request.sessionID }
+                }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
     }
@@ -1350,6 +1356,7 @@ public final class AppWorkspaceModel: ObservableObject {
         state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
+        clearTypedAgentState(paneID: paneID, event: event, state: state)
         // Replayed marks (FR-R03) describe commands that finished while Trellis was closed; they never notify.
         if wasRunning, !state.commandRunning, terminals[paneID]?.isReplaying != true { postCommandFinished(state, paneID: paneID) }
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {

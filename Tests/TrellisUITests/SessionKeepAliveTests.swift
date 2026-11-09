@@ -17,8 +17,12 @@ final class FakeBrokerTransport: TerminalProcessTransport {
     var survivesQuit: Bool { true }
     let pid: Int32
     var signals: [Int32] = [], keepAlive: [Bool] = [], launched = 0
+    var configuration: ValidatedLocalLaunch?
     init(pid: Int32, running: Bool = false) { self.pid = pid; isRunning = running }
-    func launch(_ configuration: ValidatedLocalLaunch, size: TerminalSize) async throws -> Int32 { launched += 1; isRunning = true; return pid }
+    func launch(_ configuration: ValidatedLocalLaunch, size: TerminalSize) async throws -> Int32 {
+        launched += 1; isRunning = true; self.configuration = configuration
+        return pid
+    }
     func send(_ data: Data) throws {}
     func resize(_ size: TerminalSize) {}
     func signalGroup(_ signal: Int32) {
@@ -38,6 +42,8 @@ final class FakeSessionBroker: SessionBrokerClient {
     var adoptions: [UUID: BrokerAdoption] = [:]
     var transports: [UUID: FakeBrokerTransport] = [:]
     var released: [UUID] = [], hungUp: [UUID] = []
+    /// Agent hooks (FR-AG08): nil keeps every session unwired, as before.
+    var hookHelperPath: String?, agentSocketPath: String?
     private var nextPID: Int32 = 61_000
     func prepare() async -> Bool { prepared += 1; return ready }
     func makeTransport(sessionID: UUID) -> (any TerminalProcessTransport)? {
