@@ -1016,7 +1016,6 @@ public final class AppWorkspaceModel: ObservableObject {
                     configuration = LocalLaunchConfiguration(
                         executable: sshExecutable, arguments: arguments, directory: defaultDirectory, environmentOverrides: overrides)
                 }
-                var brokered = false
                 // FR-R07: whatever the quit setting, so a crash or force quit never ends a session.
                 if let sessionBroker {
                     let ready = await sessionBroker.prepare()
@@ -1031,19 +1030,16 @@ public final class AppWorkspaceModel: ObservableObject {
                     }
                     if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
                         terminal.useTransport(transport)
-                        brokered = true
                     } else if !quietly {
                         errorMessage = "The session broker could not start, so this session will end when Trellis quits."
                     }
                 }
-                wireTypedAgents(&configuration, sessionID: request.sessionID, brokered: brokered)
+                // Synchronous and without new locals: Swift 6.3's task allocator aborts when this frame grows (see `startAgent`).
+                wireTypedAgents(&configuration, sessionID: request.sessionID, brokered: terminal.survivesQuit)
                 if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
-                // A launch refused before spawning never reports an exit, so drop its nonces here.
-                if terminal.processID == nil {
-                    if let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
-                    agentHookNonces = agentHookNonces.filter { $0.value != request.sessionID }
-                }
+                // A launch refused before spawning never reports an exit, so drop its nonce here.
+                if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }
         } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
     }

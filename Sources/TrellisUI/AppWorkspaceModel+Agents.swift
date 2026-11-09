@@ -107,6 +107,9 @@ extension AppWorkspaceModel {
     /// session, so it maps the nonce; otherwise the app's own socket does.
     func wireTypedAgents(_ configuration: inout LocalLaunchConfiguration, sessionID: UUID, brokered: Bool) {
         guard typedAgentWiringEnabled, let injection = configuration.shellIntegration, let helper = sessionBroker?.hookHelperPath else { return }
+        // A shell refused before spawning never reports an exit; its nonce goes with the next shell instead.
+        let live = Set(terminals.values.compactMap(\.sessionID)).subtracting([sessionID])
+        agentHookNonces = agentHookNonces.filter { live.contains($0.value) }
         let wired = injection.addingAgentWiring(typedAgentWirings(helper: helper))
         guard wired != injection else { return }
         let nonce = AgentHook.makeNonce()
