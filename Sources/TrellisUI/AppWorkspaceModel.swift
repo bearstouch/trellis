@@ -1034,6 +1034,8 @@ public final class AppWorkspaceModel: ObservableObject {
                         errorMessage = "The session broker could not start, so this session will end when Trellis quits."
                     }
                 }
+                // Synchronous and without new locals: Swift 6.3's task allocator aborts when this frame grows (see `startAgent`).
+                wireTypedAgents(&configuration, sessionID: request.sessionID, brokered: terminal.survivesQuit)
                 if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
@@ -1350,6 +1352,7 @@ public final class AppWorkspaceModel: ObservableObject {
         state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
+        clearTypedAgentState(paneID: paneID, event: event, state: state)
         // Replayed marks (FR-R03) describe commands that finished while Trellis was closed; they never notify.
         if wasRunning, !state.commandRunning, terminals[paneID]?.isReplaying != true { postCommandFinished(state, paneID: paneID) }
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {

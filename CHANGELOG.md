@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Agents typed in a shell:** typing `claude`, `codex` or `pi` in a local zsh, bash or fish pane now runs it with the same hooks as an agent opened from the Agents view, so its tab shows **Working**, **Needs you** and **Done**, it can notify you, and the Agents view's **Running** list shows it (marked "in a shell") while it runs. Trellis adds a shell function for this; your own function or alias of the same name wins, and `command claude` skips it. Turn it off in Settings → Agents → **Connect agents typed in a shell**. See [Coding agents](docs/features/agents.md) (FR-AG18).
+
 ### Changed
 
 - **Desktop notifications:** each notification now says where it came from. Its subtitle names the window and tab ("api › Build"), followed by the agent or running program when known ("api › Build · make"); the command line itself is never shown. Agent notifications read "Waiting for your input" or "Finished its turn". See [Workspace](docs/features/workspace.md) (FR-T08), FR-SI08 and FR-AG14.

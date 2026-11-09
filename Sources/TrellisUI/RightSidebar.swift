@@ -212,7 +212,8 @@ struct AgentsSidebarView: View {
                 AgentIconView(icon: row.agent.icon, directory: model.agentCatalog.iconDirectories[row.agent.id], size: 12).frame(width: 18).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))
-                    Text("\(row.windowName) · \(row.agent.name)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
+                    Text("\(row.windowName) · \(row.agent.name)\(row.typed ? " · in a shell" : "")").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 if row.state == .working {
@@ -228,7 +229,7 @@ struct AgentsSidebarView: View {
         .buttonStyle(.plain)
         .help("Show this agent's pane")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(row.agent.name), \(row.tabTitle), \(row.windowName)")
+        .accessibilityLabel("\(row.agent.name)\(row.typed ? " in a shell" : ""), \(row.tabTitle), \(row.windowName)")
         .accessibilityValue(row.status).accessibilityHint("Shows this pane").accessibilityAddTraits(.isButton)
     }
 

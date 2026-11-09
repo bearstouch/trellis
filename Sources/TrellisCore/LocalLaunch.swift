@@ -119,13 +119,10 @@ public struct LocalLaunchValidator: Sendable {
         var environment = configuration.inheritedEnvironment.filter { !Self.isControlKey($0.key) && valid($0) }
         environment.merge(configuration.environmentOverrides) { _, override in override }
         environment.merge(Self.terminalEnvironment) { _, terminal in terminal }
-        if let hook = configuration.agentHook, hook.isValid {
-            environment[AgentHookEnvironment.socketVariable] = hook.socket
-            environment[AgentHookEnvironment.nonceVariable] = hook.nonce
-        }
         environment.removeValue(forKey: "ITERM_SESSION_ID")
         environment.removeValue(forKey: "TERM_SESSION_ID")
         var arguments = configuration.arguments
+        var injected = false
         // A missing script launches the plain shell: basic use never depends on integration (INT-01).
         if let injection = configuration.shellIntegration, injection.kind == ShellIntegrationKind(executable: configuration.executable),
             files.isReadableFile(injection.scriptPath), injection.environment.allSatisfy(valid),
@@ -133,6 +130,12 @@ public struct LocalLaunchValidator: Sendable {
         {
             environment.merge(injection.environment) { _, injected in injected }
             arguments = injection.arguments
+            injected = true
+        }
+        // A shell's typed-agent channel (FR-AG18) needs the script that hides it; a plain shell would export it to everything.
+        if let hook = configuration.agentHook, hook.isValid, configuration.shellIntegration == nil || injected {
+            environment[AgentHookEnvironment.socketVariable] = hook.socket
+            environment[AgentHookEnvironment.nonceVariable] = hook.nonce
         }
         return ValidatedLocalLaunch(
             executable: configuration.executable, arguments: arguments,

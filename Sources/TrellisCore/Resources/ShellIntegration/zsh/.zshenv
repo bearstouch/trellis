@@ -11,6 +11,10 @@ fi
 typeset -g __trellis_si_nonce="${TRELLIS_SHELL_INTEGRATION_NONCE-}"
 typeset -g __trellis_si_version="${TRELLIS_SHELL_INTEGRATION-}"
 unset TRELLIS_SHELL_INTEGRATION_NONCE TRELLIS_SHELL_INTEGRATION
+# The typed-agent hook channel (FR-AG18) reaches only the agents the functions below run.
+typeset -g __trellis_si_agent_socket="${TRELLIS_AGENT_SOCKET-}" __trellis_si_agent_nonce="${TRELLIS_AGENT_NONCE-}"
+typeset -g __trellis_si_agent_wiring="${TRELLIS_AGENT_WIRING-}"
+unset TRELLIS_AGENT_SOCKET TRELLIS_AGENT_NONCE TRELLIS_AGENT_WIRING
 
 # Source the user's .zshenv at top level so its typesets stay global.
 typeset -g __trellis_si_zshenv="${ZDOTDIR:-$HOME}/.zshenv"
@@ -63,6 +67,39 @@ if [[ -o interactive && -n "$__trellis_si_nonce" && "$__trellis_si_version" == 1
         __trellis_si_running=1
     }
 
+    # Runs a typed agent with Trellis's hook wiring (FR-AG18). A record is
+    # `<executable>\t<count>\t<count environment words>\t<arguments>`.
+    __trellis_si_agent() {
+        emulate -L zsh
+        local line= exe="$1"
+        shift
+        for line in "${(@f)__trellis_si_agent_wiring}"; do
+            [[ "$line" == "$exe"$'\t'* ]] && break
+            line=
+        done
+        local -a rec
+        rec=("${(@ps:\t:)line}")
+        if [[ -z "$line" || -z "$__trellis_si_agent_nonce" || "${rec[2]}" != <-> ]]; then
+            command "$exe" "$@"
+            return
+        fi
+        local -i n=${rec[2]}
+        command env "TRELLIS_AGENT_SOCKET=$__trellis_si_agent_socket" "TRELLIS_AGENT_NONCE=$__trellis_si_agent_nonce" \
+            "${(@)rec[3,2+n]}" "$exe" "${(@)rec[3+n,-1]}" "$@"
+    }
+
+    # After the user's files, so their own function or alias of the same name wins.
+    __trellis_si_agent_define() {
+        emulate -L zsh
+        local line exe
+        for line in "${(@f)__trellis_si_agent_wiring}"; do
+            exe="${line%%$'\t'*}"
+            [[ -n "$exe" && "$exe" != "$line" ]] || continue
+            (( $+functions[$exe] || $+aliases[$exe] )) && continue
+            functions[$exe]="__trellis_si_agent ${(q)exe} \"\$@\""
+        done
+    }
+
     # .zshrc runs after this file; move the hooks last on the first prompt so a
     # theme that rewrites the hook arrays cannot drop them.
     __trellis_si_deferred() {
@@ -70,6 +107,7 @@ if [[ -o interactive && -n "$__trellis_si_nonce" && "$__trellis_si_version" == 1
         precmd_functions=(${precmd_functions:#__trellis_si_deferred})
         precmd_functions=(${precmd_functions:#__trellis_si_precmd} __trellis_si_precmd)
         preexec_functions=(${preexec_functions:#__trellis_si_preexec} __trellis_si_preexec)
+        if [[ -n "$__trellis_si_agent_wiring" ]]; then __trellis_si_agent_define; fi
         __trellis_si_precmd
     }
     typeset -ga precmd_functions preexec_functions

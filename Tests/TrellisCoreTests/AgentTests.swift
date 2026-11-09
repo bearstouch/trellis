@@ -133,6 +133,17 @@ final class AgentCommandTests: XCTestCase {
         XCTAssertEqual(AgentCommand(definition: try agent("trellis-pi")).words, ["env", "pi"], "Without the helper the agent runs plain")
     }
 
+    func testTheWiringAloneIsWhatATypedAgentsFunctionAdds() throws {
+        let claude = AgentCommand(definition: try agent("trellis-claude-code"), hookHelper: helper)
+        XCTAssertEqual(claude.wiring.environment, [])
+        XCTAssertEqual(claude.wiring.arguments, Array(claude.words[2...3]))
+        let pi = AgentCommand(definition: try agent("trellis-pi"), hookHelper: helper, piExtension: "/b/trellis-pi-extension.ts").wiring
+        XCTAssertEqual(pi.environment, ["TRELLIS_AGENT_HOOK=" + helper])
+        XCTAssertEqual(pi.arguments, ["-e", "/b/trellis-pi-extension.ts"])
+        XCTAssertTrue(AgentCommand(definition: try agent("trellis-codex")).wiring == ([], []), "no helper, no wiring")
+        XCTAssertTrue(AgentCommand(definition: try agent("trellis-pi"), hookHelper: helper).wiring == ([], []), "pi needs its extension")
+    }
+
     func testARemotePiWritesItsExtensionFirstAndEveryWordIsQuoted() throws {
         let command = AgentCommand(
             definition: try agent("trellis-pi"), hookHelper: "/home/me/.trellis/remote/abc/trellis-broker", piExtension: "/home/me/.trellis/agents/x.ts",

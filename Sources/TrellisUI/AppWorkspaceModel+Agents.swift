@@ -29,6 +29,7 @@ extension AppWorkspaceModel {
     /// `currentTab` (FR-AG17): the focused pane itself, in place of its idle shell.
     public enum AgentPlacement: Sendable { case split, tab, currentTab }
     static let agentNotificationsKey = "agents.notifications"
+    static let typedAgentWiringKey = "agents.typedWiring"
 
     // MARK: Catalog (FR-AG01–FR-AG03)
 
@@ -80,6 +81,61 @@ extension AppWorkspaceModel {
         }
     }
 
+    /// FR-AG18: local integrated shells started from now on get a function per agent that passes the hook wiring.
+    public var typedAgentWiringEnabled: Bool {
+        get { preferences.object(forKey: Self.typedAgentWiringKey) as? Bool ?? true }
+        set {
+            objectWillChange.send()
+            preferences.set(newValue, forKey: Self.typedAgentWiringKey)
+        }
+    }
+
+    // MARK: Typed agents (FR-AG18)
+
+    /// What a shell function adds to each agent with live state: the same wiring as a launched agent (FR-AG08).
+    func typedAgentWirings(helper: String) -> [TypedAgentWiring] {
+        let piExtension = AgentCatalog.bundledFile(AgentCommand.piExtensionName)?.path
+        return agentCatalog.definitions.compactMap { definition in
+            guard definition.integration != .none else { return nil }
+            let wiring = AgentCommand(definition: definition, hookHelper: helper, piExtension: piExtension).wiring
+            return TypedAgentWiring(executable: (definition.executable as NSString).lastPathComponent, environment: wiring.environment, arguments: wiring.arguments)
+        }
+    }
+
+    /// Gives a local integrated shell its own hook channel and the functions that hand it to a typed agent. The script
+    /// keeps the channel out of the shell's environment, so only those agents see it. `brokered`: the broker holds the
+    /// session, so it maps the nonce; otherwise the app's own socket does.
+    func wireTypedAgents(_ configuration: inout LocalLaunchConfiguration, sessionID: UUID, brokered: Bool) {
+        guard typedAgentWiringEnabled, let injection = configuration.shellIntegration, let helper = sessionBroker?.hookHelperPath else { return }
+        // A shell refused before spawning never reports an exit; its nonce goes with the next shell instead.
+        let live = Set(terminals.values.compactMap(\.sessionID)).subtracting([sessionID])
+        agentHookNonces = agentHookNonces.filter { live.contains($0.value) }
+        let wired = injection.addingAgentWiring(typedAgentWirings(helper: helper))
+        guard wired != injection else { return }
+        let nonce = AgentHook.makeNonce()
+        if brokered, let socket = sessionBroker?.agentSocketPath {
+            configuration.agentHook = AgentHookEnvironment(socket: socket, nonce: nonce)
+        } else if !brokered, let socket = appAgentSocket() {
+            configuration.agentHook = AgentHookEnvironment(socket: socket, nonce: nonce)
+            agentHookNonces[nonce] = sessionID
+        } else {
+            return
+        }
+        configuration.shellIntegration = wired
+    }
+
+    /// The agent a pane shows, launched or typed: for its state, badge, notifications and Running row. Lifecycle (Start,
+    /// Resume, the installer) stays with `agentDefinition`.
+    public func paneAgent(paneID: UUID) -> AgentDefinition? { agentDefinition(paneID: paneID) ?? detectedAgent(paneID: paneID) }
+
+    /// FR-AG18: a typed agent's state ends with its command, and a new command never inherits it.
+    func clearTypedAgentState(paneID: UUID, event: ShellIntegrationEvent, state: ShellIntegrationState) {
+        guard agentStates[paneID] != nil, agentLaunch(paneID: paneID) == nil else { return }
+        let started: Bool
+        if case .commandStart = event { started = true } else { started = false }
+        if started || !state.commandRunning { agentStates.removeValue(forKey: paneID) }
+    }
+
     // MARK: Panes
 
     public func agentLaunch(paneID: UUID) -> AgentLaunch? { snapshot.panes[paneID].flatMap { snapshot.sessions[$0.sessionID]?.launch.agent } }
@@ -120,7 +176,7 @@ extension AppWorkspaceModel {
     public func agentBadge(tabID: UUID) -> (agent: AgentDefinition, state: AgentState)? {
         let rank: [AgentState: Int] = [.needsInput: 0, .error: 1, .working: 2, .done: 3]
         let badges = (snapshot.tabs[tabID]?.root.paneIDs ?? []).compactMap { id -> (agent: AgentDefinition, state: AgentState)? in
-            guard let badge = agentStates[id]?.badge, let agent = agentDefinition(paneID: id) else { return nil }
+            guard let badge = agentStates[id]?.badge, let agent = paneAgent(paneID: id) else { return nil }
             return (agent, badge)
         }
         return badges.min { rank[$0.state, default: 9] < rank[$1.state, default: 9] }
@@ -372,7 +428,16 @@ extension AppWorkspaceModel {
     }
 
     func applyAgentSignal(_ signal: AgentSignal, paneID: UUID) {
-        guard let current = agentStates[paneID] ?? agentDefinition(paneID: paneID).map({ AgentStateReducer(integration: $0.integration) }) else { return }
+        let agent: AgentDefinition
+        if let managed = agentDefinition(paneID: paneID) {
+            agent = managed
+        } else {
+            // FR-AG18: a typed agent has state only once its own hooks spoke; terminal signals alone would never end a Working.
+            guard let typed = detectedAgent(paneID: paneID) else { return }
+            if case .hook = signal {} else if agentStates[paneID]?.hooked != true { return }
+            agent = typed
+        }
+        let current = agentStates[paneID] ?? AgentStateReducer(integration: agent.integration)
         var reducer = current
         let changed = reducer.apply(signal, visible: agentPaneVisible(paneID))
         guard reducer != agentStates[paneID] else { return }
@@ -399,7 +464,7 @@ extension AppWorkspaceModel {
     }
 
     private func postAgentNotification(paneID: UUID, state: AgentState) {
-        guard appearance.desktopNotifications, agentNotificationsEnabled, let desktopNotifier, let agent = agentDefinition(paneID: paneID),
+        guard appearance.desktopNotifications, agentNotificationsEnabled, let desktopNotifier, let agent = paneAgent(paneID: paneID),
             snapshot.panes[paneID] != nil, !agentPaneVisible(paneID), notificationLimiter.allow(paneID, at: activityNow())
         else { return }
         let needsYou = state == .needsInput
@@ -412,7 +477,11 @@ extension AppWorkspaceModel {
     func agentSessionEnded(paneID: UUID, sessionID: UUID, code: Int32?, current: Bool) {
         let installed = agentInstalling.remove(sessionID) != nil
         for (nonce, id) in agentHookNonces where id == sessionID { agentHookNonces.removeValue(forKey: nonce) }
-        guard current, let launch = snapshot.sessions[sessionID]?.launch.agent, let agent = agentCatalog.definition(launch.agentID) else { return }
+        guard current, let launch = snapshot.sessions[sessionID]?.launch.agent, let agent = agentCatalog.definition(launch.agentID) else {
+            // A shell's typed agent (FR-AG18) ends with it.
+            if current { agentStates.removeValue(forKey: paneID) }
+            return
+        }
         let hooked = agentStates[paneID]?.hooked == true
         agentStates.removeValue(forKey: paneID)
         guard code == AgentCommand.notInstalledStatus, !hooked else { return }
