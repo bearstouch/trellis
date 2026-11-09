@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote workspaces · Trellis Docs</title>
+<meta name="description" content="Bind a Trellis space to a saved SSH host so its sessions run on the host and survive quitting, sleep and network drops.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/remote-workspaces.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Remote workspaces <span class="badge">Preview</span></h1>
+<p class="lead">A remote workspace is a space bound to a <a href="ssh-hosts.html">saved SSH host</a>. Every tab and split in it runs a shell on that host, and those shells keep running when you quit Trellis, your Mac sleeps or the network drops. When the link comes back, Trellis re-attaches with the output you missed.</p>
+
+<div class="callout preview"><p class="callout-title">Preview</p><p>Remote workspaces are new and still being qualified on real servers. Expect rough edges, and keep anything critical in tmux or similar until you trust it.</p></div>
+
+<h2 id="how-it-works">How it works</h2>
+<ul>
+<li>Trellis installs a small helper on the host, in <code>~/.trellis</code>. It owns your remote shells, so they don't depend on the ssh connection.</li>
+<li>Trellis opens <strong>one ssh connection per host</strong> using your system <code>ssh</code>, and every space on that host shares it. You authenticate once, not once per pane.</li>
+<li>Nothing listens on the network on either side. SSH is the only transport and the only authentication.</li>
+<li>The host can run Linux (x86_64, aarch64) or macOS (Apple silicon, Intel). Trellis itself runs on your Mac.</li>
+</ul>
+
+<h2 id="open-a-remote-workspace">Open a remote workspace</h2>
+<ol class="steps">
+<li>Save the host in <strong>File → Hosts…</strong> if you haven't already.</li>
+<li>Select it and choose <strong>Open Remote Workspace</strong>, or pick <strong>Open Remote Workspace: <em>host</em></strong> in the <a href="command-palette.html">command palette</a>.</li>
+<li>The first time, Trellis shows the host, its OS and architecture, the install path and the helper's size. Choose to install, or decline and nothing is written.</li>
+<li>A new space named after the host opens with one tab. The sidebar shows the host and the link state.</li>
+</ol>
+<p>New tabs (<kbd>⌘T</kbd>), splits (<kbd>⌘D</kbd>) and duplicates in that space run on the same host, in the directory of the pane you started from. If that directory isn't known or no longer exists, the shell starts in your remote home.</p>
+<p>You can also launch a <a href="projects.html">project</a> on a saved host; it opens as a remote workspace in the project's folder on that host.</p>
+
+<h2 id="connection-console">The connection console</h2>
+<p>ssh's own questions appear in a connection console: host-key confirmations, passwords, passphrases and one-time codes. Answer them there. A changed host key shows ssh's warning and the link fails; Trellis never bypasses it. A <a href="ssh-hosts.html#saved-passwords">saved password</a> is used as it is for SSH panes.</p>
+
+<h2 id="link-states">Link states</h2>
+<p>The link has its own state, shown in words with a symbol in the sidebar, pane headers and the bottom bar:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>State</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><strong>Connecting</strong></td><td>ssh is starting.</td></tr>
+<tr><td><strong>Needs input</strong></td><td>ssh is waiting for you in the connection console.</td></tr>
+<tr><td><strong>Connected</strong></td><td>Panes are live.</td></tr>
+<tr><td><strong>Reconnecting</strong></td><td>The link dropped and Trellis is retrying. Remote sessions keep running.</td></tr>
+<tr><td><strong>Offline</strong></td><td>Your Mac has no network. Retries pause until it returns.</td></tr>
+<tr><td><strong>Failed</strong></td><td>The link couldn't be made. Open the console to see why.</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="reconnecting">Reconnecting</h2>
+<ul>
+<li>A lost link is noticed within about 30 seconds, and right away after wake or a network change.</li>
+<li>Trellis retries on its own, backing off from 1 second up to a minute. <strong>Retry Now</strong> is always available.</li>
+<li>While reconnecting, typing is refused, never queued. The first refused keystroke shows <strong>Not sent: reconnecting</strong>. Tabs with panes on that host show a red indicator until they're back.</li>
+<li>Output produced during the outage appears once when you're back, up to 4 MiB per session. Beyond that the pane shows the most recent 4 MiB.</li>
+<li>If logging in needs your input, automatic retries stop and the pane offers <strong>Reconnect…</strong>, which opens the console.</li>
+</ul>
+<div class="callout tip"><p class="callout-title">Tip</p><p>Automatic reconnect needs non-interactive login: a key or an ssh agent. Hosts that log in with a password, even a saved one, always stop and wait for <strong>Reconnect…</strong> after a drop.</p></div>
+
+<h2 id="quit-and-relaunch">Quitting and relaunching</h2>
+<ul>
+<li>Quitting Trellis or closing the window detaches remote sessions without signaling them, whatever your session settings say.</li>
+<li>After relaunch, restored panes re-attach once the host is connected. A session that ended meanwhile shows its last output and its exit status.</li>
+<li>If the host has sessions that no pane claims, Trellis offers <strong>Stop Them</strong> or <strong>Leave Running</strong>, once per host.</li>
+<li>Closing a pane, tab or space ends its remote sessions, after the usual confirmation.</li>
+</ul>
+
+<h2 id="manage-the-helper">Manage the helper</h2>
+<p>Each host in the host library has a <strong>Remote helper</strong> section with a status line, such as "Installed, up to date (Linux aarch64)", and these actions:</p>
+<ul>
+<li><strong>Check Helper Status</strong>: connects and reports what's installed.</li>
+<li><strong>Install Trellis Helper…</strong> or <strong>Update Helper…</strong>: uploads the helper bundled with this Trellis version.</li>
+<li><strong>Remove Helper…</strong>: deletes the helper from the host. This affects every Mac using that host, and asks first if your sessions there are still running.</li>
+<li><strong>Install helper automatically when opening a remote workspace</strong>: off by default. When on, later versions install without asking.</li>
+</ul>
+<p>The helper needs no administrator rights. Every upload is checked against a digest bundled with the app before it's used, and nothing outside <code>~/.trellis</code> on the host is written. After a Trellis update, a running older helper keeps its sessions until they end.</p>
+
+<h2 id="tasks-on-the-host">Tasks on the host</h2>
+<p>The <a href="tasks.html">Tasks</a> view works in remote panes with shell integration, listing the host's <code>launch.json</code> and detected tasks. <strong>Add to launch.json</strong> isn't available for remote panes.</p>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li>Remote sessions survive what the host survives. A reboot, a crash of the helper, or a login policy that kills user processes on logout ends them. Trellis warns when it detects such a policy.</li>
+<li>Shells started before a reconnect keep the old agent socket, so ssh agent forwarding inside them stops working after a reconnect, as with tmux.</li>
+<li>Only one Mac can attach a given set of sessions. Two Macs on the same host each see only their own.</li>
+<li>Remote file links, editing remote task files and file transfer aren't included.</li>
+<li>Automation can read and drive remote sessions but can't create remote workspaces yet.</li>
+<li>Shell integration on the host works for zsh, bash and fish. Other shells start plain.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

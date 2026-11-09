@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scratchpad · Trellis Docs</title>
+<meta name="description" content="Write a command or script beside your panes, check its syntax, run it in the focused pane and save it as a task.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/scratchpad.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Scratchpad</h1>
+<p class="lead">Write a command or script beside your panes, check its syntax and run it in the focused pane. When it works, save it as a <a href="tasks.html">task</a> in the project's <code>launch.json</code>.</p>
+
+<h2 id="open">Open the scratchpad</h2>
+<p>Click the <code>&lt;/&gt;</code> icon in the <a href="sidebar.html">dock</a>, choose <strong>View → Show Scratchpad</strong>, or press <kbd>⌥⌘E</kbd>. The editor gets keyboard focus; press <kbd>⌥⌘E</kbd> again to go back to the terminal.</p>
+<p>The scratchpad works with the focused pane, which must be on this Mac. Its icon is dimmed for SSH and <a href="remote-workspaces.html">remote workspace</a> panes.</p>
+
+<h2 id="languages">Languages</h2>
+<p>Pick the language from the selector in the header.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Language</th><th>Checked with</th><th>Runs as</th></tr></thead>
+<tbody>
+<tr><td>sh</td><td><code>sh -n</code></td><td><code>sh '&lt;file&gt;.sh'</code></td></tr>
+<tr><td>bash</td><td><code>bash -n</code></td><td><code>bash '&lt;file&gt;.sh'</code></td></tr>
+<tr><td>JavaScript</td><td><code>node --check</code></td><td><code>node '&lt;file&gt;.js'</code></td></tr>
+<tr><td>Markdown</td><td>—</td><td>Never run; for notes</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="editor">The editor</h2>
+<p>The editor uses the terminal's font and theme colors, with syntax highlighting and line numbers. Smart quotes, dash substitution, text replacement and spell checking are off, so what you type is what runs.</p>
+<ul>
+<li>Undo, Find (<kbd>⌘F</kbd>, <kbd>⌘G</kbd>, <kbd>⇧⌘G</kbd>) and the usual editing commands work. Find searches the editor while it has focus.</li>
+<li><kbd>Tab</kbd> inserts a tab. <kbd>⌃Tab</kbd> moves focus out of the editor.</li>
+<li>A buffer holds up to 64 KB.</li>
+</ul>
+
+<h2 id="check-and-run">Check and run</h2>
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Validate (check syntax)</td><td><kbd>⌥⌘V</kbd></td></tr>
+<tr><td>Run in the focused pane</td><td><kbd>⌘↩</kbd></td></tr>
+<tr><td>Save as Task</td><td><kbd>⌥⌘S</kbd></td></tr>
+</tbody>
+</table></div>
+<p>These work while the editor has focus. The footer also has a <strong>Clear</strong> (trash) button, and each icon button's tooltip gives its name and shortcut, or why it's disabled.</p>
+<p><strong>Validate</strong> checks the syntax without running anything. You see <strong>Syntax OK</strong>, or each problem as <code>Line N: message</code> with the line marked in the gutter. If the interpreter can't be found, you see <strong>Not checked</strong>, and Run still works.</p>
+<p><strong>Run</strong> checks first, then types the command into the focused pane and presses Return. The footer's <strong>Runs in</strong> shows which pane that is and whether it's ready. Run is available only when that pane is a local shell with <a href="shell-integration.html">shell integration</a>, idle at its prompt, with no task running. The script runs in the pane's current folder.</p>
+
+<h2 id="save-as-task">Save as a task</h2>
+<ol class="steps">
+<li>Click <strong>Save as Task</strong> or press <kbd>⌥⌘S</kbd>.</li>
+<li>Enter a task name, a file name (suggested from the task name, such as <code>deploy-preview</code>) and an optional group. The sheet shows the exact command.</li>
+<li>Click <strong>Save</strong>, or <strong>Save &amp; Run</strong> to run it straight away.</li>
+</ol>
+<p>The script is saved to <code>.trellis/scratch/&lt;name&gt;.&lt;ext&gt;</code> in the focused pane's project, and a task is added to <code>.trellis/launch.json</code>:</p>
+<pre><code>{ "name": "Deploy preview", "command": "bash .trellis/scratch/deploy-preview.sh" }</code></pre>
+<p>A task with the same command isn't added twice, and a taken name gets a number. If the pane isn't in a project, its current folder becomes one, except your home folder or <code>/</code>.</p>
+<p>For Markdown, the button is <strong>Save File…</strong> and saves <code>.trellis/scratch/&lt;name&gt;.md</code> without adding a task.</p>
+
+<h2 id="saved-scratchpads">Open saved scratchpads</h2>
+<p>The file selector in the header (<strong>Scratchpad</strong> until you save) lists the files in the project's <code>.trellis/scratch/</code> folder. Choose one to open it; <strong>Edited</strong> appears while your buffer differs from the saved file. <strong>New Scratchpad</strong> starts an empty buffer.</p>
+<p><strong>Clear</strong> also starts an empty buffer. Both ask first if you have unsaved changes. The saved script and its task are never removed.</p>
+
+<h2 id="privacy">Privacy</h2>
+<p>The buffer lives in memory only: it isn't saved with your workspace and is gone when you quit. Text is written to disk only when you validate (a temporary private file), run (a private copy, deleted when Trellis quits) or save (into your project).</p>
+<div class="callout warn">
+<p class="callout-title">Warning</p>
+<p>Saved scripts are ordinary files in your repository. Anyone who can change them changes what the task runs, so review changes to <code>.trellis/scratch/</code> like any other code.</p>
+</div>
+
+<h2 id="limits">Known limits</h2>
+<ul>
+<li>The syntax check uses the first interpreter found in the app's <code>PATH</code>, <code>/opt/homebrew/bin</code>, <code>/usr/local/bin</code>, <code>/usr/bin</code> or <code>/bin</code>. That can differ from your shell's, such as macOS's <code>/bin/bash</code> 3.2 versus a newer Homebrew bash.</li>
+<li>Checks find syntax errors only; a script that parses can still fail.</li>
+<li>There's one scratchpad buffer, shared by all spaces.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

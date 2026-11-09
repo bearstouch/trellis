@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects · Trellis Docs</title>
+<meta name="description" content="Define a project's tabs, splits, commands and git repositories once, then launch it on this Mac or a saved host.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/projects.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Projects</h1>
+<p class="lead">A project is a layout you define once and launch whenever you need it: its tabs, splits and panes, each pane's folder and command, and the git repositories it's made of. Launch it on this Mac or on any saved SSH host, and Trellis clones what's missing and opens it as a space.</p>
+
+<h2 id="library">Open the library</h2>
+<p>Click <strong>Projects</strong> at the bottom of the sidebar, or choose <strong>File → Projects…</strong> (<kbd>⌘O</kbd>). The library opens in its own window: a searchable list on the left, the selected project's editor on the right. Search matches names, notes and repository URLs.</p>
+<p>Projects live in Trellis's own settings, not in a repository, so one definition can set up your laptop, a build server or a fresh VM.</p>
+
+<h2 id="create">Create a project</h2>
+<ul>
+<li><strong>New Project</strong> starts with one tab and one pane.</li>
+<li><strong>New from Space…</strong> captures an open space: its tabs, titles, colors and splits. Commands are never captured, and SSH or program panes become plain shells.</li>
+<li><strong>Import JSON…</strong> reads a project file. It opens in the editor, unsaved, so you can check its commands and repositories first.</li>
+</ul>
+
+<h2 id="edit">Edit a project</h2>
+<p>The editor shows the project's name, notes and repository, and an outline of its tabs, splits and panes.</p>
+<ul>
+<li>Select a <strong>tab</strong> to set its title, color and repository.</li>
+<li>Select a <strong>pane</strong> to set its title, folder, command and repository, and whether it <strong>Runs</strong> a shell or a <a href="agents.html">coding agent</a>.</li>
+<li>Change the outline with <strong>Add Tab</strong>, <strong>Split Right</strong>, <strong>Split Down</strong> and <strong>Remove</strong>; reorder tabs with <strong>Move Up</strong> and <strong>Move Down</strong>.</li>
+<li><strong>Save</strong> stores the project. <strong>Delete…</strong> asks first.</li>
+</ul>
+<p>Every field is checked as you type, and <strong>Save</strong> stays disabled until the problems are fixed. Leaving a project with unsaved changes asks whether to save or discard them.</p>
+
+<h3 id="fields">What goes in a pane</h3>
+<ul>
+<li><strong>Folder:</strong> relative to the project folder you pick at launch. Leave it empty for the project folder itself.</li>
+<li><strong>Command:</strong> one line, typed into the pane's shell at its first prompt.</li>
+<li><strong>Repository:</strong> an <code>https://</code>, <code>ssh://</code> or <code>user@host:path</code> URL, with an optional branch. The pane's folder becomes a checkout of it.</li>
+</ul>
+
+<h3 id="json">Edit as JSON</h3>
+<p>Switch the editor from <strong>Form</strong> to <strong>JSON</strong> to edit the project as text. <strong>Validate</strong> (<kbd>⌥⌘V</kbd>) lists each problem with its tab or pane; <strong>Save</strong> is <kbd>⌥⌘S</kbd>. Text that doesn't validate can't be saved. <strong>Export JSON…</strong> writes the selected project to a file.</p>
+<pre><code>{
+  "name": "Web shop",
+  "repository": { "url": "git@github.com:acme/shop.git" },
+  "tabs": [
+    {
+      "title": "Dev",
+      "color": "green",
+      "root": {
+        "type": "split", "axis": "x", "ratio": 0.5,
+        "children": [
+          { "type": "pane", "command": "npm run dev" },
+          { "type": "pane", "directory": "api" }
+        ]
+      }
+    }
+  ]
+}</code></pre>
+
+<h2 id="launch">Launch a project</h2>
+<ol class="steps">
+<li>Select the project and click <strong>Launch…</strong>.</li>
+<li>Choose the target: <strong>This Mac</strong> or a saved host. Then choose the project folder there (an absolute path on this Mac, a path relative to your home on a host). Both are prefilled from the last launch.</li>
+<li>Review what will happen: whether the folder exists, which repositories are already cloned, which will be cloned, and the tabs, panes and commands that will open.</li>
+<li>Click <strong>Open</strong>, or <strong>Set Up &amp; Open</strong> when something is missing.</li>
+</ol>
+<p>Setup runs in a terminal on the target, using that machine's own git and credentials. Answer any host-key, passphrase or password prompts there; Trellis never stores or types credentials. If a step fails, choose <strong>Retry</strong>, <strong>Open Anyway</strong> or <strong>Cancel</strong>.</p>
+<p>The new space is named after the project, and each command runs once at its pane's first prompt. You can also launch from the <a href="command-palette.html">command palette</a> with <strong>Launch Project…</strong>.</p>
+
+<h3 id="relaunch">Launching again</h3>
+<p>Launching the same project to the same target and folder selects its space and brings it up to date: new tabs and panes are added, and changed titles, colors and ratios applied. Nothing is removed or restarted, and no command runs again. Tabs you added yourself stay as <a href="workspace.html#temporary-tabs">temporary tabs</a>.</p>
+<p>The same project on another target or folder opens a separate space. Commands never rerun when Trellis restores a workspace.</p>
+
+<h2 id="git-status">Git status</h2>
+<p>For a local or remote-workspace shell inside a git repository, Trellis tracks the branch, the number of uncommitted changes and how far you are ahead of or behind upstream. The <a href="changes.html">Changes</a> badge in the dock counts the focused pane's changes. This needs <a href="shell-integration.html">shell integration</a>, and git is never allowed to run hooks, filters or fetches for it.</p>
+
+<h2 id="import-export">Back up and move projects</h2>
+<p><strong>File → Export Projects &amp; Hosts…</strong> writes every project and saved host to one file. <strong>File → Import Projects &amp; Hosts…</strong> checks the whole file and shows a summary before adding anything. A project named like one you already have is added as "… (imported)", never over yours. Nothing opens or starts on import.</p>
+
+<h2 id="safety">Trust and safety</h2>
+<ul>
+<li>You write a project's commands yourself, so launching runs them without a further review. They run in the target's login shell with your permissions.</li>
+<li>Setup only creates folders, clones into empty places or initializes the project folder in place. It never deletes, resets or overwrites files.</li>
+<li>Commands are never logged or saved with the workspace.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

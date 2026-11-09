@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tasks · Trellis Docs</title>
+<meta name="description" content="Run a repository's build, test and run commands from .trellis/launch.json, or tasks Trellis detects, in the focused pane.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/tasks.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Tasks</h1>
+<p class="lead">Tasks are a repository's named build, test and run commands, checked in as <code>.trellis/launch.json</code>. Trellis lists them for the focused pane's project and types the one you pick into its shell.</p>
+
+<h2 id="open">Open the Tasks view</h2>
+<p>Click the checklist icon in the <a href="sidebar.html">right sidebar</a>'s dock, or press <kbd>⌥⌘T</kbd>. The view shows the project's name and folder, its tasks with their exact command lines, and an <strong>Edit launch.json</strong> (or <strong>Create launch.json</strong>) button.</p>
+<p>The project is the nearest folder at or above the pane's current folder that contains <code>.trellis</code> or <code>.git</code>. Your home folder and <code>/</code> never count as a project. Tasks work in local panes and in <a href="remote-workspaces.html">remote workspace</a> panes; the view is unavailable for plain SSH panes.</p>
+<p>The view reads the file again when you open it, focus another pane, or click <strong>Reload</strong>.</p>
+
+<h2 id="launch-json">Write launch.json</h2>
+<p>This is the <code>.trellis/launch.json</code> in the Trellis repository itself:</p>
+<pre><code>{
+  "version": 1,
+  "tasks": [
+    {
+      "name": "build",
+      "command": "swift build",
+      "group": "build"
+    },
+    {
+      "name": "test",
+      "command": "swift test",
+      "group": "test"
+    },
+    {
+      "name": "lint",
+      "command": "swift format lint --strict -r Sources Tests",
+      "group": "test"
+    },
+    {
+      "name": "format",
+      "command": "swift format -i -r Sources Tests"
+    },
+    {
+      "name": "run fixture",
+      "command": "swift run Trellis --fixture",
+      "group": "run"
+    }
+  ]
+}</code></pre>
+
+<h3 id="fields">Fields</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Field</th><th>Rules</th></tr></thead>
+<tbody>
+<tr><td><code>version</code></td><td>Must be <code>1</code>.</td></tr>
+<tr><td><code>tasks</code></td><td>Up to 100 tasks.</td></tr>
+<tr><td><code>env</code></td><td>Optional variables for every task in the file.</td></tr>
+<tr><td><code>name</code></td><td>Required, 1–100 characters, unique in the file.</td></tr>
+<tr><td><code>command</code></td><td>Required. One shell line, up to 4,096 characters.</td></tr>
+<tr><td><code>cwd</code></td><td>Optional folder relative to the project folder. No absolute paths, <code>~</code> or <code>..</code>.</td></tr>
+<tr><td><code>group</code></td><td>Optional: <code>build</code>, <code>test</code> or <code>run</code>, shown next to the task.</td></tr>
+<tr><td><code>env</code> (task)</td><td>Optional variables for this task; they win over the file's for the same name.</td></tr>
+</tbody>
+</table></div>
+<p>Variable values are literal: <code>$HOME</code> arrives as the text <code>$HOME</code>. Unknown fields are errors, and a file with any error runs nothing; the view names the task that's wrong. Files are limited to 64 KB.</p>
+<p>A task with variables:</p>
+<pre><code>{
+  "name": "test UI",
+  "command": "swift test --filter TrellisUITests",
+  "group": "test",
+  "env": { "TRELLIS_TEST_VERBOSE": "1" }
+}</code></pre>
+
+<h2 id="detected">Detected tasks</h2>
+<p>Trellis also finds common tasks in the project folder without running anything: <code>package.json</code> scripts (npm, pnpm, yarn or bun), Make targets, CMake, SwiftPM, Python (<code>pytest</code>, <code>unittest</code>, <code>tox</code>) and Cargo. Run one directly, or click <strong>+</strong> to add it to <code>launch.json</code>, which is created if it doesn't exist.</p>
+
+<h2 id="run">Run and stop a task</h2>
+<ol class="steps">
+<li>Focus a shell pane in the project, idle at its prompt.</li>
+<li>Click <strong>Run</strong> next to a task.</li>
+<li>The first time you run a task from a new or changed <code>launch.json</code>, review every task's name, folder, variables and command, then click <strong>Trust and Run</strong>.</li>
+</ol>
+<p>Trellis clears anything half-typed at the prompt and types one line, followed by Return: the command, preceded by a <code>cd</code> into the task's folder when the shell isn't already there. The <code>cd</code> stays in effect afterwards, like any command you type. Tasks with variables run in a new, non-interactive instance of your shell, so your aliases and functions aren't available to them.</p>
+<p>The view shows <strong>Running: <em>name</em></strong> with the elapsed time, then <strong>done</strong>, <strong>exit N</strong> or <strong>ended</strong>. The dock's Tasks badge counts running tasks across all panes.</p>
+<p><strong>Stop</strong> sends <kbd>⌃C</kbd>. If the task is still running two seconds later, the button becomes <strong>Force Stop</strong>, which sends <kbd>⌃\</kbd>. The shell and pane stay open.</p>
+<div class="callout note"><p class="callout-title">Note</p><p>Run needs <a href="shell-integration.html">shell integration</a>. Trellis only types into a shell that has reported it's idle at its prompt, so a task never lands inside an editor or a running program.</p></div>
+<p>To write a multi-line script and save it as a task, use the <a href="scratchpad.html">scratchpad</a>.</p>
+
+<h2 id="safety">Trust and safety</h2>
+<ul>
+<li><code>launch.json</code> comes with the repository, so anyone who can change it can change what <strong>Run</strong> types. That's why each new version needs your review once. Changing a single byte asks again.</li>
+<li>Variables are typed into the terminal along with the command, so they appear on screen and in your shell history. Don't put secrets in <code>launch.json</code>.</li>
+<li>Trellis never logs the typed line.</li>
+</ul>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li><strong>Stop</strong> can't end a program that ignores <kbd>⌃C</kbd> and <kbd>⌃\</kbd>; restart the pane instead.</li>
+<li>Clearing a half-typed line works with emacs-style line editing. In vi mode, or partway through a multi-line command, finish or cancel what's at the prompt first.</li>
+<li>Detection looks only at the project root, not subfolders or monorepo packages.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

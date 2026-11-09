@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changes · Trellis Docs</title>
+<meta name="description" content="See the focused pane's uncommitted git changes, review each file's diff and stage or unstage it without leaving Trellis.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/changes.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Changes</h1>
+<p class="lead">The Changes view lists what changed in the focused pane's git repository, with lines added and removed. Read a file's diff in a Review tab and stage or unstage it without leaving Trellis.</p>
+
+<h2 id="open-changes">Open Changes</h2>
+<p>Click the branch icon in the <a href="sidebar.html">dock</a>, second after Files, or press <kbd>⌥⌘G</kbd>. The icon's badge shows how many files the focused pane's repository has changed.</p>
+<p>The view follows the focused pane: a <code>cd</code> into another repository, or focusing a pane in one, moves it. Changes works for panes on this Mac only; its icon is dimmed for SSH and <a href="remote-workspaces.html">remote workspace</a> panes.</p>
+
+<h2 id="what-it-shows">What it shows</h2>
+<ul>
+<li><strong>Branch:</strong> the branch (or detached commit) and how far it's ahead of and behind its upstream, like <code>↑2 ↓0</code>.</li>
+<li><strong>Uncommitted:</strong> lines added and removed across all changes, and the number of changed files.</li>
+<li><strong>Filter:</strong> type to show only files whose path contains the text.</li>
+<li><strong>Tree:</strong> folders, then files. Each shows its lines added and removed; each file has a status letter and, if staged, a staged mark.</li>
+</ul>
+<p>Changes are counted against <code>HEAD</code>, so a file appears once whether its change is staged or not. Untracked files are included, and renames show as a deletion plus an addition. Binary files show "binary" instead of line counts.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Letter</th><th>Means</th></tr></thead>
+<tbody>
+<tr><td>M</td><td>Modified</td></tr>
+<tr><td>A</td><td>Added</td></tr>
+<tr><td>D</td><td>Deleted (the name is struck through)</td></tr>
+<tr><td>U</td><td>Untracked</td></tr>
+<tr><td>C</td><td>Conflicted (a merge left it unresolved)</td></tr>
+</tbody>
+</table></div>
+<p>Click a folder to fold it; <strong>Collapse All</strong> folds them all. The view refreshes when you show it, when the pane returns to a prompt, after staging, and when you click <strong>Reload</strong>. Up to 2,000 files are listed.</p>
+
+<h2 id="review">Review a diff</h2>
+<p>Click a file, or select it and press <kbd>↩</kbd>, to open its diff in the space's <strong>Review</strong> tab, after your terminal tabs. A space has one Review tab; reviewing another file replaces its content.</p>
+<p>The diff is unified, with old and new line numbers and <code>+</code>/<code>−</code> marks. The header shows the file, its status, its line counts and its place in the list, like "12 of 17".</p>
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Next or previous change</td><td><kbd>n</kbd> <kbd>p</kbd></td></tr>
+<tr><td>Next or previous changed file</td><td><kbd>]</kbd> <kbd>[</kbd></td></tr>
+<tr><td>Open the file in your editor</td><td><kbd>⌥↩</kbd></td></tr>
+<tr><td>Back to the terminal tabs</td><td><kbd>Esc</kbd></td></tr>
+<tr><td>Close the Review tab</td><td><kbd>⌘W</kbd></td></tr>
+</tbody>
+</table></div>
+<p>The Review tab also has <strong>Open in</strong>, <strong>Reload</strong>, and <strong>Stage</strong> or <strong>Unstage</strong>. Selecting a terminal tab or pressing <kbd>Esc</kbd> keeps the Review tab around so you can come back. While it's shown, <strong>Close Pane</strong> and <strong>Close Tab</strong> close the Review tab, never a terminal you can't see. The Review tab is never saved with your workspace.</p>
+<p>Diffs over 2 MB or 20,000 lines aren't shown; Trellis offers to open the file instead.</p>
+
+<h2 id="staging">Stage and unstage</h2>
+<p>Hover or select a row and click <strong>Stage</strong> to stage the whole file (a deletion too), or <strong>Unstage</strong> to put its index entry back to <code>HEAD</code>. Your working copy is never touched.</p>
+<ul>
+<li>A partly staged file offers <strong>Stage</strong>.</li>
+<li>Staging a conflicted file asks <strong>Mark … as resolved?</strong> first, because the file is staged as it is, conflict markers included. <strong>Cancel</strong> leaves it alone.</li>
+<li>If git reports an error, Trellis says which file couldn't be staged and nothing else changes.</li>
+</ul>
+<p>That's all the view writes to your repository. There's no commit, discard or hunk staging; use git in a pane for those.</p>
+
+<h2 id="open-and-copy">Open and copy</h2>
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Review the selected file</td><td><kbd>↩</kbd></td></tr>
+<tr><td>Open it in your editor</td><td><kbd>⌥↩</kbd></td></tr>
+<tr><td>Copy its path</td><td><kbd>⇧⌘C</kbd></td></tr>
+</tbody>
+</table></div>
+<p><strong>Open in</strong> uses the editor you chose in <a href="files.html">Files</a>.</p>
+
+<h2 id="safety">Safe in any repository</h2>
+<p>Reading changes never runs a program the repository configures: git hooks, the fsmonitor, filter drivers, external diff tools and text conversion are all switched off. Submodules are listed only when their commit changed. Staging does run filter drivers, just like <code>git add</code> in a shell, so Git LFS and similar setups store the right content.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

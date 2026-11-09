@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trellis Docs</title>
+<meta name="description" content="The Trellis user guide: what Trellis is, how it's organized, and how to use every feature.">
+<link rel="icon" href="assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="assets/nav.js" defer></script>
+<script src="assets/docs.js" defer></script>
+</head>
+<body data-root="" data-page="index.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">User guide</p>
+<h1>Trellis</h1>
+<p class="lead">Trellis is a native terminal for macOS that keeps many sessions organized. Each project gets its own space in the sidebar, with named tabs and nested splits, and your sessions keep running when you switch away or quit.</p>
+
+<figure>
+<img src="assets/trellis-workspace.png" alt="The Trellis window: spaces in the left sidebar, color-labeled tabs across the top, and a terminal session filling the pane." width="2000" height="1464">
+<figcaption>Spaces on the left, tabs across the top, splits in the middle.</figcaption>
+</figure>
+
+<h2 id="the-idea">The idea</h2>
+<p>Most terminals give you a pile of tabs. Trellis gives that pile a shape:</p>
+<ul>
+<li><strong>A space per project.</strong> The sidebar lists your spaces. Each one holds its own tabs, so switching projects never means hunting through twenty tabs.</li>
+<li><strong>Layouts you can repeat.</strong> Save a project's tabs, splits, commands and git repositories in the <a href="features/projects.html">Projects</a> library and open it again in one step, on this Mac or on a saved host.</li>
+<li><strong>Sessions that hold on.</strong> Switching spaces or tabs never stops a process. By default, sessions also keep running after you quit and come back running when you reopen Trellis.</li>
+<li><strong>Everything from the keyboard.</strong> Splits, focus, tabs, spaces and every action in the <a href="features/command-palette.html">command palette</a> have shortcuts you can rebind.</li>
+<li><strong>Built to be driven.</strong> The <a href="automation/cli.html"><code>trellis</code> CLI</a>, a local automation API and an optional <a href="automation/mcp.html">MCP server</a> let scripts and coding agents do what you do, within the permissions you grant.</li>
+</ul>
+<p>Read <a href="guide/concepts.html">Concepts</a> for how spaces, tabs, panes and sessions fit together.</p>
+
+<h2 id="start-here">Start here</h2>
+<div class="cards">
+<a class="card" href="guide/getting-started.html"><strong>Getting started</strong><span>Install Trellis, take the tour and open your first project.</span></a>
+<a class="card" href="guide/concepts.html"><strong>Concepts</strong><span>Spaces, tabs, splits, panes and sessions.</span></a>
+<a class="card" href="guide/keyboard-shortcuts.html"><strong>Keyboard shortcuts</strong><span>The defaults, and how to change them.</span></a>
+<a class="card" href="guide/settings.html"><strong>Settings</strong><span>Appearance, sessions, themes, agents and more.</span></a>
+</div>
+
+<h2 id="features">Features</h2>
+<div class="cards">
+<a class="card" href="features/workspace.html"><strong>Spaces, tabs & splits</strong><span>Renameable, color-labeled tabs and nested splits.</span></a>
+<a class="card" href="features/terminal.html"><strong>Terminal</strong><span>Search, safe paste, links, ligatures and inline images.</span></a>
+<a class="card" href="features/projects.html"><strong>Projects & tasks</strong><span>Reusable layouts and <code>launch.json</code> tasks.</span></a>
+<a class="card" href="features/agents.html"><strong>Coding agents</strong><span>Claude Code, Codex and pi, with their status on each tab.</span></a>
+<a class="card" href="features/ssh-hosts.html"><strong>SSH hosts</strong><span>A saved host library that uses your system <code>ssh</code>.</span></a>
+<a class="card" href="features/remote-workspaces.html"><strong>Remote workspaces</strong><span>Sessions that live on a host and survive disconnects.</span></a>
+<a class="card" href="features/changes.html"><strong>Files & changes</strong><span>Browse the project and stage git changes beside your panes.</span></a>
+<a class="card" href="features/themes.html"><strong>Themes</strong><span>Ten built-in families, live preview and JSON themes.</span></a>
+</div>
+
+<h2 id="requirements">Requirements</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Requirement</th><th>Details</th></tr></thead>
+<tbody>
+<tr><td>macOS</td><td>macOS 14 Sonoma or later</td></tr>
+<tr><td>Mac</td><td>Apple silicon or Intel (one Universal 2 app)</td></tr>
+<tr><td>Shell</td><td>Any login shell. Shell integration works with zsh, bash and fish.</td></tr>
+<tr><td>SSH</td><td>The system <code>/usr/bin/ssh</code>. Trellis has no SSH implementation of its own.</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="privacy">Privacy at a glance</h2>
+<p>Trellis has no telemetry. Terminal output and what you type are never logged. The only network request it makes by itself is the update check, which you start or turn on. See <a href="privacy.html">Privacy &amp; data</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

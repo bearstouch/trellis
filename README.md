@@ -26,7 +26,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Updates:** **Trellis → Check for Updates…** installs signed updates in place. Automatic checks and beta versions are opt-in.
 - **Privacy:** no telemetry; terminal output and typed input are never logged. The only network request Trellis makes by itself is the update check you start or turn on.
 
-See the [feature docs](docs/features/workspace.md) for the full behavior.
+New to Trellis? Read the [user guide](website/docs/index.html). The [feature docs](docs/features/workspace.md) are the full behavior contract.
 
 ## Quick start
 

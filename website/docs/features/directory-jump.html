@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Directory jump · Trellis Docs</title>
+<meta name="description" content="Trellis remembers the directories your shells visit, so you can go back to one with ⌘J and Return.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/directory-jump.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Directory jump</h1>
+<p class="lead">Trellis remembers the directories your shells have recently and frequently been in. Press <kbd>⌘J</kbd>, type a few letters and press <kbd>↩</kbd> to go back to one, instead of typing <code>cd</code> again in every new tab.</p>
+
+<h2 id="jump">Jump to a directory</h2>
+<ol class="steps">
+<li>Press <kbd>⌘J</kbd>, or choose <strong>View → Jump to Directory…</strong>. The <a href="command-palette.html">command palette</a> opens on <strong>Jump to Directory…</strong>.</li>
+<li>Type part of the path. Letters only have to appear in order.</li>
+<li>Press <kbd>↩</kbd>.</li>
+</ol>
+<p>Directories also show up in the palette's general search, so <kbd>⇧⌘P</kbd> finds them too.</p>
+
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td><code>cd</code> in the focused pane if its shell is idle, otherwise open a new tab</td><td><kbd>↩</kbd></td></tr>
+<tr><td>Open in a new tab</td><td><kbd>⌘↩</kbd></td></tr>
+<tr><td>Open in a split beside the focused pane</td><td><kbd>⌥↩</kbd></td></tr>
+</tbody>
+</table></div>
+<p>Trellis types <code>cd</code> only when the pane's shell is at its prompt, clearing any half-typed input first. If something like <code>vim</code> is running, you get a new tab instead and nothing is sent to it. A split isn't possible while a pane is maximized.</p>
+
+<h2 id="machines">This Mac and remote hosts</h2>
+<p>Directories are remembered per machine, under a heading for each, with the current machine's first. A path is only ever used on its own machine:</p>
+<ul>
+<li>A directory on this Mac opens in the current space if it's local, otherwise in the first local space, otherwise in a new space.</li>
+<li>A directory on a host opens a tab in that host's <a href="remote-workspaces.html">remote workspace</a>, or starts one.</li>
+<li>From a plain SSH pane, every row opens a new tab, since its paths can't be verified.</li>
+</ul>
+<p>If a directory on this Mac no longer exists, Trellis says so and forgets it. If it doesn't answer within 2 seconds (such as a dead network share), nothing opens and the row stays. A missing directory on a host starts the shell in the home folder instead.</p>
+
+<h2 id="how-it-fills">How the list fills up</h2>
+<p>A visit is recorded each time a pane's shell reports a new directory at its prompt. This needs <a href="shell-integration.html">shell integration</a> on zsh, bash or fish; plain SSH panes and shells without integration record nothing. Pressing <kbd>↩</kbd> at a prompt doesn't count, and neither does reconnecting to a running session.</p>
+<p>Rows are ranked by how often and how recently you visited:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Last visit</th><th>Weight per visit</th></tr></thead>
+<tbody>
+<tr><td>Under 1 hour</td><td>4</td></tr>
+<tr><td>Under 1 day</td><td>2</td></tr>
+<tr><td>Under 1 week</td><td>0.5</td></tr>
+<tr><td>Older</td><td>0.25</td></tr>
+</tbody>
+</table></div>
+<p>Trellis keeps up to 100 directories across all machines. Over that, the one visited least recently is dropped.</p>
+
+<h3 id="skipped">Directories that are never remembered</h3>
+<ul>
+<li>System and temporary folders, such as <code>/tmp</code>, <code>/private/var</code>, <code>/var/folders</code>, <code>/etc</code>, <code>/proc</code> and <code>/System</code></li>
+<li>Anything inside <code>.ssh</code>, <code>.gnupg</code>, <code>.aws</code>, <code>.kube</code>, <code>.password-store</code> or <code>.Trash</code></li>
+<li><code>/</code> and your home folder itself</li>
+<li>Network locations: <code>/net</code>, <code>/Network</code>, <code>/afs</code>, and on this Mac any network share, including those under <code>/Volumes</code></li>
+</ul>
+<p>Hosts get the path rules only: Trellis can't tell whether a folder on a host is a network mount. A symbolic link that leads into a skipped folder is recorded under its own path.</p>
+
+<h2 id="privacy">Turn it off or clear it</h2>
+<p>History stays on this Mac. It isn't included in diagnostics, in <strong>Export Spaces &amp; Hosts</strong>, or in the automation API or CLI.</p>
+<ul>
+<li>Turn off <strong>Settings → Sessions → Remember directories</strong> to stop recording new visits. Existing rows still work.</li>
+<li>Click <strong>Clear Directory History…</strong> in the same section to delete every entry, after a confirmation.</li>
+</ul>
+<p>To change the <kbd>⌘J</kbd> shortcut, use <strong>Settings → Keyboard</strong>. If you had already bound <kbd>⌘J</kbd> to something else, yours is kept and Jump to Directory starts unbound. See <a href="../guide/keyboard-shortcuts.html">Keyboard shortcuts</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

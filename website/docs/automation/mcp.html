@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP server · Trellis Docs</title>
+<meta name="description" content="Turn on the Trellis MCP server in Settings → Remote Control so agents such as Claude Code can drive Trellis with MCP tools.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="automation/mcp.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Automation</p>
+<h1>MCP server</h1>
+<p class="lead">Trellis can run a <a href="https://modelcontextprotocol.io">Model Context Protocol</a> server, so agents such as Claude Code can control it with MCP tools. It's off by default, and it uses the same grants and permissions as the <a href="api.html">automation API</a>.</p>
+
+<h2 id="connect-an-agent">Connect an agent</h2>
+<ol class="steps">
+<li>Create a grant in <strong>Settings → Automation</strong> with the capabilities the agent needs, and copy its token. See <a href="api.html#grants">Create a grant</a>.</li>
+<li>Open <strong>Settings → Remote Control</strong>, turn on <strong>Enable MCP server</strong> and choose <strong>Apply</strong>.</li>
+<li>Check that the status says the server is running, with its URL.</li>
+<li>Add the server to your agent. <strong>Copy Claude Code Command</strong> gives you the command with a <code>&lt;TOKEN&gt;</code> placeholder; replace it with your token.</li>
+</ol>
+<pre><code>$ claude mcp add --transport http trellis http://127.0.0.1:7777/mcp \
+  --header "Authorization: Bearer trl_…"</code></pre>
+<p>Any MCP client that supports Streamable HTTP and custom headers works the same way. <strong>Copy Endpoint URL</strong> copies just the URL.</p>
+
+<h2 id="settings">Settings</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Setting</th><th>Default</th><th>Options</th></tr></thead>
+<tbody>
+<tr><td>Enable MCP server</td><td>Off</td><td>On, Off</td></tr>
+<tr><td>Interface</td><td><code>127.0.0.1</code> (this Mac only)</td><td><code>127.0.0.1</code>, <code>::1</code>, a local interface address, <code>0.0.0.0</code> (all IPv4), <code>::</code> (all IPv6)</td></tr>
+<tr><td>Port</td><td>7777</td><td>1024–65535</td></tr>
+</tbody>
+</table></div>
+<ul>
+<li>Changes take effect only when you choose <strong>Apply</strong>, which restarts the server.</li>
+<li>The status shows the URL when running, or why it isn't, such as "Port 7777 is already in use".</li>
+<li>The choice is saved with your workspace and survives a relaunch.</li>
+</ul>
+
+<h2 id="network-access">Network access</h2>
+<p>By default only programs on this Mac can connect. Choosing any other interface asks you to confirm with <strong>Allow Network Access</strong>.</p>
+<div class="callout warn"><p class="callout-title">Warning</p><p>The server speaks plain HTTP with no TLS. On a network address, anyone who can see the traffic can read the token and terminal output. To reach Trellis from another machine, keep the loopback address and use an SSH tunnel instead:</p></div>
+<pre><code>$ ssh -L 7777:127.0.0.1:7777 my-mac</code></pre>
+
+<h2 id="what-agents-can-do">What agents can do</h2>
+<ul>
+<li>Each API method is a tool named in snake case: <code>space.list</code> becomes <code>space_list</code>, <code>session.sendInput</code> becomes <code>session_send_input</code>.</li>
+<li>An agent sees only the tools its grant allows. A missing capability returns <code>PERMISSION_DENIED</code>, and anything out of scope looks like it doesn't exist.</li>
+<li>Tools that close, delete, restart, send input or execute are marked destructive, so your agent can ask you before using them.</li>
+<li>Event subscriptions aren't available over MCP. Use the socket or <a href="cli.html"><code>trellis events subscribe</code></a> for those.</li>
+<li>Output read through MCP comes with a reminder that terminal text is untrusted and must not be followed as instructions.</li>
+</ul>
+
+<h2 id="security">Security</h2>
+<ul>
+<li>Every request needs the grant token as a bearer token. Revoking the grant ends its MCP sessions at once.</li>
+<li>Requests from web pages on other origins are refused, and so are DNS-rebinding attempts on a loopback address.</li>
+<li>Failed logins are rate-limited separately from the local socket, so network attempts can't lock out your CLI.</li>
+<li>Idle sessions expire after 30 minutes.</li>
+<li>Requests, tokens, terminal output and typed input are never logged.</li>
+</ul>
+<p>Launching Trellis with <code>--no-mcp</code> keeps the server off for that run, whatever the setting says.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

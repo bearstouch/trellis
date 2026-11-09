@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy &amp; data · Trellis Docs</title>
+<meta name="description" content="What Trellis stores on your Mac, what it keeps in the Keychain, the one network request it makes, and how to uninstall it completely.">
+<link rel="icon" href="assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="assets/nav.js" defer></script>
+<script src="assets/docs.js" defer></script>
+</head>
+<body data-root="" data-page="privacy.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">More</p>
+<h1>Privacy &amp; data</h1>
+<p class="lead">Trellis has no telemetry and no account. Terminal output and what you type are never logged. Everything it saves stays on your Mac, readable only by your user.</p>
+
+<h2 id="at-a-glance">At a glance</h2>
+<ul>
+<li><strong>No telemetry, no analytics.</strong> Trellis doesn't report usage, crashes or anything else.</li>
+<li><strong>One network request of its own:</strong> the update check, and only when you start it or turn it on.</li>
+<li><strong>Output and input stay private.</strong> Terminal output and typed input are never logged, and never saved unless you turn on <a href="#scrollback">scrollback restore</a>.</li>
+<li><strong>Secrets live in the Keychain.</strong> Automation tokens and saved SSH passwords never go in Trellis's files.</li>
+<li><strong>No extra permissions.</strong> Trellis never asks at launch for Accessibility, Screen Recording or Full Disk Access.</li>
+</ul>
+
+<h2 id="what-is-saved">What is saved and where</h2>
+<p>Trellis keeps its data in <code>~/Library/Application Support/com.bearstouch.trellis/</code>. Files there are readable only by you (folders <code>0700</code>, files <code>0600</code>) and are written atomically, with a backup of the last good version.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>File</th><th>What's in it</th></tr></thead>
+<tbody>
+<tr><td><code>workspace.json</code></td><td>Your spaces, tabs, splits, titles, tab colors and settings</td></tr>
+<tr><td><code>hosts.json</code></td><td>Saved SSH hosts, and whether each has a saved password (never the password)</td></tr>
+<tr><td><code>projects.json</code></td><td>Your project library</td></tr>
+<tr><td><code>grants.json</code></td><td>Automation grants, with token hashes only</td></tr>
+<tr><td><code>directory-history.json</code></td><td>Up to 100 recent directories for <a href="features/directory-jump.html">Directory jump</a></td></tr>
+<tr><td><code>Themes/</code></td><td>Your custom themes</td></tr>
+<tr><td><code>Scrollback/</code></td><td>Only if you turn on scrollback restore: each pane's redacted text</td></tr>
+<tr><td><code>control.json</code>, <code>broker.json</code></td><td>Where the control socket and session helper are listening. No tokens.</td></tr>
+<tr><td><code>remote-client.json</code>, <code>remote-hosts.json</code></td><td>A random ID for this Mac's <a href="features/remote-workspaces.html">remote sessions</a> and each host's last helper status</td></tr>
+</tbody>
+</table></div>
+<p>A few preferences, such as keyboard shortcuts and the window frame, use the standard macOS preferences store.</p>
+
+<h3 id="never-saved">Never saved</h3>
+<ul>
+<li>Terminal output and typed input (except opt-in scrollback)</li>
+<li>Passwords, private keys and other authentication material</li>
+<li>Environment variable values</li>
+<li>Process IDs and the arguments of custom processes</li>
+</ul>
+<p>Restored panes start stopped, and Trellis never replays anything you typed.</p>
+
+<h2 id="keychain">Keychain</h2>
+<p>Two kinds of secret go in your login Keychain, available only when your Mac is unlocked and never synced to other devices:</p>
+<ul>
+<li><strong>Trellis Automation</strong>: tokens for <a href="automation/api.html">automation grants</a>.</li>
+<li><strong>Trellis SSH Host</strong>: optional <a href="features/ssh-hosts.html#saved-passwords">saved SSH passwords</a>, one per host.</li>
+</ul>
+<p>SSH keys stay where they are. Trellis stores the path to an identity file, never its contents.</p>
+
+<h2 id="scrollback">Opt-in scrollback</h2>
+<p><strong>Settings → Sessions → Restore scrollback after quit</strong> is off by default. Turn it on to see each pane's last output after a relaunch.</p>
+<ul>
+<li>Trellis saves plain text only, after removing likely secrets. Redaction is best effort.</li>
+<li>Each pane keeps at most its newest 1 MiB, in an owner-only file.</li>
+<li>The files are <strong>not encrypted</strong>.</li>
+<li>They're deleted when the pane closes or restarts, and all of them when you turn the setting off. They're never exported or sent to automation clients.</li>
+</ul>
+
+<h2 id="directory-history">Directory history</h2>
+<p><strong>Settings → Sessions → Remember directories</strong> keeps a list of where your shells have been, on this Mac only. System, credential and network folders are skipped. <strong>Clear Directory History…</strong> deletes it.</p>
+
+<h2 id="network">Network</h2>
+<p>Trellis makes no network requests of its own except checking for updates:</p>
+<ul>
+<li><strong>Trellis → Check for Updates…</strong> and <strong>Settings → Updates → Check Now</strong> check once, when you ask.</li>
+<li><strong>Automatically check for updates</strong> is off by default. Turn it on for a daily check.</li>
+<li>A check is one HTTPS request for the update feed. No identifier, system profile, workspace data or usage data is sent.</li>
+<li>Updates install only if their signatures verify. <strong>Include beta versions</strong> opts in to pre-releases.</li>
+</ul>
+<p>Everything else is something you start: ssh connections to your hosts, and the <a href="automation/mcp.html">MCP server</a>, which is off by default.</p>
+
+<h3 id="remote-hosts">On remote hosts</h3>
+<p>A <a href="features/remote-workspaces.html">remote workspace</a> installs a helper in <code>~/.trellis</code> on the host, with your consent. It opens no network port, and writes no secrets, typed input or terminal output to the host's disk.</p>
+
+<h2 id="uninstall">Uninstall</h2>
+<ol class="steps">
+<li>Quit Trellis and choose <strong>Stop Sessions</strong>, so no kept session or helper keeps running.</li>
+<li>Run <code>trellis cli uninstall-plan</code> to list every file and Keychain item that belongs to Trellis. It deletes nothing.</li>
+<li>Run <code>trellis cli remove-link</code> to remove the command-line link.</li>
+<li>Delete <code>Trellis.app</code>.</li>
+<li>Delete the folders the plan lists: Application Support, Preferences, Caches and Saved Application State.</li>
+<li>Delete the Keychain items in Keychain Access, or with <code>security</code>, repeating until none are left.</li>
+</ol>
+<pre><code>$ trellis cli uninstall-plan --json
+$ trellis cli remove-link
+$ security delete-generic-password -s "Trellis Automation"
+$ security delete-generic-password -s "Trellis SSH Host"</code></pre>
+<p>Uninstalling never touches <code>~/.ssh</code> (keys, config, known hosts), your shell startup files or shell history. To remove the helper from a remote host, use <strong>Remove Helper…</strong> in the host library before you uninstall.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

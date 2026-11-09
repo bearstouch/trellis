@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **User guide:** a static HTML user guide in `website/docs/` explains the Trellis concepts and how to use every feature, with keyboard shortcut and settings references, search (⌘K) and light and dark modes. Open `website/docs/index.html` or serve the folder from any static host.
+
 - **Agents typed in a shell:** typing `claude`, `codex` or `pi` in a local zsh, bash or fish pane now runs it with the same hooks as an agent opened from the Agents view, so its tab shows **Working**, **Needs you** and **Done**, it can notify you, and the Agents view's **Running** list shows it (marked "in a shell") while it runs. Trellis adds a shell function for this; your own function or alias of the same name wins, and `command claude` skips it. Turn it off in Settings → Agents → **Connect agents typed in a shell**. See [Coding agents](docs/features/agents.md) (FR-AG18).
 
 - **Temporary tabs:** a space opened from a library project now remembers its project, shown with a folder symbol in the sidebar. Tabs the project doesn't define (ones you add, duplicate or open for a host or agent) are temporary: their titles are in italics and VoiceOver reads "temporary tab". Launching the project again keeps them, and they never change the project. The API reports `projectId` on spaces and `temporary` on tabs. See [Workspace](docs/features/workspace.md) (FR-W08).

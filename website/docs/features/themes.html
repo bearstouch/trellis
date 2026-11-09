@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Themes · Trellis Docs</title>
+<meta name="description" content="Pick built-in Trellis themes for dark and light appearance, set window opacity, and write your own JSON themes.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/themes.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Themes</h1>
+<p class="lead">A theme colors the whole app: sidebar, tabs, dividers, focus rings and the terminal itself. Pick one of the built-in themes for each appearance, or write your own as a small JSON file.</p>
+
+<h2 id="appearance-mode">Appearance mode</h2>
+<p>In <strong>Settings → Appearance</strong>, choose <strong>System</strong>, <strong>Dark</strong> or <strong>Light</strong>. Dark is the default on first launch. System follows macOS; Dark and Light stay fixed.</p>
+<p>You pick a theme separately for the dark and the light appearance, so a custom dark theme can sit beside the built-in light one. Switching updates every pane at once, without restarting shells or losing their contents.</p>
+
+<h2 id="built-in-themes">Built-in themes</h2>
+<p><strong>Trellis Dark</strong> and <strong>Trellis Light</strong> are the defaults. Ten more families come with a dark and a light variant each:</p>
+<ul>
+<li>Modern, One, Monokai, Solarized, Nord</li>
+<li>Dracula, GitHub, Tokyo, Gruvbox, Rose Pine</li>
+</ul>
+<p>These are Trellis adaptations with complete app and terminal palettes. Light variants use a light terminal and dark variants a dark one.</p>
+
+<h2 id="font">Terminal font</h2>
+<p>The font isn't part of a theme. Choose it in <strong>Settings → Appearance → Terminal font</strong>, then choose <strong>Apply Appearance</strong>. JetBrains Mono is the default. Roboto Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled too, and any monospace font installed on your Mac is listed.</p>
+
+<h2 id="opacity">Background opacity and blur</h2>
+<p><strong>Settings → Appearance → Background opacity</strong> (30–100%, default 100%) lets the desktop show through the window. <strong>Blur behind background</strong>, on by default, frosts what shows through.</p>
+<ul>
+<li>Terminal backgrounds take the opacity as set. The sidebar, tab bar, headers and status bar never go below 60%, so their labels stay readable.</li>
+<li>Text, the cursor, selections, sheets, the command palette and the find bar stay opaque.</li>
+<li>The window stays opaque while macOS <strong>Reduce Transparency</strong> or <strong>Increase Contrast</strong> is on.</li>
+</ul>
+
+<h2 id="create-a-theme">Create a theme</h2>
+<ol class="steps">
+<li>Start from a copy of the <a href="https://github.com/bearstouch/trellis/blob/master/docs/themes/example-dark.theme.json">dark</a> or <a href="https://github.com/bearstouch/trellis/blob/master/docs/themes/example-light.theme.json">light</a> example.</li>
+<li>Change <code>id</code>, <code>name</code> and any colors you want.</li>
+<li>Open <strong>Settings → Themes → Preview JSON…</strong> and choose your file.</li>
+<li>Choose <strong>Preview in Workspace</strong> to try it on your real panes. <strong>Cancel Preview</strong> puts everything back.</li>
+<li>Choose <strong>Save &amp; Use Theme</strong> to install and activate it.</li>
+</ol>
+<p>Only <code>version</code>, <code>id</code>, <code>name</code> and <code>appearance</code> are required. Every color you leave out comes from the built-in theme for that appearance, so a minimal theme is short:</p>
+<pre><code>{
+  "version": 1,
+  "id": "my-midnight",
+  "name": "My Midnight",
+  "appearance": "dark",
+  "terminal": { "background": "#101820", "foreground": "#E8EEF4" },
+  "ui": { "accent": "#7CC7FF" }
+}</code></pre>
+<p>A fuller theme sets the terminal and app palettes (ANSI list trimmed here):</p>
+<pre><code>{
+  "version": 1,
+  "id": "my-dark",
+  "name": "My Dark",
+  "appearance": "dark",
+  "terminal": {
+    "background": "#141820",
+    "foreground": "#E8EEF4",
+    "cursor": "#B9DCFF",
+    "cursorText": "#141820",
+    "selectionBackground": "#3F6AA1",
+    "selectionForeground": "#FFFFFF",
+    "ansi": ["#1B202A", "#EF8585", "#8DDAA4", "#F2CC7A", …16 colors in all]
+  },
+  "ui": {
+    "background": "#141820",
+    "surface": "#202735",
+    "sidebarBackground": "#10141B",
+    "foreground": "#E8EEF4",
+    "mutedForeground": "#B0BAC9",
+    "accent": "#8BC7FF",
+    "border": "#66758B",
+    "activeTabBackground": "#354C6A",
+    "activeTabForeground": "#FFFFFF",
+    "focusRing": "#8BC7FF",
+    "success": "#8DDAA4",
+    "warning": "#F2CC7A",
+    "error": "#FFA4A4"
+  }
+}</code></pre>
+<p>Previewing never installs anything and never touches running sessions. Leaving Themes or closing Settings cancels a preview.</p>
+
+<h2 id="format">Format rules</h2>
+<ul>
+<li>UTF-8 JSON, at most 64 KiB. <code>version</code> is <code>1</code>.</li>
+<li><code>id</code>: lowercase, up to 64 characters. The <code>trellis-</code> prefix is reserved for built-in themes. <code>name</code>: up to 100 characters.</li>
+<li><code>appearance</code>: <code>dark</code> or <code>light</code>. It picks the fallback colors and the slot the theme can be used in.</li>
+<li>Colors are opaque <code>#RRGGBB</code>. Alpha isn't supported.</li>
+<li><code>ansi</code> is optional, but if present it must list exactly 16 colors: black, red, green, yellow, blue, magenta, cyan, white, then the bright versions.</li>
+<li>Unknown fields, duplicate keys and invalid colors are errors. The message names the field, and nothing is installed.</li>
+</ul>
+<p>Themes are data only: no includes, fonts, images or scripts.</p>
+
+<h3 id="contrast">Contrast warnings</h3>
+<p>The preview shows text, muted labels, selection, cursor text and status colors, and warns about low-contrast pairs by field name. Warnings are advice; you can still save the theme.</p>
+
+<h3 id="light-terminals">Light terminals</h3>
+<p>On a light terminal, Trellis adjusts 256-color output to your theme and lifts nearly invisible text to a readable contrast, so prompts designed for dark terminals don't draw as black blocks. 24-bit colors are never changed.</p>
+
+<h2 id="manage-themes">Manage your themes</h2>
+<ul>
+<li>Custom themes are stored in the <code>Themes</code> folder of your Trellis data folder. Importing copies the file, so you can delete the original.</li>
+<li><strong>Open Themes Folder</strong> lets you edit themes in any editor. <strong>Reload Themes</strong> picks up the changes without a restart. An invalid file keeps its last valid colors and shows the errors.</li>
+<li>Installing a theme with an ID that already exists asks you to <strong>Replace Theme</strong>.</li>
+<li><strong>Export…</strong> writes the theme as you wrote it. <strong>Export Resolved…</strong> also includes the inherited colors, for an exact copy on another Mac.</li>
+<li><strong>Delete Theme</strong> removes it. If it was selected, Trellis falls back to the built-in theme for that slot.</li>
+</ul>
+<p>Themes apply to the whole app. Scripts with the right permission can import and select themes through the <a href="../automation/cli.html"><code>trellis</code> CLI</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

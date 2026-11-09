@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSH hosts · Trellis Docs</title>
+<meta name="description" content="Save SSH hosts in Trellis, import aliases from ~/.ssh/config, keep an optional password in the Keychain and connect in a tab or space.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/ssh-hosts.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>SSH hosts</h1>
+<p class="lead">Keep the servers you use in a host library and connect to one in a new tab or space. Trellis runs your system <code>ssh</code>, so your config, keys, agent and known hosts work exactly as they do in any other terminal.</p>
+
+<h2 id="how-it-works">How it works</h2>
+<p>Trellis has no SSH implementation of its own. Each connection runs <code>/usr/bin/ssh</code> inside the pane, with one ssh process per connection.</p>
+<ul>
+<li>Fields you fill in on a host override your SSH defaults. Fields you leave empty are left to <code>~/.ssh/config</code>.</li>
+<li>No shell is involved in building the command, so nothing typed into a host field can run as a command.</li>
+<li>Host-key checks are never bypassed. Unknown or changed host keys, passphrases and passwords are asked in the pane, as ssh asks them.</li>
+</ul>
+
+<h2 id="open-the-host-library">Open the host library</h2>
+<p>Choose <strong>File → Hosts…</strong>, or search for Hosts in the <a href="command-palette.html">command palette</a>. The library lists your saved hosts, with a search field to filter them by name or tag.</p>
+
+<h2 id="add-a-host">Add a host</h2>
+<ol class="steps">
+<li>In the host library, choose <strong>New Host</strong>.</li>
+<li>Enter a display name and a destination: either an alias from your SSH config or a hostname.</li>
+<li>Optionally set a username, a port (1–65535), an identity file and tags.</li>
+<li>Choose <strong>Add Host</strong>.</li>
+</ol>
+<div class="table-wrap"><table>
+<thead><tr><th>Field</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Display name</td><td>Any label. Also names the tab or space a connection opens.</td></tr>
+<tr><td>Destination</td><td>An alias or a hostname. It can't start with <code>-</code>.</td></tr>
+<tr><td>Username</td><td>Optional. Empty means your SSH config decides.</td></tr>
+<tr><td>Port</td><td>Optional, 1–65535.</td></tr>
+<tr><td>Identity file</td><td>Optional. Trellis stores the path, never the key itself.</td></tr>
+<tr><td>Tags</td><td>Used for search and filtering.</td></tr>
+</tbody>
+</table></div>
+<p>Edits apply to later connections only. Sessions already running keep the settings they started with.</p>
+
+<h2 id="import-from-ssh-config">Import aliases from your SSH config</h2>
+<p>Choose <strong>Discover SSH Aliases…</strong> in the host library. Trellis reads the literal <code>Host</code> names in <code>~/.ssh/config</code> and lets you pick which to save. Each one is saved as an alias, so ssh keeps applying your configuration when you connect.</p>
+<ul>
+<li>Wildcard patterns and <code>Match</code> blocks don't become hosts.</li>
+<li><code>Include</code> files that discovery doesn't follow are labeled. You can still add those aliases by hand.</li>
+<li>Discovery never runs commands and never changes your SSH config.</li>
+</ul>
+
+<h2 id="connect">Connect</h2>
+<p>Select a host and choose one of:</p>
+<ul>
+<li><strong>Connect in New Tab</strong>: opens a tab in the current space.</li>
+<li><strong>Connect in New Space</strong>: creates a space named after the host, with one connected tab.</li>
+<li><strong>Open Remote Workspace</strong>: sessions that live on the host and survive disconnects. See <a href="remote-workspaces.html">Remote workspaces</a>.</li>
+</ul>
+<p>The command palette also lists each saved host, so you can connect without opening the library. Save or revert unsaved edits before connecting.</p>
+
+<h3 id="connection-state">When a connection fails</h3>
+<p>A pane shows <strong>running</strong> while the <code>ssh</code> process is alive. That doesn't mean you're logged in; Trellis doesn't guess from screen text. If ssh exits, the pane stays open with its exit status so you can read the error. Trellis never retries on its own: reconnect when you're ready.</p>
+
+<h2 id="saved-passwords">Saved passwords</h2>
+<p>If a host logs in with a password, you can save it in the macOS Keychain. Trellis then answers ssh's password prompt for you, once per connection.</p>
+<ol class="steps">
+<li>Select the host and enter the password under <strong>Password (optional)</strong>.</li>
+<li>Save the host. The field shows <strong>Saved in Keychain</strong>.</li>
+<li>To change it later, choose <strong>Replace…</strong>. To delete it, choose <strong>Remove</strong>.</li>
+</ol>
+<ul>
+<li>A saved password is never shown again. It never appears in the host file, exports, the CLI, the automation API, logs or the pane.</li>
+<li>Only the first password prompt is answered. Host-key confirmations, key passphrases, one-time codes and any second password prompt are still asked in the pane.</li>
+<li>Changing the host's destination, username, port or identity file removes the saved password, so it can't be sent to a different server. Renaming or retagging keeps it.</li>
+<li>Deleting the host deletes its saved password too.</li>
+</ul>
+
+<h3 id="touch-id">Require Touch ID</h3>
+<p>Turn on <strong>Require Touch ID or Mac password to use</strong> to confirm each connection that would use the saved password. If you decline, type the password in the terminal instead. Turning the option off also asks first.</p>
+
+<div class="callout note"><p class="callout-title">Note</p><p>To send the password, Trellis must read it from the Keychain for the moment ssh asks for it. It is passed only to a small bundled helper started by that ssh process, and buffers Trellis owns are cleared afterwards.</p></div>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li>There's no field for extra ssh arguments. Put options in <code>~/.ssh/config</code> and save the host as an alias.</li>
+<li>SFTP and automatic tmux attachment aren't included.</li>
+<li>Saved hosts can be moved to another Mac with <strong>File → Export Projects &amp; Hosts…</strong>. Saved passwords stay in this Mac's Keychain.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>
