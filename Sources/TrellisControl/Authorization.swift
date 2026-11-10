@@ -300,7 +300,7 @@ public actor AuthorizingControlHandler: ControlHandler {
                 identity,
                 .object([
                     "connectionId": .string(connectionID.uuidString), "grantId": .string(grant.id.uuidString),
-                    "expiresAt": .string(ISO8601DateFormatter().string(from: grant.expiresAt)),
+                    "expiresAt": .string(ControlTimestamp.string(grant.expiresAt)),
                     "capabilities": .array(grant.capabilities.sorted().map { .string($0.rawValue) }), "spaceScope": scope,
                     "protocolVersion": .number(1)
                 ])
