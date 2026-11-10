@@ -1,7 +1,7 @@
 # Files
 
-!!! note "New in 1.2 beta"
-    The Files view arrived in 1.2.0-beta.1.
+!!! note "New in 1.2"
+    The Files view arrived in 1.2.
 
 The **Files** view in the [right sidebar](sidebar.md) shows the focused pane's project as a tree. Use it to find a file, open it in your editor or copy its path without leaving the terminal. Show it with the folder icon at the top of the dock, or press <kbd>⌥</kbd><kbd>⌘</kbd><kbd>F</kbd> (**View → Show Files**). The keyboard goes straight to the search field.
 

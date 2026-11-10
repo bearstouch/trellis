@@ -108,7 +108,7 @@ The space is named after the project. On a host it works like a [remote workspac
 
 Launching the same project on the same target and folder again selects its space and brings it up to date: it adds new tabs and panes and applies changed titles, colors and split sizes, but it removes nothing, restarts nothing and runs no command again. The same project on another target or folder opens another space.
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     A space opened from a project remembers it and shows a folder symbol in the sidebar. Tabs the project doesn't define, such as ones you add, duplicate or open for a host or an agent, are temporary: their titles are in italics and VoiceOver reads "temporary tab". Launching the project again keeps them, and they never change the project.
 
 ## Git status
@@ -125,7 +125,7 @@ Trellis reads status without running anything the repository configures: no hook
 
 The import preview counts the projects and lists any named like one you already have. **Import** adds them as new projects, never over yours; a name you already use gets " (imported)". If any project in the file is invalid, nothing is imported. Exports from earlier versions still import their projects and hosts.
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     Export and import now carry projects and hosts. They replace **Export Windows & Hosts**; open spaces are no longer exported.
 
 ## Trust and safety

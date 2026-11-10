@@ -13,7 +13,7 @@ Choose **Apply Appearance** to save. The new colors reach every window and pane 
 
 The built-in themes are **Trellis Dark** and **Trellis Light**, plus dark and light versions of ten editor-inspired families: Modern, One, Monokai, Solarized, Nord, Dracula, GitHub, Tokyo, Gruvbox and Rose Pine. Each is a complete Trellis adaptation of the app and terminal palette. Light versions have light terminals and dark versions have dark terminals.
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     **Trellis Light** now has a white terminal with black text. For dark panes under light chrome, use a light theme that sets a dark terminal background.
 
 A theme colors the sidebar, tabs, split dividers, focus indicators, the terminal's background, text, cursor and selection, and its 16 ANSI colors. System dialogs and standard controls follow macOS's own appearance.
@@ -22,8 +22,8 @@ The font isn't part of a theme. Choose it with **Terminal font** on the same pag
 
 ## Background opacity
 
-!!! note "New in 1.2 beta"
-    Background opacity and blur are new in the 1.2 betas.
+!!! note "New in 1.2"
+    Background opacity and blur are new in 1.2.
 
 **Settings → Appearance → Background opacity** (30–100 %, default 100 %) lets the desktop show through the window. Turn on **Blur behind background** (on by default) to frost what shows through.
 
@@ -170,7 +170,7 @@ A theme sets the terminal's default colors and ANSI colors 0–15. Colors that p
 
 On a dark terminal, the 256-color palette (colors 16–255) keeps its standard xterm values.
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     On light terminals, 256-color output now follows the theme, so prompts such as Powerlevel10k no longer draw near-black blocks.
 
 On a light terminal (one whose background is lighter than its text), the standard values assume a dark background and would look wrong, so Trellis derives colors 16–255 from your theme instead: the color cube runs from your `background` through ANSI colors 1–6 to your `foreground`, and the grey ramp from `background` to `foreground`. Text drawn with these colors is lifted to a contrast of at least 4.5:1.

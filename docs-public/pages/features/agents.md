@@ -22,7 +22,7 @@ You can also use **Launch Agent…** in the [command palette](command-palette.md
 
 A [project](project-library.md) can open agents too: set a pane's **Runs** to an agent, and launching the project opens it there.
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     The Agents view in the right sidebar, with its **Running** list, replaces the **Agent** button in pane headers, and **This Tab** is new.
 
 ### Open an agent in this tab
@@ -66,7 +66,7 @@ In a zsh, bash or fish pane on this Mac with shell integration, Trellis also wir
 
 A typed agent stays an ordinary shell command: it isn't saved with the workspace, and **Start**, **Resume** and the installer offer don't apply to it.
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     Agents typed in a shell now report **Working**, **Needs you** and **Done**, and appear in the Running list.
 
 ## Restore and resume

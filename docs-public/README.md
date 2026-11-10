@@ -22,8 +22,8 @@ Write for someone who uses Trellis, not for someone who builds or tests it.
   checks, no P0/P1/P2, no "pending" or verification notes, no internal type, module or file names unless the user
   types or sees them (a settings file path, a CLI command, a JSON key in a theme or tasks file).
 - **Only what ships.** Describe behavior the contract states as implemented. Leave out anything marked pending,
-  unimplemented, planned or roadmap. If `CHANGELOG.md` shows a feature first shipped in an unreleased or beta version,
-  open its section with `!!! note "New in 1.2 beta"` (with the right version).
+  unimplemented, planned or roadmap. If `CHANGELOG.md` shows a feature first shipped in the latest minor version, open its
+  section with `!!! note "New in 1.2"` (with that version); drop the notes a release or two later.
 - **Exact UI names.** Menu items, buttons, settings and shortcuts in **bold** exactly as the app shows them
   (**File → Projects…**, **Settings → Automation**). Shortcuts as `<kbd>⌘</kbd><kbd>D</kbd>`. Check menu titles and
   shortcuts against the code (`Sources/TrellisApp/AppMain.swift`, `Sources/TrellisUI`) when the contract is unclear.

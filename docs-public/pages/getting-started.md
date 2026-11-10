@@ -19,8 +19,8 @@ Trellis runs one copy per user. Opening it again brings the existing window forw
 
 ## First launch and the welcome tour
 
-!!! note "New in 1.2 beta"
-    The welcome tour first shipped in 1.2.0-beta.1.
+!!! note "New in 1.2"
+    The welcome tour first shipped in 1.2.
 
 The first time Trellis opens on a Mac with no saved workspace, a short eight-step tour appears over the window. It covers spaces, tabs and splits; sessions that keep running; starting a project; remote work; coding agents; the keyboard; and making Trellis your own.
 

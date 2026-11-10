@@ -83,7 +83,7 @@ Click **Paste** to send it or **Cancel** to send nothing. A long preview is cut 
 
 ### Drop files on a pane
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     Dropping files from Finder onto a pane inserts their paths.
 
 Drag files from Finder onto a pane's terminal area to type their paths at the cursor, separated by spaces and in the order you dragged them, escaped the same way as **Paste Escaped Path**. Nothing is run, opened or uploaded, and no newline is added. The pane under the pointer takes focus first, and Trellis comes to the front.

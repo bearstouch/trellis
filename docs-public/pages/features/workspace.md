@@ -4,7 +4,7 @@ Trellis organizes your terminals in three levels. A **space** is an entry in the
 
 Most of the time a space is what a [library project](project-library.md) becomes when you launch it: the project's tabs open in it, and you can add tabs of your own next to them. You can also create a space that stands alone, with no project.
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     Spaces were called *windows* in earlier versions. The macOS **Window** menu keeps its name, and "window" in this guide means the Trellis window itself.
 
 ## Spaces
@@ -43,7 +43,7 @@ Choose **View → Hide Sidebar** (<kbd>⌃</kbd><kbd>⌘</kbd><kbd>S</kbd>), or 
 
 ## Project tabs and temporary tabs
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     Spaces remember their project, and tabs you add to them are temporary.
 
 When you launch a [library project](project-library.md), its space remembers the project. The sidebar row shows a folder symbol, and the project's name if it differs from the space's.
@@ -124,7 +124,7 @@ The split buttons in each pane's header do the same. You can keep splitting any 
 
 Click a pane, or use **Pane → Focus Left**, **Focus Right**, **Focus Up** and **Focus Down** (<kbd>⌥</kbd><kbd>⌘</kbd> + an arrow key).
 
-!!! note "New in 1.2 beta"
+!!! note "New in 1.2"
     With more than one pane showing, the focused pane is easier to spot.
 
 The focused pane's header gets an accent line along its bottom edge and a tint, and the other panes are slightly dimmed. Dimmed panes still take clicks, selection and scrolling. Nothing is dimmed while the Trellis window is inactive or with Increase Contrast on.

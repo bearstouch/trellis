@@ -49,8 +49,8 @@ Previous Prompt and Next Prompt need [shell integration](shell-integration.md).
 
 The Files, Changes, Scratchpad, Tasks and Agents views open in the [right sidebar](sidebar.md).
 
-!!! note "New in 1.2 beta"
-    The Files (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>F</kbd>) and Changes (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>G</kbd>) views first shipped in 1.2.0-beta.1.
+!!! note "New in 1.2"
+    The Files (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>F</kbd>) and Changes (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>G</kbd>) views first shipped in 1.2.
 
 ### Pane
 

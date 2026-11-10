@@ -1,7 +1,7 @@
 # Right sidebar and dock
 
-!!! note "New in 1.2 beta"
-    The right sidebar and its dock arrived in 1.2.0-beta.1. They replace the **Scratchpad**, **Tasks** and **Agent** buttons that pane headers had in earlier versions.
+!!! note "New in 1.2"
+    The right sidebar and its dock arrived in 1.2. They replace the **Scratchpad**, **Tasks** and **Agent** buttons that pane headers had in earlier versions.
 
 [Files](files.md), [Changes](changes.md), the [scratchpad](scratchpad.md), [tasks](tasks.md) and [coding agents](agents.md) share one sidebar on the right of the window. A narrow **dock** along the window's right edge switches between them, like an editor's activity bar.
 

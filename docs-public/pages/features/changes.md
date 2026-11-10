@@ -1,7 +1,7 @@
 # Changes
 
-!!! note "New in 1.2 beta"
-    The Changes view and the Review tab arrived in 1.2.0-beta.1.
+!!! note "New in 1.2"
+    The Changes view and the Review tab arrived in 1.2.
 
 The **Changes** view in the [right sidebar](sidebar.md) lists what has changed in the focused pane's git repository, as a tree with lines added and removed. Use it to find a changed file, read its diff in a **Review** tab, and stage or unstage it without leaving Trellis. Show it with the branch icon in the dock, second after Files, or press <kbd>⌥</kbd><kbd>⌘</kbd><kbd>G</kbd> (**View → Show Changes**).
 
