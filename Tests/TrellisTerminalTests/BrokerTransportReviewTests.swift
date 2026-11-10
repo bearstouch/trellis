@@ -33,6 +33,33 @@ final class BrokerTransportReviewTests: XCTestCase {
         return BrokerConnection(fd: fds[0])
     }
 
+    /// A long-lived connection forgets sessions whose transport is gone, and keeps delivering to the ones still alive.
+    func testConnectionDropsRegistrationsOfDeallocatedSinks() throws {
+        final class Sink: BrokerSessionSink {
+            var output = Data()
+            func brokerOutput(_ data: Data) { output.append(data) }
+            func brokerReplay(_ data: Data) {}
+            func brokerExited(waitStatus: Int32) {}
+            func brokerPrompt(_ active: Bool) {}
+            func brokerDisconnected() {}
+            func brokerInputRejected() {}
+        }
+        let connection = try makeConnection()
+        defer { connection.close() }
+        let kept = Sink(), keptID = UUID()
+        connection.register(kept, sessionID: keptID)
+        for _ in 0..<1000 { connection.register(Sink(), sessionID: UUID()) }
+        XCTAssertLessThanOrEqual(connection.registeredSinkCount, BrokerConnection.minimumSinkSweep)
+        write(BrokerFrame.stream(.output, sessionID: keptID, bytes: Data("still here".utf8)))
+        let deadline = Date().addingTimeInterval(5)
+        while kept.output.isEmpty, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        XCTAssertEqual(String(decoding: kept.output, as: UTF8.self), "still here")
+        // Live sinks are never swept, however many there are.
+        let live = (0..<100).map { _ in Sink() }
+        for sink in live { connection.register(sink, sessionID: UUID()) }
+        XCTAssertGreaterThanOrEqual(connection.registeredSinkCount, 101)
+    }
+
     private func write(_ frames: [BrokerFrame]) {
         let data = frames.reduce(into: Data()) { $0.append($1.encoded) }
         data.withUnsafeBytes { _ = Darwin.write(peer, $0.baseAddress, data.count) }

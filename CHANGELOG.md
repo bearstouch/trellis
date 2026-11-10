@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-10
+
+The stable 1.2 release. Coming from 1.1.0, you also get everything listed under the 1.2 betas: windows renamed to spaces, temporary tabs in project spaces, a right sidebar with Files, Changes, Tasks, Agents and the scratchpad, agents typed in a shell with live state, the welcome tour, translucent panes, the white Trellis Light terminal, and export and import of projects and hosts.
+
+### Added
+
+- **Online documentation:** an end-user guide at [bearstouch.com/trellis/docs](https://bearstouch.com/trellis/docs/) covers getting started, every feature and the automation API, CLI and MCP server. It is built from `docs-public/` with `scripts/build-public-docs.sh`.
+
 ## [1.2.0-beta.3] - 2026-11-10
 
 The third 1.2 beta.
@@ -374,7 +382,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.3...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.3...v1.2.0
 [1.2.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.2...v1.2.0-beta.3
 [1.2.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...v1.2.0-beta.2
 [1.2.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.1.0...v1.2.0-beta.1

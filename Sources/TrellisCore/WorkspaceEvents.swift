@@ -30,6 +30,12 @@ public enum WorkspaceEvents {
         var events: [WorkspaceEvent] = []
         let oldSpaces = Dictionary(uniqueKeysWithValues: old.spaces.map { ($0.id, $0) })
         let newSpaces = Dictionary(uniqueKeysWithValues: new.spaces.map { ($0.id, $0) })
+        // Events keep UUID-string order, but only what changed is sorted, with each key rendered once: this runs on every
+        // publish, and sorting every tab, pane and session by a string built per comparison dominated it at 100 panes.
+        func ordered<Value>(_ changed: [UUID: Value]) -> [(UUID, Value)] {
+            guard changed.count > 1 else { return changed.map { ($0.key, $0.value) } }
+            return changed.map { (key: $0.key.uuidString, id: $0.key, value: $0.value) }.sorted { $0.key < $1.key }.map { ($0.id, $0.value) }
+        }
         func paneSpace(_ snapshot: WorkspaceSnapshot, _ pane: UUID) -> UUID? {
             snapshot.panes[pane].flatMap { snapshot.tabs[$0.tabID]?.spaceID }
         }
@@ -37,10 +43,10 @@ public enum WorkspaceEvents {
         for space in old.spaces where newSpaces[space.id] == nil {
             events.append(WorkspaceEvent(type: "space.deleted", resourceID: space.id, spaceID: space.id))
         }
-        for (id, tab) in old.tabs.sorted(by: { $0.key.uuidString < $1.key.uuidString }) where new.tabs[id] == nil {
+        for (id, tab) in ordered(old.tabs.filter { new.tabs[$0.key] == nil }) {
             events.append(WorkspaceEvent(type: "tab.deleted", resourceID: id, spaceID: tab.spaceID))
         }
-        for (id, pane) in old.panes.sorted(by: { $0.key.uuidString < $1.key.uuidString }) where new.panes[id] == nil {
+        for (id, pane) in ordered(old.panes.filter { new.panes[$0.key] == nil }) {
             events.append(WorkspaceEvent(type: "pane.deleted", resourceID: id, spaceID: old.tabs[pane.tabID]?.spaceID))
         }
         for space in new.spaces {
@@ -57,7 +63,7 @@ public enum WorkspaceEvents {
         if Set(old.spaces.map(\.id)) == Set(new.spaces.map(\.id)), old.spaces.map(\.id) != new.spaces.map(\.id), !new.spaces.isEmpty {
             events.append(WorkspaceEvent(type: "space.reordered", resourceID: new.spaces[0].id, spaceID: nil, data: ["revision": String(new.revision)]))
         }
-        for (id, tab) in new.tabs.sorted(by: { $0.key.uuidString < $1.key.uuidString }) {
+        for (id, tab) in ordered(new.tabs.filter { old.tabs[$0.key] != $0.value }) {
             let data = ["revision": String(tab.revision)]
             if let previous = old.tabs[id] {
                 if previous.root != tab.root {
@@ -69,10 +75,10 @@ public enum WorkspaceEvents {
                 events.append(WorkspaceEvent(type: "tab.created", resourceID: id, spaceID: tab.spaceID, data: data))
             }
         }
-        for (id, pane) in new.panes.sorted(by: { $0.key.uuidString < $1.key.uuidString }) where old.panes[id] == nil {
+        for (id, pane) in ordered(new.panes.filter { old.panes[$0.key] == nil }) {
             events.append(WorkspaceEvent(type: "pane.created", resourceID: id, spaceID: new.tabs[pane.tabID]?.spaceID, data: ["sessionId": pane.sessionID.uuidString]))
         }
-        for (id, session) in new.sessions.sorted(by: { $0.key.uuidString < $1.key.uuidString }) {
+        for (id, session) in ordered(new.sessions.filter { old.sessions[$0.key]?.state != $0.value.state }) {
             let previous = old.sessions[id]
             // A new stopped session is announced by pane.created; report real transitions.
             guard previous?.state != session.state, previous != nil || session.state != .stopped else { continue }
@@ -93,7 +99,7 @@ public enum WorkspaceEvents {
         for space in new.spaces where oldSpaces[space.id]?.activeTabID != space.activeTabID && oldSpaces[space.id] != nil {
             events.append(WorkspaceEvent(type: "selection.tab", resourceID: space.activeTabID, spaceID: space.id))
         }
-        for (id, tab) in new.tabs.sorted(by: { $0.key.uuidString < $1.key.uuidString }) where old.tabs[id] != nil && old.tabs[id]?.activePaneID != tab.activePaneID {
+        for (id, tab) in ordered(new.tabs.filter { old.tabs[$0.key] != nil && old.tabs[$0.key]?.activePaneID != $0.value.activePaneID }) {
             events.append(WorkspaceEvent(type: "selection.pane", resourceID: tab.activePaneID, spaceID: tab.spaceID, data: ["tabId": id.uuidString]))
         }
         return events

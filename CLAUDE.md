@@ -35,6 +35,7 @@ scripts/run-feasibility.sh [--build-only]      # assemble, ad-hoc sign, verify (
 python3 scripts/test-feasibility-launcher.py "$(swift build --configuration debug --show-bin-path)"
 python3 scripts/qualify.py [--quick]        # release qualification (~5 min, opens isolated app windows; report in .build/)
 python3 scripts/bench-renderer.py [--quick] # Metal vs CoreGraphics benchmarks (FR-TX05; keep its windows visible)
+scripts/build-public-docs.sh                # public docs subset (mkdocs.public.yml) → site-public/, for bearstouch.com/trellis/docs
 scripts/package-release.sh                  # Universal 2 DMG; ad-hoc unless TRELLIS_SIGN_IDENTITY / TRELLIS_NOTARY_PROFILE
 scripts/test-linux.sh                       # trellis-broker build + tests on Linux (Docker); the manifest is broker-only there
 scripts/build-remote-helpers.sh [OUT]       # static Linux remote helpers, gzipped, with remote-helpers.json (Docker)
@@ -112,7 +113,7 @@ change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `Tre
    builds and tests again.
 5. Record what was verified and what remains pending (in the PR/commit). Closing a pending check
    or changing a known limit updates `docs/overview/status.md`. Update `README.md` /
-   `CHANGELOG.md` if user-visible.
+   `CHANGELOG.md` if user-visible, and the matching end-user guide page in `docs-public/pages/` (see `docs-public/README.md`).
 6. Commit on `master` (repo convention) with Conventional Commits: `feat(<scope>): …` / `fix(<scope>): …`, using a module or
    area as scope.
 

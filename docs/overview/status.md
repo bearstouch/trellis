@@ -1,6 +1,6 @@
 # Status and known limits
 
-**Version 1.2.0-beta.3, beta.** The MVP feature set is implemented and the full automated suite passes. Some manual and platform checks listed below haven't been run yet. The [changelog](https://github.com/bearstouch/trellis/blob/master/CHANGELOG.md) lists what shipped.
+**Version 1.2.0.** The MVP feature set is implemented and the full automated suite passes. Some manual and platform checks listed below haven't been run yet. The [changelog](https://github.com/bearstouch/trellis/blob/master/CHANGELOG.md) lists what shipped.
 
 ## Distribution checks
 

@@ -489,7 +489,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         } else {
             maxBytes = Self.defaultReadBytes
         }
-        let captured = ISO8601DateFormatter().string(from: Date())
+        let captured = ControlTimestamp.string(Date())
         switch try p.string("view") {
         case "screen", "scrollback":
             let view = try p.string("view")
@@ -890,7 +890,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             "id": .string(id.uuidString), "paneId": .string(pane.id.uuidString), "state": .string(terminal?.sessionState.rawValue ?? session.state.rawValue)
         ]
         if let code = terminal?.exitCode ?? session.exitCode { object["exitCode"] = .number(Double(code)) }
-        if let started = session.startedAt { object["startedAt"] = .string(ISO8601DateFormatter().string(from: started)) }
+        if let started = session.startedAt { object["startedAt"] = .string(ControlTimestamp.string(started)) }
         if let message = session.failureMessage { object["failureMessage"] = .string(message) }
         if terminal?.sessionID == id, let wait = model.inputWaits[pane.id] { object["waitingForInput"] = .string(wait.rawValue) }
         if terminal?.sessionID == id, let progress = model.progress[pane.id] {

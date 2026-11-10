@@ -41,6 +41,8 @@ public final class BrokerConnection {
     private var nextRequest: UInt64 = 1
     private var pending: [UInt64: CheckedContinuation<BrokerMessage, any Error>] = [:]
     private var sinks: [UUID: WeakSink] = [:]
+    static let minimumSinkSweep = 32
+    private var sinkSweepThreshold = BrokerConnection.minimumSinkSweep
     private var outbox = 0
     public private(set) var isOpen = true
     public private(set) var brokerPID: Int32 = 0
@@ -114,7 +116,17 @@ public final class BrokerConnection {
     /// Ends every session of a broker this app can't otherwise talk to, whatever its protocol version.
     public func sendStopAll() { try? send(BrokerFrame(kind: .stopAll, payload: Data())) }
 
-    public func register(_ sink: any BrokerSessionSink, sessionID: UUID) { sinks[sessionID] = WeakSink(sink: sink) }
+    /// Sinks are weak and a session that ends normally never unregisters, so entries whose transport is gone are dropped
+    /// here; otherwise the table grows by one for every session the connection has ever carried.
+    public func register(_ sink: any BrokerSessionSink, sessionID: UUID) {
+        if sinks.count >= sinkSweepThreshold {
+            sinks = sinks.filter { $0.value.sink != nil }
+            sinkSweepThreshold = max(Self.minimumSinkSweep, sinks.count * 2)
+        }
+        sinks[sessionID] = WeakSink(sink: sink)
+    }
+    /// Registered sessions, including any whose sink is gone but not yet swept.
+    var registeredSinkCount: Int { sinks.count }
     public func unregister(sessionID: UUID) { sinks.removeValue(forKey: sessionID) }
 
     private func send(_ frame: BrokerFrame) throws {

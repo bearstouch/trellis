@@ -42,7 +42,8 @@ public struct WorkspaceRootView: View {
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
                 if let notice = model.themeNotice { Text(notice).lineLimit(1).help(notice) }
                 if let notice = model.appearanceNotice { Text(notice).lineLimit(1).help(notice) }
-                Text(model.accessibility.status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(model.accessibility.status)")
+                let status = model.accessibility.status
+                Text(status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(status)")
                 Text("·  UTF-8  ·")
                 PaneMachineLabel(machine: model.focusedMachine, model: model)
                 if let name = model.presentation.selectedSpace?.name {
@@ -383,11 +384,13 @@ public struct WorkspaceRootView: View {
     }
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
+        // Built once per render: the descriptors cover the whole workspace, so one per tab label made the bar quadratic.
+        let descriptors = model.accessibility.tabs
+        return HStack(spacing: 0) {
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     ForEach(model.presentation.visibleTabs) { tab in
-                        tabLabel(tab)
+                        tabLabel(tab, descriptor: descriptors.first { $0.id == tab.id })
                         Divider().overlay(model.separatorOverlay).frame(height: 20)
                     }
                     if let review = model.currentReview {
@@ -456,12 +459,11 @@ public struct WorkspaceRootView: View {
         .accessibilityAction { model.showReview() }
     }
 
-    private func tabLabel(_ tab: WorkspaceTab) -> some View {
+    private func tabLabel(_ tab: WorkspaceTab, descriptor: AccessibilityDescriptor?) -> some View {
         let selected = tab.id == model.presentation.selectedTab?.id && !model.reviewVisible
         let busy = model.busyTabIDs.contains(tab.id)
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)
-        let descriptor = model.accessibility.tabs.first { $0.id == tab.id }
         let agentBadge = model.agentBadge(tabID: tab.id)
         let agent = model.tabAgent(tabID: tab.id)
         let linkDown = model.tabLinkDown(tabID: tab.id)

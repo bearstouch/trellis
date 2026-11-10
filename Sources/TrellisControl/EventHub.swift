@@ -148,7 +148,7 @@ public actor EventHub {
                 subscription, method: "event",
                 params: [
                     "subscriptionId": .string(subscription.id.uuidString), "instanceId": .string(instanceID.uuidString),
-                    "timestamp": .string(ISO8601DateFormatter().string(from: now())), "type": .string("session.output"),
+                    "timestamp": .string(ControlTimestamp.string(now())), "type": .string("session.output"),
                     "resourceId": .string(session.uuidString),
                     "data": .object([
                         "base64": .string(data.base64EncodedString()), "nextCursor": .string(next.token), "gap": .bool(gap),
@@ -191,7 +191,7 @@ public actor EventHub {
             subscription, method: "event",
             params: [
                 "subscriptionId": .string(subscription.id.uuidString), "sequence": .number(Double(event.sequence)),
-                "instanceId": .string(instanceID.uuidString), "timestamp": .string(ISO8601DateFormatter().string(from: event.timestamp)),
+                "instanceId": .string(instanceID.uuidString), "timestamp": .string(ControlTimestamp.string(event.timestamp)),
                 "type": .string(workspace.type), "resourceId": .string(workspace.resourceID.uuidString),
                 "data": .object(workspace.data.mapValues(JSONValue.string))
             ])
