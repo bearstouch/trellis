@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{#- Material fetches Mermaid from unpkg unless window.mermaid exists; serve a pinned copy (fetched by
+    scripts/build-public-docs.sh) on the pages that have a diagram. -#}
+{% block scripts %}
+  {% if page and page.content and 'class="mermaid"' in page.content %}
+    <script src="{{ 'assets/javascripts/mermaid.min.js' | url }}"></script>
+  {% endif %}
+  {{ super() }}
+{% endblock %}

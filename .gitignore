@@ -8,3 +8,4 @@ xcuserdata/
 site/
 .venv-docs/
 __pycache__/
+site-public/

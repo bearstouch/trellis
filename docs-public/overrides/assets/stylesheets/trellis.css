@@ -1,0 +1,47 @@
+/* bearstouch.com look for the public docs: landing tokens (src/style.css), Trellis phosphor accent, system fonts. */
+:root {
+    --md-text-font: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    --md-code-font: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+[data-md-color-scheme="default"] {
+    --md-primary-fg-color: #17171c;
+    --md-primary-fg-color--light: #23232a;
+    --md-primary-fg-color--dark: #0c0c0e;
+    --md-primary-bg-color: #ffffff;
+    --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+    --md-accent-fg-color: #2f7d00;
+    --md-accent-fg-color--transparent: rgba(47, 125, 0, 0.1);
+    --md-typeset-a-color: #2f7d00;
+}
+
+[data-md-color-scheme="slate"] {
+    --md-hue: 240;
+    --md-default-bg-color: #0c0c0e;
+    --md-default-fg-color--light: #8f91a3;
+    --md-code-bg-color: #17171c;
+    --md-primary-fg-color: #0c0c0e;
+    --md-primary-fg-color--light: #17171c;
+    --md-primary-fg-color--dark: #0c0c0e;
+    --md-primary-bg-color: #ffffff;
+    --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+    --md-accent-fg-color: #9cff62;
+    --md-accent-fg-color--transparent: rgba(156, 255, 98, 0.12);
+    --md-accent-bg-color: #0c0c0e;
+    --md-typeset-a-color: #9cff62;
+}
+
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+    border-bottom: 1px solid #2e2f38;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+    background-color: #9cff62;
+    border-color: #9cff62;
+    color: #0c0c0e;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) {
+    border-color: #2e2f38;
+}

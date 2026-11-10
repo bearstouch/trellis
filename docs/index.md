@@ -43,3 +43,5 @@ python3 -m venv .venv-docs && .venv-docs/bin/pip install mkdocs-material
 .venv-docs/bin/mkdocs serve      # live preview at http://127.0.0.1:8000
 .venv-docs/bin/mkdocs build      # static HTML in site/
 ```
+
+The public user docs at [bearstouch.com/trellis/docs](https://bearstouch.com/trellis/docs/) are an end-user guide, built from `mkdocs.public.yml` by `scripts/build-public-docs.sh` into `site-public/`. The guide pages are written for users in `docs-public/pages/` (style guide: `docs-public/README.md`); the automation reference is taken from `docs/api/` with requirement IDs and contract sections stripped. Links to contributor pages go to GitHub. On `master`, the **Public docs** workflow opens a pull request on the landing repo with the new build. That config's `nav` is an allow-list: a page is published only once it is added there.

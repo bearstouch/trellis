@@ -1,0 +1,97 @@
+name: Public docs
+
+# Builds the public docs subset (mkdocs.public.yml) on every docs change. On master it also opens or updates a pull
+# request on bearstouch/landing that replaces public/trellis/docs/, served at https://bearstouch.com/trellis/docs/.
+# The landing PR needs the LANDING_DOCS_TOKEN secret: a fine-grained token for bearstouch/landing only, with
+# Contents and Pull requests read/write. Without it the build still runs and the publish job is skipped.
+
+on:
+  pull_request:
+    branches: [master, develop]
+    paths: [docs/**, docs-public/**, mkdocs.yml, mkdocs.public.yml, scripts/build-public-docs.sh, .github/workflows/public-docs.yml]
+  push:
+    branches: [master]
+    paths: [docs/**, docs-public/**, mkdocs.yml, mkdocs.public.yml, scripts/build-public-docs.sh, .github/workflows/public-docs.yml]
+  workflow_dispatch:
+
+concurrency:
+  group: public-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build public docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build
+        env:
+          NO_MKDOCS_2_WARNING: "1"
+        run: scripts/build-public-docs.sh
+
+      - name: Upload site
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: public-docs
+          path: site-public
+          retention-days: 7
+
+  publish:
+    name: Open landing pull request
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.LANDING_DOCS_TOKEN }}
+    steps:
+      - name: Check token
+        id: token
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::warning::LANDING_DOCS_TOKEN is not set; skipping the landing pull request"; echo "ok=false" >> "$GITHUB_OUTPUT"
+          else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.token.outputs.ok == 'true'
+        with:
+          repository: bearstouch/landing
+          token: ${{ secrets.LANDING_DOCS_TOKEN }}
+          path: landing
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.token.outputs.ok == 'true'
+        with:
+          name: public-docs
+          path: site-public
+
+      - name: Open or update the pull request
+        if: steps.token.outputs.ok == 'true'
+        working-directory: landing
+        run: |
+          branch=trellis-docs
+          rm -rf public/trellis/docs
+          mkdir -p public/trellis
+          cp -R ../site-public public/trellis/docs
+          git add -A public/trellis/docs
+          if git diff --cached --quiet; then echo "Landing already has these docs"; exit 0; fi
+          short=${GITHUB_SHA::7}
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -q -m "Update the Trellis docs to bearstouch/trellis@$short"
+          git push -f origin "$branch"
+          body="Rebuilt from bearstouch/trellis@$GITHUB_SHA with \`scripts/build-public-docs.sh\` ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)). Generated files only: review the docs change in the Trellis repo."
+          if gh pr view "$branch" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$branch" --title "Update the Trellis docs ($short)" --body "$body"
+          else
+            gh pr create --base master --head "$branch" --title "Update the Trellis docs ($short)" --body "$body"
+          fi

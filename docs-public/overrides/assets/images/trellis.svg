@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Trellis (16–32 px)</title>
+  <defs>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="22" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#141417"/>
+  <rect x="170" y="170" width="684" height="684" rx="130" fill="#020302"/>
+  <g filter="url(#glow)">
+    <path d="M300 400 L470 512 L300 624" fill="none" stroke="#9CFF62" stroke-width="86" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="540" y="372" width="170" height="280" rx="10" fill="#9CFF62"/>
+  </g>
+</svg>

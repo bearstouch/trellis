@@ -1,0 +1,87 @@
+# Public end-user docs published at https://bearstouch.com/trellis/docs/ (scripts/build-public-docs.sh).
+# The user guide is docs-public/pages/ (it replaces docs/ pages at the same paths); the automation reference comes from
+# docs/api/ with requirement IDs and contract sections stripped (docs-public/hooks.py). The nav is the allow-list of
+# published pages. See docs-public/README.md. The theme overrides keep every page within the landing site's CSP.
+INHERIT: mkdocs.yml
+
+site_url: https://bearstouch.com/trellis/docs/
+site_description: User guide, automation API and CLI reference for Trellis, a native terminal for macOS
+site_dir: site-public
+
+exclude_docs: |
+  /architecture/
+  /development/
+  /project/
+  /release/
+  /overview/status.md
+  /features/extensions/
+  /features/mobile-connect/
+  /features/mobile-connect.md
+
+hooks:
+  - docs-public/hooks.py
+
+theme:
+  name: material
+  custom_dir: docs-public/overrides
+  logo: assets/images/trellis.svg
+  favicon: assets/images/trellis.svg
+  # Fonts are self-hosted on the landing site's own pages only; Google Fonts would break its CSP.
+  font: false
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle: { icon: material/brightness-7, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle: { icon: material/brightness-4, name: Switch to light mode }
+
+extra_css:
+  - assets/stylesheets/trellis.css
+
+extra:
+  homepage: /trellis/
+  generator: false
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Using Trellis:
+      - Spaces, tabs and panes: features/workspace.md
+      - Terminal: features/terminal.md
+      - Command palette: features/command-palette.md
+      - Keyboard and accessibility: features/keyboard-accessibility.md
+      - Themes: features/themes.md
+  - Projects and agents:
+      - Project library: features/project-library.md
+      - Tasks: features/tasks.md
+      - Coding agents: features/agents.md
+      - Command scratchpad: features/scratchpad.md
+  - Sidebar tools:
+      - Right sidebar and dock: features/sidebar.md
+      - Files: features/files.md
+      - Changes: features/changes.md
+      - Directory jump: features/directory-jump.md
+      - Shell integration: features/shell-integration.md
+  - Remote:
+      - SSH hosts: features/ssh-hosts.md
+      - Remote workspaces: features/remote-workspaces.md
+  - Automation:
+      - Overview: api/index.md
+      - Authorization: api/authorization.md
+      - CLI: api/cli.md
+      - MCP server: api/mcp.md
+      - Methods: api/methods.md
+      - Output and events: api/output-events.md
+      - Layouts: api/layouts.md
+      - Errors: api/errors.md
