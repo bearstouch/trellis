@@ -18,12 +18,13 @@ final class BoundaryFuzzTests: XCTestCase {
     }
 
     private static let seeds: [Data] = [
-        Data(#"{"jsonrpc":"2.0","id":1,"method":"window.create","params":{"name":"x","idempotencyKey":"k"}}"#.utf8),
+        Data(#"{"jsonrpc":"2.0","id":1,"method":"space.create","params":{"name":"x","idempotencyKey":"k"}}"#.utf8),
         Data(
-            #"{"version":1,"windows":[{"key":"w","name":"W","tabs":[{"key":"t","title":"T","root":{"type":"split","key":"s","axis":"x","ratio":0.5,"children":[{"type":"pane","key":"a","launch":{"kind":"shell","directory":"~"}},{"type":"pane","key":"b","launch":{"kind":"host","hostId":"6F9619FF-8B86-D011-B42D-00C04FC964FF"}}]}}]}]}"#
+            #"{"version":2,"spaces":[{"key":"w","name":"W","tabs":[{"key":"t","title":"T","root":{"type":"split","key":"s","axis":"x","ratio":0.5,"children":[{"type":"pane","key":"a","launch":{"kind":"shell","directory":"~"}},{"type":"pane","key":"b","launch":{"kind":"host","hostId":"6F9619FF-8B86-D011-B42D-00C04FC964FF"}}]}}]}]}"#
                 .utf8),
         Data(##"{"version":1,"id":"my-theme","name":"Mine","appearance":"dark","terminal":{"background":"#101820","ansi":["#000000"]},"ui":{"accent":"#7CC7FF"}}"##.utf8),
-        Data(#"{"format":"trellis.portable","version":1,"layout":{"version":1,"windows":[]},"hosts":[{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","name":"h","destination":"h","port":22,"tags":["a"]}]}"#.utf8)
+        Data(#"{"format":"trellis.portable","version":1,"layout":{"version":1,"windows":[]},"hosts":[{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","name":"h","destination":"h","port":22,"tags":["a"]}]}"#.utf8),
+        Data(#"{"format":"trellis.portable","version":2,"hosts":[{"name":"h","destination":"h","port":22,"tags":["a"]}],"projects":[{"name":"P","tabs":[{"title":"T","root":{"type":"pane"}}]}]}"#.utf8)
     ]
 
     private func mutate(_ data: Data, _ random: inout Generator) -> Data {
@@ -49,7 +50,7 @@ final class BoundaryFuzzTests: XCTestCase {
         var accepted = 0, restored = 0
         // A real saved workspace (a split tab), so mutations reach the persisted-tree decoder, not just its header check.
         let store = try WorkspaceStore()
-        _ = try await store.execute(.createWindow(name: "W"))
+        _ = try await store.execute(.createSpace(name: "W"))
         let created = await store.snapshot()
         let pane = try XCTUnwrap(created.panes.keys.first)
         _ = try await store.execute(.splitPane(id: pane, axis: .x, availableSize: try TerminalSize(columns: 200, rows: 50)))

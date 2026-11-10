@@ -12,8 +12,8 @@ final class AutomationOutputTests: XCTestCase {
         try await h.grant("full")
         var published: [WorkspaceEvent] = []
         h.model.onWorkspaceEvents = { published += $0 }
-        let window: String = try await h.value("windowId", "window.create", ["name": "Out"])
-        XCTAssertTrue(published.contains { $0.type == "window.created" && $0.resourceID.uuidString == window })
+        let space: String = try await h.value("spaceId", "space.create", ["name": "Out"])
+        XCTAssertTrue(published.contains { $0.type == "space.created" && $0.resourceID.uuidString == space })
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         let script = #"stty raw -echo; printf '\303'; sleep 0.05; printf '\251\000\377READY-END'; exec /bin/sleep 30"#
         _ = try await h.model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/zsh", arguments: ["-f", "-c", script], directory: "/tmp")))

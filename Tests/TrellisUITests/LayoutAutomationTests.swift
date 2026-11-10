@@ -34,7 +34,7 @@ final class LayoutAutomationTests: XCTestCase {
     }
 
     private func single(_ key: String, launch: [String: Any] = ["kind": "shell"]) -> [String: Any] {
-        ["version": 1, "windows": [["key": key, "name": key, "tabs": [["key": "\(key)-tab", "title": key, "root": ["type": "pane", "key": "\(key)-pane", "launch": launch]]]]]]
+        ["version": 2, "spaces": [["key": key, "name": key, "tabs": [["key": "\(key)-tab", "title": key, "root": ["type": "pane", "key": "\(key)-pane", "launch": launch]]]]]]
     }
 
     @MainActor
@@ -111,8 +111,8 @@ final class LayoutAutomationTests: XCTestCase {
             }; h.discardPreferences()
         }
         func pane(_ key: String, _ launch: [String: Any] = ["kind": "shell"]) -> [String: Any] { ["type": "pane", "key": key, "launch": launch] }
-        func doc(_ root: [String: Any], window: [String: Any] = [:]) -> [String: Any] {
-            ["version": 1, "windows": [["key": "w", "name": "W", "tabs": [["key": "t", "title": "T", "root": root]]].merging(window) { $1 }]]
+        func doc(_ root: [String: Any], space: [String: Any] = [:]) -> [String: Any] {
+            ["version": 2, "spaces": [["key": "w", "name": "W", "tabs": [["key": "t", "title": "T", "root": root]]].merging(space) { $1 }]]
         }
         var deep: [String: Any] = pane("leaf0")
         for level in 0..<17 { deep = ["type": "split", "key": "s\(level)", "axis": "x", "ratio": 0.5, "children": [deep, pane("leaf\(level + 1)")]] }
@@ -142,8 +142,8 @@ final class LayoutAutomationTests: XCTestCase {
             ("command field", doc(pane("p", ["kind": "shell", "command": "rm -rf ~"]))),
             ("bad ratio", doc(["type": "split", "key": "x", "axis": "x", "ratio": 0.95, "children": [pane("a"), pane("b")]])),
             ("bad key", doc(pane("-bad"))),
-            ("version", ["version": 2, "windows": []]),
-            ("extra field", doc(pane("p"), window: ["onOpen": "make"]))
+            ("version", ["version": 3, "spaces": []]),
+            ("extra field", doc(pane("p"), space: ["onOpen": "make"]))
         ]
         let before = h.model.snapshot
         for (name, document) in invalid {
@@ -179,7 +179,7 @@ final class LayoutAutomationTests: XCTestCase {
         }
         let document = try example()
         let plan = try result(try await h.call("layout.plan", ["namespace": "project", "document": document]))
-        _ = try await h.code("window.create", ["name": "Racing change"])
+        _ = try await h.code("space.create", ["name": "Racing change"])
         let raced = h.model.snapshot
         let stale = try await h.call("layout.apply", ["namespace": "project", "document": document, "expectedRevision": plan["baseRevision"] as Any])
         XCTAssertEqual(errorCode(stale), "CONFLICT")
@@ -206,8 +206,8 @@ final class LayoutAutomationTests: XCTestCase {
         XCTAssertEqual(h.model.snapshot, live, "No partial updates")
 
         let moved: [String: Any] = [
-            "version": 1,
-            "windows": [
+            "version": 2,
+            "spaces": [
                 [
                     "key": "project", "name": "Project",
                     "tabs": [["key": "other", "title": "Other", "root": ["type": "pane", "key": "server", "launch": ["kind": "shell", "directory": "~"]]]]
@@ -219,8 +219,8 @@ final class LayoutAutomationTests: XCTestCase {
         XCTAssertEqual(h.model.snapshot, live)
 
         // A grant scoped to another window plans as if hidden bindings did not exist.
-        let visible = try XCTUnwrap(live.windows.first { $0.name == "Racing change" }?.id)
-        try await h.grant("scoped", scope: .windows([visible]))
+        let visible = try XCTUnwrap(live.spaces.first { $0.name == "Racing change" }?.id)
+        try await h.grant("scoped", scope: .spaces([visible]))
         let scoped = try result(try await h.call("layout.plan", ["namespace": "project", "document": changed], as: "scoped"))
         XCTAssertEqual((scoped["conflicts"] as? [Any])?.count, 0)
         XCTAssertEqual((scoped["updates"] as? [Any])?.count, 0)
@@ -228,8 +228,8 @@ final class LayoutAutomationTests: XCTestCase {
 
         // A split key reused in a new tab (its old tab omitted) gets a new ID rather than a duplicate.
         let reused: [String: Any] = [
-            "version": 1,
-            "windows": [
+            "version": 2,
+            "spaces": [
                 [
                     "key": "project", "name": "Project",
                     "tabs": [
@@ -261,8 +261,8 @@ final class LayoutAutomationTests: XCTestCase {
             }; h.discardPreferences()
         }
         let document: [String: Any] = [
-            "version": 1,
-            "windows": [
+            "version": 2,
+            "spaces": [
                 [
                     "key": "ops", "name": "Ops",
                     "tabs": [
@@ -286,11 +286,11 @@ final class LayoutAutomationTests: XCTestCase {
         XCTAssertEqual(launches.compactMap { $0["state"] as? String }, ["running", "failed"])
         let snapshot = h.model.snapshot
         try snapshot.validate()
-        XCTAssertEqual(snapshot.windows.map(\.name), ["Ops"])
+        XCTAssertEqual(snapshot.spaces.map(\.name), ["Ops"])
         XCTAssertEqual(snapshot.panes.count, 2, "The committed layout stays; the running pane is not rolled back")
 
         // Omitted resources remain and are reported as unmanaged.
-        _ = try await h.code("window.create", ["name": "Manual"])
+        _ = try await h.code("space.create", ["name": "Manual"])
         let replan = try result(try await h.call("layout.plan", ["namespace": "ops", "document": document]))
         XCTAssertEqual((replan["unmanaged"] as? [String])?.count, 1)
         let exported = try result(try await h.call("layout.export"))
@@ -306,8 +306,8 @@ final class LayoutAutomationTests: XCTestCase {
         let tabID = try XCTUnwrap((first["mapping"] as? [String: [String: String]])?["a-tab"]?["id"])
         _ = try result(try await h.call("tab.update", ["id": tabID, "color": "green"]))
         var renamed = single("a")
-        if var windows = renamed["windows"] as? [[String: Any]], var tabs = windows[0]["tabs"] as? [[String: Any]] {
-            tabs[0]["title"] = "Renamed"; windows[0]["tabs"] = tabs; renamed["windows"] = windows
+        if var spaces = renamed["spaces"] as? [[String: Any]], var tabs = spaces[0]["tabs"] as? [[String: Any]] {
+            tabs[0]["title"] = "Renamed"; spaces[0]["tabs"] = tabs; renamed["spaces"] = spaces
         }
         _ = try result(try await apply(h, renamed))
         let tab = try XCTUnwrap(h.model.snapshot.tabs[try XCTUnwrap(UUID(uuidString: tabID))])

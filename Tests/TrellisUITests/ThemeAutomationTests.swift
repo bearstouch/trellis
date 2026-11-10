@@ -23,10 +23,10 @@ final class ThemeAutomationTests: XCTestCase {
         let h = try Harness(themeDirectory: themes)
         defer { h.discardPreferences() }
         try await h.grant("full")
-        let window: String = try await h.value("windowId", "window.create", ["name": "W"])
+        let space: String = try await h.value("spaceId", "space.create", ["name": "W"])
         try await h.grant("read", [.themeRead])
         try await h.grant("layout", [.metadataRead, .layoutWrite])
-        try await h.grant("scoped", [.themeRead, .themeWrite], scope: .windows([UUID(uuidString: window)!]))
+        try await h.grant("scoped", [.themeRead, .themeWrite], scope: .spaces([UUID(uuidString: space)!]))
         try await h.grant("global", [.themeRead, .themeWrite])
         let reads: [(String, [String: Any])] = [
             ("theme.list", [:]), ("theme.get", ["id": "trellis-dark"]), ("theme.validate", ["document": theme("probe")]),
@@ -126,7 +126,7 @@ final class ThemeAutomationTests: XCTestCase {
         let h = try Harness(themeDirectory: themes)
         defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
         try await h.grant("full")
-        _ = try await h.code("window.create", ["name": "Render"])
+        _ = try await h.code("space.create", ["name": "Render"])
         var appearance = try result(try await h.call("appearance.get", [:]))
         var rendering = try XCTUnwrap(appearance["rendering"] as? [String: Any])
         XCTAssertEqual(rendering["gpuRendering"] as? Bool, false, "FR-TX05: off by default")
@@ -147,7 +147,7 @@ final class ThemeAutomationTests: XCTestCase {
             }; h.discardPreferences()
         }
         try await h.grant("full")
-        _ = try await h.code("window.create", ["name": "Live"])
+        _ = try await h.code("space.create", ["name": "Live"])
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         _ = try await h.model.service.execute(
             .configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/zsh", arguments: ["-f", "-c", AutomationSessionTests.byteEcho], directory: "/tmp")))

@@ -90,16 +90,16 @@ public enum MCPTools {
     /// Every control method except `events.*`, which needs a server-push stream.
     public static let all: [MCPTool] = [
         tool("system.info", "Trellis version, instance ID, this grant's capabilities, and protocol limits."),
-        tool("window.list", "List the workspace windows (sidebar entries) visible to this grant, with tab IDs and revisions."),
-        tool("window.get", "Get one window with its tabs.", [uuid("id", "Window ID.")]),
-        tool("window.create", "Create a window with one tab and one pane. Returns the new window, tab, pane and session IDs.", [string("name", "Window name."), start]),
-        tool("window.update", "Rename a window.", [uuid("id", "Window ID."), string("name", "New name.", required: true), revision]),
-        tool("window.reorder", "Reorder windows. Needs all-windows scope.", [uuids("ids", "Every window ID in the new order.", required: true), revision]),
-        tool("window.focus", "Select a window in the sidebar.", [uuid("id", "Window ID.")]),
-        tool("window.close", "Close a window and everything in it.", [uuid("id", "Window ID."), allowRunning, force, revision], destructive: true),
-        tool("tab.list", "List a window's tabs in order.", [uuid("windowId", "Window ID.")]),
+        tool("space.list", "List the workspace spaces (sidebar entries) visible to this grant, with tab IDs and revisions."),
+        tool("space.get", "Get one space with its tabs.", [uuid("id", "Space ID.")]),
+        tool("space.create", "Create a space with one tab and one pane. Returns the new space, tab, pane and session IDs.", [string("name", "Space name."), start]),
+        tool("space.update", "Rename a space.", [uuid("id", "Space ID."), string("name", "New name.", required: true), revision]),
+        tool("space.reorder", "Reorder spaces. Needs all-spaces scope.", [uuids("ids", "Every space ID in the new order.", required: true), revision]),
+        tool("space.focus", "Select a space in the sidebar.", [uuid("id", "Space ID.")]),
+        tool("space.close", "Close a space and everything in it.", [uuid("id", "Space ID."), allowRunning, force, revision], destructive: true),
+        tool("tab.list", "List a space's tabs in order.", [uuid("spaceId", "Space ID.")]),
         tool("tab.get", "Get a tab with its split tree: panes, branches, ratios and session IDs.", [uuid("id", "Tab ID.")]),
-        tool("tab.create", "Create a tab with one pane in a window.", [uuid("windowId", "Window ID."), string("title", "Tab title."), start]),
+        tool("tab.create", "Create a tab with one pane in a space.", [uuid("spaceId", "Space ID."), string("title", "Tab title."), start]),
         tool(
             "tab.update", "Rename a tab or set its color label (at least one of title or color).",
             [
@@ -112,7 +112,7 @@ public enum MCPTools {
                     ], required: false),
                 revision
             ]),
-        tool("tab.reorder", "Reorder a window's tabs.", [uuid("windowId", "Window ID."), uuids("ids", "Every tab ID in the new order.", required: true), revision]),
+        tool("tab.reorder", "Reorder a space's tabs.", [uuid("spaceId", "Space ID."), uuids("ids", "Every tab ID in the new order.", required: true), revision]),
         tool("tab.focus", "Select a tab.", [uuid("id", "Tab ID.")]),
         tool("tab.close", "Close a tab and its panes.", [uuid("id", "Tab ID."), allowRunning, force, revision], destructive: true),
         tool(
@@ -168,7 +168,7 @@ public enum MCPTools {
         tool(
             "host.connect", "Open an SSH session to a saved host in a new tab, or in a split of paneId.",
             [
-                uuid("hostId", "Host ID."), uuid("windowId", "Window ID."), uuid("paneId", "Split this pane instead of opening a tab.", required: false),
+                uuid("hostId", "Host ID."), uuid("spaceId", "Space ID."), uuid("paneId", "Split this pane instead of opening a tab.", required: false),
                 string("axis", "Split axis when paneId is set.", values: ["x", "y"])
             ]),
         tool("layout.validate", "Validate a declarative layout document without changing anything.", [object("document", "Layout document.", required: true)]),
@@ -182,7 +182,7 @@ public enum MCPTools {
                 number("expectedRevision", "baseRevision from layout_plan.", required: true, integer: true),
                 bool("startNew", "Start sessions in newly created panes (needs session.start).")
             ]),
-        tool("layout.export", "Export windows as a declarative layout document.", [uuids("windowIds", "Windows to export; all visible windows when omitted.")]),
+        tool("layout.export", "Export spaces as a declarative layout document.", [uuids("spaceIds", "Spaces to export; all visible spaces when omitted.")]),
         tool("theme.list", "List installed themes."),
         tool("theme.get", "Get a theme's resolved palette.", [string("id", "Theme ID.", required: true)]),
         tool("theme.validate", "Validate a theme document.", [object("document", "Theme document.", required: true)]),
@@ -191,7 +191,7 @@ public enum MCPTools {
         tool("theme.delete", "Delete a custom theme.", [string("id", "Theme ID.", required: true)], destructive: true),
         tool("appearance.get", "Get the appearance mode and selected light and dark themes."),
         tool(
-            "appearance.set", "Set the appearance mode and themes for every window.",
+            "appearance.set", "Set the appearance mode and themes for every space.",
             [
                 string("mode", "Appearance mode.", required: true, values: ["system", "dark", "light"]), string("darkThemeId", "Dark theme ID."),
                 string("lightThemeId", "Light theme ID."), revision
@@ -205,7 +205,7 @@ public enum MCPTools {
     public static func visible(to grant: AutomationGrant) -> [MCPTool] {
         all.filter { tool in
             guard let requirement = AuthorizationPolicy.requirements[tool.method] else { return false }
-            return requirement.capabilities.isSubset(of: grant.capabilities) && (!requirement.requiresAllWindows || grant.windowScope == .all)
+            return requirement.capabilities.isSubset(of: grant.capabilities) && (!requirement.requiresAllSpaces || grant.spaceScope == .all)
         }
     }
 

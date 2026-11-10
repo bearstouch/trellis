@@ -70,11 +70,11 @@ See [SSH hosts](features/ssh-hosts.md).
 
 **INT-09 (P0).**
 
-- Exports are portable JSON with schema versions. They exclude credentials (including saved host passwords and whether one exists), output history and runtime environment values. Imports never set a password.
-- Before applying an import, Trellis previews the counts, hosts and launch references.
-- A [remote workspace](features/remote-workspaces.md) window keeps its saved host, as `remoteHostId` on the window pointing at a host in the export (an export-only field: API layouts can't bind a window to a host), and its panes keep their paths on that host. Without its host in the file it imports as local shells, and the export flow says so.
-- Host import is atomic. Existing hosts don't change unless the user explicitly picks a collision policy, and a matching alias or name alone never authorizes overwriting a host.
-- `layout.apply` through the API follows its [additive semantics](api/layouts.md#matching-and-idempotency-fr-a04). An interactive import always creates fresh resources.
+- Exports are portable JSON with schema versions (`trellis.portable`, version 2): the project library and saved-host metadata, never spaces, which are what projects become once loaded. They exclude credentials (including saved host passwords and whether one exists), host and project IDs, the folders projects were launched in, output history and runtime environment values. Imports never set a password.
+- Before applying an import, Trellis previews the counts of projects and hosts, host collisions, and projects named like existing ones.
+- Version 1 exports (from before windows were renamed spaces) are still read. Their hosts and projects are imported; their windows, including any remote workspace's `remoteHostId`, are checked for shape and then skipped, and the preview says how many.
+- Host import is atomic. Existing hosts don't change unless the user explicitly picks a collision policy, and a matching alias or name alone never authorizes overwriting a host. Projects never replace existing ones; a name already in use gets " (imported)". If the projects can't be written, the hosts staged by the import are removed again.
+- `layout.apply` through the API follows its [additive semantics](api/layouts.md#matching-and-idempotency-fr-a04). An interactive import always creates fresh resources and opens nothing.
 - Full compatibility with iTerm2 profiles or proprietary automation isn't promised. A future importer must map only the fields it supports and explain what it leaves out.
 
 ## JSON themes

@@ -131,7 +131,7 @@ public struct GitChangesState: Equatable, Sendable {
     public var selectedFile: GitChangedFile? { selection.flatMap { path in list?.files.first { $0.path == path } } }
 }
 
-/// A window's Review tab (FR-GC05): one file's diff, never saved.
+/// A space's Review tab (FR-GC05): one file's diff, never saved.
 public struct ReviewTab: Equatable, Sendable {
     public internal(set) var root: String
     public internal(set) var file: GitChangedFile
@@ -180,17 +180,17 @@ extension AppWorkspaceModel {
 
     /// Review tabs on this repository take the file's new state and diff; a file no longer changed says so.
     private func refreshReviews(with list: GitChangeList, generation: Int) async {
-        for windowID in Array(reviewTabs.keys) {
+        for spaceID in Array(reviewTabs.keys) {
             // Each diff is awaited: a newer refresh takes over, and a tab closed or replaced meanwhile isn't brought back.
             guard generation == gitChangesGeneration else { return }
-            guard let review = reviewTabs[windowID], review.root == list.root else { continue }
+            guard let review = reviewTabs[spaceID], review.root == list.root else { continue }
             guard let file = list.files.first(where: { $0.path == review.file.path }) else {
                 // A cut list may just not reach the file.
-                if !list.truncated { reviewTabs[windowID]?.diff = GitFileDiff(body: .unchanged) }
+                if !list.truncated { reviewTabs[spaceID]?.diff = GitFileDiff(body: .unchanged) }
                 continue
             }
             guard file != review.file || review.hasCommits != list.hasCommits else { continue }
-            await loadReview(windowID: windowID, root: list.root, file: file, hasCommits: list.hasCommits, keepShown: true)
+            await loadReview(spaceID: spaceID, root: list.root, file: file, hasCommits: list.hasCommits, keepShown: true)
         }
     }
 
@@ -228,29 +228,29 @@ extension AppWorkspaceModel {
 
     // MARK: Review tab (FR-GC05)
 
-    /// The selected window's Review tab.
-    public var currentReview: ReviewTab? { presentation.selectedWindow.flatMap { reviewTabs[$0.id] } }
-    /// Whether the selected window shows its Review tab in place of the terminals.
-    public var reviewVisible: Bool { presentation.selectedWindow.map { reviewShownWindows.contains($0.id) && reviewTabs[$0.id] != nil } ?? false }
+    /// The selected space's Review tab.
+    public var currentReview: ReviewTab? { presentation.selectedSpace.flatMap { reviewTabs[$0.id] } }
+    /// Whether the selected space shows its Review tab in place of the terminals.
+    public var reviewVisible: Bool { presentation.selectedSpace.map { reviewShownSpaces.contains($0.id) && reviewTabs[$0.id] != nil } ?? false }
 
-    /// Opens the file's diff in the selected window's Review tab, replacing what it showed.
+    /// Opens the file's diff in the selected space's Review tab, replacing what it showed.
     public func reviewGitChange(_ path: String) async {
-        guard let list = gitChanges.list, let file = list.files.first(where: { $0.path == path }), let windowID = presentation.selectedWindow?.id else { return }
+        guard let list = gitChanges.list, let file = list.files.first(where: { $0.path == path }), let spaceID = presentation.selectedSpace?.id else { return }
         gitChanges.selection = path
-        await loadReview(windowID: windowID, root: list.root, file: file, hasCommits: list.hasCommits, keepShown: false)
+        await loadReview(spaceID: spaceID, root: list.root, file: file, hasCommits: list.hasCommits, keepShown: false)
     }
 
-    private func loadReview(windowID: UUID, root: String, file: GitChangedFile, hasCommits: Bool, keepShown: Bool) async {
-        reviewTabs[windowID] = ReviewTab(root: root, file: file, hasCommits: hasCommits, diff: nil)
+    private func loadReview(spaceID: UUID, root: String, file: GitChangedFile, hasCommits: Bool, keepShown: Bool) async {
+        reviewTabs[spaceID] = ReviewTab(root: root, file: file, hasCommits: hasCommits, diff: nil)
         if !keepShown {
-            reviewShownWindows.insert(windowID)
+            reviewShownSpaces.insert(spaceID)
             cancelPaste()
         }
         let client = gitChangesClient
         let diff = await Task.detached(priority: .userInitiated) { client.diff(root, file, hasCommits) }.value
-        guard let current = reviewTabs[windowID], current.root == root, current.file == file else { return }
-        reviewTabs[windowID]?.diff = diff
-        reviewTabs[windowID]?.failed = diff == nil
+        guard let current = reviewTabs[spaceID], current.root == root, current.file == file else { return }
+        reviewTabs[spaceID]?.diff = diff
+        reviewTabs[spaceID]?.failed = diff == nil
     }
 
     /// The actions that act on the focused pane: while the Review tab hides the terminals they show them first (FR-GC05).
@@ -265,34 +265,34 @@ extension AppWorkspaceModel {
         hideReview()
     }
 
-    /// After a workspace change: a deleted window drops its Review tab, and a window whose tab changed (new, closed, selected
+    /// After a workspace change: a deleted space drops its Review tab, and a space whose tab changed (new, closed, selected
     /// by automation) shows its terminals again (FR-GC05). Kept out of `publish` and in plain loops: Swift 6.3 miscompiled
     /// the closure-based form inline there (a task-allocator abort in unrelated async tests).
     func pruneReviews(previous: WorkspaceSnapshot, next: WorkspaceSnapshot) {
         var tabs: [UUID: UUID] = [:], before: [UUID: UUID] = [:]
-        for window in next.windows { tabs[window.id] = window.activeTabID }
-        for window in previous.windows { before[window.id] = window.activeTabID }
-        for windowID in Array(reviewTabs.keys) where tabs[windowID] == nil { reviewTabs[windowID] = nil }
-        for windowID in Array(reviewShownWindows) where tabs[windowID] == nil || tabs[windowID] != before[windowID] { reviewShownWindows.remove(windowID) }
+        for space in next.spaces { tabs[space.id] = space.activeTabID }
+        for space in previous.spaces { before[space.id] = space.activeTabID }
+        for spaceID in Array(reviewTabs.keys) where tabs[spaceID] == nil { reviewTabs[spaceID] = nil }
+        for spaceID in Array(reviewShownSpaces) where tabs[spaceID] == nil || tabs[spaceID] != before[spaceID] { reviewShownSpaces.remove(spaceID) }
     }
 
-    /// Shows the selected window's Review tab again.
+    /// Shows the selected space's Review tab again.
     public func showReview() {
-        guard let windowID = presentation.selectedWindow?.id, reviewTabs[windowID] != nil else { return }
-        reviewShownWindows.insert(windowID)
+        guard let spaceID = presentation.selectedSpace?.id, reviewTabs[spaceID] != nil else { return }
+        reviewShownSpaces.insert(spaceID)
     }
 
     /// Back to the terminal tabs, keeping the Review tab.
     public func hideReview() {
-        guard let windowID = presentation.selectedWindow?.id else { return }
-        reviewShownWindows.remove(windowID)
+        guard let spaceID = presentation.selectedSpace?.id else { return }
+        reviewShownSpaces.remove(spaceID)
         focusActiveTerminal()
     }
 
     public func closeReview() {
-        guard let windowID = presentation.selectedWindow?.id else { return }
-        reviewTabs[windowID] = nil
-        reviewShownWindows.remove(windowID)
+        guard let spaceID = presentation.selectedSpace?.id else { return }
+        reviewTabs[spaceID] = nil
+        reviewShownSpaces.remove(spaceID)
         focusActiveTerminal()
     }
 
@@ -314,13 +314,13 @@ extension AppWorkspaceModel {
     /// Reads the Review tab's diff again, with the list.
     public func reloadReview() async {
         if let paneID = presentation.activePane?.id, visibleSidebarView == .changes || gitChanges.paneID == paneID { await refreshGitChanges(paneID: paneID) }
-        guard let windowID = presentation.selectedWindow?.id, let review = reviewTabs[windowID] else { return }
+        guard let spaceID = presentation.selectedSpace?.id, let review = reviewTabs[spaceID] else { return }
         let file = gitChanges.list.flatMap { $0.root == review.root ? $0.files.first { $0.path == review.file.path } : nil }
         guard let file else {
-            if let list = gitChanges.list, list.root == review.root, !list.truncated { reviewTabs[windowID]?.diff = GitFileDiff(body: .unchanged) }
+            if let list = gitChanges.list, list.root == review.root, !list.truncated { reviewTabs[spaceID]?.diff = GitFileDiff(body: .unchanged) }
             return
         }
-        await loadReview(windowID: windowID, root: review.root, file: file, hasCommits: review.hasCommits, keepShown: true)
+        await loadReview(spaceID: spaceID, root: review.root, file: file, hasCommits: review.hasCommits, keepShown: true)
     }
 
     // MARK: Staging (FR-GC06)

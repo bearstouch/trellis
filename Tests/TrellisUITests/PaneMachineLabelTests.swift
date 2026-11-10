@@ -46,22 +46,22 @@ final class PaneMachineLabelTests: XCTestCase {
     }
 
     @MainActor
-    func testFocusedMachineFollowsTheSelectedWindowAndItsLink() async throws {
+    func testFocusedMachineFollowsTheSelectedSpaceAndItsLink() async throws {
         _ = NSApplication.shared
         let host = UUID()
         let store = try WorkspaceStore()
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: store, preferences: preferences)
-        XCTAssertEqual(model.focusedMachine, .local, "No window yet")
+        XCTAssertEqual(model.focusedMachine, .local, "No space yet")
 
-        let local = try await store.execute(.createWindow(name: "Here")).snapshot.windows[0].id
-        let remote = try await store.execute(.createRemoteWindow(name: "There", hostID: host)).snapshot.windows.first { $0.id != local }!.id
+        let local = try await store.execute(.createSpace(name: "Here")).snapshot.spaces[0].id
+        let remote = try await store.execute(.createRemoteSpace(name: "There", hostID: host)).snapshot.spaces.first { $0.id != local }!.id
         await model.refresh()
 
-        await model.selectWindow(local)
+        await model.selectSpace(local)
         XCTAssertEqual(model.focusedMachine, .local)
 
-        await model.selectWindow(remote)
+        await model.selectSpace(remote)
         XCTAssertEqual(model.focusedMachine, .host(model.remoteHostName(host), link: .disconnected(nil)), "No link recorded yet is not connected")
         model.remoteLinks[host] = .connected
         XCTAssertEqual(model.focusedMachine, .host(model.remoteHostName(host), link: .connected))

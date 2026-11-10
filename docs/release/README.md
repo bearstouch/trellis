@@ -26,7 +26,7 @@ The script produces `dist/Trellis.app`, `dist/Trellis-<version>.dmg`, and `dist/
 
 - **Signing:** the CLI and the app are signed with the hardened runtime and no entitlements (an ad-hoc build's app alone gets `disable-library-validation`, because ad-hoc signatures have no Team ID to match the embedded Sparkle.framework; `release-evidence.json` fails a Developer ID build that has it), so there is no root helper and no blanket Accessibility, Screen Recording, or Full Disk Access request.
 - **Notarization:** with a Developer ID and a notary profile, the DMG is submitted with `notarytool` and the DMG is stapled; its ticket covers the app it contains. The `dist/Trellis.app` copy outside the DMG is stapled separately. If notarization or stapling fails, the script exits non-zero and `release-evidence.json` lists the failure, so a failed submission can't pass as a finished release.
-- **DMG layout:** `scripts/make-dmg.sh` puts the app beside an `Applications` shortcut over `Design/DMG/background.png` (regenerate with `swift Design/DMG/make-background.swift Design/DMG`) and sets the app icon as the volume icon. The window layout is applied through Finder AppleScript; where Finder automation is unavailable it prints a warning and the DMG keeps the shortcut without the arranged layout.
+- **DMG layout:** `scripts/make-dmg.sh` puts the app beside an `Applications` shortcut over `Design/DMG/background.png` (regenerate with `swift Design/DMG/make-background.swift Design/DMG`) and sets the app icon as the volume icon. The space layout is applied through Finder AppleScript; where Finder automation is unavailable it prints a warning and the DMG keeps the shortcut without the arranged layout.
 - **Release workflow:** `.github/workflows/release.yml` pins every action to a commit SHA, because the job holds the signing certificate and notary credentials; Dependabot (`.github/dependabot.yml`) keeps the pins current. A build that is signed but not notarized is published as a pre-release with a note.
 - **Version:** the manifest's `version` is `X.Y.Z` or `X.Y.Z-alpha|beta|rc.N` (N < 30); anything else stops the build. macOS needs numeric bundle versions, so `CFBundleShortVersionString` is the `X.Y.Z` core and `CFBundleVersion` adds a build that sorts pre-releases first (alpha.N = N, beta.N = 30+N, rc.N = 60+N, release = 100: `1.0.0-beta.1` is `1.0.0.31`, `1.0.0` is `1.0.0.100`). The full version goes to `TrellisVersion`, which the About panel, status bar, diagnostics, `system.info` and the MCP server show.
 - **Checks recorded:** the strict signature check, the hardened-runtime flag, the architectures of both binaries, the minimum OS, the version keys, the artifacts listed in the manifest, and the local `spctl` result.
@@ -64,7 +64,7 @@ Data lives in `~/Library/Application Support/com.bearstouch.trellis/`:
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `workspace.json` | Windows, tabs, splits, and settings | Last-known-good copy in `workspace.backup.json` |
+| `workspace.json` | Spaces, tabs, splits, and settings | Last-known-good copy in `workspace.backup.json` |
 | `hosts.json` | Saved hosts | Last-known-good copy in `hosts.backup.json` |
 | `grants.json` | Automation grant metadata (hashes only) | Unreadable files are preserved |
 | `layout-bindings.json` | Layout namespace bindings | Unreadable files are preserved |
@@ -109,7 +109,7 @@ Only these combinations have been run. Nothing else is claimed.
 - **Latency:** typing and switching latency are measured through API proxies, not UI frame timing.
 - **Accessibility and input:** VoiceOver, real IME, and keyboard-layout checks are pending.
 - **SSH:** checks against a real server are pending.
-- **Windows:** there is one native terminal window; managed windows live in its sidebar.
+- **Spaces:** there is one native terminal window; managed spaces live in its sidebar.
 - **Updates:** no automatic updates.
 
 ## Licenses

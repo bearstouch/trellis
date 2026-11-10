@@ -12,14 +12,14 @@ public enum QuitChoice: Sendable, Equatable { case keepRunning, stopSessions, ca
 /// What closing the native window does (MAC-04): hide it while sessions keep running, or end them first.
 public enum WindowCloseAction: Sendable, Equatable { case hide, endSessions }
 
-public struct WindowActivity: Equatable, Sendable {
+public struct SpaceActivity: Equatable, Sendable {
     public var hasOutput = false
     public var hasExit = false
     public init() {}
 }
 
 /// One tab in the collapsed rail's hover card (FR-W06): live status, never persisted.
-public struct WindowTabPreview: Identifiable, Equatable, Sendable {
+public struct SpaceTabPreview: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let title: String
     public let color: TabColor?
@@ -48,7 +48,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
     public private(set) var diagnosticCodes: [String] = []
     @Published public private(set) var appearance = AppearanceSettings()
-    /// Narrow initials rail instead of the full window list; a per-user UI preference, not workspace data.
+    /// Narrow initials rail instead of the full space list; a per-user UI preference, not workspace data.
     @Published public private(set) var sidebarCollapsed = false
     /// Advances once per committed settings change; API `expectedRevision` uses it.
     public private(set) var appearanceRevision: UInt64 = 0
@@ -304,8 +304,8 @@ public final class AppWorkspaceModel: ObservableObject {
                     state: entry.value.sessionState, exitCode: entry.value.exitCode, failedCommandExit: failedCommandExit(paneID: entry.key),
                     inputWait: inputWaits[entry.key], progress: progress[entry.key])
             },
-            windowsWithOutput: Set(activity.filter(\.value.hasOutput).keys), windowsWithExit: Set(activity.filter(\.value.hasExit).keys),
-            windowsNeedingInput: windowsNeedingInput, titles: automaticTitles)
+            spacesWithOutput: Set(activity.filter(\.value.hasOutput).keys), spacesWithExit: Set(activity.filter(\.value.hasExit).keys),
+            spacesNeedingInput: spacesNeedingInput, titles: automaticTitles)
     }
 
     /// VoiceOver names each terminal by pane and status; its value stays the text.
@@ -326,7 +326,7 @@ public final class AppWorkspaceModel: ObservableObject {
     private var pasteFocusEpoch: UInt64 = 0
     @Published public private(set) var defaultShell: String
     @Published public private(set) var defaultDirectory: String
-    @Published public private(set) var activity: [UUID: WindowActivity] = [:]
+    @Published public private(set) var activity: [UUID: SpaceActivity] = [:]
     /// Tabs with a pane printing output right now (FR-T05).
     @Published public private(set) var busyTabIDs: Set<UUID> = []
     private var outputActivity = PaneOutputActivity()
@@ -403,7 +403,7 @@ public final class AppWorkspaceModel: ObservableObject {
     private var closeSummary: [String] = []
     let closureCoordinator = SessionClosureCoordinator()
     var closureInProgress = false
-    var closingWindowIDs = Set<UUID>()
+    var closingSpaceIDs = Set<UUID>()
     var closingTabIDs = Set<UUID>()
     var closingPaneIDs = Set<UUID>()
     @Published public internal(set) var maximizedPanes: [UUID: UUID] = [:]
@@ -411,7 +411,7 @@ public final class AppWorkspaceModel: ObservableObject {
     private var dividerResizeTask: Task<Void, Never>?
     var canvasSizes: [UUID: CanvasDimensions] = [:]
     @Published public var tabRenameRequest: UUID?
-    @Published public var windowRenameRequest: UUID?
+    @Published public var spaceRenameRequest: UUID?
     @Published public private(set) var editingTabID: UUID?
     @Published public var tabRenameDraft = ""
     /// Bumped to give the tab name field its focus back (after the command palette closed over it).
@@ -504,9 +504,9 @@ public final class AppWorkspaceModel: ObservableObject {
     var filesStatusTask: Task<Void, Never>?
     /// The Changes view's list, filter and folds (FR-GC02–FR-GC04): runtime only, never saved with the workspace.
     @Published public internal(set) var gitChanges = GitChangesState()
-    /// Each window's Review tab (FR-GC05), and the windows showing it in place of their terminal tabs. Never saved.
+    /// Each space's Review tab (FR-GC05), and the spaces showing it in place of their terminal tabs. Never saved.
     @Published public internal(set) var reviewTabs: [UUID: ReviewTab] = [:]
-    @Published public internal(set) var reviewShownWindows: Set<UUID> = []
+    @Published public internal(set) var reviewShownSpaces: Set<UUID> = []
     /// Bumped when the Changes view's filter field should take keyboard focus.
     @Published public internal(set) var gitChangesFocusRequest = 0
     var gitChangesGeneration = 0
@@ -865,7 +865,7 @@ public final class AppWorkspaceModel: ObservableObject {
         snapshot = next
         // Replaced or closed sessions drop their output; their cursors become invalid.
         for id in previous.sessions.keys where next.sessions[id] == nil { outputJournal.remove(session: id) }
-        // A closed pane or window, or a restart, discards the saved text of the session it replaced (FR-R04).
+        // A closed pane or space, or a restart, discards the saved text of the session it replaced (FR-R04).
         let removed = previous.sessions.keys.filter { next.sessions[$0] == nil }
         if restoreScrollback, !removed.isEmpty, let scrollbackStore { Task { await scrollbackStore.delete(sessionIDs: removed) } }
         if let onWorkspaceEvents {
@@ -888,37 +888,37 @@ public final class AppWorkspaceModel: ObservableObject {
         lastReportedDirectories = lastReportedDirectories.filter { next.sessions[$0.key] != nil }
         lastRecordedDirectories = lastRecordedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
-        if !reviewTabs.isEmpty || !reviewShownWindows.isEmpty { pruneReviews(previous: previous, next: next) }
-        if let selected = next.activeWindowID { activity.removeValue(forKey: selected) }
+        if !reviewTabs.isEmpty || !reviewShownSpaces.isEmpty { pruneReviews(previous: previous, next: next) }
+        if let selected = next.activeSpaceID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
         refreshTerminalAccessibility()
         scheduleWorkspaceSave()
     }
 
     @discardableResult
-    public func createWindow(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async -> UUID? {
+    public func createSpace(name: String? = nil, startSession: Bool = true, fixture: Bool = false) async -> UUID? {
         guard !isRestoring, recoveryMessage == nil, !shuttingDown, !Task.isCancelled else { return nil }
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
-            let result = try await service.execute(.createWindow(name: name ?? "Window \(snapshot.windows.count + 1)"))
+            let result = try await service.execute(.createSpace(name: name ?? "Space \(snapshot.spaces.count + 1)"))
             // Always materialize a committed result, including during a native
             // confirmation loop. Shutdown gates only the process launch.
-            guard let id = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == id }),
-                let tab = result.snapshot.tabs[window.activeTabID], let pane = result.snapshot.panes[tab.activePaneID]
+            guard let id = result.createdSpaceID, let space = result.snapshot.spaces.first(where: { $0.id == id }),
+                let tab = result.snapshot.tabs[space.activeTabID], let pane = result.snapshot.panes[tab.activePaneID]
             else { return nil }
             attachTerminal(pane)
             publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
             return id
-        } catch { errorMessage = "The window could not be created."; return nil }
+        } catch { errorMessage = "The space could not be created."; return nil }
     }
 
-    public func selectWindow(_ id: UUID) async {
-        if id != snapshot.activeWindowID { cancelPaste(); notePasteFocus(nil) }
+    public func selectSpace(_ id: UUID) async {
+        if id != snapshot.activeSpaceID { cancelPaste(); notePasteFocus(nil) }
         do {
-            publish(try await service.execute(.selectWindow(id: id)).snapshot)
-        } catch { errorMessage = "The window could not be selected." }
+            publish(try await service.execute(.selectSpace(id: id)).snapshot)
+        } catch { errorMessage = "The space could not be selected." }
     }
 
     /// `quietly` (automation) reports failure through session state, never an alert.
@@ -1034,6 +1034,8 @@ public final class AppWorkspaceModel: ObservableObject {
                         errorMessage = "The session broker could not start, so this session will end when Trellis quits."
                     }
                 }
+                // Synchronous and without new locals: Swift 6.3's task allocator aborts when this frame grows (see `startAgent`).
+                wireTypedAgents(&configuration, sessionID: request.sessionID, brokered: terminal.survivesQuit)
                 if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
@@ -1138,6 +1140,18 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// A renamed tab keeps its title; the default title follows the active pane (FR-SI05).
+    /// The library project a space was loaded from (FR-W08); nil for a plain space, or one whose project was deleted.
+    public func projectName(of space: Space) -> String? {
+        space.projectID.flatMap { id in commandPaletteProjects().first { $0.id == id }?.name }
+    }
+
+    /// A tab its space's project doesn't define (FR-W08): opened by hand after the project loaded. Plain spaces, and spaces
+    /// whose project was deleted, have no temporary tabs.
+    public func isTemporaryTab(_ tab: WorkspaceTab) -> Bool {
+        guard tab.projectKey == nil, let space = snapshot.spaces.first(where: { $0.id == tab.spaceID }) else { return false }
+        return projectName(of: space) != nil
+    }
+
     public func displayTitle(_ tab: WorkspaceTab) -> String {
         guard tab.title == WorkspaceTab.defaultTitle else { return tab.title }
         return automaticTitle(paneID: tab.activePaneID) ?? tab.title
@@ -1160,17 +1174,17 @@ public final class AppWorkspaceModel: ObservableObject {
         TerminalProgress.aggregate(snapshot.tabs[tabID]?.root.paneIDs.compactMap { progress[$0] } ?? [])
     }
 
-    public var windowsNeedingInput: Set<UUID> {
-        Set(inputWaits.keys.compactMap { snapshot.panes[$0].flatMap { snapshot.tabs[$0.tabID]?.windowID } })
+    public var spacesNeedingInput: Set<UUID> {
+        Set(inputWaits.keys.compactMap { snapshot.panes[$0].flatMap { snapshot.tabs[$0.tabID]?.spaceID } })
     }
 
-    /// A window's tabs in order with their live status, for the rail's hover card (FR-W06). Unknown window → empty.
-    public func tabPreviews(windowID: UUID) -> [WindowTabPreview] {
-        guard let window = snapshot.windows.first(where: { $0.id == windowID }) else { return [] }
-        return window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in
+    /// A space's tabs in order with their live status, for the rail's hover card (FR-W06). Unknown space → empty.
+    public func tabPreviews(spaceID: UUID) -> [SpaceTabPreview] {
+        guard let space = snapshot.spaces.first(where: { $0.id == spaceID }) else { return [] }
+        return space.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in
             let panes = tab.root.paneIDs
-            return WindowTabPreview(
-                id: tab.id, title: displayTitle(tab), color: tab.color, isActive: tab.id == window.activeTabID, paneCount: panes.count,
+            return SpaceTabPreview(
+                id: tab.id, title: displayTitle(tab), color: tab.color, isActive: tab.id == space.activeTabID, paneCount: panes.count,
                 isBusy: busyTabIDs.contains(tab.id), inputWait: inputWait(tabID: tab.id), progress: progress(tabID: tab.id),
                 failedCommandExit: panes.lazy.compactMap(failedCommandExit(paneID:)).first,
                 hasExitedSession: panes.contains { [.exited, .failed].contains(terminals[$0]?.sessionState) },
@@ -1179,10 +1193,10 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
 
-    /// Selecting a tab only sets its window's active tab, so jumping from another window selects both.
-    public func selectWindowTab(windowID: UUID, tabID: UUID) async {
-        guard snapshot.tabs[tabID]?.windowID == windowID else { return }
-        await selectWindow(windowID)
+    /// Selecting a tab only sets its space's active tab, so jumping from another space selects both.
+    public func selectSpaceTab(spaceID: UUID, tabID: UUID) async {
+        guard snapshot.tabs[tabID]?.spaceID == spaceID else { return }
+        await selectSpace(spaceID)
         await selectTab(tabID)
     }
 
@@ -1222,7 +1236,23 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
         let title = notification.title.isEmpty ? paneTitle(paneID) : notification.title
-        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, body: notification.body))
+        // Only the program's name, never its command line.
+        let source = agentDefinition(paneID: paneID)?.name ?? detectedAgent(paneID: paneID)?.name ?? shellStates[paneID]?.commandName
+        // An automatic tab title that follows this pane already names its agent or program (FR-SI05, FR-AG15).
+        let tab = snapshot.tabs[pane.tabID]
+        let tabNamesSource = tab?.title == WorkspaceTab.defaultTitle && tab?.activePaneID == paneID
+        let subtitle = notificationContext(paneID: paneID, source: source == title || tabNamesSource ? nil : source)
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, subtitle: subtitle, body: notification.body))
+    }
+
+    /// Where a notification came from (FR-T08): "Space › Tab", plus " · source" when the agent or program is known.
+    func notificationContext(paneID: UUID, source: String? = nil) -> String {
+        guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID] else { return "" }
+        var parts = [displayTitle(tab)]
+        if let space = snapshot.spaces.first(where: { $0.id == tab.spaceID }) { parts.insert(space.name, at: 0) }
+        var context = parts.map(TerminalNotification.cleanedContext).filter { !$0.isEmpty }.joined(separator: " › ")
+        if let source = source.map(TerminalNotification.cleanedContext), !source.isEmpty { context += context.isEmpty ? source : " · \(source)" }
+        return context
     }
 
     /// FR-SI08: a long command finished while the user wasn't looking at its pane. Unlike `postNotification` this runs
@@ -1237,7 +1267,7 @@ public final class AppWorkspaceModel: ObservableObject {
         let title = state.lastCommandFailed ? "Command failed (exit \(state.lastExitCode ?? 0))" : "Command finished"
         // The program name is untrusted output, so it gets the same cleaning as OSC notification text.
         guard let text = TerminalNotification(title: title, body: "\(state.lastCommandName ?? paneTitle(paneID)) ran for \(durationText)") else { return }
-        desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, body: text.body))
+        desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, subtitle: notificationContext(paneID: paneID), body: text.body))
     }
 
     /// Progress never labels the tab as waiting (FR-T09); it only refreshes the bar, text and spoken status.
@@ -1280,10 +1310,10 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
 
-    /// Clicking a notification shows its pane, in whichever window and tab it now lives.
+    /// Clicking a notification shows its pane, in whichever space and tab it now lives.
     public func revealPane(_ paneID: UUID) async {
-        guard let pane = snapshot.panes[paneID], let windowID = snapshot.tabs[pane.tabID]?.windowID else { return }
-        await selectWindowTab(windowID: windowID, tabID: pane.tabID)
+        guard let pane = snapshot.panes[paneID], let spaceID = snapshot.tabs[pane.tabID]?.spaceID else { return }
+        await selectSpaceTab(spaceID: spaceID, tabID: pane.tabID)
         _ = await selectPane(paneID)
     }
 
@@ -1334,6 +1364,7 @@ public final class AppWorkspaceModel: ObservableObject {
         state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
+        clearTypedAgentState(paneID: paneID, event: event, state: state)
         // Replayed marks (FR-R03) describe commands that finished while Trellis was closed; they never notify.
         if wasRunning, !state.commandRunning, terminals[paneID]?.isReplaying != true { postCommandFinished(state, paneID: paneID) }
         if let directory = currentDirectory(paneID: paneID), let sessionID = terminals[paneID]?.sessionID, lastReportedDirectories[sessionID] != directory {
@@ -1384,16 +1415,16 @@ public final class AppWorkspaceModel: ObservableObject {
 
     func isClosing(paneID: UUID) -> Bool {
         guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID] else { return false }
-        return closingWindowIDs.contains(tab.windowID) || closingTabIDs.contains(tab.id) || closingPaneIDs.contains(paneID)
+        return closingSpaceIDs.contains(tab.spaceID) || closingTabIDs.contains(tab.id) || closingPaneIDs.contains(paneID)
     }
 
     public func recordActivity(paneID: UUID, exited: Bool = false) {
         guard let pane = snapshot.panes[paneID], let tab = snapshot.tabs[pane.tabID],
-            tab.windowID != snapshot.activeWindowID
+            tab.spaceID != snapshot.activeSpaceID
         else { return }
-        var indicator = activity[tab.windowID] ?? WindowActivity()
+        var indicator = activity[tab.spaceID] ?? SpaceActivity()
         if exited { indicator.hasExit = true } else { indicator.hasOutput = true }
-        if indicator != activity[tab.windowID] { activity[tab.windowID] = indicator }
+        if indicator != activity[tab.spaceID] { activity[tab.spaceID] = indicator }
     }
 
     private func recordOutput(paneID: UUID) {
@@ -1426,23 +1457,23 @@ public final class AppWorkspaceModel: ObservableObject {
         if let tabID = snapshot.panes[paneID]?.tabID { refreshBusy(tabID) }
     }
 
-    public func renameWindow(_ id: UUID, name: String) async {
-        do { publish(try await service.execute(.renameWindow(id: id, name: name)).snapshot) } catch { errorMessage = "Use a window name between 1 and 200 characters." }
+    public func renameSpace(_ id: UUID, name: String) async {
+        do { publish(try await service.execute(.renameSpace(id: id, name: name)).snapshot) } catch { errorMessage = "Use a space name between 1 and 200 characters." }
     }
 
-    public func moveWindow(_ id: UUID, offset: Int) async {
-        var order = snapshot.windows.map(\.id)
+    public func moveSpace(_ id: UUID, offset: Int) async {
+        var order = snapshot.spaces.map(\.id)
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
+        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = "The space order could not be changed." }
     }
 
-    /// Drag reordering (FR-W07): the window takes the target's place, so dragging down lands below it and up above it.
-    public func moveWindow(_ id: UUID, to targetID: UUID) async {
-        var order = snapshot.windows.map(\.id)
+    /// Drag reordering (FR-W07): the space takes the target's place, so dragging down lands below it and up above it.
+    public func moveSpace(_ id: UUID, to targetID: UUID) async {
+        var order = snapshot.spaces.map(\.id)
         guard id != targetID, order.contains(id), let destination = order.firstIndex(of: targetID) else { return }
         order.removeAll { $0 == id }; order.insert(id, at: destination)
-        do { publish(try await service.execute(.reorderWindows(ids: order)).snapshot) } catch { errorMessage = "The window order could not be changed." }
+        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = "The space order could not be changed." }
     }
 
     func attachTerminal(_ pane: WorkspacePane) {
@@ -1646,7 +1677,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// Where a saved-host connection opens. Splits divide the focused pane.
-    public enum HostPlacement: Sendable, Equatable { case newTab, newWindow, split(SplitAxis) }
+    public enum HostPlacement: Sendable, Equatable { case newTab, newSpace, split(SplitAxis) }
 
     /// Each call creates a new pane and session with its own ssh process; an
     /// existing connection is never reused or retried.
@@ -1655,12 +1686,12 @@ public final class AppWorkspaceModel: ObservableObject {
         guard !isRestoring, recoveryMessage == nil, !shuttingDown else { return nil }
         let paneID: UUID?
         switch placement {
-        case .newTab, .newWindow:
+        case .newTab, .newSpace:
             let created: UUID?
-            if placement == .newWindow || presentation.selectedWindow == nil {
-                // A new window already contains one stopped pane; use it instead of adding a tab.
-                let window = await createWindow(name: host.name, startSession: false)
-                created = window.flatMap { id in snapshot.windows.first { $0.id == id }?.activeTabID }
+            if placement == .newSpace || presentation.selectedSpace == nil {
+                // A new space already contains one stopped pane; use it instead of adding a tab.
+                let space = await createSpace(name: host.name, startSession: false)
+                created = space.flatMap { id in snapshot.spaces.first { $0.id == id }?.activeTabID }
             } else {
                 created = await createTab(startSessions: false)
             }
@@ -1669,7 +1700,7 @@ public final class AppWorkspaceModel: ObservableObject {
         case .split(let axis):
             // Match the pane split controls: a hidden split would hide ssh prompts.
             guard let tab = presentation.selectedTab, let focused = presentation.activePane?.id, maximizedPanes[tab.id] == nil else {
-                errorMessage = presentation.selectedTab == nil ? "Open a window before connecting in a split." : "Restore panes before connecting in a split."
+                errorMessage = presentation.selectedTab == nil ? "Open a space before connecting in a split." : "Restore panes before connecting in a split."
                 return nil
             }
             paneID = await splitPane(focused, axis: axis, startSession: false)
@@ -1693,27 +1724,27 @@ public final class AppWorkspaceModel: ObservableObject {
         closingPaneIDs.insert(id)
         defer { closingPaneIDs.remove(id) }
         await closeResources(panes: [id], command: .deletePane(id: id))
-        if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
+        if !snapshot.spaces.contains(where: { $0.id == tab.spaceID }) { activity.removeValue(forKey: tab.spaceID) }
     }
 
     @discardableResult
-    public func createTab(windowID: UUID? = nil, duplicate id: UUID? = nil, startSessions: Bool = true) async -> UUID? {
+    public func createTab(spaceID: UUID? = nil, duplicate id: UUID? = nil, startSessions: Bool = true) async -> UUID? {
         guard !shuttingDown, !Task.isCancelled,
-            let windowID = windowID ?? presentation.selectedWindow?.id,
-            !closingWindowIDs.contains(windowID)
+            let spaceID = spaceID ?? presentation.selectedSpace?.id,
+            !closingSpaceIDs.contains(spaceID)
         else { return nil }
         if let id {
-            guard snapshot.tabs[id]?.windowID == windowID, !closingTabIDs.contains(id) else { return nil }
+            guard snapshot.tabs[id]?.spaceID == spaceID, !closingTabIDs.contains(id) else { return nil }
         }
-        // A new (not duplicated) tab starts where the window's focused shell is.
+        // A new (not duplicated) tab starts where the space's focused shell is.
         let sourcePaneID =
             id == nil
-            ? snapshot.windows.first { $0.id == windowID }
+            ? snapshot.spaces.first { $0.id == spaceID }
                 .flatMap { snapshot.tabs[$0.activeTabID]?.activePaneID } : nil
         pendingOperations += 1
         defer { pendingOperations -= 1 }
         do {
-            let result = try await service.execute(id.map { .duplicateTab(id: $0) } ?? .createTab(windowID: windowID))
+            let result = try await service.execute(id.map { .duplicateTab(id: $0) } ?? .createTab(spaceID: spaceID))
             guard let tabID = result.createdTabID, let tab = result.snapshot.tabs[tabID] else { return nil }
             for paneID in tab.root.paneIDs {
                 if let pane = result.snapshot.panes[paneID] { attachTerminal(pane) }
@@ -1732,7 +1763,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func selectTab(_ id: UUID) async {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
-        if let windowID = snapshot.tabs[id]?.windowID { reviewShownWindows.remove(windowID) }
+        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID) }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = "The tab could not be selected." }
     }
@@ -1769,41 +1800,41 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func moveTab(_ id: UUID, offset: Int) async {
-        guard let tab = snapshot.tabs[id], let window = snapshot.windows.first(where: { $0.id == tab.windowID }) else { return }
-        var order = window.tabIDs
+        guard let tab = snapshot.tabs[id], let space = snapshot.spaces.first(where: { $0.id == tab.spaceID }) else { return }
+        var order = space.tabIDs
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
     }
 
     /// Drag reordering (FR-T10): the tab takes the target's place, so dragging right lands after it and left before it.
     public func moveTab(_ id: UUID, to targetID: UUID) async {
-        guard id != targetID, let tab = snapshot.tabs[id], snapshot.tabs[targetID]?.windowID == tab.windowID,
-            let window = snapshot.windows.first(where: { $0.id == tab.windowID }), let destination = window.tabIDs.firstIndex(of: targetID)
+        guard id != targetID, let tab = snapshot.tabs[id], snapshot.tabs[targetID]?.spaceID == tab.spaceID,
+            let space = snapshot.spaces.first(where: { $0.id == tab.spaceID }), let destination = space.tabIDs.firstIndex(of: targetID)
         else { return }
-        var order = window.tabIDs
+        var order = space.tabIDs
         order.removeAll { $0 == id }; order.insert(id, at: destination)
-        do { publish(try await service.execute(.reorderTabs(windowID: tab.windowID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
     }
 
-    public func deleteWindow(_ id: UUID) async {
-        guard !shuttingDown, !closureInProgress, !closingWindowIDs.contains(id),
-            let window = snapshot.windows.first(where: { $0.id == id })
+    public func deleteSpace(_ id: UUID) async {
+        guard !shuttingDown, !closureInProgress, !closingSpaceIDs.contains(id),
+            let space = snapshot.spaces.first(where: { $0.id == id })
         else { return }
         closureInProgress = true
         defer { closureInProgress = false }
         let pastePaneID = pendingPaste?.target.paneID ?? pasteFocusPaneID
-        if pastePaneID.flatMap({ snapshot.panes[$0] }).flatMap({ snapshot.tabs[$0.tabID] })?.windowID == id { cancelPaste() }
-        closingWindowIDs.insert(id)
-        defer { closingWindowIDs.remove(id) }
-        let panes = Set(window.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] })
-        await closeResources(panes: panes, command: .deleteWindow(id: id))
-        if !snapshot.windows.contains(where: { $0.id == id }) { activity.removeValue(forKey: id) }
+        if pastePaneID.flatMap({ snapshot.panes[$0] }).flatMap({ snapshot.tabs[$0.tabID] })?.spaceID == id { cancelPaste() }
+        closingSpaceIDs.insert(id)
+        defer { closingSpaceIDs.remove(id) }
+        let panes = Set(space.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] })
+        await closeResources(panes: panes, command: .deleteSpace(id: id))
+        if !snapshot.spaces.contains(where: { $0.id == id }) { activity.removeValue(forKey: id) }
     }
 
     public func closeTab(_ id: UUID) async {
         guard !shuttingDown, !closureInProgress, let tab = snapshot.tabs[id], !closingTabIDs.contains(id),
-            !closingWindowIDs.contains(tab.windowID)
+            !closingSpaceIDs.contains(tab.spaceID)
         else { return }
         closureInProgress = true
         defer { closureInProgress = false }
@@ -1812,15 +1843,15 @@ public final class AppWorkspaceModel: ObservableObject {
         closingTabIDs.insert(id)
         defer { closingTabIDs.remove(id) }
         await closeResources(panes: Set(tab.root.paneIDs), command: .deleteTab(id: id))
-        if !snapshot.windows.contains(where: { $0.id == tab.windowID }) { activity.removeValue(forKey: tab.windowID) }
+        if !snapshot.spaces.contains(where: { $0.id == tab.spaceID }) { activity.removeValue(forKey: tab.spaceID) }
     }
 
     func prepareCloseSummary(_ panes: Set<UUID>) {
         closeSummary = panes.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
             guard terminals[id]?.isRunning == true, let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID],
-                let window = snapshot.windows.first(where: { $0.id == tab.windowID })
+                let space = snapshot.spaces.first(where: { $0.id == tab.spaceID })
             else { return nil }
-            return "\(window.name) / \(tab.title) / \(pane.title ?? "Terminal")"
+            return "\(space.name) / \(tab.title) / \(pane.title ?? "Terminal")"
         }
     }
 
@@ -1891,8 +1922,8 @@ public final class AppWorkspaceModel: ObservableObject {
         await waitForUpdates()
         let panes: Set<UUID>
         switch command {
-        case .deleteWindow(let id):
-            panes = Set(snapshot.windows.first(where: { $0.id == id })?.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] } ?? [])
+        case .deleteSpace(let id):
+            panes = Set(snapshot.spaces.first(where: { $0.id == id })?.tabIDs.flatMap { snapshot.tabs[$0]?.root.paneIDs ?? [] } ?? [])
         case .deleteTab(let id): panes = Set(snapshot.tabs[id]?.root.paneIDs ?? [])
         default: panes = initialPanes
         }
@@ -1959,7 +1990,7 @@ public final class AppWorkspaceModel: ObservableObject {
         let plan = TerminalPastePlan(input: input, shell: shell)
         let paneNumber = (presentation.selectedTab?.root.paneIDs.firstIndex(of: paneID) ?? 0) + 1
         let paneName = "Pane \(paneNumber) — \(presentation.activePane?.title ?? "Terminal")"
-        let name = [presentation.selectedWindow?.name, presentation.selectedTab?.title, paneName]
+        let name = [presentation.selectedSpace?.name, presentation.selectedTab?.title, paneName]
             .compactMap { $0 }.joined(separator: " / ")
         defer { pendingPaste = pasteReview.pending }
         do {
@@ -2014,7 +2045,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// MAC-04: with sessions kept (the default), closing the window only hides it; the app and its sessions go on.
     public var windowCloseAction: WindowCloseAction { keepsSessionsAtQuit ? .hide : .endSessions }
 
-    /// Closing the native window with Stop sessions when Trellis quits on (MAC-04) ends every session but keeps windows, tabs and splits as stopped panes,
+    /// Closing the native window with Stop sessions when Trellis quits on (MAC-04) ends every session but keeps spaces, tabs and splits as stopped panes,
     /// so a later Quit saves the layout instead of an empty workspace.
     @discardableResult
     public func endSessionsForWindowClose() async -> Bool {
@@ -2029,7 +2060,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public func closeAllWorkspaces() async -> Bool {
         guard await shutdown(endingRemoteSessions: true) else { return false }
         do {
-            publish(try await service.execute(.closeAllWindows).snapshot)
+            publish(try await service.execute(.closeAllSpaces).snapshot)
             terminals.removeAll()
             activity.removeAll()
             shuttingDown = false

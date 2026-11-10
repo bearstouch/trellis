@@ -314,10 +314,7 @@ struct ScratchpadPanel: View {
                     Text("." + document.language.fileExtension).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
                 }
                 if asTask {
-                    Picker("Group", selection: Binding(get: { current.group }, set: { saveDraft?.group = $0 })) {
-                        Text("None").tag(TaskGroup?.none)
-                        ForEach(TaskGroup.allCases, id: \.self) { Text($0.rawValue).tag(TaskGroup?.some($0)) }
-                    }.pickerStyle(.segmented)
+                    SegmentedPicker("Group", selection: current.group, options: [(nil, "None")] + TaskGroup.allCases.map { (Optional($0), $0.rawValue) }) { saveDraft?.group = $0 }
                 }
             }
             VStack(alignment: .leading, spacing: 5) {

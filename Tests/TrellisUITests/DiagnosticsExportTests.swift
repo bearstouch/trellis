@@ -9,7 +9,7 @@ final class DiagnosticsExportTests: XCTestCase {
     func testDiagnosticCancelCreatesNoExport() async throws {
         let h = try Harness()
         defer { h.model.terminals.values.forEach { $0.adapter.detach() }; h.discardPreferences() }
-        await h.model.createWindow(name: "SECRET-WINDOW", startSession: false)
+        await h.model.createSpace(name: "SECRET-SPACE", startSession: false)
         h.model.errorMessage = "Something failed for /Users/someone/private"
         let exporter = DiagnosticsExporter(model: h.model, hosts: h.hosts, grants: nil) { false }
         var presented: [String] = [], writes = 0
@@ -33,7 +33,7 @@ final class DiagnosticsExportTests: XCTestCase {
         XCTAssertEqual(writes, 1)
         let text = String(decoding: written, as: UTF8.self)
         XCTAssertEqual(text, presented[0], "What is saved is exactly what was previewed")
-        XCTAssertFalse(text.contains("SECRET-WINDOW"))
+        XCTAssertFalse(text.contains("SECRET-SPACE"))
         XCTAssertFalse(text.contains("/Users/someone"))
         XCTAssertTrue(text.contains("UI_ERROR"))
     }

@@ -5,6 +5,12 @@ import TrellisCore
 import TrellisTerminal
 @testable import TrellisUI
 
+@MainActor
+private final class TypedAgentNotifications: DesktopNotifier {
+    var posted: [DesktopNotification] = []
+    func post(_ notification: DesktopNotification) { posted.append(notification) }
+}
+
 /// A fake `zsh` reports what it was launched with, so no real dotfiles are read.
 final class ShellIntegrationUITests: XCTestCase {
     private var root: URL!
@@ -66,14 +72,14 @@ final class ShellIntegrationUITests: XCTestCase {
         let model = try await makeModel()
         defer { cleanUp(model) }
         XCTAssertTrue(model.shellIntegrationEnabled)
-        await model.createWindow(name: "On")
+        await model.createSpace(name: "On")
         let first = try XCTUnwrap(model.presentation.activePane?.id)
         let injected = try await output(model, first, containing: "PWD=")
         XCTAssertTrue(injected.contains("NONCE=set"), injected)
         XCTAssertTrue(injected.contains("ShellIntegration/zsh"), injected)
 
         model.setShellIntegrationEnabled(false)
-        await model.createWindow(name: "Off")
+        await model.createSpace(name: "Off")
         let second = try XCTUnwrap(model.presentation.activePane?.id)
         let plain = try await output(model, second, containing: "PWD=")
         XCTAssertTrue(plain.contains("ARGS=-l NONCE= ZDOTDIR=\n"), plain)
@@ -87,7 +93,7 @@ final class ShellIntegrationUITests: XCTestCase {
     func testCustomProcessesAndFixturesAreNeverInjected() async throws {
         let model = try await makeModel(enabled: true)
         defer { cleanUp(model) }
-        await model.createWindow(name: "Custom", startSession: false)
+        await model.createSpace(name: "Custom", startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         let fake = root.appendingPathComponent("bin/zsh").path
         _ = try await model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: fake, arguments: ["-i"], directory: "/tmp")))
@@ -104,7 +110,7 @@ final class ShellIntegrationUITests: XCTestCase {
         try FileManager.default.copyItem(at: root.appendingPathComponent("bin/zsh"), to: bash)
         let model = try await makeModel()
         defer { cleanUp(model) }
-        await model.createWindow(name: "Previous shell", startSession: false)
+        await model.createSpace(name: "Previous shell", startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         _ = try await model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: bash.path, arguments: ["-l"], directory: "/tmp")))
         await model.refresh()
@@ -118,7 +124,7 @@ final class ShellIntegrationUITests: XCTestCase {
     func testSplitsAndNewTabsStartInTheReportedDirectory() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
-        await model.createWindow(name: "Work")
+        await model.createSpace(name: "Work")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         _ = try await output(model, pane, containing: "ARGS=")
         let project = root.appendingPathComponent("project dir").path
@@ -153,7 +159,7 @@ final class ShellIntegrationUITests: XCTestCase {
     func testFileLinkContextUsesReportedDirectoryAndExcludesHosts() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
-        await model.createWindow(name: "Links")
+        await model.createSpace(name: "Links")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         let terminal = try XCTUnwrap(model.terminals[pane])
         XCTAssertNotNil(terminal.fileLinkContext(), "Local shells resolve absolute and home paths")
@@ -178,7 +184,7 @@ final class ShellIntegrationUITests: XCTestCase {
     func testAutomaticTitlesRespectRenamedTabs() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
-        await model.createWindow(name: "Titles")
+        await model.createSpace(name: "Titles")
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let pane = tab.activePaneID
         XCTAssertEqual(model.displayTitle(tab), "Terminal", "no claims without integration (INT-01)")
@@ -202,7 +208,7 @@ final class ShellIntegrationUITests: XCTestCase {
     /// Waits for the session to run: `tabAgent` only considers running panes.
     @MainActor
     private func makeShellPane(_ model: AppWorkspaceModel) async throws -> UUID {
-        await model.createWindow(name: "Typed agent")
+        await model.createSpace(name: "Typed agent")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         _ = try await output(model, pane, containing: "ARGS=")
         try emit(model, pane, .promptStart(directory: root.appendingPathComponent("project dir").path))
@@ -221,7 +227,7 @@ final class ShellIntegrationUITests: XCTestCase {
         try emit(model, pane, .commandStart(commandLine: "claude --continue"))
         XCTAssertEqual(model.detectedAgent(paneID: pane)?.id, "trellis-claude-code")
         XCTAssertEqual(model.tabAgent(tabID: tab.id)?.id, "trellis-claude-code")
-        XCTAssertEqual(model.tabPreviews(windowID: tab.windowID).first?.agent?.id, "trellis-claude-code", "the hover card shows it too")
+        XCTAssertEqual(model.tabPreviews(spaceID: tab.spaceID).first?.agent?.id, "trellis-claude-code", "the hover card shows it too")
         XCTAssertEqual(model.paneTitle(pane), "Claude Code · project dir")
         XCTAssertEqual(model.displayTitle(try XCTUnwrap(model.presentation.selectedTab)), "Claude Code · project dir")
 
@@ -281,6 +287,129 @@ final class ShellIntegrationUITests: XCTestCase {
         XCTAssertNil(model.agentBadge(tabID: tab.id))
     }
 
+    // MARK: FR-AG18
+
+    @MainActor
+    func testATypedAgentsOwnHooksDriveItsStateAndItIsListedWhileItRuns() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        let tab = try XCTUnwrap(model.presentation.selectedTab)
+        let session = try XCTUnwrap(model.terminals[pane]?.sessionID)
+        XCTAssertTrue(model.agentSessionRows.isEmpty)
+
+        model.receiveAgentEvent(sessionID: session, event: "working")
+        XCTAssertNil(model.agentStates[pane], "an event while no typed agent runs changes nothing")
+
+        try emit(model, pane, .commandStart(commandLine: "claude"))
+        var row = try XCTUnwrap(model.agentSessionRows.first)
+        XCTAssertEqual(model.agentSessionRows.count, 1)
+        XCTAssertEqual(row.id, pane)
+        XCTAssertEqual(row.agent.id, "trellis-claude-code")
+        XCTAssertTrue(row.typed)
+        XCTAssertNil(row.state)
+        XCTAssertEqual(row.status, "Running", "without hooks it claims no state")
+        model.applyAgentSignal(.attention, paneID: pane)
+        XCTAssertNil(model.agentStates[pane], "a bell before any hook still sets nothing")
+
+        model.receiveAgentEvent(sessionID: session, event: "working")
+        XCTAssertEqual(model.agentBadge(tabID: tab.id)?.state, .working)
+        row = try XCTUnwrap(model.agentSessionRows.first)
+        XCTAssertEqual(row.state, .working)
+        XCTAssertEqual(row.status, "Working")
+        model.applyAgentSignal(.attention, paneID: pane)
+        XCTAssertEqual(model.agentStates[pane]?.state, .needsInput, "once hooked, the terminal's signals apply as for a launched agent")
+        XCTAssertEqual(model.agentsNeedingYouCount, 1)
+        XCTAssertNil(model.agentDefinition(paneID: pane), "still a shell pane: no Start, Resume or installer")
+        XCTAssertNil(model.agentLaunch(paneID: pane))
+
+        try emit(model, pane, .commandFinished(exitCode: 0))
+        XCTAssertNil(model.agentStates[pane], "the state ends with the command")
+        XCTAssertNil(model.agentBadge(tabID: tab.id))
+        XCTAssertTrue(model.agentSessionRows.isEmpty)
+        model.receiveAgentEvent(sessionID: session, event: "done")
+        XCTAssertNil(model.agentStates[pane], "a late hook after the command ended changes nothing")
+
+        // A new command never inherits the last one's state, even when the finish mark was lost.
+        try emit(model, pane, .commandStart(commandLine: "codex"))
+        model.receiveAgentEvent(sessionID: session, event: "needs-input")
+        XCTAssertEqual(model.agentBadge(tabID: tab.id)?.agent.id, "trellis-codex")
+        try emit(model, pane, .commandStart(commandLine: "codex"))
+        XCTAssertNil(model.agentStates[pane])
+    }
+
+    @MainActor
+    func testATypedAgentNotifiesWhenItNeedsYouOutOfView() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let notifier = TypedAgentNotifications()
+        model.desktopNotifier = notifier
+        model.workspaceIsFrontmost = { false }
+        let pane = try await makeShellPane(model)
+        let session = try XCTUnwrap(model.terminals[pane]?.sessionID)
+        try emit(model, pane, .commandStart(commandLine: "claude"))
+        model.receiveAgentEvent(sessionID: session, event: "needs-input")
+        XCTAssertEqual(notifier.posted.map(\.title), ["Claude Code needs you"])
+    }
+
+    @MainActor
+    func testALocalShellGetsTheTypedAgentChannelOnlyWhileTheSettingIsOn() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let broker = FakeSessionBroker()
+        broker.hookHelperPath = "/App/Helpers/trellis-broker"
+        broker.agentSocketPath = "/tmp/broker/agent.sock"
+        model.sessionBroker = broker
+        XCTAssertTrue(model.typedAgentWiringEnabled, "on by default")
+
+        func environment() async throws -> [String: String] {
+            let session = try XCTUnwrap(model.presentation.activePane.flatMap { model.terminals[$0.id]?.sessionID })
+            let deadline = Date().addingTimeInterval(5)
+            while broker.transports[session]?.configuration == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+            return try XCTUnwrap(broker.transports[session]?.configuration?.environment)
+        }
+
+        await model.createSpace(name: "Wired")
+        let wired = try await environment()
+        XCTAssertEqual(wired["TRELLIS_AGENT_SOCKET"], "/tmp/broker/agent.sock", "the broker holds the session, so it maps the nonce")
+        XCTAssertEqual(wired["TRELLIS_AGENT_NONCE"]?.count, 32)
+        XCTAssertTrue(model.agentHookNonces.isEmpty)
+        let records = try XCTUnwrap(wired[ShellIntegrationInjection.agentWiringVariable]).split(separator: "\n").map { $0.split(separator: "\t").map(String.init) }
+        let byName = Dictionary(uniqueKeysWithValues: records.map { ($0[0], Array($0.dropFirst())) })
+        XCTAssertEqual(Set(byName.keys), ["claude", "codex", "pi"])
+        XCTAssertEqual(byName["claude"]?.prefix(2), ["0", "--settings"])
+        XCTAssertTrue(byName["claude"]?[2].contains("/App/Helpers/trellis-broker agent-hook working") == true)
+        XCTAssertEqual(byName["pi"]?.prefix(3), ["1", "TRELLIS_AGENT_HOOK=/App/Helpers/trellis-broker", "-e"])
+        XCTAssertEqual(byName["codex"]?.prefix(2), ["0", "-c"])
+
+        model.typedAgentWiringEnabled = false
+        await model.createSpace(name: "Plain")
+        let plain = try await environment()
+        XCTAssertNotNil(plain["TRELLIS_SHELL_INTEGRATION_NONCE"], "shell integration itself is unaffected")
+        XCTAssertTrue(plain.keys.filter { $0.hasPrefix("TRELLIS_AGENT") }.isEmpty, "\(plain.keys.sorted())")
+    }
+
+    @MainActor
+    func testAShellOutsideTheBrokerUsesTheAppsSocketAndDropsItsNonceWhenItEnds() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model); model.stopAgentHooks() }
+        let broker = FakeSessionBroker()
+        broker.ready = false
+        broker.hookHelperPath = "/App/Helpers/trellis-broker"
+        model.sessionBroker = broker
+        model.typedAgentWiringEnabled = true
+        await model.createSpace(name: "Local")
+        let pane = try XCTUnwrap(model.presentation.activePane?.id)
+        _ = try await output(model, pane, containing: "ARGS=")
+        let session = try XCTUnwrap(model.terminals[pane]?.sessionID)
+        XCTAssertEqual(Array(model.agentHookNonces.values), [session])
+
+        model.terminals[pane]?.requestTermination(force: true)
+        let deadline = Date().addingTimeInterval(5)
+        while ![.exited, .failed].contains(model.terminals[pane]?.sessionState), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(model.agentHookNonces.isEmpty)
+    }
+
     @MainActor
     func testATypedAgentInTheHomeFolderIsTitledWithATilde() async throws {
         let model = try await makeModel()
@@ -306,7 +435,7 @@ final class ShellIntegrationUITests: XCTestCase {
     func testFailedCommandIsAnnouncedAndClearsOnTheNextCommand() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
-        await model.createWindow(name: "Status")
+        await model.createSpace(name: "Status")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         _ = try await output(model, pane, containing: "ARGS=")
         try emit(model, pane, .promptStart(directory: "/tmp"), .commandStart(commandLine: "false"), .commandFinished(exitCode: 1))
@@ -322,7 +451,7 @@ final class ShellIntegrationUITests: XCTestCase {
     func testShellStateIsDroppedWhenTheSessionEndsOrThePaneCloses() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }
-        await model.createWindow(name: "Lifecycle")
+        await model.createSpace(name: "Lifecycle")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         _ = try await output(model, pane, containing: "ARGS=")
         try emit(model, pane, .promptStart(directory: "/tmp"))
@@ -344,7 +473,7 @@ final class ShellIntegrationUITests: XCTestCase {
         let state = root.appendingPathComponent("state")
         let model = try await makeModel(persistence: WorkspacePersistence(directory: state))
         defer { cleanUp(model) }
-        await model.createWindow(name: "Resume")
+        await model.createSpace(name: "Resume")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         _ = try await output(model, pane, containing: "ARGS=")
         let project = root.appendingPathComponent("project dir").path
@@ -396,7 +525,7 @@ final class ShellIntegrationUITests: XCTestCase {
         let state = root.appendingPathComponent("state")
         let model = try await makeModel(persistence: WorkspacePersistence(directory: state))
         defer { cleanUp(model) }
-        await model.createWindow(name: "Restart")
+        await model.createSpace(name: "Restart")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         _ = try await output(model, pane, containing: "ARGS=")
         try emit(model, pane, .promptStart(directory: root.appendingPathComponent("project dir").path))

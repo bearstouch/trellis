@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "windows": [
+  "version": 2,
+  "spaces": [
     {
       "key": "project",
       "name": "Project",

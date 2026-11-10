@@ -6,6 +6,12 @@ import TrellisTerminal
 
 /// Agents end to end on this Mac (FR-AG04–FR-AG12). The login shell is a stand-in that runs its `-c` line with /bin/sh,
 /// so no user startup file is read; the agents are small scripts.
+@MainActor
+private final class AgentNotifications: DesktopNotifier {
+    var posted: [DesktopNotification] = []
+    func post(_ notification: DesktopNotification) { posted.append(notification) }
+}
+
 final class AgentLaunchFlowTests: XCTestCase {
     private var scratch: URL!
     private var project: String!
@@ -46,7 +52,7 @@ final class AgentLaunchFlowTests: XCTestCase {
         let saved = await model.saveLaunchSettings(shell: shell, directory: project)
         XCTAssertTrue(saved)
         model.agentCatalog = AgentCatalogSnapshot(definitions: [fake, missing])
-        _ = await model.createWindow(name: "W")
+        _ = await model.createSpace(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         return (model, pane)
@@ -120,7 +126,7 @@ final class AgentLaunchFlowTests: XCTestCase {
         await model.selectTab(firstTab)
         model.receiveAgentEvent(sessionID: session, event: "done")
         XCTAssertEqual(model.agentBadge(tabID: tab)?.state, .done, "Finished out of view: Done shows")
-        XCTAssertEqual(model.tabPreviews(windowID: try XCTUnwrap(model.snapshot.activeWindowID)).first { $0.id == tab }?.agentState, .done)
+        XCTAssertEqual(model.tabPreviews(spaceID: try XCTUnwrap(model.snapshot.activeSpaceID)).first { $0.id == tab }?.agentState, .done)
         await model.selectTab(tab)
         XCTAssertNil(model.agentBadge(tabID: tab), "Seeing it clears Done")
 
@@ -128,6 +134,31 @@ final class AgentLaunchFlowTests: XCTestCase {
         XCTAssertEqual(model.agentStates[pane]?.state, .done, "A bell after a finished turn isn't a question")
         model.receiveAgentEvent(sessionID: session, event: "needs-input")
         XCTAssertEqual(model.agentBadge(tabID: tab)?.state, .needsInput)
+    }
+
+    @MainActor
+    func testAgentNotificationsNameTheSpaceAndTab() async throws {
+        let (model, source) = try await makeModel()
+        defer { cleanUp(model) }
+        let notifier = AgentNotifications()
+        model.desktopNotifier = notifier
+        let firstTab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        await model.launchAgent("fake", from: source)
+        let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
+        let pane = try XCTUnwrap(model.snapshot.tabs[tab]?.activePaneID)
+        try await waitFor { self.text(model, pane).contains("FAKE-AGENT-UP") }
+        let session = try XCTUnwrap(model.terminals[pane]?.sessionID)
+        await model.renameTab(tab, title: "Review")
+        await model.selectTab(firstTab)
+        model.receiveAgentEvent(sessionID: session, event: "needs-input")
+        model.receiveAgentEvent(sessionID: session, event: "working")
+        model.receiveAgentEvent(sessionID: session, event: "done")
+        XCTAssertEqual(
+            notifier.posted,
+            [
+                DesktopNotification(paneID: pane, title: "Fake needs you", subtitle: "W › Review", body: "Waiting for your input"),
+                DesktopNotification(paneID: pane, title: "Fake finished", subtitle: "W › Review", body: "Finished its turn")
+            ])
     }
 
     @MainActor

@@ -17,8 +17,12 @@ final class FakeBrokerTransport: TerminalProcessTransport {
     var survivesQuit: Bool { true }
     let pid: Int32
     var signals: [Int32] = [], keepAlive: [Bool] = [], launched = 0
+    var configuration: ValidatedLocalLaunch?
     init(pid: Int32, running: Bool = false) { self.pid = pid; isRunning = running }
-    func launch(_ configuration: ValidatedLocalLaunch, size: TerminalSize) async throws -> Int32 { launched += 1; isRunning = true; return pid }
+    func launch(_ configuration: ValidatedLocalLaunch, size: TerminalSize) async throws -> Int32 {
+        launched += 1; isRunning = true; self.configuration = configuration
+        return pid
+    }
     func send(_ data: Data) throws {}
     func resize(_ size: TerminalSize) {}
     func signalGroup(_ signal: Int32) {
@@ -38,6 +42,8 @@ final class FakeSessionBroker: SessionBrokerClient {
     var adoptions: [UUID: BrokerAdoption] = [:]
     var transports: [UUID: FakeBrokerTransport] = [:]
     var released: [UUID] = [], hungUp: [UUID] = []
+    /// Agent hooks (FR-AG08): nil keeps every session unwired, as before.
+    var hookHelperPath: String?, agentSocketPath: String?
     private var nextPID: Int32 = 61_000
     func prepare() async -> Bool { prepared += 1; return ready }
     func makeTransport(sessionID: UUID) -> (any TerminalProcessTransport)? {
@@ -90,8 +96,8 @@ final class SessionKeepAliveTests: XCTestCase {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
         XCTAssertTrue(model.keepSessionsRunning, "On by default (FR-R07)")
-        XCTAssertEqual(model.windowCloseAction, .hide, "Closing the window only hides it")
-        await model.createWindow()
+        XCTAssertEqual(model.windowCloseAction, .hide, "Closing the space only hides it")
+        await model.createSpace()
         await model.waitForUpdates()
         let terminal = try XCTUnwrap(model.activeTerminal)
         XCTAssertEqual(broker.prepared, 1)
@@ -104,7 +110,7 @@ final class SessionKeepAliveTests: XCTestCase {
         let model = try makeModel(broker: broker)
         model.setKeepSessionsRunning(false)
         XCTAssertEqual(model.windowCloseAction, .endSessions)
-        await model.createWindow()
+        await model.createSpace()
         await model.waitForUpdates()
         let terminal = try XCTUnwrap(model.activeTerminal)
         XCTAssertTrue(terminal.survivesQuit, "A crash or force quit still never ends the session")
@@ -122,7 +128,7 @@ final class SessionKeepAliveTests: XCTestCase {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
         model.endSessionsAtQuitForThisLaunch = true
-        await model.createWindow()
+        await model.createSpace()
         await model.waitForUpdates()
         XCTAssertTrue(try XCTUnwrap(model.activeTerminal).survivesQuit, "Still in the broker, so a crash keeps it")
         XCTAssertTrue(model.keepSessionsRunning, "The saved setting is untouched")
@@ -137,7 +143,7 @@ final class SessionKeepAliveTests: XCTestCase {
     func testQuittingAsksOnlyWhenASessionWouldStop() async throws {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
-        await model.createWindow()
+        await model.createSpace()
         await model.waitForUpdates()
         // A session the broker couldn't take is an ordinary PTY and would end at quit.
         broker.ready = false
@@ -161,7 +167,7 @@ final class SessionKeepAliveTests: XCTestCase {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
         model.setKeepSessionsRunning(true)
-        await model.createWindow()
+        await model.createSpace()
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.terminals[pane.id])
         let transport = try XCTUnwrap(broker.transports[pane.sessionID])
@@ -192,7 +198,7 @@ final class SessionKeepAliveTests: XCTestCase {
         let broker = FakeSessionBroker()
         let model = try makeModel(broker: broker)
         model.setKeepSessionsRunning(false)
-        await model.createWindow()
+        await model.createSpace()
         await model.waitForUpdates()
         let pane = try XCTUnwrap(model.presentation.activePane)
         let transport = try XCTUnwrap(broker.transports[pane.sessionID])
@@ -211,7 +217,7 @@ final class SessionKeepAliveTests: XCTestCase {
         broker.ready = false
         let model = try makeModel(broker: broker)
         model.setKeepSessionsRunning(true)
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.terminals[pane.id])
         _ = await model.saveLaunchSettings(shell: "/bin/sh", directory: NSTemporaryDirectory())
@@ -229,7 +235,7 @@ final class SessionKeepAliveTests: XCTestCase {
         cleanup.append { try? FileManager.default.removeItem(at: directory) }
         let first = try makeModel(directory: directory, broker: nil)
         _ = await first.loadWorkspace()
-        await first.createWindow(startSession: false)
+        await first.createSpace(startSession: false)
         let left = try XCTUnwrap(first.presentation.activePane?.id)
         let split = await first.splitPane(left, axis: .x, startSession: false)
         let right = try XCTUnwrap(split)
@@ -309,7 +315,7 @@ final class SessionKeepAliveTests: XCTestCase {
         // Only with Stop sessions when Trellis quits on; by default the window just hides (MAC-04).
         model.setKeepSessionsRunning(false)
         XCTAssertEqual(model.windowCloseAction, .endSessions)
-        await model.createWindow()
+        await model.createSpace()
         await model.waitForUpdates()
         let pane = try XCTUnwrap(model.presentation.activePane)
         let transport = try XCTUnwrap(broker.transports[pane.sessionID])
@@ -318,7 +324,7 @@ final class SessionKeepAliveTests: XCTestCase {
         let closed = await model.endSessionsForWindowClose()
         XCTAssertTrue(closed)
         XCTAssertEqual(transport.signals.first, SIGHUP)
-        XCTAssertEqual(model.snapshot.windows.count, 1, "Closing the window keeps the layout (MAC-04)")
+        XCTAssertEqual(model.snapshot.spaces.count, 1, "Closing the space keeps the layout (MAC-04)")
         XCTAssertTrue(model.runningTerminals.isEmpty)
     }
 }

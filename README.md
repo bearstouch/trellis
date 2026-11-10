@@ -2,23 +2,23 @@
 
 [![CI](https://github.com/bearstouch/trellis/actions/workflows/ci.yml/badge.svg)](https://github.com/bearstouch/trellis/actions/workflows/ci.yml)
 
-A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), themed terminal panes in bundled JetBrains Mono, a sidebar of managed windows, renameable tabs per window, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
+A native Swift terminal for macOS. "Native calm" chrome (dark by default, or light or following macOS), themed terminal panes in bundled JetBrains Mono, a sidebar of spaces (one per project, plus temporary tabs), renameable tabs per space, and nested splits, plus saved SSH hosts and a local automation API with a `trellis` CLI.
 
-![Trellis with managed windows in the sidebar, color-labeled tabs and a terminal session](docs/images/trellis-workspace.png)
+![Trellis with spaces in the sidebar, color-labeled tabs and a terminal session](docs/images/trellis-workspace.png)
 
 ## Features
 
-- **Workspace:** managed windows in a sidebar, renameable color-labeled tabs and nested splits, with busy and input indicators and desktop notifications. Sessions can optionally keep running after quit.
+- **Workspace:** spaces in a sidebar, each usually a loaded project, renameable color-labeled tabs and nested splits, with busy and input indicators and desktop notifications. Sessions can optionally keep running after quit.
 - **Terminal:** built on a vendored [SwiftTerm](ThirdParty/SwiftTerm/PATCHES.md), with search, safe paste review, links, ligatures, inline images and an optional Metal renderer.
 - **Shell integration:** zsh, bash and fish report their directory and exit status with no dotfile edits; jump between prompts with ⌘↑/⌘↓.
 - **Themes:** 10 editor-inspired families plus a JSON theme library, with separate light and dark slots and live preview, and an optional translucent, blurred pane background.
 - **SSH hosts:** a saved host library and `~/.ssh/config` discovery, using `/usr/bin/ssh` and optional Keychain-stored passwords.
-- **Remote workspaces (preview):** open a saved Linux or macOS host as a sidebar window whose sessions run under a small Trellis helper on the host. They keep running when you quit or lose the connection, reconnect on their own, and splits open where you are on the host; tasks work there too. See [Remote workspaces](docs/features/remote-workspaces.md).
+- **Remote workspaces (preview):** open a saved Linux or macOS host as a sidebar space whose sessions run under a small Trellis helper on the host. They keep running when you quit or lose the connection, reconnect on their own, and splits open where you are on the host; tasks work there too. See [Remote workspaces](docs/features/remote-workspaces.md).
 - **Projects and tasks:** define projects (tabs, splits, commands and git repositories) in the **Projects** library and launch them on this Mac or a saved host, cloning what's missing; run `.trellis/launch.json` tasks from a pane header.
 - **Coding agents (preview):** the right sidebar's **Agents** view opens Claude Code, pi or Codex in a new tab (or beside the focused pane) and lists every running agent, on this Mac or a remote workspace's host. The tab shows the agent's icon and whether it's working, needs you or is done, from the agent's own hooks. A missing agent offers its vendor's installer, and you can add your own agents as JSON. See [Coding agents](docs/features/agents.md).
 - **Files:** the right sidebar's **Files** view (⌥⌘F) shows the focused pane's project as a searchable tree; open a file in Finder or your editor, or copy or insert its path. See [Files](docs/features/files.md).
 - **Changes:** the right sidebar's **Changes** view (⌥⌘G) lists the focused pane's uncommitted git changes as a tree with lines added and removed; review a file's diff in a Review tab and stage or unstage it. See [Changes](docs/features/changes.md).
-- **Command palette:** ⇧⌘P opens one searchable list of every action, window, tab, pane, saved host, task and theme.
+- **Command palette:** ⇧⌘P opens one searchable list of every action, space, tab, pane, saved host, task and theme.
 - **Directory jump:** ⌘J lists the directories your shells have recently and frequently been in, on this Mac and in remote workspaces. Return goes there in the current pane, or in a new tab if it's busy.
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
 - **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
@@ -26,7 +26,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Updates:** **Trellis → Check for Updates…** installs signed updates in place. Automatic checks and beta versions are opt-in.
 - **Privacy:** no telemetry; terminal output and typed input are never logged. The only network request Trellis makes by itself is the update check you start or turn on.
 
-See the [feature docs](docs/features/workspace.md) for the full behavior.
+New to Trellis? Read the [user guide](website/docs/index.html). The [feature docs](docs/features/workspace.md) are the full behavior contract.
 
 ## Quick start
 
@@ -102,7 +102,7 @@ An ordinary new workspace starts a login shell. Use Quit to close live sessions 
 3. Call the CLI:
 
    ```sh
-   swift run trellis-cli window list --token-stdin --json < .build/token.txt
+   swift run trellis-cli space list --token-stdin --json < .build/token.txt
    swift run trellis-cli                      # prints the available nouns
    ```
 

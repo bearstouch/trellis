@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifications · Trellis Docs</title>
+<meta name="description" content="Busy bars, input labels, progress, bells and desktop notifications that tell you which pane needs a look.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/notifications.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Notifications</h1>
+<p class="lead">Trellis shows on each tab what its panes are doing, so you can leave work running and see at a glance which one needs you. When you're looking elsewhere, it can post a desktop notification too.</p>
+
+<h2 id="busy">Busy bar</h2>
+<p>A tab's top edge fills and empties while any of its panes is printing output, whether the tab is selected or not. It stops shortly after the output goes quiet. Hover it to see "Printing output".</p>
+<ul>
+<li>Typing echo doesn't count, and with <a href="shell-integration.html">shell integration</a> neither does output at the prompt.</li>
+<li>Without integration (for example over SSH), programs that redraw on a timer, such as <code>top</code> or <code>watch</code>, keep the bar on.</li>
+<li>With Reduce Motion on, the bar is static.</li>
+</ul>
+
+<h2 id="input">Waiting for input</h2>
+<p>A tab gets an <strong>Input</strong> label when a program in it is waiting for you:</p>
+<ul>
+<li><strong>Password prompts</strong> (<code>sudo</code>, <code>ssh</code>, <code>read -s</code>) label the tab for as long as they last, even when it's selected. The pane header says <strong>Password</strong>.</li>
+<li><strong>Bells and notifications</strong> from a program label the tab only when you aren't looking at that pane.</li>
+</ul>
+<p>The label clears when you show and focus the pane, at the shell's next prompt, or when the session ends. Spaces with a waiting pane show a keyboard symbol in the sidebar. Bells at your own prompt, such as a Tab-completion beep, never label a tab.</p>
+
+<h2 id="progress">Progress</h2>
+<p>Programs that report progress (the Windows Terminal / ConEmu progress sequence) fill the tab's top edge to the percentage. The tab and pane header say it in words too: "50%", "Paused 50%", "Error" or "Working". An error fills red and a pause orange. Progress clears when the program removes it, after 15 seconds without an update, or at the next prompt.</p>
+
+<h2 id="exit-status">Exit status</h2>
+<p>With shell integration, a failing command shows a failure symbol with its code, such as "Exit 1", on the tab and pane. It clears when the next command starts. A session that ends shows its exit code in the pane.</p>
+<p>Coding agents show their own states, such as <strong>Needs you</strong> and <strong>Done</strong>, in place of these labels. See <a href="agents.html">Coding agents</a>.</p>
+
+<h2 id="desktop">Desktop notifications</h2>
+<p>Trellis posts a macOS notification when a program asks for one (iTerm2, rxvt-unicode and kitty notification sequences), but only when you aren't looking at the pane: Trellis isn't in front, or the pane isn't the focused pane of the selected tab.</p>
+<ul>
+<li>The subtitle says where it came from: <strong>Space › Tab</strong>, followed by the program or agent name when the title doesn't already say it. Command lines and arguments are never shown.</li>
+<li>Click a notification to bring Trellis forward on that space, tab and pane.</li>
+<li>Each pane can post at most 5 notifications every 10 seconds.</li>
+</ul>
+<p>macOS asks for permission the first time. Turn notifications off in <strong>Settings → Sessions → Desktop notifications</strong>; tabs still get their <strong>Input</strong> label.</p>
+<p>Try it: run this, then switch to another app.</p>
+<pre><code>sleep 3; printf '\e]9;Build done\a'</code></pre>
+
+<h3 id="command-finished">When a long command finishes</h3>
+<p>With shell integration, a command that runs for a while and finishes out of view posts "Command finished", or "Command failed (exit N)", with the program name and how long it ran, for example "make ran for 12 s". Set the threshold in <strong>Settings → Sessions → Notify when a command finishes</strong>: Off, 5, 10 (the default), 30 or 60 seconds. It's unavailable while desktop notifications are off.</p>
+
+<h3 id="agents">Coding agents</h3>
+<p>With <strong>Settings → Agents → Notify me when an agent needs me or finishes while its pane is out of view</strong> on, an agent that needs you or finishes its turn out of view posts a notification too.</p>
+
+<h2 id="bell">Bell</h2>
+<p><strong>Settings → Appearance → Bell</strong> sets what a bell does in a pane: <strong>Sound</strong> (the default), <strong>Visual flash</strong>, <strong>Sound and flash</strong> or <strong>Off</strong>. Whatever you choose, a bell in a pane you aren't looking at still labels its tab.</p>
+
+<div class="callout note"><p class="callout-title">Note</p><p>Every status is shown with words or symbols as well as color, and VoiceOver reads it with the tab.</p></div>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

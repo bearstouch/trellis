@@ -8,7 +8,7 @@ public enum WelcomeTourStep: Int, CaseIterable, Sendable {
     public var title: String {
         switch self {
         case .welcome: "Welcome to Trellis"
-        case .workspace: "Windows, tabs and splits"
+        case .workspace: "Spaces, tabs and splits"
         case .sessions: "Sessions keep running"
         case .projects: "Start a project in one step"
         case .remote: "Remote work that holds on"

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal · Trellis Docs</title>
+<meta name="description" content="Search, copy and paste, safe paste review, links, fonts, ligatures and inline images in Trellis terminal panes.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/terminal.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Terminal</h1>
+<p class="lead">Each pane is a full terminal running your login shell. It handles vim, less, top, colors, mouse reporting and Unicode, and it treats everything a program prints as untrusted.</p>
+
+<h2 id="sessions">Sessions</h2>
+<p>A pane runs your default login shell with real job control: <kbd>⌃C</kbd> interrupts, <kbd>⌃D</kbd> ends input, and resizing works as you'd expect. Pick the shell in <strong>Settings → Sessions → Shell</strong>.</p>
+<p>When a program exits, the pane stays open and shows its exit code. Press <strong>Restart</strong> to start a fresh session in the same pane.</p>
+
+<h2 id="copy-paste">Copy and paste</h2>
+<ul>
+<li><kbd>⌘C</kbd> copies the selection. With nothing selected it does nothing; it never sends an interrupt. <kbd>⌃C</kbd> is still the terminal interrupt.</li>
+<li><kbd>⌘V</kbd> pastes into the focused pane only.</li>
+<li><strong>Edit → Copy All Retained Text</strong> copies the pane's whole history as plain text. Copied text never contains escape sequences.</li>
+<li>Double-click selects a whole token: a URL, email address, file path (with an optional <code>:line:column</code>), UUID, IP address, git hash, or a quoted string when you click its quote. Triple-click selects the line.</li>
+</ul>
+
+<h3 id="paste-review">Paste review</h3>
+<p>Pasting more than one line, or text with control characters, opens a review first. It shows the line count, any invisible characters and the target pane. <strong>Cancel</strong> sends nothing. A paste never adds a newline that wasn't in the clipboard.</p>
+<p>When your shell supports bracketed paste, Trellis uses it and strips any paste markers hidden in the text, so a paste can't end early and run the rest as commands.</p>
+
+<h3 id="paths">Paste and drop file paths</h3>
+<ul>
+<li><strong>Edit → Paste Escaped Path</strong> pastes a copied file path, escaped for your shell.</li>
+<li>Drag files from Finder onto a pane to insert their paths, in drag order, separated by spaces. The same escaping and review apply. Nothing is run, opened or uploaded.</li>
+</ul>
+
+<h2 id="clear">Clear</h2>
+<p><strong>Edit → Clear</strong> (<kbd>⌘K</kbd>, also in the pane's context menu) drops the scrollback and everything above the cursor line, like Terminal's <kbd>⌘K</kbd>. Your prompt and anything you've typed stay. Nothing is sent to the program.</p>
+
+<h2 id="search">Scrollback and search</h2>
+<p>Each pane keeps 10,000 lines of scrollback by default (up to a 16 MiB cap); change it in <strong>Settings → Sessions</strong>. The oldest lines go first.</p>
+<ol class="steps">
+<li>Press <kbd>⌘F</kbd> to open the find bar in the focused pane.</li>
+<li>Type your search. Trellis shows the current match.</li>
+<li>Press <kbd>⌘G</kbd> for the next match and <kbd>⇧⌘G</kbd> for the previous one.</li>
+</ol>
+<p>Search tells you when older output it could have matched has already been dropped. Full-screen programs (vim, less, top) and the shell's history are searched separately.</p>
+<p>With <a href="shell-integration.html">shell integration</a>, <kbd>⌘↑</kbd> and <kbd>⌘↓</kbd> jump between prompts.</p>
+
+<h2 id="links">Links</h2>
+<p>Hold <kbd>⌘</kbd> and hover to underline a link; <kbd>⌘</kbd>-click opens it. Links come from programs that print hyperlinks (<code>ls --hyperlink</code>, compilers, <code>rg</code>) or are detected in plain text.</p>
+<ul>
+<li>Web and mail links open in your default browser or mail app.</li>
+<li>Local file paths open in the file's default app. A <code>:line:column</code> suffix is ignored.</li>
+<li>Apps, scripts, installers, disk images and anything executable are shown in Finder instead of opened.</li>
+<li>Right-click a link or path for <strong>Open Link</strong> / <strong>Copy Link</strong>, or <strong>Open</strong> / <strong>Show in Finder</strong> / <strong>Copy Path</strong>. This also works on selected text that names a file.</li>
+</ul>
+<p>Output alone never opens anything. Relative paths open only in local panes whose shell reports its folder, and panes connected over SSH never open file paths.</p>
+
+<h2 id="fonts">Fonts and text</h2>
+<p>JetBrains Mono is the default font. Roboto Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled too. Pick one in <strong>Settings → Appearance</strong>, where you also set:</p>
+<ul>
+<li><strong>Ligatures</strong> (on by default): draws <code>-&gt;</code>, <code>!=</code> and similar as joined glyphs in fonts that have them.</li>
+<li><strong>Bold as bright colors</strong>, <strong>Use bold fonts</strong>, <strong>Use italic fonts</strong> and <strong>Allow blinking text</strong>. Blinking stops while Reduce Motion is on.</li>
+<li><strong>Cursor</strong> shape and <strong>Blink cursor</strong>.</li>
+<li><strong>Bell</strong>: see <a href="notifications.html#bell">Notifications</a>.</li>
+</ul>
+<p>Use <kbd>⌘+</kbd>, <kbd>⌘-</kbd> and <kbd>⌘0</kbd> to zoom in, zoom out and return to actual size. Emoji, flags, combining marks and CJK text keep stable widths, so columns line up.</p>
+
+<h2 id="gpu">GPU rendering</h2>
+<p>Turn on <strong>Settings → Sessions → GPU rendering (Metal)</strong> to draw panes on the GPU. It's off by default. Text looks the same either way; heavy output is faster with Metal, at about 5 MiB of extra memory per pane. If Metal fails, the pane falls back to CPU drawing without losing content.</p>
+
+<h2 id="images">Inline images</h2>
+<p>Programs that use iTerm2's inline image protocol, such as <code>imgcat</code>, <code>yazi</code>, <code>timg</code> and <code>chafa -f iterm</code>, can show images in a pane. Images scroll with the text and stay in scrollback.</p>
+<ul>
+<li>PNG, JPEG, GIF (first frame), BMP, TIFF, WebP and HEIC are supported. PDF and SVG aren't.</li>
+<li>Very large images are refused or shrunk to fit. Image data never downloads or writes a file.</li>
+</ul>
+
+<h2 id="untrusted-output">Output is untrusted</h2>
+<p>Anything can write to a terminal, so Trellis doesn't let output act for you:</p>
+<ul>
+<li>Programs can't read or write your clipboard (OSC 52 is off).</li>
+<li>Links open only on a <kbd>⌘</kbd>-click or a menu choice, and never launch code.</li>
+<li>Nothing printed can change permissions, including text that looks like instructions to an agent.</li>
+</ul>
+<p>Terminal output and what you type are never logged.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

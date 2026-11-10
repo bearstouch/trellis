@@ -36,14 +36,14 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P1 | Richer SSH host import | [SSH hosts](../features/ssh-hosts.md) |
 | P1 | Keychain-enforced Touch ID for saved host passwords (`SecAccessControl` with a keychain-access-group entitlement, Developer ID builds) | `FR-H07`, [Saved passwords](../features/ssh-hosts.md#saved-passwords) |
 | P1 | Clipboard API (`clipboard.read`/`clipboard.write` are reserved) | [Authorization](../api/authorization.md#capabilities) |
-| P1 | Per-window, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
+| P1 | Per-space, per-tab and per-host theme overrides | [Themes](../features/themes.md#installation-and-persistence) |
 | P2 | Mobile connect: an iPhone and iPad companion paired with the Mac, end-to-end encrypted over the local network or a relay, with agent notifications and answers (draft, not implemented) | `FR-MC01`–`FR-MC16`, [Mobile connect](../features/mobile-connect.md) |
 | P2 | Agent registry: a signed, hosted index of agent definitions in the same schema, browsed and installed from Settings → Agents; automation `agent.list`, `launch.kind: "agent"` and an `agent.state` event; per-agent extra arguments | [Coding agents](../features/agents.md#known-limits) |
 | P2 | tmux awareness, richer terminal protocols, plugins | |
 | P2 | Command palette: saved scratchpads as items (with the unsaved-changes confirmation), recents kept across launches | `FR-CP03`, `FR-CP05`, [Command palette](../features/command-palette.md#not-included) |
 | P2 | Links: open `file:line:column` in a configured editor, a pointing-hand cursor over links, detecting `ssh` typed inside a local shell | `FR-L02`, `FR-L04`, [Links](../features/terminal.md#links) |
 
-**Not planned:** Windows, Linux and iOS as platforms for the app (Linux is supported only as a remote workspace host, and iOS only as the proposed Mobile connect companion to a paired Mac); cloud sync; a web UI; a remote API server beyond the optional MCP server and the proposed Mobile connect link; an embedded AI provider; an embedded SSH implementation; general file transfer (the remote helper install and bounded project-file reads are the only transfers); serial ports; full iTerm2 preference import.
+**Not planned:** Spaces, Linux and iOS as platforms for the app (Linux is supported only as a remote workspace host, and iOS only as the proposed Mobile connect companion to a paired Mac); cloud sync; a web UI; a remote API server beyond the optional MCP server and the proposed Mobile connect link; an embedded AI provider; an embedded SSH implementation; general file transfer (the remote helper install and bounded project-file reads are the only transfers); serial ports; full iTerm2 preference import.
 
 ## Decisions
 
@@ -51,12 +51,12 @@ These were decided during the MVP, and some have been revised since. Reopening o
 
 | Decision | Outcome | Where it's recorded |
 | --- | --- | --- |
-| What a "window" means | Sidebar workspaces inside one native window | [Product overview](../overview/product.md#vocabulary) |
+| What a "space" means | Sidebar workspaces inside one native window | [Product overview](../overview/product.md#vocabulary) |
 | Terminal engine | SwiftTerm 1.20.0 behind the `TrellisTerminal` adapter, vendored and patched. Trellis owns the PTY. | [Terminal engine](../architecture/terminal-engine.md) |
 | `TERM` | `xterm-256color` with `COLORTERM=truecolor` | [Sessions](../architecture/sessions.md#launching) |
 | Platform | macOS 14+, Universal 2 | [macOS support](../platform/macos.md), `release/manifest.json` |
 | Default scrollback | 10,000 lines plus 16 MiB per pane | [Terminal engine](../architecture/terminal-engine.md#scrollback-and-output-buffers) |
-| Agent authorization | User-created grants with capabilities, window and host scope, expiry and revocation | [Authorization](../api/authorization.md) |
+| Agent authorization | User-created grants with capabilities, space and host scope, expiry and revocation | [Authorization](../api/authorization.md) |
 | Application identity | Trellis, bundle ID `com.bearstouch.trellis` (renamed from uTerm, then from `dev.trellis`). | [Release guide](../release/README.md) |
 | Distribution | A direct-download DMG, without App Sandbox or the Mac App Store. Revised for MAC-14: installed copies can also update in place with Sparkle. | `MAC-09`, `MAC-14` |
 | Sessions on quit | Revised for FR-R07: every session runs in the `trellis-broker` helper (per state directory, owner-only socket with peer checks both ways), so quitting, closing the window, a crash or a force quit leave it running, and the next launch reattaches it by session UUID with a bounded replay. **Stop sessions when Trellis quits** restores ending sessions at quit and window close. An opt-in, redacted plain-text scrollback file is the only persisted output. Nothing survives logout. Revised for FR-RW06: sessions in remote workspaces are kept by a `trellis-broker` on the remote host, reached only through the system `ssh`. | [Sessions](../architecture/sessions.md#session-broker), [Persistence](../architecture/persistence.md#opt-in-scrollback-file) |

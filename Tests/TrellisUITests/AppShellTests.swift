@@ -40,16 +40,16 @@ final class AppShellTests: XCTestCase {
         XCTAssertNil(projection.activePane)
     }
 
-    func testSelectedWindowOwnsTabBar() async throws {
+    func testSelectedSpaceOwnsTabBar() async throws {
         let store = try WorkspaceStore()
-        let first = try await store.execute(.createWindow(name: "Project"))
-        let second = try await store.execute(.createWindow(name: "Operations"))
-        let id = try XCTUnwrap(first.createdWindowID)
-        let selected = try await store.execute(.selectWindow(id: id))
+        let first = try await store.execute(.createSpace(name: "Project"))
+        let second = try await store.execute(.createSpace(name: "Operations"))
+        let id = try XCTUnwrap(first.createdSpaceID)
+        let selected = try await store.execute(.selectSpace(id: id))
         let projection = WorkspacePresentation(snapshot: selected.snapshot)
-        XCTAssertEqual(projection.selectedWindow?.name, "Project")
-        XCTAssertEqual(projection.visibleTabs.map(\.id), first.snapshot.windows[0].tabIDs)
-        XCTAssertFalse(projection.visibleTabs.contains { $0.windowID == second.createdWindowID })
+        XCTAssertEqual(projection.selectedSpace?.name, "Project")
+        XCTAssertEqual(projection.visibleTabs.map(\.id), first.snapshot.spaces[0].tabIDs)
+        XCTAssertFalse(projection.visibleTabs.contains { $0.spaceID == second.createdSpaceID })
     }
 
     func testConstrainOffscreenGeometry() {
@@ -85,8 +85,8 @@ final class AppShellTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(name: "Project", startSession: false)
-        XCTAssertEqual(model.snapshot.windows.count, 1)
+        await model.createSpace(name: "Project", startSession: false)
+        XCTAssertEqual(model.snapshot.spaces.count, 1)
         XCTAssertEqual(model.terminals.count, 1)
         XCTAssertEqual(model.activeTerminal?.sessionState, .stopped)
         XCTAssertTrue(model.runningTerminals.isEmpty)
@@ -99,7 +99,7 @@ final class AppShellTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(name: "Fixture", fixture: true)
+        await model.createSpace(name: "Fixture", fixture: true)
         let deadline = Date().addingTimeInterval(10)
         while model.snapshot.sessions.values.first?.state != .exited, Date() < deadline {
             try await Task.sleep(for: .milliseconds(10))
@@ -182,7 +182,7 @@ final class AppShellTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.activeTerminal)
         let launch = Task { await model.start(paneID: pane.id) }
@@ -205,36 +205,36 @@ final class AppShellTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         await model.closeAllWorkspaces()
         XCTAssertTrue(model.presentation.isEmpty)
         XCTAssertTrue(model.terminals.isEmpty)
         XCTAssertTrue(model.snapshot.sessions.isEmpty)
-        await model.createWindow(name: "Reopened", startSession: false)
-        XCTAssertEqual(model.presentation.selectedWindow?.name, "Reopened")
+        await model.createSpace(name: "Reopened", startSession: false)
+        XCTAssertEqual(model.presentation.selectedSpace?.name, "Reopened")
         XCTAssertNil(model.errorMessage)
     }
 
     @MainActor
     func testClosingTheWindowEndsSessionsButKeepsTheSavedLayout() async throws {
         _ = NSApplication.shared
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-window-close-\(UUID())")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-space-close-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: directory))
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
         _ = await model.loadWorkspace()
-        await model.createWindow(name: "Kept")
-        await model.createWindow(name: "Also kept", startSession: false)
+        await model.createSpace(name: "Kept")
+        await model.createSpace(name: "Also kept", startSession: false)
         await model.waitForUpdates()
         model.stopAll()
         let closed = await model.endSessionsForWindowClose()
         XCTAssertTrue(closed)
         XCTAssertTrue(model.runningTerminals.isEmpty)
-        XCTAssertEqual(model.snapshot.windows.map(\.name), ["Kept", "Also kept"])
+        XCTAssertEqual(model.snapshot.spaces.map(\.name), ["Kept", "Also kept"])
         XCTAssertNil(model.errorMessage)
         // Reopening the window (Dock) leaves the stopped panes restartable.
-        let kept = try XCTUnwrap(model.snapshot.windows.first)
+        let kept = try XCTUnwrap(model.snapshot.spaces.first)
         let pane = try XCTUnwrap(model.snapshot.tabs[kept.activeTabID].flatMap { model.snapshot.panes[$0.activePaneID] })
         let ended = try XCTUnwrap(model.terminals[pane.id])
         XCTAssertTrue(ended.sessionState == .exited || ended.sessionState == .failed)
@@ -250,7 +250,7 @@ final class AppShellTests: XCTestCase {
         XCTAssertTrue(saved)
         let restored = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: directory))
         _ = await restored.loadWorkspace()
-        XCTAssertEqual(restored.snapshot.windows.map(\.name), ["Kept", "Also kept"])
+        XCTAssertEqual(restored.snapshot.spaces.map(\.name), ["Kept", "Also kept"])
         XCTAssertTrue(restored.runningTerminals.isEmpty)
     }
 
@@ -260,13 +260,13 @@ final class AppShellTests: XCTestCase {
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences)
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let pane = try XCTUnwrap(model.presentation.activePane)
         model.stopAll()
-        await model.createWindow(name: "Must not appear", fixture: true)
+        await model.createSpace(name: "Must not appear", fixture: true)
         await model.start(paneID: pane.id, fixture: true)
         await model.shutdown()
-        XCTAssertEqual(model.snapshot.windows.count, 1)
+        XCTAssertEqual(model.snapshot.spaces.count, 1)
         XCTAssertEqual(model.activeTerminal?.sessionState, .stopped)
         XCTAssertTrue(model.runningTerminals.isEmpty)
         XCTAssertNil(model.errorMessage)
@@ -281,7 +281,7 @@ final class AppShellTests: XCTestCase {
         var creationEntered = false
         let creation = Task {
             creationEntered = true
-            await model.createWindow(fixture: true)
+            await model.createSpace(fixture: true)
         }
         while !creationEntered { await Task.yield() }
         await model.closeAllWorkspaces()

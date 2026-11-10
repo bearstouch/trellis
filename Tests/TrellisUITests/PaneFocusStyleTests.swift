@@ -13,7 +13,7 @@ final class PaneFocusStyleTests: XCTestCase {
     private func splitModel() async throws -> (AppWorkspaceModel, tab: UUID, left: UUID, right: UUID) {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        await model.createWindow(name: "Focus", startSession: false)
+        await model.createSpace(name: "Focus", startSession: false)
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         let left = tab.activePaneID
         await model.splitPane(left, axis: .x, startSession: false)
@@ -45,7 +45,7 @@ final class PaneFocusStyleTests: XCTestCase {
     func testASinglePaneLooksAsBefore() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        await model.createWindow(name: "One", startSession: false)
+        await model.createSpace(name: "One", startSession: false)
         await model.waitForUpdates()
         let tab = try XCTUnwrap(model.presentation.selectedTab)
         XCTAssertEqual(style(model, tab.activePaneID, tab.id).header, .plain)

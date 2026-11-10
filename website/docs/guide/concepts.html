@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concepts · Trellis Docs</title>
+<meta name="description" content="How Trellis organizes your work: spaces, tabs, splits, panes and sessions, and what happens when you switch, close and quit.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="guide/concepts.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">User guide</p>
+<h1>Concepts</h1>
+<p class="lead">Trellis arranges your terminals in a simple hierarchy: spaces hold tabs, tabs hold splits of panes, and each pane runs one session. Once this clicks, everything else follows.</p>
+
+<div class="diagram" role="img" aria-label="Diagram of the Trellis window: a sidebar lists the spaces Web app, Infra and Scratch; the selected space shows tabs Server, Tests and Logs; the Server tab is split into a left pane and a right column split into two panes.">
+<svg viewBox="0 0 640 300" width="640" height="300" aria-hidden="true" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12">
+  <rect x="0.5" y="0.5" width="639" height="299" rx="12" fill="var(--bg)" stroke="var(--line-strong)"/>
+  <rect x="0.5" y="0.5" width="150" height="299" rx="12" fill="var(--bg-sunk)" stroke="var(--line-strong)"/>
+  <rect x="140" y="1" width="11" height="298" fill="var(--bg-sunk)"/>
+  <circle cx="18" cy="18" r="5" fill="#ff5f57"/><circle cx="34" cy="18" r="5" fill="#febc2e"/><circle cx="50" cy="18" r="5" fill="#28c840"/>
+  <text x="16" y="52" fill="var(--text-faint)" font-size="10" font-weight="600" letter-spacing=".08em">SPACES</text>
+  <rect x="10" y="62" width="130" height="28" rx="7" fill="var(--accent-soft)" stroke="var(--accent-line)"/>
+  <text x="22" y="80" fill="var(--text)" font-weight="600">Web app</text>
+  <text x="22" y="112" fill="var(--text-soft)">Infra</text>
+  <text x="22" y="140" fill="var(--text-soft)">Scratch</text>
+  <line x1="151" y1="44" x2="639" y2="44" stroke="var(--line-strong)"/>
+  <rect x="160" y="12" width="92" height="26" rx="6" fill="var(--bg-sunk)" stroke="var(--accent-line)"/>
+  <text x="174" y="29" fill="var(--text)" font-weight="600">Server</text>
+  <text x="272" y="29" fill="var(--text-soft)">Tests</text>
+  <text x="330" y="29" fill="var(--text-soft)">Logs</text>
+  <text x="380" y="29" fill="var(--text-faint)">+</text>
+  <rect x="162" y="56" width="230" height="232" rx="6" fill="var(--code-bg)" stroke="var(--accent)" stroke-width="1.5"/>
+  <text x="174" y="78" fill="var(--accent)" font-family="ui-monospace, Menlo, monospace">~/web $ npm run dev</text>
+  <text x="174" y="98" fill="var(--text-faint)" font-family="ui-monospace, Menlo, monospace">ready on :3000</text>
+  <rect x="402" y="56" width="226" height="110" rx="6" fill="var(--code-bg)" stroke="var(--line-strong)"/>
+  <text x="414" y="78" fill="var(--text-soft)" font-family="ui-monospace, Menlo, monospace">~/web $ git status</text>
+  <rect x="402" y="176" width="226" height="112" rx="6" fill="var(--code-bg)" stroke="var(--line-strong)"/>
+  <text x="414" y="198" fill="var(--text-soft)" font-family="ui-monospace, Menlo, monospace">~/web $ claude</text>
+  <g fill="var(--text-faint)" font-size="11">
+    <text x="276" y="240" text-anchor="middle">pane · one session</text>
+    <text x="515" y="140" text-anchor="middle">pane</text>
+    <text x="515" y="262" text-anchor="middle">pane</text>
+  </g>
+</svg>
+</div>
+
+<h2 id="the-hierarchy">The hierarchy</h2>
+<dl class="terms">
+<dt>Space</dt>
+<dd>A named item in the left sidebar that holds an ordered list of tabs. A space is usually one project, loaded from the <a href="../features/projects.html">Projects</a> library, plus any temporary tabs you open in it. A space can also be a <a href="../features/remote-workspaces.html">remote workspace</a> whose sessions run on another host.</dd>
+<dt>Tab</dt>
+<dd>A named container in a space's tab bar. Each tab holds one layout of panes and remembers which pane was focused. Tabs can be renamed and color-labeled.</dd>
+<dt>Split</dt>
+<dd>A division of a tab into two parts, either <strong>left/right</strong> or <strong>top/bottom</strong>. Splits nest, so any pane can be split again. Drag a divider, or use <kbd>⌥⇧⌘</kbd> + arrow keys, to resize.</dd>
+<dt>Pane</dt>
+<dd>One visible terminal inside a tab. Every pane owns exactly one session.</dd>
+<dt>Session</dt>
+<dd>The process running in a pane: usually your login shell, an SSH connection to a saved host, or a task's command.</dd>
+</dl>
+<p>A few rules keep this tidy:</p>
+<ul>
+<li>A space always has at least one tab, and a tab at least one pane. Closing the last pane closes the tab; closing the last tab closes the space.</li>
+<li>When a pane closes, its neighbor takes the space it used.</li>
+<li>You can have no spaces at all. Trellis then shows a welcome screen.</li>
+<li>Selecting another space or tab never stops anything. Background sessions keep running and their tabs show when they're busy or waiting for you.</li>
+</ul>
+
+<h2 id="projects-and-temporary-tabs">Projects and temporary tabs</h2>
+<p>A <strong>project</strong> is a saved recipe: its tabs, splits, folders, startup commands and git repositories. Launching a project creates a space from it, on this Mac or on a saved host, and clones repositories that are missing.</p>
+<p>Tabs you open in a project's space that the project doesn't define are <strong>temporary tabs</strong>. They're shown in italics and never change the saved project. See <a href="../features/projects.html">Projects</a>.</p>
+
+<h2 id="sessions">Session states</h2>
+<p>Each pane shows its session's state in words, not just color:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>State</th><th>What it means</th></tr></thead>
+<tbody>
+<tr><td><strong>Stopped</strong></td><td>The pane has a layout but no process yet. Press <strong>Start Session</strong> in the pane to run it.</td></tr>
+<tr><td><strong>Running</strong></td><td>The process is alive.</td></tr>
+<tr><td><strong>Exited</strong></td><td>The process ended. The pane stays open with its output and exit code until you restart or close it.</td></tr>
+<tr><td><strong>Failed</strong></td><td>The process couldn't start, for example because its folder doesn't exist. The pane says why.</td></tr>
+</tbody>
+</table></div>
+<p><strong>Restart</strong> runs a fresh session in the same pane. Trellis never replays what you typed before.</p>
+
+<h2 id="sessions-keep-running">Sessions keep running</h2>
+<p>By default, sessions run in a small background helper that Trellis starts for you. That means:</p>
+<ul>
+<li><strong>Quit</strong> (<kbd>⌘Q</kbd>) and your sessions keep running. Reopen Trellis and they come back in their panes, with their recent output.</li>
+<li><strong>Close the window</strong> and Trellis just hides it. Click the Dock icon to bring it back.</li>
+<li>If Trellis stops unexpectedly, sessions survive and reconnect on the next launch.</li>
+<li>Logging out or restarting your Mac ends them.</li>
+</ul>
+<p>Prefer a clean slate? Turn on <strong>Settings → Sessions → Stop sessions when Trellis quits</strong>. Quitting then asks to end running sessions, and your spaces, tabs and splits come back <strong>stopped</strong> next time, ready to start again.</p>
+<div class="callout note">
+<p class="callout-title">Note</p>
+<p>Trellis saves the layout, never the contents of your terminal or what you type. If you want each pane's last output after a relaunch, turn on <strong>Restore scrollback after quit</strong> in <strong>Settings → Sessions</strong>. It's saved unencrypted, with secrets removed on a best-effort basis.</p>
+</div>
+
+<h2 id="closing">Closing panes, tabs and spaces</h2>
+<ul>
+<li><kbd>⌘W</kbd> closes the focused pane, and <kbd>⇧⌘W</kbd> closes the whole tab.</li>
+<li>If anything is still running, Trellis asks first, in one dialog that lists every pane involved.</li>
+<li>Trellis then asks the processes to end. If one is still alive after two seconds, you get an explicit <strong>Force</strong> option. Nothing is killed without you choosing it.</li>
+</ul>
+
+<h2 id="one-window">One window</h2>
+<p>Trellis has a single main window: spaces replace the stack of terminal windows you might use elsewhere.</p>
+
+<h2 id="automation-in-one-sentence">Automation in one sentence</h2>
+<p>Everything you can do with the mouse and keyboard goes through the same internal commands that the <a href="../automation/cli.html"><code>trellis</code> CLI</a>, the <a href="../automation/api.html">automation API</a> and the <a href="../automation/mcp.html">MCP server</a> use, so scripts and agents see the same spaces, tabs and panes you do, with the access you grant them.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

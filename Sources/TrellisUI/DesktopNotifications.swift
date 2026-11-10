@@ -2,11 +2,17 @@ import AppKit
 import TrellisCore
 import UserNotifications
 
-/// One notification to show (FR-T08). The pane is carried so clicking it can reveal that pane.
+/// One notification to show (FR-T08). The pane is carried so clicking it can reveal that pane. The subtitle says where it
+/// came from: "Space › Tab", plus the agent or program when known.
 public struct DesktopNotification: Equatable, Sendable {
     public let paneID: UUID
     public let title: String
+    public let subtitle: String
     public let body: String
+
+    public init(paneID: UUID, title: String, subtitle: String = "", body: String) {
+        self.paneID = paneID; self.title = title; self.subtitle = subtitle; self.body = body
+    }
 }
 
 /// Notification Center access; injected so tests never post real notifications.
@@ -34,6 +40,7 @@ public final class SystemDesktopNotifier: NSObject, DesktopNotifier, UNUserNotif
     public func post(_ notification: DesktopNotification) {
         let content = UNMutableNotificationContent()
         content.title = notification.title
+        content.subtitle = notification.subtitle
         content.body = notification.body
         content.sound = .default
         content.userInfo = [Self.paneKey: notification.paneID.uuidString]

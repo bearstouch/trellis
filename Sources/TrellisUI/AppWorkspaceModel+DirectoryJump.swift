@@ -176,23 +176,23 @@ extension AppWorkspaceModel {
         await startDirectoryPane(paneID, path: path, target: target)
     }
 
-    /// In the window that runs on the row's machine, never one whose new panes would start elsewhere (FR-DJ07).
+    /// In the space that runs on the row's machine, never one whose new panes would start elsewhere (FR-DJ07).
     func openTabForDirectory(_ path: String, target: ProjectTarget) async {
         let hostID: UUID? = if case .host(let id) = target { id } else { nil }
-        let matching = snapshot.windows.filter { $0.remoteHostID == hostID && !closingWindowIDs.contains($0.id) }
-        guard let window = matching.first(where: { $0.id == snapshot.activeWindowID }) ?? matching.first else {
+        let matching = snapshot.spaces.filter { $0.remoteHostID == hostID && !closingSpaceIDs.contains($0.id) }
+        guard let space = matching.first(where: { $0.id == snapshot.activeSpaceID }) ?? matching.first else {
             if let hostID {
                 guard let host = commandPaletteHosts().first(where: { $0.id == hostID }) else { return }
                 await openRemoteWorkspace(host: host, directory: path)
-            } else if let created = await createWindow(startSession: false), let window = snapshot.windows.first(where: { $0.id == created }),
-                let paneID = snapshot.tabs[window.activeTabID]?.activePaneID
+            } else if let created = await createSpace(startSession: false), let space = snapshot.spaces.first(where: { $0.id == created }),
+                let paneID = snapshot.tabs[space.activeTabID]?.activePaneID
             {
                 await startDirectoryPane(paneID, path: path, target: target)
             }
             return
         }
-        if window.id != snapshot.activeWindowID { await selectWindow(window.id) }
-        guard let tabID = await createTab(windowID: window.id, startSessions: false), let paneID = snapshot.tabs[tabID]?.activePaneID else { return }
+        if space.id != snapshot.activeSpaceID { await selectSpace(space.id) }
+        guard let tabID = await createTab(spaceID: space.id, startSessions: false), let paneID = snapshot.tabs[tabID]?.activePaneID else { return }
         await startDirectoryPane(paneID, path: path, target: target)
     }
 

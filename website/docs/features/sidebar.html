@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Right sidebar · Trellis Docs</title>
+<meta name="description" content="The dock on the right edge of the Trellis window switches between Files, Changes, Scratchpad, Tasks and Agents.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/sidebar.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Right sidebar</h1>
+<p class="lead">Files, changes, the scratchpad, tasks and coding agents share one sidebar on the right of the window. A narrow dock along the window's right edge switches between them, like an editor's activity bar.</p>
+
+<h2 id="the-dock">The dock</h2>
+<p>Click an icon to show that view. Click the shown view's icon again to hide the sidebar and return to the terminal. Only one view is shown at a time.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Icon</th><th>View</th><th>Badge</th></tr></thead>
+<tbody>
+<tr><td>Folder</td><td><a href="files.html">Files</a></td><td>—</td></tr>
+<tr><td>Branch</td><td><a href="changes.html">Changes</a></td><td>Changed files in the focused pane's repository</td></tr>
+<tr><td><code>&lt;/&gt;</code></td><td><a href="scratchpad.html">Scratchpad</a></td><td>—</td></tr>
+<tr><td>Play</td><td><a href="tasks.html">Tasks</a></td><td>Tasks running in any pane</td></tr>
+<tr><td>Sparkles</td><td><a href="agents.html">Agents</a></td><td>Agent panes that need you, in any space</td></tr>
+</tbody>
+</table></div>
+<p>The dock shows whenever the space has panes. A badge with a zero is hidden.</p>
+
+<h2 id="shortcuts">Shortcuts</h2>
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Toggle Files</td><td><kbd>⌥⌘F</kbd></td></tr>
+<tr><td>Toggle Changes</td><td><kbd>⌥⌘G</kbd></td></tr>
+<tr><td>Toggle Scratchpad</td><td><kbd>⌥⌘E</kbd></td></tr>
+<tr><td>Toggle Tasks</td><td><kbd>⌥⌘T</kbd></td></tr>
+<tr><td>Toggle Agents</td><td><kbd>⌥⌘A</kbd></td></tr>
+</tbody>
+</table></div>
+<p>The same toggles are in the <strong>View</strong> menu (<strong>Show/Hide Files</strong> and so on) and in the <a href="command-palette.html">command palette</a>. Change them in <strong>Settings → Keyboard</strong>; see <a href="../guide/keyboard-shortcuts.html">Keyboard shortcuts</a>.</p>
+<div class="callout note">
+<p class="callout-title">Note</p>
+<p>If you had already assigned one of these chords to another action, yours is kept and the toggle starts unbound.</p>
+</div>
+
+<h2 id="focused-pane">It follows the focused pane</h2>
+<p>Every view acts on the focused pane and follows focus as it moves:</p>
+<ul>
+<li><strong>Files</strong> shows the pane's project.</li>
+<li><strong>Changes</strong> shows its git repository's uncommitted changes.</li>
+<li><strong>Scratchpad</strong> runs scripts in it.</li>
+<li><strong>Tasks</strong> lists its project's tasks and runs them in it.</li>
+<li><strong>Agents</strong> opens agents in its folder, on its machine.</li>
+</ul>
+<p>Pane headers keep only the pane's own tools: machine, maximize, split and close.</p>
+
+<h2 id="dimmed-views">When a view is dimmed</h2>
+<p>Some views only work for panes on this Mac:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Focused pane</th><th>Files, Changes, Scratchpad</th><th>Tasks, Agents</th></tr></thead>
+<tbody>
+<tr><td>Local shell or agent</td><td>Available</td><td>Available</td></tr>
+<tr><td><a href="remote-workspaces.html">Remote workspace</a> shell or agent</td><td>Dimmed</td><td>Available</td></tr>
+<tr><td>SSH (a saved host, or a pane started straight into <code>ssh</code>, <code>mosh</code> or <code>autossh</code>)</td><td>Dimmed</td><td>Dimmed</td></tr>
+</tbody>
+</table></div>
+<p>A dimmed icon can't be clicked; hover it to see why. If you focus a pane the open view doesn't apply to, the sidebar hides, and it comes back when you focus a pane it applies to.</p>
+
+<h2 id="resize">Resize the sidebar</h2>
+<p>Drag the sidebar's left edge. It's 380 points wide by default and can be 280 to 640. All views share the same width. Showing, hiding and resizing the sidebar never change your saved workspace.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

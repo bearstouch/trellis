@@ -46,7 +46,7 @@ final class DirectoryJumpTests: XCTestCase {
         model.directoryHistory = DirectoryHistory(stateDirectory: scratch.appendingPathComponent("history"), sleep: { _ in try? await Task.sleep(for: .seconds(3600)) }, mounts: { [] })
         let saved = await model.saveLaunchSettings(shell: shell, directory: project)
         XCTAssertTrue(saved)
-        _ = await model.createWindow(name: "W", startSession: started)
+        _ = await model.createSpace(name: "W", startSession: started)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         if started {
             try await waitFor { self.text(model, pane).contains("SHELL-UP") }
@@ -352,13 +352,13 @@ final class DirectoryJumpTests: XCTestCase {
     }
 
     @MainActor
-    func testWithNoWindowALocalRowOpensOne() async throws {
+    func testWithNoSpaceALocalRowOpensOne() async throws {
         let (model, _) = try await makeModel(started: false)
         defer { cleanUp(model) }
         await model.closeAllWorkspaces()
-        XCTAssertTrue(model.snapshot.windows.isEmpty)
+        XCTAssertTrue(model.snapshot.spaces.isEmpty)
         await model.jumpToDirectory(path: other, machine: "local", modifier: .none)
-        XCTAssertEqual(model.snapshot.windows.count, 1)
+        XCTAssertEqual(model.snapshot.spaces.count, 1)
         XCTAssertEqual(try startDirectory(model, try XCTUnwrap(model.presentation.activePane?.id)), other)
     }
 
@@ -382,8 +382,8 @@ final class DirectoryJumpTests: XCTestCase {
         defer { cleanUp(model) }
         let saved = await model.saveLaunchSettings(shell: "/bin/zsh", directory: project)
         XCTAssertTrue(saved)
-        let window = await model.createWindow(name: "zsh")
-        XCTAssertNotNil(window)
+        let space = await model.createSpace(name: "zsh")
+        XCTAssertNotNil(space)
         let shellPane = try XCTUnwrap(model.presentation.activePane?.id)
         XCTAssertNotEqual(shellPane, pane)
         let terminal = try XCTUnwrap(model.terminals[shellPane])

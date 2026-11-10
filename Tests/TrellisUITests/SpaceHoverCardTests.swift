@@ -5,7 +5,7 @@ import XCTest
 @testable import TrellisUI
 
 /// FR-W06: the tabs hover card must never swallow a click meant for a tab, Settings or Hosts.
-@MainActor final class WindowHoverCardTests: XCTestCase {
+@MainActor final class SpaceHoverCardTests: XCTestCase {
     private var window: NSWindow!
     private var anchor: NSView!
 

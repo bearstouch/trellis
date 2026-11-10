@@ -28,7 +28,7 @@ final class SessionClosureTests: XCTestCase {
         let coordinator = SessionClosureCoordinator(now: { clock.elapsed }, sleep: { try await clock.sleep($0) })
         let sessions = [CloseSpy(), CloseSpy(), CloseSpy()]
         let store = try WorkspaceStore()
-        let before = try await store.execute(.createWindow(name: "Project")).snapshot
+        let before = try await store.execute(.createSpace(name: "Project")).snapshot
         let result = await coordinator.close(sessions, allowRunning: false)
         XCTAssertEqual(result.code, "CONFIRMATION_REQUIRED")
         XCTAssertEqual(result, .confirmationRequired(sessionIDs: sessions.map(\.sessionID)))
@@ -84,7 +84,7 @@ final class SessionClosureTests: XCTestCase {
 
     func testRestartReplacesOnlySession() async throws {
         let store = try WorkspaceStore()
-        let created = try await store.execute(.createWindow(name: "Project")).snapshot
+        let created = try await store.execute(.createSpace(name: "Project")).snapshot
         let pane = try XCTUnwrap(created.panes.values.first)
         let launch = try await store.execute(.startSession(paneID: pane.id))
         guard case .start(let request) = launch.effects.first else { return XCTFail("No launch request") }
@@ -94,7 +94,7 @@ final class SessionClosureTests: XCTestCase {
         let newID = try XCTUnwrap(restarted.panes[pane.id]?.sessionID)
         XCTAssertNotEqual(newID, pane.sessionID)
         XCTAssertNil(restarted.sessions[pane.sessionID])
-        XCTAssertEqual(restarted.windows, exited.windows)
+        XCTAssertEqual(restarted.spaces, exited.spaces)
         XCTAssertEqual(restarted.tabs, exited.tabs)
         XCTAssertEqual(restarted.panes[pane.id]?.tabID, pane.tabID)
         XCTAssertEqual(restarted.sessions[newID]?.launch, exited.sessions[pane.sessionID]?.launch)

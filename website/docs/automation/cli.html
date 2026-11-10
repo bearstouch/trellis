@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trellis CLI · Trellis Docs</title>
+<meta name="description" content="Install the trellis command-line tool and use it to control spaces, tabs, panes, sessions, hosts, layouts and themes from your shell.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="automation/cli.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Automation</p>
+<h1>trellis CLI</h1>
+<p class="lead"><code>trellis</code> controls the running app from your shell or scripts: create spaces and tabs, split panes, start sessions, apply layouts and switch themes. It's a thin client over the <a href="api.html">automation API</a>, so it can do only what its grant allows.</p>
+
+<h2 id="install">Install the command</h2>
+<p>The CLI ships inside the app at <code>Trellis.app/Contents/Helpers/trellis</code>. To put it on your <code>PATH</code>, link it into <code>~/.local/bin</code>:</p>
+<ul>
+<li>Choose <strong>Trellis → Install Command Line Tool…</strong>, or accept the one-time offer on first launch.</li>
+<li>Or run it yourself:</li>
+</ul>
+<pre><code>$ /Applications/Trellis.app/Contents/Helpers/trellis cli install-link
+$ /Applications/Trellis.app/Contents/Helpers/trellis cli install-link --dir ~/bin</code></pre>
+<p>Installing creates exactly one symlink. Trellis never edits your shell startup files. After installing from the app, Trellis checks your login shell's <code>PATH</code> and tells you whether <code>trellis</code> is ready, or gives you a line to add yourself.</p>
+<div class="callout note"><p class="callout-title">Note</p><p>Move Trellis to <strong>Applications</strong> first. Installing from the mounted DMG or a translocated copy creates nothing and says so.</p></div>
+<p>The link points into the app bundle, so it keeps working after updates. If you move the app, install the link again. To remove it, run <code>trellis cli remove-link</code>.</p>
+
+<h2 id="credentials">Give it a grant</h2>
+<p>Every command except <code>cli …</code> and help needs a token from a grant you create in <strong>Settings → Automation</strong> (see <a href="api.html#grants">Automation API</a>). Pass it in one of two ways:</p>
+<ul>
+<li><code>--token-stdin</code>: read the token from standard input, for example from an owner-only file.</li>
+<li><code>--keychain-grant GRANT_UUID</code>: read it from the Keychain, where Trellis stored it.</li>
+</ul>
+<p>Tokens never go on the command line, where process lists and shell history would see them. The CLI rejects <code>--token</code>, <code>--password</code> and <code>--secret</code>.</p>
+
+<h2 id="usage">Usage</h2>
+<pre><code>trellis &lt;noun&gt; &lt;verb&gt; [options]
+trellis help [&lt;noun&gt; [&lt;verb&gt;]]
+trellis --version</code></pre>
+<ul>
+<li><code>trellis --help</code> lists the nouns, options and exit codes. <code>trellis &lt;noun&gt; --help</code> and <code>trellis &lt;noun&gt; &lt;verb&gt; --help</code> go deeper. Help needs no running app or token.</li>
+<li>Options take the form <code>--opt VALUE</code>; <code>--opt=value</code> is rejected.</li>
+<li><code>--space</code>, <code>--tab</code> and <code>--host</code> accept a UUID or an exact name.</li>
+<li><code>--launch</code> starts Trellis if it isn't running. Without it, a closed app gives <code>APP_NOT_RUNNING</code>.</li>
+<li><code>--state-directory DIR</code> targets an instance started with the same flag.</li>
+<li>Mutating commands accept <code>--idempotency-key KEY</code>. The CLI never retries on its own.</li>
+<li>The older <code>trellis window …</code> and <code>--window</code> still work as deprecated names for <code>space</code>.</li>
+</ul>
+
+<h2 id="examples">Examples</h2>
+<pre><code>TOKEN=~/.config/trellis/token   # owner-only file holding the grant token
+t() { trellis "$@" --token-stdin --json &lt; "$TOKEN"; }
+
+t space list
+t space create --name Project
+t tab create --space Project --title Server
+t pane split --pane PANE_UUID --axis x
+t session start --pane PANE_UUID
+t session execute --session SESSION_UUID --command 'git status' --submit
+t session output --session SESSION_UUID --view screen
+t host connect --host HOST_UUID --space SPACE_UUID
+t layout plan ./project-layout.json --namespace project
+t layout apply ./project-layout.json --namespace project --expected-revision 12
+t theme import ./my-theme.json
+t appearance set --mode dark --dark-theme my-midnight</code></pre>
+
+<h2 id="commands">Commands</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Noun</th><th>Verbs</th></tr></thead>
+<tbody>
+<tr><td><code>system</code></td><td><code>info</code></td></tr>
+<tr><td><code>space</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>rename</code>, <code>reorder</code>, <code>focus</code>, <code>close</code></td></tr>
+<tr><td><code>tab</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>rename</code>, <code>color</code>, <code>reorder</code>, <code>focus</code>, <code>close</code></td></tr>
+<tr><td><code>pane</code></td><td><code>split</code>, <code>resize</code>, <code>focus</code>, <code>maximize</code>, <code>close</code></td></tr>
+<tr><td><code>session</code></td><td><code>get</code>, <code>start</code>, <code>restart</code>, <code>input</code>, <code>execute</code>, <code>output</code></td></tr>
+<tr><td><code>host</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>connect</code></td></tr>
+<tr><td><code>layout</code></td><td><code>validate</code>, <code>plan</code>, <code>apply</code>, <code>export</code></td></tr>
+<tr><td><code>events</code></td><td><code>subscribe</code></td></tr>
+<tr><td><code>theme</code></td><td><code>list</code>, <code>get</code>, <code>export</code>, <code>delete</code>, <code>validate</code>, <code>import</code></td></tr>
+<tr><td><code>appearance</code></td><td><code>get</code>, <code>set</code></td></tr>
+<tr><td><code>cli</code></td><td><code>install-link</code>, <code>remove-link</code>, <code>uninstall-plan</code> (local, no token needed)</td></tr>
+</tbody>
+</table></div>
+<p>Run <code>trellis &lt;noun&gt; &lt;verb&gt; --help</code> for each command's options. A few rules worth knowing:</p>
+<ul>
+<li>New panes start stopped. Start them with <code>session start</code>, or pass <code>--start</code> when creating.</li>
+<li><code>session execute</code> needs <code>--submit</code>. It succeeds once the command is typed in, even if the command later fails.</li>
+<li><code>layout apply</code> needs <code>--expected-revision</code>, taken from <code>layout plan</code>.</li>
+<li>Closing something with running sessions needs <code>--allow-running</code>, and a grant with <code>session.close</code>. Without it you get <code>CONFIRMATION_REQUIRED</code> and a list of the affected sessions.</li>
+<li><code>events subscribe</code> prints one event per line until the connection closes.</li>
+</ul>
+
+<h2 id="output">Output</h2>
+<p>By default, success pretty-prints the result and a failure prints <code>trellis: &lt;message&gt; (&lt;code&gt;)</code> to stderr. With <code>--json</code>, stdout always gets one envelope, never colored:</p>
+<pre><code>{"ok": true, "result": { … }}
+{"ok": false, "error": {"code": "CONFLICT", "message": "…", "exitStatus": 5, "details": { … }}}</code></pre>
+
+<h2 id="exit-codes">Exit codes</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Exit</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Success: the request was accepted</td></tr>
+<tr><td>2</td><td>Bad arguments, or an invalid layout or theme; also an ambiguous name</td></tr>
+<tr><td>3</td><td>Not found, including something outside the grant's scope</td></tr>
+<tr><td>4</td><td>Authentication or permission denied</td></tr>
+<tr><td>5</td><td>Conflict, or confirmation required</td></tr>
+<tr><td>6</td><td>A process failed to launch</td></tr>
+<tr><td>7</td><td>App not running, or the connection failed</td></tr>
+<tr><td>8</td><td>Any other error</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="uninstall">Uninstall</h2>
+<p><code>trellis cli uninstall-plan</code> lists everything that belongs to Trellis without deleting anything. See <a href="../privacy.html#uninstall">Privacy &amp; data</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

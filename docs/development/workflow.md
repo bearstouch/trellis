@@ -23,6 +23,7 @@
 8. **Update the docs:**
     - `README.md` for user-visible changes
     - `CHANGELOG.md` under *Unreleased*
+    - the matching page of the user guide in `website/docs/` for user-visible behavior (then `python3 website/update-search-index.py` and `python3 website/check-links.py`)
     - [Status](../overview/status.md) if a pending check or known limit changes
 9. Open a pull request.
 

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started · Trellis Docs</title>
+<meta name="description" content="Install Trellis, take the welcome tour, install the trellis command and open your first project.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="guide/getting-started.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">User guide</p>
+<h1>Getting started</h1>
+<p class="lead">Install Trellis, take the short tour, and open your first project. It takes a couple of minutes.</p>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>macOS 14 Sonoma or later.</li>
+<li>An Apple silicon or Intel Mac. There's one Universal 2 app for both.</li>
+</ul>
+
+<h2 id="install">Install</h2>
+<ol class="steps">
+<li>Download the latest <code>Trellis-&lt;version&gt;.dmg</code> from the <a href="https://github.com/bearstouch/trellis/releases/latest">releases page</a>.</li>
+<li>Open the DMG and drag <strong>Trellis</strong> into <strong>Applications</strong>.</li>
+<li>Eject the DMG and open Trellis from Applications.</li>
+</ol>
+<div class="callout note">
+<p class="callout-title">Note</p>
+<p>Run Trellis from <strong>Applications</strong> (or <code>~/Applications</code>), not from the DMG. The command line tool and updates only install from there.</p>
+</div>
+<p>Trellis is distributed directly, not through the Mac App Store, and isn't sandboxed, so your shells behave exactly as they do in any other terminal. Releases are signed and notarized by Apple.</p>
+
+<h2 id="welcome-tour">The welcome tour</h2>
+<p>The first time Trellis opens, an eight-step tour introduces spaces, tabs and splits, sessions that keep running, projects, remote work, coding agents and keyboard control.</p>
+<ul>
+<li>Move with <strong>Next</strong> and <strong>Back</strong>, the page dots, <kbd>←</kbd> <kbd>→</kbd> or <kbd>↩</kbd>. <kbd>esc</kbd> or <strong>Skip Tour</strong> closes it.</li>
+<li>The last step lets you pick the <strong>Appearance</strong> (System, Dark or Light), choose whether sessions keep running after you quit, and install the <code>trellis</code> command. Each choice applies right away.</li>
+<li>Replay it any time from <strong>Help → Welcome Tour</strong> or the <a href="../features/command-palette.html">command palette</a>.</li>
+</ul>
+
+<h2 id="first-steps">First steps</h2>
+<ol class="steps">
+<li><strong>Open a space.</strong> Press <kbd>⌘N</kbd> for a new space. It appears in the left sidebar with one tab running your login shell.</li>
+<li><strong>Add tabs and splits.</strong> <kbd>⌘T</kbd> opens a tab. <kbd>⌘D</kbd> splits the pane left/right and <kbd>⇧⌘D</kbd> splits it top/bottom. Move focus with <kbd>⌥⌘</kbd> + arrow keys.</li>
+<li><strong>Name things.</strong> Double-click a tab to rename it. Right-click a tab and choose <strong>Color</strong> to label it.</li>
+<li><strong>Save it as a project.</strong> Press <kbd>⌘O</kbd> to open <strong>Projects</strong>, choose <strong>New from Space…</strong> to capture the space you just arranged, and launch it again later in one step. See <a href="../features/projects.html">Projects</a>.</li>
+<li><strong>Find anything.</strong> Press <kbd>⇧⌘P</kbd> for the command palette: every action, space, tab, host, task and theme in one list.</li>
+</ol>
+
+<h2 id="install-the-cli">Install the command line tool</h2>
+<p>The <code>trellis</code> command controls the running app from your shell and from scripts. Installing it is always your choice:</p>
+<ul>
+<li>Accept the one-time offer on first launch (or on the tour's last step), or</li>
+<li>Choose <strong>Trellis → Install Command Line Tool…</strong> at any time.</li>
+</ul>
+<p>Trellis creates a single link at <code>~/.local/bin/trellis</code> and then tells you whether that folder is on your <code>PATH</code>. If it isn't, it shows a line to add to your shell profile. Trellis never edits your dotfiles itself.</p>
+<pre><code>$ trellis --help</code></pre>
+<p>See <a href="../automation/cli.html">trellis CLI</a>.</p>
+
+<h2 id="updates">Updates</h2>
+<p>Choose <strong>Trellis → Check for Updates…</strong> to look for a new version. Updates are signed and install in place; Trellis relaunches into the new version.</p>
+<p>Automatic daily checks are <strong>off</strong> until you turn them on in <strong>Settings → Updates</strong>. You can also opt in to beta versions there.</p>
+
+<h2 id="next">Next</h2>
+<ul>
+<li><a href="concepts.html">Concepts</a>: how spaces, tabs, panes and sessions fit together.</li>
+<li><a href="keyboard-shortcuts.html">Keyboard shortcuts</a>: the full list, and how to rebind them.</li>
+<li><a href="settings.html">Settings</a>: appearance, fonts, themes and session behavior.</li>
+<li><a href="../features/ssh-hosts.html">SSH hosts</a>: save the machines you connect to.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

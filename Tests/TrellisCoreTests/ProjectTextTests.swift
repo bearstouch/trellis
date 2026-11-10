@@ -3,7 +3,7 @@ import XCTest
 @testable import TrellisCore
 
 /// Rules shared by tasks, the scratchpad and project launches: trust, folders and the layout planner's options for
-/// launching into live windows.
+/// launching into live spaces.
 final class ProjectTextTests: XCTestCase {
     func testTrustMatchesOnlyTheSameFolderAndBytes() {
         let data = Data("{\"version\":1}".utf8)
@@ -63,16 +63,16 @@ final class ProjectTextTests: XCTestCase {
     }
 
     func testPlannerAppliesDeclaredTabColorsOnly() throws {
-        let document = LayoutDocument(windows: [LayoutWindow(key: "w", name: "W", tabs: [LayoutTab(key: "t", title: "T", color: .red, root: .pane(key: "p", title: nil, launch: .shell(directory: nil)))])])
+        let document = LayoutDocument(spaces: [LayoutSpace(key: "w", name: "W", tabs: [LayoutTab(key: "t", title: "T", color: .red, root: .pane(key: "p", title: nil, launch: .shell(directory: nil)))])])
         let created = LayoutPlanner.plan(document, bindings: [:], snapshot: WorkspaceSnapshot(), home: "/h", hostExists: { _ in false }, directoryExists: { _ in true })
         let target = try XCTUnwrap(created.target)
         XCTAssertEqual(target.tabs.values.first?.color, .red)
         var recolored = document
-        recolored.windows[0].tabs[0].color = .blue
+        recolored.spaces[0].tabs[0].color = .blue
         let updated = LayoutPlanner.plan(recolored, bindings: created.bindings, snapshot: target, home: "/h", hostExists: { _ in false }, directoryExists: { _ in true })
         XCTAssertEqual(updated.target?.tabs.values.first?.color, .blue)
         XCTAssertTrue(updated.updates.contains { $0.kind == .tab })
-        recolored.windows[0].tabs[0].color = nil
+        recolored.spaces[0].tabs[0].color = nil
         let kept = LayoutPlanner.plan(recolored, bindings: created.bindings, snapshot: target, home: "/h", hostExists: { _ in false }, directoryExists: { _ in true })
         XCTAssertEqual(kept.target?.tabs.values.first?.color, .red, "An undeclared color leaves the label alone")
         XCTAssertTrue(kept.updates.isEmpty)
@@ -80,14 +80,14 @@ final class ProjectTextTests: XCTestCase {
 
     func testLiveLaunchChangesConflictUnlessKept() throws {
         var snapshot = WorkspaceSnapshot()
-        let document = LayoutDocument(windows: [LayoutWindow(key: "w", name: "W", tabs: [LayoutTab(key: "t", title: "T", root: .pane(key: "p", title: nil, launch: .shell(directory: "/a")))])])
+        let document = LayoutDocument(spaces: [LayoutSpace(key: "w", name: "W", tabs: [LayoutTab(key: "t", title: "T", root: .pane(key: "p", title: nil, launch: .shell(directory: "/a")))])])
         let created = LayoutPlanner.plan(document, bindings: [:], snapshot: snapshot, home: "/h", hostExists: { _ in false }, directoryExists: { _ in true })
         snapshot = try XCTUnwrap(created.target)
         let sessionID = try XCTUnwrap(snapshot.sessions.keys.first)
         snapshot.sessions[sessionID]?.state = .running
         snapshot.sessions[sessionID]?.processID = 42
         var moved = document
-        moved.windows[0].tabs[0].root = .pane(key: "p", title: nil, launch: .shell(directory: "/b"))
+        moved.spaces[0].tabs[0].root = .pane(key: "p", title: nil, launch: .shell(directory: "/b"))
         let strict = LayoutPlanner.plan(moved, bindings: created.bindings, snapshot: snapshot, home: "/h", hostExists: { _ in false }, directoryExists: { _ in true })
         XCTAssertFalse(strict.conflicts.isEmpty)
         let kept = LayoutPlanner.plan(

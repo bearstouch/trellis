@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings · Trellis Docs</title>
+<meta name="description" content="A tour of every section of the Trellis Settings window: appearance, sessions, broker, keyboard, themes, agents, automation, remote control and updates.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="guide/settings.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">User guide</p>
+<h1>Settings</h1>
+<p class="lead">Open Settings with <kbd>⌘,</kbd>. Sections are listed on the left. Most changes apply live, without restarting your sessions.</p>
+
+<h2 id="appearance">Appearance</h2>
+<p>The window, terminal text and cursor.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Setting</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><strong>Application appearance</strong></td><td>System, Dark or Light. Dark is the first-launch default.</td></tr>
+<tr><td><strong>Light theme</strong> / <strong>Dark theme</strong></td><td>The palette used in each appearance, for both the app and the terminal. See <a href="../features/themes.html">Themes</a>.</td></tr>
+<tr><td><strong>Background opacity</strong></td><td>Makes terminal backgrounds translucent. <strong>Blur behind background</strong> blurs what shows through.</td></tr>
+<tr><td><strong>Terminal font</strong></td><td>JetBrains Mono (13 pt) by default. Roboto Mono, Cascadia Mono NF, IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled too, and any monospaced font on your Mac works. Zoom with <kbd>⌘+</kbd> / <kbd>⌘-</kbd>; <kbd>⌘0</kbd> returns to 13 pt.</td></tr>
+<tr><td><strong>Cursor</strong>, <strong>Blink cursor</strong></td><td>Block (the default), underline or bar, and whether it blinks.</td></tr>
+<tr><td><strong>Bell</strong></td><td>What a terminal bell does: a sound (the default), a visual flash, both, or nothing.</td></tr>
+<tr><td><strong>Ligatures</strong></td><td>Joins sequences such as <code>-&gt;</code> and <code>!=</code> in fonts that have ligatures. On by default.</td></tr>
+<tr><td><strong>Bold as bright colors</strong>, <strong>Use bold fonts</strong>, <strong>Use italic fonts</strong></td><td>How bold and italic text is drawn. All on by default.</td></tr>
+<tr><td><strong>Allow blinking text</strong></td><td>Lets programs make text blink. It stays steady while Reduce Motion is on.</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="sessions">Sessions</h2>
+<p>How sessions start, draw and keep their output.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Setting</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><strong>Shell</strong></td><td>Your login shell by default, or another executable. Applies to new local sessions.</td></tr>
+<tr><td><strong>Working directory</strong></td><td>Where new local sessions start. Use an absolute path.</td></tr>
+<tr><td><strong>Scrollback lines</strong></td><td>0–50,000 lines per pane (10,000 by default), up to 16 MiB of text. Lowering it drops older output.</td></tr>
+<tr><td><strong>Shell integration (zsh, bash, fish)</strong></td><td>Tracks the directory, commands and prompts without editing your dotfiles. See <a href="../features/shell-integration.html">Shell integration</a>.</td></tr>
+<tr><td><strong>Remember directories</strong></td><td>Records where your shells have been, for <a href="../features/directory-jump.html">Jump to Directory</a>. <strong>Clear Directory History…</strong> forgets them.</td></tr>
+<tr><td><strong>Stop sessions when Trellis quits</strong></td><td>Off by default, so sessions keep running after quit. Turn it on to end them when Trellis quits or the window closes. See <a href="concepts.html#sessions-keep-running">Sessions keep running</a>.</td></tr>
+<tr><td><strong>Restore scrollback after quit</strong></td><td>Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis. Off by default.</td></tr>
+<tr><td><strong>Workspace disk writes</strong></td><td>A cap on how much Trellis writes per hour when saving spaces, tabs and settings. Past it, changes are saved together every 5 minutes. <kbd>⌘S</kbd> and Quit always save at once.</td></tr>
+<tr><td><strong>Desktop notifications</strong></td><td>Shows notifications that programs send when you aren't looking at their pane. See <a href="../features/notifications.html">Notifications</a>.</td></tr>
+<tr><td><strong>Notify when a command finishes</strong></td><td>With shell integration, a long command that finishes out of view sends a notification after the time you choose.</td></tr>
+<tr><td><strong>GPU rendering (Metal)</strong></td><td>Draws terminals with Metal, falling back to the CPU if Metal fails. Off by default.</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="session-broker">Session Broker</h2>
+<p>Shows the background helper that keeps sessions running, on this Mac and on each connected <a href="../features/remote-workspaces.html">remote workspace</a> host: whether it's running, its version and how many sessions it holds. <strong>Refresh</strong> checks again. Viewing this page never starts or replaces a helper.</p>
+
+<h2 id="keyboard">Keyboard</h2>
+<p>Rebind any shortcut, and choose <strong>Use Option as Meta key</strong>. See <a href="keyboard-shortcuts.html#changing-shortcuts">Changing shortcuts</a>.</p>
+
+<h2 id="themes">Themes</h2>
+<p>Browse, preview and manage color themes. Pick an installed theme, preview a JSON theme in the workspace before using it, export, replace or delete your own, and open the themes folder. <strong>Cancel Preview</strong> always restores exactly what you had. See <a href="../features/themes.html">Themes</a>.</p>
+
+<h2 id="agents">Agents</h2>
+<p>The coding agents the <a href="../features/agents.html">Agents</a> view launches, and how they report their state.</p>
+<ul>
+<li>Each agent shows whether it's installed or not found on your <code>PATH</code>.</li>
+<li><strong>Notify me when an agent needs me or finishes while its pane is out of view.</strong></li>
+<li><strong>Connect agents typed in a shell</strong>: typing an agent's command in a zsh, bash or fish pane runs it with the same status hooks. Your own function or alias of the same name wins.</li>
+<li><strong>Reveal Agents Folder</strong>: add your own agent by dropping a <code>&lt;id&gt;.agent.json</code> file there.</li>
+</ul>
+
+<h2 id="automation">Automation</h2>
+<p>Manage access for scripts and agents that use the <a href="../automation/cli.html">trellis CLI</a> or the <a href="../automation/api.html">automation API</a>. Create a grant with only the capabilities and spaces it needs, copy its token once, and revoke it at any time. See <a href="../automation/api.html">Automation API</a>.</p>
+
+<h2 id="remote-control">Remote Control</h2>
+<p>Turn on the <a href="../automation/mcp.html">MCP server</a> so agents can connect over the Model Context Protocol. It's off by default and listens on <code>127.0.0.1</code>, port 7777, when on.</p>
+
+<h2 id="updates">Updates</h2>
+<ul>
+<li><strong>Check Now</strong> looks for a new version once.</li>
+<li><strong>Automatically check for updates</strong> checks once a day. Off by default. Trellis only downloads the update list; it sends no usage data.</li>
+<li><strong>Include beta versions</strong> offers pre-release builds as well as stable ones.</li>
+</ul>
+<p>Development builds have no Updates section.</p>
+
+<h2 id="where-settings-live">Where settings live</h2>
+<p>Settings are saved with your workspace in <code>~/Library/Application Support/com.bearstouch.trellis/</code>, and a few preferences in macOS's own settings storage. See <a href="../privacy.html">Privacy &amp; data</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

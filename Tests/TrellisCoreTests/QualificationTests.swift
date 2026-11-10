@@ -25,14 +25,14 @@ final class QualificationTests: XCTestCase {
                 let tabs = Array(snapshot.tabs.values).sorted { $0.id.uuidString < $1.id.uuidString }
                 let command: WorkspaceCommand
                 switch (Int.random(in: 0..<7, using: &random), panes.isEmpty) {
-                case (0, _), (_, true): command = .createWindow(name: "W\(step)")
-                case (1, _): command = .createTab(windowID: snapshot.windows.randomElement(using: &random)!.id)
+                case (0, _), (_, true): command = .createSpace(name: "W\(step)")
+                case (1, _): command = .createTab(spaceID: snapshot.spaces.randomElement(using: &random)!.id)
                 case (2, _), (3, _):
                     command = .splitPane(id: panes.randomElement(using: &random)!, axis: Bool.random(using: &random) ? .x : .y, availableSize: try TerminalSize(columns: 400, rows: 200))
                 case (4, _): command = .deletePane(id: panes.randomElement(using: &random)!)
                 case (5, _):
-                    let window = snapshot.windows.randomElement(using: &random)!
-                    command = .reorderTabs(windowID: window.id, ids: window.tabIDs.shuffled(using: &random))
+                    let space = snapshot.spaces.randomElement(using: &random)!
+                    command = .reorderTabs(spaceID: space.id, ids: space.tabIDs.shuffled(using: &random))
                 default:
                     let tab = tabs.randomElement(using: &random)!
                     guard case .split(let branch, _, _, _) = tab.root else { continue }
@@ -44,7 +44,7 @@ final class QualificationTests: XCTestCase {
                 XCTAssertNoThrow(try next.validate(), "seed \(seed) step \(step)")
                 // IDs are stable: a resource never changes kind, and IDs are unique across kinds.
                 var kinds: [UUID: String] = [:]
-                for window in next.windows { kinds[window.id] = "window" }
+                for space in next.spaces { kinds[space.id] = "space" }
                 for id in next.tabs.keys { XCTAssertNil(kinds.updateValue("tab", forKey: id)) }
                 for id in next.panes.keys { XCTAssertNil(kinds.updateValue("pane", forKey: id)) }
                 for id in next.sessions.keys { XCTAssertNil(kinds.updateValue("session", forKey: id)) }

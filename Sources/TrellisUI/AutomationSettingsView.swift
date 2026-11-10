@@ -17,11 +17,11 @@ public final class GrantListModel: ObservableObject {
     }
 
     public func create(
-        name: String, capabilities: Set<Capability>, windowScope: WindowScope, hostScope: HostScope, lifetime: TimeInterval
+        name: String, capabilities: Set<Capability>, spaceScope: SpaceScope, hostScope: HostScope, lifetime: TimeInterval
     ) async -> Result<String, GrantError> {
         defer { Task { await refresh() } }
         do {
-            return .success(try await store.create(name: name, capabilities: capabilities, windowScope: windowScope, hostScope: hostScope, lifetime: lifetime).token)
+            return .success(try await store.create(name: name, capabilities: capabilities, spaceScope: spaceScope, hostScope: hostScope, lifetime: lifetime).token)
         } catch { return .failure(error) }
     }
 
@@ -63,7 +63,7 @@ struct AutomationSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Scripts and agents connect through a local socket using a grant token. Each grant allows only the capabilities and windows you choose.")
+            Text("Scripts and agents connect through a local socket using a grant token. Each grant allows only the capabilities and spaces you choose.")
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Text("Grants reduce accidental or unauthorized access, but any program running as your macOS user could still read your files or the Keychain item. Only grant access to software you trust.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -133,19 +133,19 @@ struct AutomationSettingsView: View {
     }
 
     private func scopeText(_ grant: AutomationGrant) -> String {
-        let windows: String
-        switch grant.windowScope {
-        case .all: windows = "All windows"
-        case .windows(let ids):
-            let names = workspace.snapshot.windows.filter { ids.contains($0.id) }.map(\.name)
-            windows = names.isEmpty ? "No current windows" : "Windows: " + names.joined(separator: ", ")
+        let spaces: String
+        switch grant.spaceScope {
+        case .all: spaces = "All spaces"
+        case .spaces(let ids):
+            let names = workspace.snapshot.spaces.filter { ids.contains($0.id) }.map(\.name)
+            spaces = names.isEmpty ? "No current spaces" : "Spaces: " + names.joined(separator: ", ")
         }
         let hostText: String
         switch grant.hostScope {
         case .all: hostText = "all hosts"
         case .approved(let approvals): hostText = approvals.isEmpty ? "no hosts" : "\(approvals.count) approved host(s)"
         }
-        return "\(windows) · \(hostText)"
+        return "\(spaces) · \(hostText)"
     }
 }
 
@@ -156,8 +156,8 @@ private struct NewGrantView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var capabilities: Set<Capability> = [.metadataRead]
-    @State private var allWindows = true
-    @State private var windows = Set<UUID>()
+    @State private var allSpaces = true
+    @State private var spaces = Set<UUID>()
     @State private var allHosts = false
     @State private var approvedHosts = Set<UUID>()
     @State private var lifetime: TimeInterval = 86_400
@@ -203,10 +203,10 @@ private struct NewGrantView: View {
                     }
                 }
                 Divider()
-                Toggle("All windows (needed to create windows, apply layouts, or change themes)", isOn: $allWindows)
-                if !allWindows {
-                    ForEach(workspace.snapshot.windows) { window in
-                        Toggle(window.name, isOn: Binding(get: { windows.contains(window.id) }, set: { if $0 { windows.insert(window.id) } else { windows.remove(window.id) } }))
+                Toggle("All spaces (needed to create spaces, apply layouts, or change themes)", isOn: $allSpaces)
+                if !allSpaces {
+                    ForEach(workspace.snapshot.spaces) { space in
+                        Toggle(space.name, isOn: Binding(get: { spaces.contains(space.id) }, set: { if $0 { spaces.insert(space.id) } else { spaces.remove(space.id) } }))
                             .padding(.leading, 16)
                     }
                 }
@@ -237,7 +237,7 @@ private struct NewGrantView: View {
     }
 
     private func create() {
-        let windowScope: WindowScope = allWindows ? .all : .windows(windows)
+        let spaceScope: SpaceScope = allSpaces ? .all : .spaces(spaces)
         let hostScope: HostScope =
             allHosts
             ? .all
@@ -245,7 +245,7 @@ private struct NewGrantView: View {
         submitting = true
         Task {
             defer { submitting = false }
-            switch await grants.create(name: name, capabilities: capabilities, windowScope: windowScope, hostScope: hostScope, lifetime: lifetime) {
+            switch await grants.create(name: name, capabilities: capabilities, spaceScope: spaceScope, hostScope: hostScope, lifetime: lifetime) {
             case .success(let created): token = created
             case .failure(let error): message = GrantListModel.message(for: error)
             }

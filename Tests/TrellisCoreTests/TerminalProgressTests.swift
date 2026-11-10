@@ -61,10 +61,10 @@ final class TerminalProgressTests: XCTestCase {
 
     func testPaneAccessibilityValueSpeaksProgress() {
         var snapshot = WorkspaceSnapshot()
-        let windowID = UUID(), tabID = UUID(), paneID = UUID(), sessionID = UUID()
-        snapshot.windows = [ManagedWindow(id: windowID, name: "W", tabIDs: [tabID], activeTabID: tabID)]
-        snapshot.activeWindowID = windowID
-        snapshot.tabs[tabID] = WorkspaceTab(id: tabID, windowID: windowID, title: "T", root: .pane(paneID), activePaneID: paneID)
+        let spaceID = UUID(), tabID = UUID(), paneID = UUID(), sessionID = UUID()
+        snapshot.spaces = [Space(id: spaceID, name: "W", tabIDs: [tabID], activeTabID: tabID)]
+        snapshot.activeSpaceID = spaceID
+        snapshot.tabs[tabID] = WorkspaceTab(id: tabID, spaceID: spaceID, title: "T", root: .pane(paneID), activePaneID: paneID)
         snapshot.panes[paneID] = WorkspacePane(id: paneID, tabID: tabID, sessionID: sessionID)
         let live = [paneID: WorkspaceAccessibility.LiveSession(state: .running, progress: TerminalProgress(state: .normal, percent: 40))]
         XCTAssertEqual(WorkspaceAccessibility(snapshot: snapshot, live: live).panes.first?.value, "Running, progress 40 percent")

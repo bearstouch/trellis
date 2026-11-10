@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Files · Trellis Docs</title>
+<meta name="description" content="Browse the focused pane's project, open files in your editor and copy or insert paths without leaving the terminal.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/files.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Files</h1>
+<p class="lead">The Files view shows the focused pane's project as a tree, so you can find a file, open it in your editor or copy its path without leaving the terminal.</p>
+
+<h2 id="open-files">Open Files</h2>
+<p>Click the folder icon at the top of the <a href="sidebar.html">dock</a>, or press <kbd>⌥⌘F</kbd>. The keyboard goes straight to the search field. Press <kbd>⌥⌘F</kbd> again to hide it.</p>
+<p>Files works for panes on this Mac only. Its icon is dimmed for SSH and <a href="remote-workspaces.html">remote workspace</a> panes.</p>
+
+<h2 id="what-it-shows">What it shows</h2>
+<p>The tree starts at the focused pane's <strong>project</strong>: the nearest folder at or above the pane's folder that contains <code>.trellis</code> or <code>.git</code>. Outside a project, it shows the pane's folder. A <code>cd</code> in the pane, or focusing another pane, moves the tree.</p>
+<p>Folders come first, then files. The tree leaves out:</p>
+<ul>
+<li><code>.git</code>, <code>.build</code>, <code>.swiftpm</code>, <code>node_modules</code>, <code>DerivedData</code> and <code>.DS_Store</code></li>
+<li>Whatever the project's top-level <code>.gitignore</code> ignores</li>
+<li>Hidden files, unless you turn on the eye button</li>
+</ul>
+<p>Only the top-level <code>.gitignore</code> is read, with its simple patterns. Negations (<code>!</code>), nested <code>.gitignore</code> files and global excludes are ignored.</p>
+<p>Use <strong>Collapse All</strong> to close every folder and <strong>Reload</strong> to read them again.</p>
+
+<h2 id="search">Search</h2>
+<p>Type in <strong>Search files…</strong> to find files by name anywhere in the project. Letters only have to appear in order, as in the <a href="command-palette.html">command palette</a>. Include a <code>/</code> to match against the path. The best match is selected; press <kbd>Esc</kbd> to clear the search and get the tree back.</p>
+<p>Search looks at up to 20,000 files and shows up to 200 results.</p>
+
+<h2 id="keys">Keys and actions</h2>
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Open or close a folder</td><td><kbd>→</kbd> <kbd>←</kbd></td></tr>
+<tr><td>Move the selection</td><td><kbd>↑</kbd> <kbd>↓</kbd></td></tr>
+<tr><td>Open the selection in your app</td><td><kbd>↩</kbd></td></tr>
+<tr><td>Copy the full path</td><td><kbd>⇧⌘C</kbd></td></tr>
+<tr><td>Copy the path relative to the project</td><td><kbd>⌥⇧⌘C</kbd></td></tr>
+<tr><td>Insert the path at the pane's prompt</td><td><kbd>⌥↩</kbd></td></tr>
+<tr><td>Clear the search</td><td><kbd>Esc</kbd></td></tr>
+</tbody>
+</table></div>
+<p>You can also double-click a row to open it, use the copy button on a row, or drag a row onto a pane to insert its quoted path, as when <a href="terminal.html">dropping from Finder</a>. Inserted paths are quoted for the shell and never run by themselves.</p>
+<p>Right-click a row for <strong>Open With</strong>, <strong>Reveal in Finder</strong>, <strong>Copy Name</strong> and <strong>Type cd to …</strong>, which types <code>cd '&lt;folder&gt;'</code> at the prompt without pressing Return.</p>
+
+<h2 id="open-in">Open in your editor</h2>
+<p><strong>Open in</strong> opens the selection, or the project folder when nothing is selected, in the app you chose last (Finder until you pick another). Click the arrow beside it to choose a different app; Trellis remembers it, and <a href="changes.html">Changes</a> uses the same choice.</p>
+<p>The menu lists Finder, then whichever of these are installed:</p>
+<ul>
+<li>Cursor, VS Code (or VS Code Insiders, or VSCodium), Zed</li>
+<li>Xcode, Sublime Text, Nova</li>
+<li>IntelliJ IDEA, WebStorm, PyCharm</li>
+</ul>
+<p>Then <strong>Default App</strong> (whatever macOS opens the file with), <strong>New Tab Here</strong> (a Trellis tab in that folder) and <strong>Other App…</strong>, which picks any app once without remembering it.</p>
+<div class="callout note">
+<p class="callout-title">Note</p>
+<p>Finder and <strong>Default App</strong> never run anything. An app, a script or another executable file is revealed in Finder instead of opened.</p>
+</div>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

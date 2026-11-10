@@ -38,7 +38,7 @@ final class TaskRunnerTests: XCTestCase {
         model.openLaunchFile = { _ in XCTFail("Unexpected editor") }
         let saved = await model.saveLaunchSettings(shell: shell, directory: project)
         XCTAssertTrue(saved)
-        _ = await model.createWindow(name: "W")
+        _ = await model.createSpace(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         XCTAssertEqual(model.terminals[pane]?.sessionState, .running)

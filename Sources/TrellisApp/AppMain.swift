@@ -169,8 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let restored = await model.loadWorkspace()
             await model.refresh()
             guard !Task.isCancelled else { return }
-            if !restored, model.snapshot.windows.isEmpty {
-                await model.createWindow(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
+            if !restored, model.snapshot.spaces.isEmpty {
+                await model.createSpace(name: "Terminal", fixture: CommandLine.arguments.contains("--fixture"))
             }
             // MAC-15, FR-ON02: scripted and isolated launches never ask, and recovery comes first.
             if identity.stateDirectory == nil, !CommandLine.arguments.contains("--fixture"), model.recoveryMessage == nil, !terminationPending {
@@ -252,11 +252,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         app.submenu?.addItem(withTitle: "Quit Trellis", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(app)
         menu.addItem(
-            submenu("File", [.newWindow, .newTab, nil, .renameTab, .renameWindow, nil, .closePane, .closeTab, .deleteWindow, nil, .showProjects, .showHosts, .saveWorkspace]))
+            submenu("File", [.newSpace, .newTab, nil, .renameTab, .renameSpace, nil, .closePane, .closeTab, .deleteSpace, nil, .showProjects, .showHosts, .saveWorkspace]))
         if let file = menu.items.last?.submenu {
             file.addItem(.separator())
-            file.addItem(withTitle: "Export Windows & Hosts…", action: #selector(exportWindowsAndHosts), keyEquivalent: "")
-            file.addItem(withTitle: "Import Windows & Hosts…", action: #selector(importWindowsAndHosts), keyEquivalent: "")
+            file.addItem(withTitle: "Export Projects & Hosts…", action: #selector(exportProjectsAndHosts), keyEquivalent: "")
+            file.addItem(withTitle: "Import Projects & Hosts…", action: #selector(importProjectsAndHosts), keyEquivalent: "")
         }
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
@@ -297,7 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let windows = submenu(
             "Window",
             [
-                nil, .previousWindow, .nextWindow, .previousTab, .nextTab, nil,
+                nil, .previousSpace, .nextSpace, .previousTab, .nextTab, nil,
                 .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectTab9
             ])
         windows.submenu?.insertItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "", at: 0)
@@ -333,15 +333,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let pane = presentation.activePane?.id
         model.revealTerminalsForPaneAction(action)
         switch action {
-        case .newWindow: newWindow()
+        case .newSpace: newSpace()
         case .newTab: Task { await model.createTab() }
         case .renameTab: model.tabRenameRequest = UUID()
-        case .renameWindow: model.windowRenameRequest = UUID()
+        case .renameSpace: model.spaceRenameRequest = UUID()
         // The Review tab hides the terminals, so closing acts on what is shown, never on a pane out of sight (FR-GC05).
         case .closePane where model.reviewVisible, .closeTab where model.reviewVisible: model.closeReview()
         case .closePane: if let pane { Task { await model.closePane(pane) } }
         case .closeTab: if let tab = presentation.selectedTab?.id { Task { await model.closeTab(tab) } }
-        case .deleteWindow: if let id = presentation.selectedWindow?.id { Task { await model.deleteWindow(id) } }
+        case .deleteSpace: if let id = presentation.selectedSpace?.id { Task { await model.deleteSpace(id) } }
         case .saveWorkspace: Task { await model.flushWorkspaceSave() }
         case .showHosts: showHosts()
         case .showProjects: showProjects()
@@ -369,8 +369,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .resizeRight: Task { await model.resizeFocusedPane(.right) }
         case .resizeUp: Task { await model.resizeFocusedPane(.up) }
         case .resizeDown: Task { await model.resizeFocusedPane(.down) }
-        case .nextWindow: selectRelativeWindow(1)
-        case .previousWindow: selectRelativeWindow(-1)
+        case .nextSpace: selectRelativeSpace(1)
+        case .previousSpace: selectRelativeSpace(-1)
         case .nextTab: selectRelativeTab(1)
         case .previousTab: selectRelativeTab(-1)
         default: break
@@ -393,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
         if model.commandPaletteVisible, window?.isKeyWindow == true { return action == .commandPalette }
         if [.closePane, .closeTab].contains(action), let key = NSApp.keyWindow, key !== window { return true }
-        if [.newWindow, .saveWorkspace, .showHosts, .showProjects, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
+        if [.newSpace, .saveWorkspace, .showHosts, .showProjects, .zoomIn, .zoomOut, .actualSize].contains(action) { return true }
         // Workspace commands act on the main window only while it is key.
         guard window?.isKeyWindow == true else { return false }
         if action == .toggleSidebar { return true }
@@ -411,16 +411,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .closePane, .maximizePane, .focusLeft, .focusRight, .focusUp, .focusDown,
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             return presentation.activePane != nil
-        case .nextWindow, .previousWindow: return model.snapshot.windows.count > 1
+        case .nextSpace, .previousSpace: return model.snapshot.spaces.count > 1
         case .nextTab, .previousTab: return presentation.visibleTabs.count > 1
-        default: return presentation.selectedWindow != nil || action == .newTab
+        default: return presentation.selectedSpace != nil || action == .newTab
         }
     }
 
-    @objc private func newWindow() {
+    @objc private func newSpace() {
         window?.deminiaturize(nil)
         window?.makeKeyAndOrderFront(nil)
-        Task { await model.createWindow() }
+        Task { await model.createSpace() }
     }
     @objc private func selectAllText(_ sender: Any?) {
         if !NSApp.sendAction(NSSelectorFromString("selectAllTerminalText:"), to: nil, from: sender) {
@@ -440,11 +440,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
     }
-    private func selectRelativeWindow(_ offset: Int) {
-        let windows = model.snapshot.windows
-        guard let id = model.snapshot.activeWindowID, let index = windows.firstIndex(where: { $0.id == id }), !windows.isEmpty else { return }
-        let next = windows[(index + offset + windows.count) % windows.count].id
-        Task { await model.selectWindow(next) }
+    private func selectRelativeSpace(_ offset: Int) {
+        let spaces = model.snapshot.spaces
+        guard let id = model.snapshot.activeSpaceID, let index = spaces.firstIndex(where: { $0.id == id }), !spaces.isEmpty else { return }
+        let next = spaces[(index + offset + spaces.count) % spaces.count].id
+        Task { await model.selectSpace(next) }
     }
     private func selectRelativeTab(_ offset: Int) {
         let tabs = model.presentation.visibleTabs
@@ -542,33 +542,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    /// Writes a portable export; credentials and runtime state are never included.
-    @objc private func exportWindowsAndHosts() {
+    /// Writes a portable export of projects and saved hosts (FR-R02); credentials and runtime state are never included.
+    @objc private func exportProjectsAndHosts() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Trellis Windows & Hosts.trellis.json"
-        panel.message = "Exports windows, tabs, splits, and saved hosts. No output, passwords, keys, or tokens are included."
+        panel.nameFieldStringValue = "Trellis Projects & Hosts.trellis.json"
+        panel.message = "Exports your projects and saved hosts. No output, passwords, keys, tokens, or open spaces are included."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let transfer = PortableTransfer(model: model, hosts: hosts, projects: projects)
+        let transfer = PortableTransfer(hosts: hosts, projects: projects)
         Task {
-            let (data, converted) = await transfer.exportData()
+            let data = await transfer.exportData()
             do {
                 try data.write(to: url, options: .atomic)
                 // Exports hold no secrets, but stay owner-only like other Trellis files.
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-                if converted > 0 {
-                    model.errorMessage =
-                        "\(converted) pane(s) were exported as plain local shells: custom commands are never exported, and a remote workspace pane whose saved host is gone loses its host."
-                }
             } catch { model.errorMessage = "The export could not be written. Check the location and try again." }
         }
     }
 
-    @objc private func importWindowsAndHosts() {
+    @objc private func importProjectsAndHosts() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.message = "Choose a Trellis export to review before importing."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let transfer = PortableTransfer(model: model, hosts: hosts, projects: projects)
+        let transfer = PortableTransfer(hosts: hosts, projects: projects)
         let parent: NSWindow? = window
         Task { [weak parent] in
             guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { model.errorMessage = "The file could not be read."; return }
@@ -804,7 +800,7 @@ struct TrellisMain {
                 forwarder.send(
                     .metadata([
                         WorkspaceEvent(
-                            type: "appearance.changed", resourceID: appearanceResource, windowID: nil,
+                            type: "appearance.changed", resourceID: appearanceResource, spaceID: nil,
                             data: [
                                 "mode": settings.chromeMode.rawValue, "lightThemeId": settings.lightThemeID, "darkThemeId": settings.darkThemeID,
                                 "effectiveThemeId": model.effectiveTheme.id, "revision": String(model.appearanceRevision)
@@ -812,8 +808,8 @@ struct TrellisMain {
                     ]))
             }
             model.onSessionOutput = { [weak model] session, pane, data, next in
-                let window = model?.snapshot.panes[pane].flatMap { model?.snapshot.tabs[$0.tabID]?.windowID }
-                forwarder.send(.output(session: session, window: window, data: data, next: next))
+                let space = model?.snapshot.panes[pane].flatMap { model?.snapshot.tabs[$0.tabID]?.spaceID }
+                forwarder.send(.output(session: session, space: space, data: data, next: next))
             }
             Task {
                 await events.setDelivery { connection, data in control.push(data, to: connection) }

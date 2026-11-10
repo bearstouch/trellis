@@ -123,17 +123,38 @@ private struct SavedPane: Codable {
 
 private struct SavedWorkspace: Codable {
     var revision: UInt64
-    var windows: [ManagedWindow]
-    var activeWindowID: UUID?
+    var spaces: [Space]
+    var activeSpaceID: UUID?
     var tabs: [WorkspaceTab]
     var panes: [SavedPane]
+
+    init(revision: UInt64, spaces: [Space], activeSpaceID: UUID?, tabs: [WorkspaceTab], panes: [SavedPane]) {
+        self.revision = revision; self.spaces = spaces; self.activeSpaceID = activeSpaceID; self.tabs = tabs; self.panes = panes
+    }
+    private enum CodingKeys: String, CodingKey { case revision, spaces, activeSpaceID, tabs, panes }
+    /// Schema 3 and older, from before windows were renamed spaces.
+    private enum LegacyKeys: String, CodingKey { case windows, activeWindowID }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        revision = try values.decode(UInt64.self, forKey: .revision)
+        tabs = try values.decode([WorkspaceTab].self, forKey: .tabs)
+        panes = try values.decode([SavedPane].self, forKey: .panes)
+        if values.contains(.spaces) {
+            spaces = try values.decode([Space].self, forKey: .spaces)
+            activeSpaceID = try values.decodeIfPresent(UUID.self, forKey: .activeSpaceID)
+        } else {
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+            spaces = try legacy.decode([Space].self, forKey: .windows)
+            activeSpaceID = try legacy.decodeIfPresent(UUID.self, forKey: .activeWindowID)
+        }
+    }
 }
 
 public enum WorkspaceSnapshotCodec {
-    /// 2 adds remote workspaces (FR-RW01), 3 agent panes (FR-AG04). A workspace is written at the lowest version that
-    /// holds it, so an older build keeps reading what it can; anything newer is read-only there (unsupported version),
-    /// never mistaken for corrupt.
-    public static let currentVersion = 3
+    /// 2 adds remote workspaces (FR-RW01), 3 agent panes (FR-AG04), 4 renames windows to spaces and adds their project
+    /// link (FR-W08). Older versions are still read; a newer one is read-only here (unsupported version), never mistaken
+    /// for corrupt. Every save writes 4, since the key names changed and an older build could not read them.
+    public static let currentVersion = 4
     private struct Header: Decodable { var schemaVersion: Int }
     private struct Document: Codable {
         var schemaVersion: Int
@@ -148,12 +169,10 @@ public enum WorkspaceSnapshotCodec {
             return SavedPane(pane: pane, launch: SavedLaunch(session.launch, settings: settings))
         }
         let saved = SavedWorkspace(
-            revision: snapshot.revision, windows: snapshot.windows, activeWindowID: snapshot.activeWindowID,
+            revision: snapshot.revision, spaces: snapshot.spaces, activeSpaceID: snapshot.activeSpaceID,
             tabs: snapshot.tabs.values.sorted { $0.id.uuidString < $1.id.uuidString }, panes: panes)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let version =
-            snapshot.sessions.values.contains { $0.launch.agent != nil } ? 3 : snapshot.windows.contains { $0.remoteHostID != nil } ? 2 : 1
-        let data = try encoder.encode(Document(schemaVersion: version, workspace: saved, settings: settings))
+        let data = try encoder.encode(Document(schemaVersion: currentVersion, workspace: saved, settings: settings))
         guard data.count <= 4_194_304 else { throw WorkspacePersistenceError.corrupt }
         return data
     }
@@ -183,8 +202,8 @@ public enum WorkspaceSnapshotCodec {
             let settings = document.settings ?? WorkspaceSettings()
             var result = WorkspaceSnapshot()
             result.revision = document.workspace.revision
-            result.windows = document.workspace.windows
-            result.activeWindowID = document.workspace.activeWindowID
+            result.spaces = document.workspace.spaces
+            result.activeSpaceID = document.workspace.activeSpaceID
             for tab in document.workspace.tabs {
                 guard result.tabs.updateValue(tab, forKey: tab.id) == nil else { throw WorkspacePersistenceError.corrupt }
             }

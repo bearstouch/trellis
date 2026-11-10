@@ -114,7 +114,7 @@ struct SidebarHeader<Accessory: View>: View {
 }
 
 /// The sidebar's Agents view (FR-AG07, FR-AG16): where agents open for the focused pane, each agent with its status and
-/// Open and Resume, and every agent pane in every window with its state in words.
+/// Open and Resume, and every agent pane in every space with its state in words.
 struct AgentsSidebarView: View {
     @ObservedObject var model: AppWorkspaceModel
 
@@ -161,13 +161,11 @@ struct AgentsSidebarView: View {
                 }.accessibilityElement(children: .combine)
             }
             // This Tab (FR-AG17) only while the focused tab has no agent; New Tab stands in for it meanwhile.
-            let placement = Binding(get: { model.effectiveAgentPlacement }, set: { model.agentPlacement = $0 })
-            Picker("Open agent in", selection: placement) {
-                Text("New Tab").tag(AppWorkspaceModel.AgentPlacement.tab)
-                if model.canLaunchAgentInFocusedTab { Text("This Tab").tag(AppWorkspaceModel.AgentPlacement.currentTab) }
-                Text("Split").tag(AppWorkspaceModel.AgentPlacement.split)
+            let thisTab: [(value: AppWorkspaceModel.AgentPlacement, label: String)] = model.canLaunchAgentInFocusedTab ? [(.currentTab, "This Tab")] : []
+            SegmentedPicker("Open agent in", selection: model.effectiveAgentPlacement, options: [(.tab, "New Tab")] + thisTab + [(.split, "Split")]) { [weak model] in
+                model?.agentPlacement = $0
             }
-            .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+            .labelsHidden().controlSize(.small)
             .help(
                 "Where ▶ starts the agent: a new tab, this tab's focused pane in place of its idle shell, or a split beside it. ⌥-click ▶ for a split, or a new tab from Split")
         }
@@ -212,7 +210,8 @@ struct AgentsSidebarView: View {
                 AgentIconView(icon: row.agent.icon, directory: model.agentCatalog.iconDirectories[row.agent.id], size: 12).frame(width: 18).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))
-                    Text("\(row.windowName) · \(row.agent.name)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
+                    Text("\(row.spaceName) · \(row.agent.name)\(row.typed ? " · in a shell" : "")").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 if row.state == .working {
@@ -228,7 +227,7 @@ struct AgentsSidebarView: View {
         .buttonStyle(.plain)
         .help("Show this agent's pane")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(row.agent.name), \(row.tabTitle), \(row.windowName)")
+        .accessibilityLabel("\(row.agent.name)\(row.typed ? " in a shell" : ""), \(row.tabTitle), \(row.spaceName)")
         .accessibilityValue(row.status).accessibilityHint("Shows this pane").accessibilityAddTraits(.isButton)
     }
 

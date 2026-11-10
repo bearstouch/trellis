@@ -26,22 +26,22 @@ enum CLICommands {
 
     static let table: [String: [String: CommandSpec]] = [
         "system": ["info": spec("system.info")],
-        "window": [
-            "list": spec("window.list"),
-            "get": spec("window.get", ["window"]),
-            "create": spec("window.create", ["name"], switches: ["start"]),
-            "rename": spec("window.update", ["window", "name", "expected-revision"]),
-            "reorder": spec("window.reorder", ["ids", "expected-revision"]),
-            "focus": spec("window.focus", ["window"], switches: ["activate"]),
-            "close": spec("window.close", ["window", "expected-revision"], switches: ["allow-running", "force"])
+        "space": [
+            "list": spec("space.list"),
+            "get": spec("space.get", ["space"]),
+            "create": spec("space.create", ["name"], switches: ["start"]),
+            "rename": spec("space.update", ["space", "name", "expected-revision"]),
+            "reorder": spec("space.reorder", ["ids", "expected-revision"]),
+            "focus": spec("space.focus", ["space"], switches: ["activate"]),
+            "close": spec("space.close", ["space", "expected-revision"], switches: ["allow-running", "force"])
         ],
         "tab": [
-            "list": spec("tab.list", ["window"]),
+            "list": spec("tab.list", ["space"]),
             "get": spec("tab.get", ["tab"]),
-            "create": spec("tab.create", ["window", "title"], switches: ["start"]),
+            "create": spec("tab.create", ["space", "title"], switches: ["start"]),
             "rename": spec("tab.update", ["tab", "title", "expected-revision"]),
             "color": spec("tab.update", ["tab", "color", "expected-revision"]),
-            "reorder": spec("tab.reorder", ["window", "ids", "expected-revision"]),
+            "reorder": spec("tab.reorder", ["space", "ids", "expected-revision"]),
             "focus": spec("tab.focus", ["tab"]),
             "close": spec("tab.close", ["tab", "expected-revision"], switches: ["allow-running", "force"])
         ],
@@ -67,13 +67,13 @@ enum CLICommands {
             "create": spec("host.create", ["name", "destination", "user", "port", "identity-file", "tags"]),
             "update": spec("host.update", ["host", "name", "destination", "user", "port", "identity-file", "tags", "expected-revision"]),
             "delete": spec("host.delete", ["host", "expected-revision"]),
-            "connect": spec("host.connect", ["host", "window", "pane", "axis"])
+            "connect": spec("host.connect", ["host", "space", "pane", "axis"])
         ],
         "layout": [
             "validate": spec("layout.validate", positionals: 1),
             "plan": spec("layout.plan", ["namespace"], positionals: 1),
             "apply": spec("layout.apply", ["namespace", "expected-revision"], switches: ["start-new"], positionals: 1),
-            "export": spec("layout.export", ["window"], repeatable: ["window"])
+            "export": spec("layout.export", ["space"], repeatable: ["space"])
         ],
         "events": ["subscribe": spec("events.subscribe", ["topics", "resource", "after-sequence", "instance"], repeatable: ["resource"])],
         "theme": [
@@ -159,7 +159,9 @@ enum CLIArguments {
     }
 
     static func parse(_ arguments: [String]) throws(ArgumentError) -> ParsedCommand {
-        guard let noun = arguments.first else { throw .usage("Missing command.") }
+        guard let given = arguments.first else { throw .usage("Missing command.") }
+        // `window` and `--window` are the deprecated names from before windows were renamed spaces.
+        let noun = given == "window" ? "space" : given
         let verbs = try verbs(of: noun)
         guard arguments.count >= 2 else { throw .usage("\(noun) needs a verb. Use one of: \(verbs.keys.sorted().joined(separator: ", ")).") }
         let verb = arguments[1]
@@ -178,7 +180,7 @@ enum CLIArguments {
                 command.positionals.append(argument)
                 continue
             }
-            let name = String(argument.dropFirst(2))
+            let name = argument == "--window" ? "space" : String(argument.dropFirst(2))
             // Secrets never travel in argv, where other processes can read them,
             // and argument values are never echoed back in diagnostics.
             let base = String(name.prefix { $0 != "=" })

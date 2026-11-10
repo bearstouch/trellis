@@ -205,8 +205,8 @@ private struct WelcomeTourCopy: View {
                 row("sparkles", "See what makes it different", "Sessions that outlive the app, coding agents and remote workspaces.")
                 row("clock", "About a minute", "Skip whenever you like. Replay it from the Help menu or the command palette.")
             case .workspace:
-                row(chord: .newWindow, "macwindow", "Windows in the sidebar", "Rename and reorder them. Sessions keep running when you switch away.")
-                row(chord: .newTab, "plus.square", "Tabs in each window", "Double-click a tab to name it. Each tab keeps its own layout.")
+                row(chord: .newSpace, "macwindow", "Spaces in the sidebar", "Rename and reorder them. Sessions keep running when you switch away.")
+                row(chord: .newTab, "plus.square", "Tabs in each space", "Double-click a tab to name it. Each tab keeps its own layout.")
                 row(chord: .splitLeftRight, "rectangle.split.2x1", "Splits inside a tab", splitDetail)
                 row("sidebar.right", "A sidebar on the right", "The dock on the window’s edge opens files, the scratchpad, tasks and agents beside your panes.")
             case .sessions:
@@ -216,13 +216,13 @@ private struct WelcomeTourCopy: View {
                 row(chord: .showProjects, "folder", "Your project library", "Open it from the sidebar, above Hosts and Settings.")
                 row("desktopcomputer", "Launch it anywhere", "Choose This Mac or a saved host each time. Trellis remembers the last folder.")
             case .remote:
-                row("server.rack", "Saved hosts", "Connect in a new tab, a new window or a split. Uses your own ssh and config.")
+                row("server.rack", "Saved hosts", "Connect in a new tab, a new space or a split. Uses your own ssh and config.")
                 row("arrow.clockwise", "Remote workspaces", "Trellis reconnects by itself when it can and shows what you missed, without repeating output.")
             case .agents:
                 row("bell", "Know when you’re needed", "Tabs say Needs you, Done or Error, and the dock counts agents waiting on you, so you can leave them to work.")
                 row("play", "Pick up where you left off", "Stopped agent panes offer to resume the last conversation.")
             case .keyboard:
-                row(chord: .commandPalette, "command", "Command palette", "Search actions, windows, hosts, projects and themes in one list.")
+                row(chord: .commandPalette, "command", "Command palette", "Search actions, spaces, hosts, projects and themes in one list.")
                 row(chord: .jumpToDirectory, "arrow.turn.down.right", "Jump to a directory", "Return to folders you visit often, on this Mac or a host.")
                 row(chord: .toggleFiles, "folder", "Files", model.welcomeTourSidebarDetail)
             case .setup: setup
@@ -264,12 +264,10 @@ private struct WelcomeTourCopy: View {
     @ViewBuilder private var setup: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Appearance").font(.system(size: 13, weight: .semibold)).foregroundStyle(model.themeColor(.foreground))
-            Picker("Appearance", selection: Binding(get: { model.appearance.chromeMode }, set: { model.setChromeModeFromWelcomeTour($0) })) {
-                Text("System").tag(ChromeMode.system)
-                Text("Dark").tag(ChromeMode.dark)
-                Text("Light").tag(ChromeMode.light)
+            SegmentedPicker("Appearance", selection: model.appearance.chromeMode, options: [(.system, "System"), (.dark, "Dark"), (.light, "Light")]) { [weak model] in
+                model?.setChromeModeFromWelcomeTour($0)
             }
-            .pickerStyle(.segmented).labelsHidden().frame(maxWidth: .infinity).accessibilityIdentifier("welcomeTour.appearance")
+            .labelsHidden().frame(maxWidth: .infinity).accessibilityIdentifier("welcomeTour.appearance")
         }
         if model.welcomeTourCLIStatus != .unavailable {
             Divider().overlay(model.separatorOverlay)
@@ -557,7 +555,7 @@ private struct WelcomeTourStage: View {
         Text(text).font(.system(size: 9.5)).foregroundStyle(color).padding(.horizontal, 6).padding(.vertical, 2).overlay(Capsule().strokeBorder(color, lineWidth: 1))
     }
 
-    /// A Launch row (name, Open) or a Running row (tab, "window · agent", state capsule), as in the Agents view (FR-AG16).
+    /// A Launch row (name, Open) or a Running row (tab, "space · agent", state capsule), as in the Agents view (FR-AG16).
     private func agentRow<Trailing: View>(_ name: String, _ detail: String? = nil, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 4) {
             VStack(alignment: .leading, spacing: 1) {

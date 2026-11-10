@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Command palette · Trellis Docs</title>
+<meta name="description" content="One searchable list of every Trellis action, space, tab, pane, host, task, theme and recent directory.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/command-palette.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Command palette</h1>
+<p class="lead">The command palette is one searchable list of everything Trellis can do and everywhere you can go. Type a few letters to run any action, or jump to a space, tab, pane, saved host, task, theme or recent directory, without remembering its shortcut or menu.</p>
+
+<h2 id="open-the-palette">Open the palette</h2>
+<p>Press <kbd>⇧⌘P</kbd>, or choose <strong>View → Command Palette…</strong>. Press <kbd>⇧⌘P</kbd> or <kbd>Esc</kbd> again, or click outside it, to close it. Keyboard focus goes back to the pane you were in.</p>
+<p>While the palette is open, nothing you type reaches a shell, and workspace shortcuts like <kbd>⌘D</kbd> do nothing behind it.</p>
+
+<h2 id="search">Search</h2>
+<p>Matching is fuzzy and ignores case: the letters you type only have to appear in order. Matches at the start of a word or in a row rank higher, and items you used recently get a small boost. Results are grouped by kind, with the best match selected.</p>
+<p>For example, <code>spl</code> finds <strong>Split Left/Right</strong> and <strong>Split Top/Bottom</strong>. Some actions also answer to related words: <code>split</code> finds <strong>Maximize / Restore Pane</strong> too.</p>
+<p>With an empty field, the palette shows up to three items you used recently in this session, then suggestions. Recents and what you type are never saved.</p>
+
+<h2 id="whats-listed">What's listed</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Kind</th><th><kbd>↩</kbd> does</th></tr></thead>
+<tbody>
+<tr><td>Actions</td><td>Runs it, as if chosen from its menu. Only actions the menu would enable right now are listed, with their current shortcut.</td></tr>
+<tr><td>Spaces</td><td>Selects the space.</td></tr>
+<tr><td>Tabs</td><td>Selects the space and the tab.</td></tr>
+<tr><td>Panes</td><td>Shows and focuses the pane.</td></tr>
+<tr><td>Hosts</td><td>Connects to the saved host in a new tab.</td></tr>
+<tr><td>Tasks</td><td>Runs the task in the focused pane. Listed only while that pane can run one; the <code>launch.json</code> review still applies.</td></tr>
+<tr><td>Themes</td><td>Uses the theme.</td></tr>
+<tr><td>Directories</td><td>Jumps to a <a href="directory-jump.html">recent directory</a>.</td></tr>
+</tbody>
+</table></div>
+<p><strong>Settings…</strong> and the welcome tour are listed too. Statuses such as Running, Stopped or Exited (0) are shown in words.</p>
+
+<h2 id="scopes">Scopes</h2>
+<p>A scope lists one kind of item only. Select a scope row and press <kbd>Tab</kbd> or <kbd>↩</kbd> to enter it; press <kbd>⌫</kbd> in an empty field to leave it.</p>
+<ul>
+<li><strong>Go to Space…</strong></li>
+<li><strong>Go to Tab…</strong> lists every tab under its space's name, current space first.</li>
+<li><strong>Go to Pane…</strong></li>
+<li><strong>Connect to Host…</strong></li>
+<li><strong>Run Task…</strong></li>
+<li><strong>Use Theme…</strong></li>
+<li><strong>Jump to Directory…</strong> (also <kbd>⌘J</kbd>; see <a href="directory-jump.html">Directory jump</a>)</li>
+</ul>
+<p><strong>Launch Agent…</strong> lists the <a href="agents.html">coding agents</a> for the focused pane.</p>
+
+<h2 id="theme-preview">Preview themes</h2>
+<p>Moving the selection onto a theme previews it across the workspace. Move on or press <kbd>Esc</kbd> and your previous colors come back exactly. Press <kbd>↩</kbd> to keep it. See <a href="themes.html">Themes</a>.</p>
+
+<h2 id="keys">Keys</h2>
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Open or close the palette</td><td><kbd>⇧⌘P</kbd></td></tr>
+<tr><td>Move the selection (wraps)</td><td><kbd>↑</kbd> <kbd>↓</kbd> or <kbd>⌃P</kbd> <kbd>⌃N</kbd></td></tr>
+<tr><td>Run the selected item</td><td><kbd>↩</kbd></td></tr>
+<tr><td>Host or directory: open in a new space or tab</td><td><kbd>⌘↩</kbd></td></tr>
+<tr><td>Host or directory: open in a split</td><td><kbd>⌥↩</kbd></td></tr>
+<tr><td>Enter the selected scope</td><td><kbd>Tab</kbd></td></tr>
+<tr><td>Leave the scope (in an empty field)</td><td><kbd>⌫</kbd></td></tr>
+<tr><td>Clear the field</td><td><kbd>⌘⌫</kbd></td></tr>
+<tr><td>Close, cancelling a theme preview</td><td><kbd>Esc</kbd></td></tr>
+</tbody>
+</table></div>
+<p><kbd>⌘↩</kbd> connects a host in a new space and opens a directory in a new tab.</p>
+<p>Change the palette's shortcut in <strong>Settings → Keyboard</strong>. If you had already bound <kbd>⇧⌘P</kbd> to something else, yours is kept and the palette starts unbound. See <a href="../guide/keyboard-shortcuts.html">Keyboard shortcuts</a>.</p>
+
+<div class="callout note">
+<p class="callout-title">Note</p>
+<p>Saved scratchpads aren't listed in the palette yet. <strong>Toggle Scratchpad</strong> is, and you can open saved scratchpads from the <a href="scratchpad.html">scratchpad</a>'s header.</p>
+</div>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

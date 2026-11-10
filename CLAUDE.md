@@ -5,7 +5,7 @@ Guidance for Claude Code working in this repository.
 ## Project
 
 **Trellis** (formerly uTerm) is a native Swift terminal for macOS: "Native calm" chrome (dark by default, with Light and System modes),
-themed terminal panes, bundled JetBrains Mono terminal font, managed windows in a left sidebar, per-window renameable tabs,
+themed terminal panes, bundled JetBrains Mono terminal font, spaces (loaded projects plus temporary tabs) in a left sidebar, per-space renameable tabs,
 and nested splits, plus saved SSH hosts and a local CLI/automation API. The MVP is implemented;
 remaining qualification work is tracked in `docs/overview/status.md`.
 
@@ -69,7 +69,7 @@ change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `Tre
 
 - One authoritative mutation path: UI (and future CLI/automation) go through the command
   service; tree invariants and lifecycle rules are enforced there, not in views.
-- Domain: Window → ordered Tabs → binary `SplitNode` tree (axis x|y, ratio = first child share)
+- Domain: Space (formerly Window) → ordered Tabs → binary `SplitNode` tree (axis x|y, ratio = first child share)
   → Pane → Session. UUIDs stay stable across saves and stopped restore.
 - Session states: `stopped → starting → running → exited|failed`; `running → closing → exited`.
   Restart creates a new session UUID in the same pane. Restored workspaces start **stopped**;
@@ -124,6 +124,9 @@ are recorded as **pending**, never as passed. Document blockers instead of fakin
 
 - Product renamed uTerm → Trellis; migration copies the old Application Support data and the
   `trellis-` theme-ID prefix is reserved for built-ins. Don't reintroduce `UTerm*` names.
+- Managed windows were renamed Spaces (workspace schema 4). A few stored names keep the old spelling on purpose
+  (`newWindow`… shortcut raw values, grant `windowScope`, the `trellis-window` project binding key) and the API/CLI
+  accept `window.*`/`windowId`/`--window` as deprecated aliases. "Window" still means the native NSWindow and the macOS Window menu.
 - `--fixture` runs a fixed shell that exits with code 7; the window stays inspectable.
 - `scripts/run-feasibility.sh` copies the SwiftPM resource bundles (`SwiftTerm_SwiftTerm`,
   `Trellis_TrellisCore`) into the app; a new target with resources must be added there too.

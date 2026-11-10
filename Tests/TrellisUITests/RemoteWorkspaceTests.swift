@@ -88,8 +88,8 @@ final class RemoteWorkspaceTests: XCTestCase {
         let model = try makeModel()
         _ = await model.loadWorkspace()
         let opened = await model.openRemoteWorkspace(host: host)
-        let windowID = try XCTUnwrap(opened)
-        XCTAssertEqual(model.snapshot.windows.first { $0.id == windowID }?.remoteHostID, host.id)
+        let spaceID = try XCTUnwrap(opened)
+        XCTAssertEqual(model.snapshot.spaces.first { $0.id == spaceID }?.remoteHostID, host.id)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.terminals[pane.id])
         try await until("the remote shell runs") { terminal.sessionState == .running }
@@ -131,7 +131,7 @@ final class RemoteWorkspaceTests: XCTestCase {
         try await until("the session is adopted") { restored.sessionState == .running && relaunched.remoteLinks[host.id] == .connected }
         XCTAssertNotNil(restored.remoteTransport)
         try await until("the output from while Trellis was closed") { restored.screenText.contains("after-7-quit") }
-        XCTAssertEqual(relaunched.snapshot.windows.first?.remoteHostID, host.id, "The binding was saved")
+        XCTAssertEqual(relaunched.snapshot.spaces.first?.remoteHostID, host.id, "The binding was saved")
         // Sessions are adopted one after another as the host answers.
         try await until("both panes came back") { relaunched.terminals[split]?.remoteTransport != nil && relaunched.terminals[split]?.sessionState == .running }
     }
@@ -147,11 +147,11 @@ final class RemoteWorkspaceTests: XCTestCase {
         let model = try makeModel()
         _ = await model.loadWorkspace()
         let opened = await model.openRemoteWorkspace(host: host)
-        let windowID = try XCTUnwrap(opened)
+        let spaceID = try XCTUnwrap(opened)
         try await until("the host is connected") { model.remoteLinks[host.id] == .connected }
 
         // A project's agent pane, stopped so nothing depends on an agent being installed; it never has marks.
-        let created = await model.createTab(windowID: windowID, startSessions: false)
+        let created = await model.createTab(spaceID: spaceID, startSessions: false)
         let agentTab = try XCTUnwrap(created)
         let agentPane = try XCTUnwrap(model.snapshot.tabs[agentTab]?.activePaneID)
         _ = try await model.service.execute(.configureStoppedSession(paneID: agentPane, launch: .agent(AgentLaunch(agentID: "fake", directory: project, hostID: host.id))))
@@ -178,11 +178,11 @@ final class RemoteWorkspaceTests: XCTestCase {
         let model = try makeModel()
         _ = await model.loadWorkspace()
         let opened = await model.openRemoteWorkspace(host: host)
-        let windowID = try XCTUnwrap(opened)
+        let spaceID = try XCTUnwrap(opened)
         try await until("the host is connected") { model.remoteLinks[host.id] == .connected }
 
         // Stopped, so it can't have reported a directory.
-        let created = await model.createTab(windowID: windowID, startSessions: false)
+        let created = await model.createTab(spaceID: spaceID, startSessions: false)
         let source = try XCTUnwrap(created.flatMap { model.snapshot.tabs[$0]?.activePaneID })
         let fromNoFolder = await model.createTab()
         let homePane = try XCTUnwrap(fromNoFolder.flatMap { model.snapshot.tabs[$0]?.activePaneID })
@@ -225,7 +225,7 @@ final class RemoteWorkspaceTests: XCTestCase {
         model.directoryHistory = makeDirectoryHistory()
         _ = await model.loadWorkspace()
         let opened = await model.openRemoteWorkspace(host: host)
-        let hostWindow = try XCTUnwrap(opened)
+        let hostSpace = try XCTUnwrap(opened)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.terminals[pane.id])
         try await until("the remote shell runs") { terminal.sessionState == .running }
@@ -260,38 +260,38 @@ final class RemoteWorkspaceTests: XCTestCase {
         try FileManager.default.createDirectory(atPath: local, withIntermediateDirectories: true)
         let before = terminal.screenText
         await model.jumpToDirectory(path: local, machine: "local", modifier: .none)
-        XCTAssertEqual(model.snapshot.windows.count, 2)
-        let localWindow = try XCTUnwrap(model.snapshot.windows.first { $0.id == model.snapshot.activeWindowID })
-        XCTAssertNil(localWindow.remoteHostID)
+        XCTAssertEqual(model.snapshot.spaces.count, 2)
+        let localSpace = try XCTUnwrap(model.snapshot.spaces.first { $0.id == model.snapshot.activeSpaceID })
+        XCTAssertNil(localSpace.remoteHostID)
         let localPane = try XCTUnwrap(model.presentation.activePane?.id)
         XCTAssertEqual(model.directoryMachine(paneID: localPane), .local)
         XCTAssertEqual(terminal.screenText, before)
 
         // A host's row from a local pane: a tab in the host's window, whatever Return would type here.
         await model.jumpToDirectory(path: work, machine: host.id.uuidString, modifier: .none)
-        XCTAssertEqual(model.snapshot.activeWindowID, hostWindow)
-        XCTAssertEqual(model.snapshot.tabs.count, tabs + 2, "The local window's tab and this one")
+        XCTAssertEqual(model.snapshot.activeSpaceID, hostSpace)
+        XCTAssertEqual(model.snapshot.tabs.count, tabs + 2, "The local space's tab and this one")
         let backPane = try XCTUnwrap(model.presentation.activePane?.id)
         XCTAssertEqual(model.directoryMachine(paneID: backPane), .host(host.id))
         try await until("the shell starts there") { model.remoteWorkingDirectory(paneID: backPane) == work }
 
         // ⌥Return from another machine's pane is a new tab, never a split that mixes machines.
-        await model.selectWindow(localWindow.id)
-        let panes = localWindow.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] }.count
+        await model.selectSpace(localSpace.id)
+        let panes = localSpace.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] }.count
         await model.jumpToDirectory(path: "/usr", machine: host.id.uuidString, modifier: .option)
-        XCTAssertEqual(model.snapshot.activeWindowID, hostWindow)
-        XCTAssertEqual(model.snapshot.windows.first { $0.id == localWindow.id }.map { $0.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] }.count }, panes)
+        XCTAssertEqual(model.snapshot.activeSpaceID, hostSpace)
+        XCTAssertEqual(model.snapshot.spaces.first { $0.id == localSpace.id }.map { $0.tabIDs.flatMap { model.snapshot.tabs[$0]?.root.paneIDs ?? [] }.count }, panes)
         model.terminals[localPane]?.requestTermination(force: true)
     }
 
     /// FR-DJ06: with no window on the host, a row opens a remote workspace in that directory.
-    func testDirectoryJumpOpensARemoteWorkspaceWhenTheHostHasNoWindow() async throws {
+    func testDirectoryJumpOpensARemoteWorkspaceWhenTheHostHasNoSpace() async throws {
         let model = try makeModel()
         _ = await model.loadWorkspace()
         let work = home + "/work"
         try FileManager.default.createDirectory(atPath: work, withIntermediateDirectories: true)
         await model.jumpToDirectory(path: work, machine: host.id.uuidString, modifier: .none)
-        XCTAssertEqual(model.snapshot.windows.last?.remoteHostID, host.id)
+        XCTAssertEqual(model.snapshot.spaces.last?.remoteHostID, host.id)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await until("the shell starts there") { model.remoteWorkingDirectory(paneID: pane) == work }
     }
@@ -333,7 +333,7 @@ final class RemoteWorkspaceTests: XCTestCase {
         XCTAssertEqual(items.map(\.target), [.host(host.id), .remoteWorkspace(host.id)])
         XCTAssertEqual(items.last?.title, "Open Remote Workspace: build-box")
         await model.performCommandPaletteTarget(.remoteWorkspace(host.id), modifier: .none)
-        XCTAssertEqual(model.snapshot.windows.last?.remoteHostID, host.id)
+        XCTAssertEqual(model.snapshot.spaces.last?.remoteHostID, host.id)
         let pane = try XCTUnwrap(model.presentation.activePane)
         let terminal = try XCTUnwrap(model.terminals[pane.id])
         try await until("the remote shell runs") { terminal.sessionState == .running }
@@ -390,7 +390,7 @@ final class RemoteWorkspaceTests: XCTestCase {
 
     /// MAC-04 with Stop sessions on: closing the native window detaches remote sessions, the sidebar stops saying
     /// Connected, and a remote pane can still be closed afterwards (it is hung up once the host is reachable again).
-    func testWindowCloseDetachesRemoteSessionsAndLeavesThemClosable() async throws {
+    func testSpaceCloseDetachesRemoteSessionsAndLeavesThemClosable() async throws {
         let model = try makeModel()
         _ = await model.loadWorkspace()
         let opened = await model.openRemoteWorkspace(host: host)
@@ -405,7 +405,7 @@ final class RemoteWorkspaceTests: XCTestCase {
 
         let closed = await model.endSessionsForWindowClose()
         XCTAssertTrue(closed)
-        XCTAssertEqual(terminal.sessionState, .running, "Window close detaches remote sessions (FR-RW06)")
+        XCTAssertEqual(terminal.sessionState, .running, "Space close detaches remote sessions (FR-RW06)")
         try await until("the panes know the link is down") { terminal.remoteTransport?.linkLost == true }
         XCTAssertNotEqual(model.remoteLinks[host.id], .connected, "The sidebar never shows a closed link as Connected")
 
@@ -448,10 +448,10 @@ final class RemoteWorkspaceAutomationReviewTests: XCTestCase {
         defer { h.discardPreferences() }
         try await h.grant("full")
         // A host this grant can't see: it is not in the library.
-        let result = try await h.model.service.execute(.createRemoteWindow(name: "Remote", hostID: UUID()))
+        let result = try await h.model.service.execute(.createRemoteSpace(name: "Remote", hostID: UUID()))
         h.model.publish(result.snapshot)
-        let window = try XCTUnwrap(result.snapshot.windows.first { $0.id == result.createdWindowID })
-        let tab = try XCTUnwrap(result.snapshot.tabs[window.activeTabID])
+        let space = try XCTUnwrap(result.snapshot.spaces.first { $0.id == result.createdSpaceID })
+        let tab = try XCTUnwrap(result.snapshot.tabs[space.activeTabID])
         let pane = try XCTUnwrap(result.snapshot.panes[tab.activePaneID])
         let start = try await h.code("session.start", ["paneId": pane.id.uuidString])
         XCTAssertEqual(start, "PERMISSION_DENIED")
@@ -467,10 +467,10 @@ final class RemoteWorkspaceAutomationReviewTests: XCTestCase {
         defer { h.discardPreferences() }
         try await h.grant("full")
         guard case .success(let host) = await h.hosts.save(HostDraft(name: "build-box", destination: "build-box"), editing: nil) else { return XCTFail("No host") }
-        let created = try await h.model.service.execute(.createRemoteWindow(name: "Remote", hostID: host.id))
+        let created = try await h.model.service.execute(.createRemoteSpace(name: "Remote", hostID: host.id))
         h.model.publish(created.snapshot)
-        let window = try XCTUnwrap(created.snapshot.windows.first { $0.id == created.createdWindowID })
-        let pane = try XCTUnwrap(created.snapshot.tabs[window.activeTabID].flatMap { created.snapshot.panes[$0.activePaneID] })
+        let space = try XCTUnwrap(created.snapshot.spaces.first { $0.id == created.createdSpaceID })
+        let pane = try XCTUnwrap(created.snapshot.tabs[space.activeTabID].flatMap { created.snapshot.panes[$0.activePaneID] })
         h.model.remoteLinks[host.id] = .reconnecting(attempt: 2, at: Date())
         let session = try result(try await h.call("session.get", ["id": pane.sessionID.uuidString]))
         XCTAssertEqual(session["launchKind"] as? String, "remoteShell")

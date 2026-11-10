@@ -24,9 +24,9 @@ final class MemorySecrets: GrantSecretStore, @unchecked Sendable {
     func token(_ id: UUID) -> String? { lock.withLock { items[id] } }
 }
 
-/// Two windows (A with a split, B plain) and editable hosts.
+/// Two spaces (A with a split, B plain) and editable hosts.
 final class FakeDomain: ControlDomain, @unchecked Sendable {
-    let windowA = UUID(), windowB = UUID(), tabA = UUID(), tabB = UUID(), branchA = UUID()
+    let spaceA = UUID(), spaceB = UUID(), tabA = UUID(), tabB = UUID(), branchA = UUID()
     let paneA = UUID(), paneA2 = UUID(), paneB = UUID(), sessionA = UUID(), sessionA2 = UUID(), sessionB = UUID()
     let snapshotValue: WorkspaceSnapshot
     private let lock = NSLock()
@@ -36,13 +36,13 @@ final class FakeDomain: ControlDomain, @unchecked Sendable {
 
     init() {
         var s = WorkspaceSnapshot()
-        s.windows = [
-            ManagedWindow(id: windowA, name: "A", tabIDs: [tabA], activeTabID: tabA), ManagedWindow(id: windowB, name: "B", tabIDs: [tabB], activeTabID: tabB)
+        s.spaces = [
+            Space(id: spaceA, name: "A", tabIDs: [tabA], activeTabID: tabA), Space(id: spaceB, name: "B", tabIDs: [tabB], activeTabID: tabB)
         ]
-        s.activeWindowID = windowA
+        s.activeSpaceID = spaceA
         s.tabs[tabA] = WorkspaceTab(
-            id: tabA, windowID: windowA, title: "a", root: .split(id: branchA, axis: .x, ratio: 0.5, children: [.pane(paneA), .pane(paneA2)]), activePaneID: paneA)
-        s.tabs[tabB] = WorkspaceTab(id: tabB, windowID: windowB, title: "b", root: .pane(paneB), activePaneID: paneB)
+            id: tabA, spaceID: spaceA, title: "a", root: .split(id: branchA, axis: .x, ratio: 0.5, children: [.pane(paneA), .pane(paneA2)]), activePaneID: paneA)
+        s.tabs[tabB] = WorkspaceTab(id: tabB, spaceID: spaceB, title: "b", root: .pane(paneB), activePaneID: paneB)
         for (pane, tab, session) in [(paneA, tabA, sessionA), (paneA2, tabA, sessionA2), (paneB, tabB, sessionB)] {
             s.panes[pane] = WorkspacePane(id: pane, tabID: tab, sessionID: session)
             s.sessions[session] = WorkspaceSession(id: session)
@@ -93,11 +93,11 @@ final class GrantAuthorizationTests: XCTestCase {
     private func code(_ response: [String: Any]) -> String? { response["result"] != nil ? "OK" : appCode(response) ?? "\((response["error"] as? [String: Any])?["code"] ?? "")" }
 
     func testDenyBeforeAuthentication() async throws {
-        let (_, token) = try await store.create(name: "CI", capabilities: Set(Capability.allCases), windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (_, token) = try await store.create(name: "CI", capabilities: Set(Capability.allCases), spaceScope: .all, hostScope: .all, lifetime: 3600)
         let session = ControlSession(peerUID: geteuid(), handler: handler)
         let probes: [(String, [String: JSONValue])] = [
-            ("window.get", ["id": .string(domain.windowA.uuidString)]), ("session.readOutput", ["id": .string(domain.sessionA.uuidString)]),
-            ("session.execute", ["id": .string(domain.sessionA.uuidString), "command": .string("rm -rf /")]), ("window.create", ["name": .string("x")]),
+            ("space.get", ["id": .string(domain.spaceA.uuidString)]), ("session.readOutput", ["id": .string(domain.sessionA.uuidString)]),
+            ("session.execute", ["id": .string(domain.sessionA.uuidString), "command": .string("rm -rf /")]), ("space.create", ["name": .string("x")]),
             ("system.info", [:])
         ]
         for (index, probe) in probes.enumerated() {
@@ -105,7 +105,7 @@ final class GrantAuthorizationTests: XCTestCase {
         }
         try await expect(try await authenticate(session, token: "trl_wrong"), "AUTH_REQUIRED")
         try await expect(try await authenticate(session, token: token, version: 2), "UNSUPPORTED_VERSION")
-        try await expect(try await reply(session, request(9, "window.list")), "AUTH_REQUIRED")
+        try await expect(try await reply(session, request(9, "space.list")), "AUTH_REQUIRED")
         XCTAssertEqual(domain.executed, [], "No effects before authentication")
 
         // Failures are rate limited, even for a correct token, until the window passes.
@@ -119,26 +119,26 @@ final class GrantAuthorizationTests: XCTestCase {
         XCTAssertEqual(result["protocolVersion"] as? Int, 1)
         XCTAssertNotNil(result["expiresAt"] as? String)
         XCTAssertFalse(String(describing: accepted).contains(token), "Tokens are never echoed")
-        try await expect(try await reply(session, request(10, "window.list")), "OK")
-        XCTAssertEqual(domain.executed, ["window.list"])
+        try await expect(try await reply(session, request(10, "space.list")), "OK")
+        XCTAssertEqual(domain.executed, ["space.list"])
     }
 
     func testScopeAndCapabilityMatrix() async throws {
         let d = domain
         let (layoutGrant, layoutToken) = try await store.create(
-            name: "Layout", capabilities: [.metadataRead, .layoutWrite], windowScope: .windows([d.windowA]), hostScope: .approved([]), lifetime: 3600)
-        let (_, fullToken) = try await store.create(name: "Full", capabilities: Set(Capability.allCases), windowScope: .all, hostScope: .all, lifetime: 3600)
-        XCTAssertEqual(layoutGrant.windowScope, .windows([d.windowA]))
+            name: "Layout", capabilities: [.metadataRead, .layoutWrite], spaceScope: .spaces([d.spaceA]), hostScope: .approved([]), lifetime: 3600)
+        let (_, fullToken) = try await store.create(name: "Full", capabilities: Set(Capability.allCases), spaceScope: .all, hostScope: .all, lifetime: 3600)
+        XCTAssertEqual(layoutGrant.spaceScope, .spaces([d.spaceA]))
         func id(_ value: UUID) -> JSONValue { .string(value.uuidString) }
         let cases: [(String, [String: JSONValue], layout: String, full: String)] = [
-            ("window.list", [:], "OK", "OK"),
-            ("window.get", ["id": id(d.windowA)], "OK", "OK"),
-            ("window.get", ["id": id(d.windowB)], "NOT_FOUND", "OK"),
-            ("window.get", ["id": id(UUID())], "NOT_FOUND", "NOT_FOUND"),
-            ("window.get", ["id": .string("not-a-uuid")], "-32602", "-32602"),
-            ("window.get", [:], "-32602", "-32602"),
-            ("window.create", ["name": .string("New")], "PERMISSION_DENIED", "OK"),
-            ("window.reorder", ["ids": .array([])], "PERMISSION_DENIED", "OK"),
+            ("space.list", [:], "OK", "OK"),
+            ("space.get", ["id": id(d.spaceA)], "OK", "OK"),
+            ("space.get", ["id": id(d.spaceB)], "NOT_FOUND", "OK"),
+            ("space.get", ["id": id(UUID())], "NOT_FOUND", "NOT_FOUND"),
+            ("space.get", ["id": .string("not-a-uuid")], "-32602", "-32602"),
+            ("space.get", [:], "-32602", "-32602"),
+            ("space.create", ["name": .string("New")], "PERMISSION_DENIED", "OK"),
+            ("space.reorder", ["ids": .array([])], "PERMISSION_DENIED", "OK"),
             ("tab.get", ["id": id(d.tabB)], "NOT_FOUND", "OK"),
             ("pane.split", ["paneId": id(d.paneA), "axis": .string("x")], "OK", "OK"),
             ("pane.split", ["paneId": id(d.paneB), "axis": .string("x")], "NOT_FOUND", "OK"),
@@ -167,7 +167,7 @@ final class GrantAuthorizationTests: XCTestCase {
                 let response = try await reply(session, request(index + 1, testCase.0, testCase.1))
                 XCTAssertEqual(code(response), expected, "\(expectLayout ? "layout" : "full") \(testCase.0) \(testCase.1)")
                 // Hidden IDs never appear in errors.
-                XCTAssertFalse(String(describing: response["error"] ?? "").contains(d.windowB.uuidString))
+                XCTAssertFalse(String(describing: response["error"] ?? "").contains(d.spaceB.uuidString))
             }
         }
         // Denied calls never reach the domain.
@@ -180,9 +180,9 @@ final class GrantAuthorizationTests: XCTestCase {
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 1)
         d.setHost(host)
         let (_, scopedToken) = try await store.create(
-            name: "Scoped", capabilities: [.metadataRead, .layoutWrite, .themeRead, .themeWrite, .hostRead, .hostWrite], windowScope: .windows([d.windowA]),
+            name: "Scoped", capabilities: [.metadataRead, .layoutWrite, .themeRead, .themeWrite, .hostRead, .hostWrite], spaceScope: .spaces([d.spaceA]),
             hostScope: .all, lifetime: 3600)
-        let (_, globalToken) = try await store.create(name: "Theme", capabilities: [.themeWrite], windowScope: .all, hostScope: .approved([]), lifetime: 3600)
+        let (_, globalToken) = try await store.create(name: "Theme", capabilities: [.themeWrite], spaceScope: .all, hostScope: .approved([]), lifetime: 3600)
         func id(_ value: UUID) -> JSONValue { .string(value.uuidString) }
         func ids(_ values: UUID...) -> JSONValue { .array(values.map(id)) }
         let cases: [(String, [String: JSONValue], String)] = [
@@ -190,11 +190,11 @@ final class GrantAuthorizationTests: XCTestCase {
             ("appearance.set", ["mode": .string("dark")], "PERMISSION_DENIED"),
             ("theme.import", ["document": .object([:])], "PERMISSION_DENIED"),
             ("theme.delete", ["id": .string("mine")], "PERMISSION_DENIED"),
-            ("layout.export", ["windowIds": ids(d.windowA)], "OK"),
-            ("layout.export", ["windowIds": ids(d.windowA, d.windowB)], "NOT_FOUND"),
-            ("layout.export", ["windowIds": .string(d.windowA.uuidString)], "-32602"),
-            ("tab.reorder", ["windowId": id(d.windowA), "ids": ids(d.tabA)], "OK"),
-            ("tab.reorder", ["windowId": id(d.windowA), "ids": ids(d.tabB)], "NOT_FOUND"),
+            ("layout.export", ["spaceIds": ids(d.spaceA)], "OK"),
+            ("layout.export", ["spaceIds": ids(d.spaceA, d.spaceB)], "NOT_FOUND"),
+            ("layout.export", ["spaceIds": .string(d.spaceA.uuidString)], "-32602"),
+            ("tab.reorder", ["spaceId": id(d.spaceA), "ids": ids(d.tabA)], "OK"),
+            ("tab.reorder", ["spaceId": id(d.spaceA), "ids": ids(d.tabB)], "NOT_FOUND"),
             ("events.subscribe", ["topics": .array([.string("session.state")]), "resourceIds": ids(d.paneA, d.sessionA2, d.branchA)], "OK"),
             ("events.subscribe", ["topics": .array([.string("session.state")]), "resourceIds": ids(d.sessionB)], "NOT_FOUND"),
             ("events.subscribe", ["topics": .array([.string("session.output")])], "PERMISSION_DENIED"),
@@ -219,7 +219,7 @@ final class GrantAuthorizationTests: XCTestCase {
         XCTAssertEqual(d.executed.count, cases.filter { $0.2 == "OK" && !$0.0.hasPrefix("events.") }.count)
         let global = ControlSession(peerUID: geteuid(), handler: handler)
         _ = try await authenticate(global, token: globalToken)
-        try await expect(try await reply(global, request(1, "appearance.set", ["mode": .string("dark")])), "OK", "Theme writes ignore window scope only when global")
+        try await expect(try await reply(global, request(1, "appearance.set", ["mode": .string("dark")])), "OK", "Theme writes ignore space scope only when global")
     }
 
     func testUnreadableGrantFileIsPreservedAndGrantsNothing() async throws {
@@ -227,7 +227,7 @@ final class GrantAuthorizationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("grants.json")
         let disk = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
-        let (_, token) = try await disk.create(name: "CI", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (_, token) = try await disk.create(name: "CI", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         var text = try String(contentsOf: url, encoding: .utf8)
         text = text.replacingOccurrences(of: "metadata.read", with: "future.capability")
         try OwnerOnlyFile.publish(Data(text.utf8), to: url)
@@ -237,24 +237,24 @@ final class GrantAuthorizationTests: XCTestCase {
         XCTAssertNil(found)
         XCTAssertTrue(failed)
         do {
-            _ = try await reloaded.create(name: "New", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+            _ = try await reloaded.create(name: "New", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
             XCTFail("Overwrote an unreadable grant file")
         } catch { XCTAssertEqual(error, .readOnly) }
         XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), text, "The unreadable file is left untouched")
     }
 
     func testExpiryAndRevocationStopAccess() async throws {
-        let (expiring, expiringToken) = try await store.create(name: "Short", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 120)
+        let (expiring, expiringToken) = try await store.create(name: "Short", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 120)
         let session = ControlSession(peerUID: geteuid(), handler: handler)
         _ = try await authenticate(session, token: expiringToken)
-        try await expect(try await reply(session, request(1, "window.list")), "OK")
+        try await expect(try await reply(session, request(1, "space.list")), "OK")
         clock.advance(121)
-        try await expect(try await reply(session, request(2, "window.list")), "AUTH_REQUIRED")
+        try await expect(try await reply(session, request(2, "space.list")), "AUTH_REQUIRED")
         try await expect(try await authenticate(session, token: expiringToken), "AUTH_REQUIRED", "Expired grants cannot reauthenticate")
         let expiredCount = await handler.connections(for: expiring.id).count
         XCTAssertEqual(expiredCount, 0)
 
-        let (revocable, token) = try await store.create(name: "Agent", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (revocable, token) = try await store.create(name: "Agent", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         XCTAssertEqual(secrets.token(revocable.id), token)
         let revoked = RevocationLog()
         await store.onRevocation { revoked.append($0) }
@@ -265,9 +265,9 @@ final class GrantAuthorizationTests: XCTestCase {
         try await store.revoke(revocable.id)
         XCTAssertEqual(revoked.ids, [revocable.id])
         XCTAssertNil(secrets.token(revocable.id), "The Keychain secret is deleted")
-        try await expect(try await reply(live, request(3, "window.list")), "AUTH_REQUIRED")
-        try await expect(try await reply(live, request(4, "window.list")), "AUTH_REQUIRED")
-        XCTAssertEqual(domain.executed, ["window.list"])
+        try await expect(try await reply(live, request(3, "space.list")), "AUTH_REQUIRED")
+        try await expect(try await reply(live, request(4, "space.list")), "AUTH_REQUIRED")
+        XCTAssertEqual(domain.executed, ["space.list"])
     }
 
     func testRevocationDisconnectsALiveSocketClient() async throws {
@@ -279,7 +279,7 @@ final class GrantAuthorizationTests: XCTestCase {
         let server = ControlServer(endpoint: ControlEndpoint(stateDirectory: root, runtimeRoot: runtime), handler: handler)
         let discovery = try server.start()
         defer { server.stop() }
-        let (grant, token) = try await store.create(name: "Live", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (grant, token) = try await store.create(name: "Live", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let handler = self.handler
         await store.onRevocation { id in Task { server.closeConnections(await handler.connections(for: id)) } }
         let client = try SocketClient(path: discovery.socketPath)
@@ -298,11 +298,11 @@ final class GrantAuthorizationTests: XCTestCase {
         domain.setHost(host)
         domain.setHost(other)
         let (grant, token) = try await store.create(
-            name: "Deploy", capabilities: [.hostRead, .sessionStart, .layoutWrite], windowScope: .all,
+            name: "Deploy", capabilities: [.hostRead, .sessionStart, .layoutWrite], spaceScope: .all,
             hostScope: .approved([HostApproval(hostID: host.id, connectionRevision: host.connectionRevision)]), lifetime: 3600)
         let session = ControlSession(peerUID: geteuid(), handler: handler)
         _ = try await authenticate(session, token: token)
-        let connect: [String: JSONValue] = ["hostId": .string(host.id.uuidString), "windowId": .string(domain.windowA.uuidString)]
+        let connect: [String: JSONValue] = ["hostId": .string(host.id.uuidString), "spaceId": .string(domain.spaceA.uuidString)]
         try await expect(try await reply(session, request(1, "host.connect", connect)), "OK")
         try await expect(try await reply(session, request(2, "host.get", ["id": .string(other.id.uuidString)])), "NOT_FOUND")
 
@@ -329,7 +329,7 @@ final class GrantAuthorizationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("grants.json")
         let token = try await GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
-            .create(name: "CI", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600).token
+            .create(name: "CI", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600).token
         // A fresh app instance whose background load has not run yet.
         let unloaded = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
         let handler = AuthorizingControlHandler(grants: unloaded, domain: domain, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
@@ -343,9 +343,9 @@ final class GrantAuthorizationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("grants.json")
         let first = try await GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
-            .create(name: "Saved", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600).token
+            .create(name: "Saved", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600).token
         let unloaded = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
-        _ = try await unloaded.create(name: "New", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        _ = try await unloaded.create(name: "New", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let reloaded = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
         await reloaded.load()
         let names = await reloaded.grants.map(\.name)
@@ -359,7 +359,7 @@ final class GrantAuthorizationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("grants.json")
         let disk = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, token) = try await disk.create(name: "CI", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+        let (grant, token) = try await disk.create(name: "CI", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let text = try String(contentsOf: url, encoding: .utf8)
         XCTAssertFalse(text.contains(token))
         XCTAssertTrue(text.contains(GrantToken.hash(token)))
@@ -373,17 +373,17 @@ final class GrantAuthorizationTests: XCTestCase {
 
         secrets.failNextStore = true
         do {
-            _ = try await disk.create(name: "Fails", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+            _ = try await disk.create(name: "Fails", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
             XCTFail("Created without a stored secret")
         } catch { XCTAssertEqual(error, .secretStore) }
         let count = await disk.grants.count
         XCTAssertEqual(count, 1)
         do {
-            _ = try await disk.create(name: "  ", capabilities: [.metadataRead], windowScope: .all, hostScope: .all, lifetime: 3600)
+            _ = try await disk.create(name: "  ", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
             XCTFail("Empty name accepted")
         } catch { XCTAssertEqual(error, .invalidName) }
         do {
-            _ = try await disk.create(name: "None", capabilities: [], windowScope: .all, hostScope: .all, lifetime: 3600)
+            _ = try await disk.create(name: "None", capabilities: [], spaceScope: .all, hostScope: .all, lifetime: 3600)
             XCTFail("No capabilities accepted")
         } catch { XCTAssertEqual(error, .noCapabilities) }
     }

@@ -53,7 +53,7 @@ final class WorkspaceThemeTests: XCTestCase {
         let library = ThemeLibrary(directory: directory.appendingPathComponent("Themes"))
         let model = AppWorkspaceModel(store: try WorkspaceStore(), persistence: WorkspacePersistence(directory: directory), themeLibrary: library)
         _ = await model.loadWorkspace()
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let dark = try ThemeValidator.validate(ThemeExamples.data(.dark))
         let saved = await model.saveTheme(dark)
         XCTAssertTrue(saved)
@@ -122,7 +122,7 @@ final class WorkspaceThemeTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), themeLibrary: ThemeLibrary(directory: directory))
         _ = await model.loadWorkspace()
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let dark = try ThemeValidator.validate(ThemeExamples.data(.dark)), light = try ThemeValidator.validate(ThemeExamples.data(.light))
         _ = await model.saveTheme(dark); _ = await model.saveTheme(light)
         var settings = model.appearance; settings.chromeMode = .system
@@ -140,7 +140,7 @@ final class WorkspaceThemeTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-theme-live-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppWorkspaceModel(store: try WorkspaceStore(), themeLibrary: ThemeLibrary(directory: directory))
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let native = try XCTUnwrap(model.activeTerminal)
         await native.start(configuration: LocalLaunchConfiguration(executable: "/bin/zsh", arguments: ["-f", "-c", "read -r line; exit 42"], directory: "/tmp"))
         defer { native.requestTermination(force: true) }

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automation API · Trellis Docs</title>
+<meta name="description" content="Let scripts and agents control Trellis through a local socket, with scoped grants you create in Settings → Automation and declarative layouts.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="automation/api.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Automation</p>
+<h1>Automation API</h1>
+<p class="lead">Trellis has a local API so scripts and coding agents can do what you do: build layouts, start sessions, send input and read output. Every client needs a grant you create, and it can only do what that grant allows.</p>
+
+<h2 id="what-it-is">What it is</h2>
+<ul>
+<li><strong>Local only.</strong> The API is JSON-RPC 2.0 over a Unix socket that only your macOS user can open. Nothing listens on the network unless you turn on the <a href="mcp.html">MCP server</a>.</li>
+<li><strong>Same rules as the UI.</strong> Every call goes through the same path as your clicks, so the API can't do anything the app wouldn't let you do.</li>
+<li><strong>Three ways in.</strong> The <a href="cli.html"><code>trellis</code> CLI</a> for shell scripts, the socket directly for your own clients, and the optional MCP server for agents.</li>
+</ul>
+<p>Trellis embeds no AI model and needs no provider API key. It never treats terminal output as instructions.</p>
+
+<h2 id="grants">Create a grant</h2>
+<ol class="steps">
+<li>Open <strong>Settings → Automation</strong> and choose <strong>New Grant…</strong>.</li>
+<li>Name it, for example "Build agent".</li>
+<li>Turn on only the capabilities it needs (see below).</li>
+<li>Choose which spaces and saved hosts it may use, or <strong>All spaces</strong> and <strong>All saved hosts</strong>.</li>
+<li>Pick an expiry: 1 hour, 1 day (default), 7, 30 or 90 days.</li>
+<li>Choose <strong>Create Grant</strong>, then <strong>Copy Token</strong>. The token is shown only this once.</li>
+</ol>
+<p>Store the token in an owner-only file, or let the CLI read it from the Keychain with <code>--keychain-grant GRANT_UUID</code>. Trellis keeps only a hash of it on disk.</p>
+<p><strong>Revoke…</strong> ends a grant immediately: its connected clients are disconnected and the token stops working.</p>
+<div class="callout warn"><p class="callout-title">Warning</p><p>Grants protect against other clients, not against malware running as your user, which could read your files or the Keychain. Only grant access to software you trust.</p></div>
+
+<h2 id="capabilities">Capabilities</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Capability</th><th>Lets a client</th></tr></thead>
+<tbody>
+<tr><td><code>metadata.read</code></td><td>List the spaces, tabs, panes and sessions it can see, and their states</td></tr>
+<tr><td><code>layout.write</code></td><td>Create, rename, reorder, split, resize and focus; apply layouts</td></tr>
+<tr><td><code>session.start</code></td><td>Start a stopped pane with its shell or an approved saved host</td></tr>
+<tr><td><code>session.input</code></td><td>Type into a session. <strong>This is as powerful as running commands in that pane.</strong></td></tr>
+<tr><td><code>session.execute</code></td><td>Run commands or arbitrary programs; set their directory and environment</td></tr>
+<tr><td><code>session.output.read</code></td><td>Read the screen, scrollback and live output</td></tr>
+<tr><td><code>session.close</code></td><td>End sessions and close things that hold running sessions</td></tr>
+<tr><td><code>theme.read</code></td><td>Read installed themes and appearance settings</td></tr>
+<tr><td><code>theme.write</code></td><td>Import, replace and delete themes and change appearance</td></tr>
+<tr><td><code>host.read</code></td><td>Read saved host details</td></tr>
+<tr><td><code>host.write</code></td><td>Create, update and delete saved hosts (changing where one connects also needs <code>session.execute</code>)</td></tr>
+</tbody>
+</table></div>
+<p>There is no clipboard access for clients.</p>
+
+<h3 id="scope">Scope</h3>
+<ul>
+<li><strong>Spaces:</strong> all, or a chosen set. Tabs and panes created inside a chosen space inherit its scope.</li>
+<li><strong>All spaces</strong> is required to create or reorder spaces, apply layouts, or change themes.</li>
+<li><strong>Hosts:</strong> all, or a chosen set. If you change a host's destination, user, port or identity file, you must approve it again with <strong>Reapprove</strong>.</li>
+<li>Anything outside a grant's scope looks to the client as if it doesn't exist.</li>
+</ul>
+
+<h2 id="the-socket">The socket</h2>
+<p>When Trellis starts, it writes <code>control.json</code> to its data folder, <code>~/Library/Application Support/com.bearstouch.trellis/</code>. It names the socket path, a private folder in your temporary directory, and contains no token.</p>
+<ul>
+<li>Each message is one JSON object on one line, up to 1 MiB.</li>
+<li>The first request on a connection must be <code>auth.authenticate</code> with the token.</li>
+<li>Only processes running as your user can connect. Failed logins are rate-limited.</li>
+</ul>
+<pre><code>{"jsonrpc":"2.0","id":1,"method":"auth.authenticate","params":{"protocolVersion":1,"token":"trl_…"}}</code></pre>
+<p>Most people never touch the socket directly; the CLI does all of this for you:</p>
+<pre><code>$ trellis space list --token-stdin --json &lt; ~/.config/trellis/token</code></pre>
+<p>The API calls them spaces too (<code>space.list</code>, <code>spaceId</code>). Older <code>window.*</code> names still work as deprecated aliases.</p>
+
+<h2 id="layouts">Apply a layout</h2>
+<p>A layout is a JSON document describing spaces, tabs and splits. It's data, not shell code: it can't contain commands, and applying one never runs anything on its own.</p>
+<pre><code>{
+  "version": 2,
+  "spaces": [{
+    "key": "project", "name": "Project",
+    "tabs": [{
+      "key": "development", "title": "Development",
+      "root": {
+        "type": "split", "key": "main-split", "axis": "x", "ratio": 0.6,
+        "children": [
+          {"type": "pane", "key": "editor", "title": "Editor", "launch": {"kind": "shell", "directory": "~"}},
+          {"type": "pane", "key": "server", "title": "Server", "launch": {"kind": "shell", "directory": "~"}}
+        ]
+      }
+    }]
+  }]
+}</code></pre>
+<p>A pane launches either a shell in a directory (<code>~</code> or an absolute path) or a saved host (<code>{"kind": "host", "hostId": "…"}</code>). Apply it in three steps:</p>
+<pre><code>$ trellis layout validate ./project-layout.json --json
+$ trellis layout plan ./project-layout.json --namespace project --json
+$ trellis layout apply ./project-layout.json --namespace project --expected-revision 12 --json</code></pre>
+<ol class="steps">
+<li><strong>Validate</strong> checks the document and changes nothing.</li>
+<li><strong>Plan</strong> shows what would change and gives a <code>baseRevision</code>.</li>
+<li><strong>Apply</strong> takes that revision as <code>--expected-revision</code>. If the workspace changed in between, it fails with <code>CONFLICT</code> and you plan again.</li>
+</ol>
+<ul>
+<li>Applying the same document again matches what's already there by key, so you get the same spaces and panes, not duplicates.</li>
+<li>Apply only adds and updates. Nothing you left out is deleted.</li>
+<li>New panes start stopped. Pass <code>--start-new</code> to start only the panes this apply created.</li>
+<li><code>layout export</code> turns existing spaces into a layout document.</li>
+</ul>
+<p>For layouts you open yourself, with commands and repositories, use <a href="../features/projects.html">Projects</a> instead.</p>
+
+<h2 id="output-and-events">Output and events</h2>
+<ul>
+<li>A client with <code>session.output.read</code> can read a session's visible screen, its scrollback, or a stream of raw output.</li>
+<li>Clients can subscribe to changes in spaces and tabs, selection, session state and exits, appearance, and output.</li>
+<li>Recent output is kept in memory only, never on disk. A slow client may miss events and is told so, so it can list things again.</li>
+</ul>
+<div class="callout warn"><p class="callout-title">Warning</p><p>Terminal output is untrusted data. Text on screen that asks an agent to do something grants nothing.</p></div>
+
+<h2 id="reference">Full reference</h2>
+<p>Every method, parameter, error code and event is documented in the <a href="https://github.com/bearstouch/trellis/tree/master/docs/api">API reference on GitHub</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

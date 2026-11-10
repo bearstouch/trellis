@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyboard shortcuts · Trellis Docs</title>
+<meta name="description" content="Every default Trellis keyboard shortcut, grouped by area, and how to rebind them.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="guide/keyboard-shortcuts.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">User guide</p>
+<h1>Keyboard shortcuts</h1>
+<p class="lead">These are the defaults. Change any of them in <strong>Settings → Keyboard</strong>; the menus always show your current bindings.</p>
+
+<h2 id="spaces-and-tabs">Spaces and tabs</h2>
+<table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>New space</td><td><kbd>⌘N</kbd></td></tr>
+<tr><td>New tab</td><td><kbd>⌘T</kbd></td></tr>
+<tr><td>Close tab</td><td><kbd>⇧⌘W</kbd></td></tr>
+<tr><td>Select tab 1–9</td><td><kbd>⌘1</kbd> – <kbd>⌘9</kbd></td></tr>
+<tr><td>Next / previous tab</td><td><kbd>⇧⌘]</kbd> / <kbd>⇧⌘[</kbd></td></tr>
+<tr><td>Next / previous space</td><td><kbd>⌃⌘]</kbd> / <kbd>⌃⌘[</kbd></td></tr>
+<tr><td>Projects</td><td><kbd>⌘O</kbd></td></tr>
+<tr><td>Save workspace</td><td><kbd>⌘S</kbd></td></tr>
+<tr><td>Rename tab, rename space, delete space, show hosts</td><td>Not set</td></tr>
+</tbody>
+</table>
+<p>Double-click a tab to rename it inline: <kbd>↩</kbd> commits and <kbd>esc</kbd> cancels.</p>
+
+<h2 id="panes-and-splits">Panes and splits</h2>
+<table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Split left/right</td><td><kbd>⌘D</kbd></td></tr>
+<tr><td>Split top/bottom</td><td><kbd>⇧⌘D</kbd></td></tr>
+<tr><td>Close pane (closes a one-pane tab)</td><td><kbd>⌘W</kbd></td></tr>
+<tr><td>Focus pane left, right, up, down</td><td><kbd>⌥⌘←</kbd> <kbd>⌥⌘→</kbd> <kbd>⌥⌘↑</kbd> <kbd>⌥⌘↓</kbd></td></tr>
+<tr><td>Move divider</td><td><kbd>⌥⇧⌘</kbd> + arrow</td></tr>
+<tr><td>Maximize / restore pane</td><td><kbd>⇧⌘↩</kbd></td></tr>
+</tbody>
+</table>
+
+<h2 id="terminal">Terminal</h2>
+<table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Copy / paste</td><td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td></tr>
+<tr><td>Find in pane</td><td><kbd>⌘F</kbd></td></tr>
+<tr><td>Find next / previous</td><td><kbd>⌘G</kbd> / <kbd>⇧⌘G</kbd></td></tr>
+<tr><td>Previous / next prompt</td><td><kbd>⌘↑</kbd> / <kbd>⌘↓</kbd></td></tr>
+<tr><td>Clear the focused pane</td><td><kbd>⌘K</kbd></td></tr>
+<tr><td>Zoom in / out</td><td><kbd>⌘+</kbd> / <kbd>⌘-</kbd></td></tr>
+<tr><td>Actual size</td><td><kbd>⌘0</kbd></td></tr>
+</tbody>
+</table>
+<p>Previous/next prompt needs <a href="../features/shell-integration.html">shell integration</a>. <kbd>⌘=</kbd> also zooms in. <kbd>⌃C</kbd> is always the terminal interrupt, never copy.</p>
+
+<h2 id="sidebar-and-tools">Sidebar and tools</h2>
+<table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Command palette</td><td><kbd>⇧⌘P</kbd></td></tr>
+<tr><td>Jump to directory</td><td><kbd>⌘J</kbd></td></tr>
+<tr><td>Hide / show the sidebar</td><td><kbd>⌃⌘S</kbd></td></tr>
+<tr><td>Files</td><td><kbd>⌥⌘F</kbd></td></tr>
+<tr><td>Changes</td><td><kbd>⌥⌘G</kbd></td></tr>
+<tr><td>Scratchpad</td><td><kbd>⌥⌘E</kbd></td></tr>
+<tr><td>Tasks</td><td><kbd>⌥⌘T</kbd></td></tr>
+<tr><td>Agents</td><td><kbd>⌥⌘A</kbd></td></tr>
+</tbody>
+</table>
+<p>The Files, Changes, Scratchpad, Tasks and Agents shortcuts show or hide that view in the <a href="../features/sidebar.html">right sidebar</a>.</p>
+
+<h2 id="app">App</h2>
+<p>These standard macOS items can't be rebound:</p>
+<table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>Settings</td><td><kbd>⌘,</kbd></td></tr>
+<tr><td>Hide Trellis</td><td><kbd>⌘H</kbd></td></tr>
+<tr><td>Minimize</td><td><kbd>⌘M</kbd></td></tr>
+<tr><td>Quit</td><td><kbd>⌘Q</kbd></td></tr>
+<tr><td>Undo / redo, cut, copy, paste, select all</td><td>Standard</td></tr>
+</tbody>
+</table>
+
+<h2 id="changing-shortcuts">Changing shortcuts</h2>
+<ol class="steps">
+<li>Open <strong>Settings → Keyboard</strong>.</li>
+<li>Click an action's shortcut and press the new chord (<kbd>esc</kbd> cancels), or click <strong>Clear</strong> to leave it unbound.</li>
+<li>Click <strong>Save Shortcuts</strong>. <strong>Restore Defaults</strong> puts every binding back.</li>
+</ol>
+<ul>
+<li>Every shortcut you set must include <kbd>⌘</kbd>, so <kbd>⌃</kbd> and <kbd>⌥</kbd> combinations always reach your shell.</li>
+<li>Trellis rejects a chord that's already taken before saving it, so a conflict can never silently disable a command.</li>
+<li>When an update adds a new default that you had already used for something else, your binding wins and the new action starts unbound.</li>
+<li>Unbound actions are still in their menus and in the <a href="../features/command-palette.html">command palette</a>.</li>
+</ul>
+
+<h2 id="option-as-meta">Option as Meta</h2>
+<p>Turn on <strong>Use Option as Meta key</strong> in <strong>Settings → Keyboard</strong> if you use Emacs-style or readline shortcuts such as <kbd>⌥B</kbd> and <kbd>⌥F</kbd>. It's off by default, so <kbd>⌥</kbd> types the special characters of your keyboard layout.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

@@ -22,7 +22,7 @@ Errors follow JSON-RPC 2.0:
 | `data.code` | When | Retryable |
 | --- | --- | --- |
 | `AUTH_REQUIRED` | Not authenticated, authentication failed, or the grant has expired or been revoked | no |
-| `PERMISSION_DENIED` | A capability is missing, the call needs all-windows scope, a host needs approving again, or a pane is bound to a host outside scope | no |
+| `PERMISSION_DENIED` | A capability is missing, the call needs all-spaces scope, a host needs approving again, or a pane is bound to a host outside scope | no |
 | `NOT_FOUND` | The resource doesn't exist, **or** is outside the grant's scope | no |
 | `CONFLICT` | Revision mismatch (`expectedRevision`, `currentRevision`), an idempotency key reused, a layout conflict, or a duplicate theme ID | Only while the original keyed call is still running |
 | `INVALID_STATE` | The operation isn't valid for the resource's current state, for example changing a built-in theme | Sometimes |

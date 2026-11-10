@@ -50,7 +50,7 @@ final class FilesSidebarTests: XCTestCase {
         model.applicationURL = { $0 == "com.microsoft.VSCode" ? URL(fileURLWithPath: "/Applications/Visual Studio Code.app") : nil }
         let saved = await model.saveLaunchSettings(shell: shell, directory: directory ?? project + "/Sources")
         XCTAssertTrue(saved)
-        _ = await model.createWindow(name: "W")
+        _ = await model.createSpace(name: "W")
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         try await waitFor { self.text(model, pane).contains("SHELL-UP") }
         return (model, pane, recorder, preferences)
@@ -87,11 +87,11 @@ final class FilesSidebarTests: XCTestCase {
 
         XCTAssertEqual(model.snapshot, before, "Showing Files is never a workspace change")
 
-        let created = try await model.service.execute(.createRemoteWindow(name: "Remote", hostID: UUID()))
-        let remoteWindow = try XCTUnwrap(created.snapshot.windows.last)
-        let remote = try XCTUnwrap(created.snapshot.tabs[remoteWindow.activeTabID]?.activePaneID)
-        model.publish(try await model.service.execute(.configureStoppedSession(paneID: remote, launch: .remoteShell(hostID: remoteWindow.remoteHostID!, directory: "/srv/app"))).snapshot)
-        await model.selectWindow(remoteWindow.id)
+        let created = try await model.service.execute(.createRemoteSpace(name: "Remote", hostID: UUID()))
+        let remoteSpace = try XCTUnwrap(created.snapshot.spaces.last)
+        let remote = try XCTUnwrap(created.snapshot.tabs[remoteSpace.activeTabID]?.activePaneID)
+        model.publish(try await model.service.execute(.configureStoppedSession(paneID: remote, launch: .remoteShell(hostID: remoteSpace.remoteHostID!, directory: "/srv/app"))).snapshot)
+        await model.selectSpace(remoteSpace.id)
         XCTAssertEqual(model.presentation.activePane?.id, remote)
         XCTAssertEqual(model.sidebarUnavailableReason(.files), "Files shows only folders on this Mac.")
         XCTAssertNil(model.sidebarUnavailableReason(.tasks), "Tasks still works there")
@@ -99,7 +99,7 @@ final class FilesSidebarTests: XCTestCase {
         await model.refreshFiles(paneID: remote)
         XCTAssertNil(model.files.root, "Nothing is listed for a remote pane")
 
-        await model.selectWindow(try XCTUnwrap(model.snapshot.windows.first?.id))
+        await model.selectSpace(try XCTUnwrap(model.snapshot.spaces.first?.id))
         XCTAssertEqual(model.presentation.activePane?.id, local)
         XCTAssertEqual(model.visibleSidebarView, .files, "and comes back with focus")
         model.toggleSidebarView(.files)

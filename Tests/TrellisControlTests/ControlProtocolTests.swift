@@ -73,14 +73,14 @@ final class ControlProtocolTests: XCTestCase {
         let lines = [
             "{not json",
             #"[{"jsonrpc":"2.0","id":1,"method":"system.info"}]"#,
-            #"{"jsonrpc":"2.0","method":"window.create","params":{"name":"x"}}"#,
+            #"{"jsonrpc":"2.0","method":"space.create","params":{"name":"x"}}"#,
             #"{"jsonrpc":"2.0","method":"system.info"}"#,
             #"{"jsonrpc":"1.0","id":2,"method":"system.info"}"#,
             #"{"jsonrpc":"2.0","id":null,"method":"system.info"}"#,
             #"{"jsonrpc":"2.0","id":3,"method":"system.info","params":"secret-ish"}"#,
-            #"{"jsonrpc":"2.0","id":4,"method":"window.list"}"#,
+            #"{"jsonrpc":"2.0","id":4,"method":"space.list"}"#,
             #"{"jsonrpc":"2.0","id":5,"method":"auth.authenticate","params":{"token":"wrong"}}"#,
-            #"{"jsonrpc":"2.0","id":6,"method":"window.list"}"#
+            #"{"jsonrpc":"2.0","id":6,"method":"space.list"}"#
         ]
         let result = await session.receive(Data((lines.joined(separator: "\n") + "\n").utf8))
         XCTAssertFalse(result.close, "Malformed JSON inside a valid frame does not close the connection")
@@ -95,9 +95,9 @@ final class ControlProtocolTests: XCTestCase {
 
         // The gate opens only after a successful authentication.
         let authed = await session.receive(
-            Data((#"{"jsonrpc":"2.0","id":7,"method":"auth.authenticate","params":{"token":"letmein"}}"# + "\n" + #"{"jsonrpc":"2.0","id":8,"method":"window.list"}"# + "\n").utf8))
+            Data((#"{"jsonrpc":"2.0","id":7,"method":"auth.authenticate","params":{"token":"letmein"}}"# + "\n" + #"{"jsonrpc":"2.0","id":8,"method":"space.list"}"# + "\n").utf8))
         XCTAssertEqual(try responses(authed.output).compactMap { $0["result"] as? [String: Any] }.count, 2)
-        XCTAssertEqual(handler.dispatches, ["window.list"])
+        XCTAssertEqual(handler.dispatches, ["space.list"])
     }
 
     func testPeerFromAnotherUserIsDroppedBeforeParsing() async throws {

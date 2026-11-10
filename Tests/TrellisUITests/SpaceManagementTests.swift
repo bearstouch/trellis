@@ -3,36 +3,36 @@ import XCTest
 import TrellisCore
 @testable import TrellisUI
 
-final class WindowManagementTests: XCTestCase {
+final class SpaceManagementTests: XCTestCase {
     func testCreateInitialHierarchy() async throws {
         let store = try WorkspaceStore()
-        let result = try await store.execute(.createWindow(name: "Project"))
+        let result = try await store.execute(.createSpace(name: "Project"))
         let state = result.snapshot
-        XCTAssertEqual(state.windows.count, 1)
+        XCTAssertEqual(state.spaces.count, 1)
         XCTAssertEqual(state.tabs.count, 1)
         XCTAssertEqual(state.panes.count, 1)
         XCTAssertEqual(state.sessions.count, 1)
-        let ids = state.windows.map(\.id) + Array(state.tabs.keys) + Array(state.panes.keys) + Array(state.sessions.keys)
+        let ids = state.spaces.map(\.id) + Array(state.tabs.keys) + Array(state.panes.keys) + Array(state.sessions.keys)
         XCTAssertEqual(Set(ids).count, 4)
         try state.validate()
     }
 
     func testSwitchRestoresSelection() async throws {
         let store = try WorkspaceStore()
-        let first = try await store.execute(.createWindow(name: "One"))
-        let second = try await store.execute(.createWindow(name: "Two"))
-        let firstID = try XCTUnwrap(first.createdWindowID)
-        let secondID = try XCTUnwrap(second.createdWindowID)
+        let first = try await store.execute(.createSpace(name: "One"))
+        let second = try await store.execute(.createSpace(name: "Two"))
+        let firstID = try XCTUnwrap(first.createdSpaceID)
+        let secondID = try XCTUnwrap(second.createdSpaceID)
         var initial = second.snapshot
         // Both windows keep a non-default active tab and pane. Include live
         // session ownership so selection cannot silently reconstruct sessions.
-        for index in initial.windows.indices {
-            let windowID = initial.windows[index].id
+        for index in initial.spaces.indices {
+            let spaceID = initial.spaces[index].id
             let tabID = UUID(), paneA = UUID(), paneB = UUID(), sessionA = UUID(), sessionB = UUID()
-            initial.windows[index].tabIDs.append(tabID)
-            initial.windows[index].activeTabID = tabID
+            initial.spaces[index].tabIDs.append(tabID)
+            initial.spaces[index].activeTabID = tabID
             initial.tabs[tabID] = WorkspaceTab(
-                id: tabID, windowID: windowID, title: "Split",
+                id: tabID, spaceID: spaceID, title: "Split",
                 root: .split(id: UUID(), axis: .x, ratio: 0.5, children: [.pane(paneA), .pane(paneB)]), activePaneID: paneB)
             initial.panes[paneA] = WorkspacePane(id: paneA, tabID: tabID, sessionID: sessionA)
             initial.panes[paneB] = WorkspacePane(id: paneB, tabID: tabID, sessionID: sessionB)
@@ -43,31 +43,31 @@ final class WindowManagementTests: XCTestCase {
             initial.sessions[sessionB] = live
         }
         let restoredStore = try WorkspaceStore(snapshot: initial)
-        _ = try await restoredStore.execute(.selectWindow(id: firstID))
-        _ = try await restoredStore.execute(.selectWindow(id: secondID))
-        let back = try await restoredStore.execute(.selectWindow(id: firstID)).snapshot
-        XCTAssertEqual(back.windows, initial.windows)
+        _ = try await restoredStore.execute(.selectSpace(id: firstID))
+        _ = try await restoredStore.execute(.selectSpace(id: secondID))
+        let back = try await restoredStore.execute(.selectSpace(id: firstID)).snapshot
+        XCTAssertEqual(back.spaces, initial.spaces)
         XCTAssertEqual(back.tabs, initial.tabs)
         XCTAssertEqual(back.panes, initial.panes)
         XCTAssertEqual(back.sessions, initial.sessions)
-        let expectedTab = try XCTUnwrap(initial.tabs[initial.windows[0].activeTabID])
+        let expectedTab = try XCTUnwrap(initial.tabs[initial.spaces[0].activeTabID])
         XCTAssertEqual(WorkspacePresentation(snapshot: back).selectedTab?.id, expectedTab.id)
         XCTAssertEqual(WorkspacePresentation(snapshot: back).activePane?.id, expectedTab.activePaneID)
     }
 
     func testReorderIsPermutation() async throws {
         let store = try WorkspaceStore()
-        _ = try await store.execute(.createWindow(name: "One"))
-        let before = try await store.execute(.createWindow(name: "Two")).snapshot
-        let ids = before.windows.map(\.id)
+        _ = try await store.execute(.createSpace(name: "One"))
+        let before = try await store.execute(.createSpace(name: "Two")).snapshot
+        let ids = before.spaces.map(\.id)
         for invalid in [[ids[0]], [ids[0], ids[0]], [ids[0], UUID()]] {
-            do { _ = try await store.execute(.reorderWindows(ids: invalid)); XCTFail("Accepted invalid order") } catch {}
+            do { _ = try await store.execute(.reorderSpaces(ids: invalid)); XCTFail("Accepted invalid order") } catch {}
             let unchanged = await store.snapshot()
             XCTAssertEqual(unchanged, before)
         }
-        let after = try await store.execute(.reorderWindows(ids: ids.reversed())).snapshot
-        XCTAssertEqual(after.windows.map(\.id), ids.reversed())
-        XCTAssertEqual(after.activeWindowID, before.activeWindowID)
+        let after = try await store.execute(.reorderSpaces(ids: ids.reversed())).snapshot
+        XCTAssertEqual(after.spaces.map(\.id), ids.reversed())
+        XCTAssertEqual(after.activeSpaceID, before.activeSpaceID)
     }
 
     @MainActor
@@ -75,48 +75,48 @@ final class WindowManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(name: "One", startSession: false)
-        let first = try XCTUnwrap(model.snapshot.activeWindowID)
+        await model.createSpace(name: "One", startSession: false)
+        let first = try XCTUnwrap(model.snapshot.activeSpaceID)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         let terminal = model.activeTerminal
-        await model.createWindow(name: "Two", startSession: false)
-        let active = model.snapshot.activeWindowID
+        await model.createSpace(name: "Two", startSession: false)
+        let active = model.snapshot.activeSpaceID
         for _ in 0..<10_000 { model.recordActivity(paneID: pane) }
         model.recordActivity(paneID: pane, exited: true)
-        XCTAssertEqual(model.snapshot.activeWindowID, active)
+        XCTAssertEqual(model.snapshot.activeSpaceID, active)
         XCTAssertEqual(model.activity.count, 1)
         XCTAssertEqual(model.activity[first]?.hasOutput, true)
         XCTAssertEqual(model.activity[first]?.hasExit, true)
-        await model.selectWindow(first)
+        await model.selectSpace(first)
         XCTAssertNil(model.activity[first])
         XCTAssertTrue(model.activeTerminal === terminal)
     }
 
     @MainActor
-    func testDeletingSelectedWindowClearsFallbackActivity() async throws {
+    func testDeletingSelectedSpaceClearsFallbackActivity() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(name: "One", startSession: false)
-        let first = try XCTUnwrap(model.snapshot.activeWindowID)
+        await model.createSpace(name: "One", startSession: false)
+        let first = try XCTUnwrap(model.snapshot.activeSpaceID)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
-        await model.createWindow(name: "Two", startSession: false)
-        let second = try XCTUnwrap(model.snapshot.activeWindowID)
+        await model.createSpace(name: "Two", startSession: false)
+        let second = try XCTUnwrap(model.snapshot.activeSpaceID)
         model.recordActivity(paneID: pane, exited: true)
         XCTAssertEqual(model.activity[first]?.hasExit, true)
-        await model.deleteWindow(second)
-        XCTAssertEqual(model.snapshot.activeWindowID, first)
+        await model.deleteSpace(second)
+        XCTAssertEqual(model.snapshot.activeSpaceID, first)
         XCTAssertNil(model.activity[first])
     }
 
     @MainActor
-    func testOlderCommandReplyCannotRestoreDeletedWindow() async throws {
+    func testOlderCommandReplyCannotRestoreDeletedSpace() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
+        await model.createSpace(startSession: false)
         let old = model.snapshot
-        await model.deleteWindow(try XCTUnwrap(old.activeWindowID))
+        await model.deleteSpace(try XCTUnwrap(old.activeSpaceID))
         let deleted = model.snapshot
         model.publish(old)
         XCTAssertEqual(model.snapshot, deleted)
@@ -125,22 +125,22 @@ final class WindowManagementTests: XCTestCase {
 
     func testDeletionRejectsLiveSessionsAtomically() async throws {
         let store = try WorkspaceStore()
-        let created = try await store.execute(.createWindow(name: "One"))
+        let created = try await store.execute(.createSpace(name: "One"))
         let paneID = try XCTUnwrap(created.snapshot.panes.keys.first)
         let launched = try await store.execute(.startSession(paneID: paneID))
-        do { _ = try await store.execute(.deleteWindow(id: try XCTUnwrap(created.createdWindowID))); XCTFail("Deleted starting process") } catch {}
+        do { _ = try await store.execute(.deleteSpace(id: try XCTUnwrap(created.createdSpaceID))); XCTFail("Deleted starting process") } catch {}
         let unchanged = await store.snapshot()
         XCTAssertEqual(unchanged, launched.snapshot)
     }
 
     @MainActor
-    func testDeleteLastStoppedWindowReachesEmptyState() async throws {
+    func testDeleteLastStoppedSpaceReachesEmptyState() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow(startSession: false)
-        let id = try XCTUnwrap(model.snapshot.activeWindowID)
-        await model.deleteWindow(id)
+        await model.createSpace(startSession: false)
+        let id = try XCTUnwrap(model.snapshot.activeSpaceID)
+        await model.deleteSpace(id)
         XCTAssertTrue(model.presentation.isEmpty)
         XCTAssertTrue(model.terminals.isEmpty)
         XCTAssertTrue(model.snapshot.sessions.isEmpty)
@@ -152,18 +152,18 @@ final class WindowManagementTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
         model.confirmForceSessions = { _ in true }  // Explicit cleanup authorization for owned test processes.
-        await model.createWindow()
-        let id = try XCTUnwrap(model.snapshot.activeWindowID)
+        await model.createSpace()
+        let id = try XCTUnwrap(model.snapshot.activeSpaceID)
         let terminal = try XCTUnwrap(model.activeTerminal)
         defer { terminal.stop() }
         model.confirmCloseSessions = { count in
             XCTAssertEqual(count, 1); return false
         }
-        await model.deleteWindow(id)
+        await model.deleteSpace(id)
         XCTAssertTrue(terminal.isRunning)
-        XCTAssertEqual(model.snapshot.windows.count, 1)
-        await model.createWindow(name: "Unaffected")
-        let otherID = try XCTUnwrap(model.snapshot.activeWindowID)
+        XCTAssertEqual(model.snapshot.spaces.count, 1)
+        await model.createSpace(name: "Unaffected")
+        let otherID = try XCTUnwrap(model.snapshot.activeSpaceID)
         let other = try XCTUnwrap(model.activeTerminal)
         defer { other.stop() }
         let otherPID = other.processID
@@ -171,10 +171,10 @@ final class WindowManagementTests: XCTestCase {
         model.confirmCloseSessions = { count in
             XCTAssertEqual(count, 1); return true
         }
-        await model.deleteWindow(id)
+        await model.deleteSpace(id)
         XCTAssertFalse(terminal.isRunning)
-        XCTAssertEqual(model.snapshot.windows.map(\.id), [otherID])
-        XCTAssertEqual(model.snapshot.activeWindowID, otherID)
+        XCTAssertEqual(model.snapshot.spaces.map(\.id), [otherID])
+        XCTAssertEqual(model.snapshot.activeSpaceID, otherID)
         XCTAssertTrue(other.isRunning)
         XCTAssertEqual(other.processID, otherPID)
         XCTAssertEqual(model.presentation.activePane?.sessionID, otherSession)
@@ -198,22 +198,22 @@ final class WindowManagementTests: XCTestCase {
     }
 
     @MainActor
-    func testTabPreviewsListInactiveWindowTabsInOrderWithActiveTab() async throws {
+    func testTabPreviewsListInactiveSpaceTabsInOrderWithActiveTab() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        let firstResult = await model.createWindow(name: "One", startSession: false)
+        let firstResult = await model.createSpace(name: "One", startSession: false)
         let first = try XCTUnwrap(firstResult)
         let firstTab = try XCTUnwrap(model.presentation.selectedTab?.id)
-        let secondResult = await model.createTab(windowID: first, startSessions: false)
+        let secondResult = await model.createTab(spaceID: first, startSessions: false)
         let second = try XCTUnwrap(secondResult)
-        let thirdResult = await model.createTab(windowID: first, startSessions: false)
+        let thirdResult = await model.createTab(spaceID: first, startSessions: false)
         let third = try XCTUnwrap(thirdResult)
         let splitFrom = try XCTUnwrap(model.presentation.activePane?.id)
         _ = await model.splitPane(splitFrom, axis: .x, startSession: false)
         await model.selectTab(second)
-        _ = await model.createWindow(name: "Two", startSession: false)
-        XCTAssertNotEqual(model.snapshot.activeWindowID, first)
-        let previews = model.tabPreviews(windowID: first)
+        _ = await model.createSpace(name: "Two", startSession: false)
+        XCTAssertNotEqual(model.snapshot.activeSpaceID, first)
+        let previews = model.tabPreviews(spaceID: first)
         XCTAssertEqual(previews.map(\.id), [firstTab, second, third])
         XCTAssertEqual(previews.map(\.isActive), [false, true, false])
         XCTAssertEqual(previews.map(\.paneCount), [1, 1, 2])
@@ -224,14 +224,14 @@ final class WindowManagementTests: XCTestCase {
     func testTabPreviewsReflectRenameColorAndInputWait() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        let windowResult = await model.createWindow(name: "One", startSession: false)
-        let window = try XCTUnwrap(windowResult)
+        let spaceResult = await model.createSpace(name: "One", startSession: false)
+        let space = try XCTUnwrap(spaceResult)
         let tab = try XCTUnwrap(model.presentation.selectedTab?.id)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         await model.renameTab(tab, title: "api-server")
         await model.setTabColor(tab, color: .green)
         model.terminals[pane]?.onPasswordPromptChanged?(true)
-        let preview = try XCTUnwrap(model.tabPreviews(windowID: window).first)
+        let preview = try XCTUnwrap(model.tabPreviews(spaceID: space).first)
         XCTAssertEqual(preview.title, "api-server")
         XCTAssertEqual(preview.color, .green)
         XCTAssertEqual(preview.inputWait, .password)
@@ -241,45 +241,45 @@ final class WindowManagementTests: XCTestCase {
     func testTabPreviewsMarkOnlyTheTabWhoseCommandFailed() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        let windowResult = await model.createWindow(name: "One", startSession: false)
-        let window = try XCTUnwrap(windowResult)
-        let tabResult = await model.createTab(windowID: window, startSessions: false)
+        let spaceResult = await model.createSpace(name: "One", startSession: false)
+        let space = try XCTUnwrap(spaceResult)
+        let tabResult = await model.createTab(spaceID: space, startSessions: false)
         let failing = try XCTUnwrap(tabResult)
         let pane = try XCTUnwrap(model.presentation.activePane?.id)
         let terminal = try XCTUnwrap(model.terminals[pane])
         for event: ShellIntegrationEvent in [.promptStart(directory: "/tmp"), .commandStart(commandLine: "false"), .commandFinished(exitCode: 2)] {
             terminal.onShellIntegrationEvent?(event)
         }
-        let previews = model.tabPreviews(windowID: window)
+        let previews = model.tabPreviews(spaceID: space)
         XCTAssertEqual(previews.map(\.failedCommandExit), [nil, 2])
         XCTAssertEqual(previews.last?.id, failing)
     }
 
     @MainActor
-    func testSelectWindowTabSwitchesWindowAndTab() async throws {
+    func testSelectSpaceTabSwitchesSpaceAndTab() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        let firstResult = await model.createWindow(name: "One", startSession: false)
+        let firstResult = await model.createSpace(name: "One", startSession: false)
         let first = try XCTUnwrap(firstResult)
-        let targetResult = await model.createTab(windowID: first, startSessions: false)
+        let targetResult = await model.createTab(spaceID: first, startSessions: false)
         let target = try XCTUnwrap(targetResult)
-        let firstTab = try XCTUnwrap(model.snapshot.windows.first?.tabIDs.first)
+        let firstTab = try XCTUnwrap(model.snapshot.spaces.first?.tabIDs.first)
         await model.selectTab(firstTab)
-        let secondResult = await model.createWindow(name: "Two", startSession: false)
+        let secondResult = await model.createSpace(name: "Two", startSession: false)
         let second = try XCTUnwrap(secondResult)
         let before = model.snapshot
-        await model.selectWindowTab(windowID: second, tabID: target)
-        XCTAssertEqual(model.snapshot, before, "A tab from another window is ignored")
-        await model.selectWindowTab(windowID: first, tabID: target)
-        XCTAssertEqual(model.snapshot.activeWindowID, first)
+        await model.selectSpaceTab(spaceID: second, tabID: target)
+        XCTAssertEqual(model.snapshot, before, "A tab from another space is ignored")
+        await model.selectSpaceTab(spaceID: first, tabID: target)
+        XCTAssertEqual(model.snapshot.activeSpaceID, first)
         XCTAssertEqual(model.presentation.selectedTab?.id, target)
     }
 
     @MainActor
-    func testTabPreviewsEmptyForUnknownWindow() async throws {
+    func testTabPreviewsEmptyForUnknownSpace() async throws {
         _ = NSApplication.shared
         let model = AppWorkspaceModel(store: try WorkspaceStore())
-        _ = await model.createWindow(name: "One", startSession: false)
-        XCTAssertEqual(model.tabPreviews(windowID: UUID()), [])
+        _ = await model.createSpace(name: "One", startSession: false)
+        XCTAssertEqual(model.tabPreviews(spaceID: UUID()), [])
     }
 }

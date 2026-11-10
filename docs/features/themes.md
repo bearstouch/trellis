@@ -74,7 +74,7 @@ True-color values are never recolored, so a program that sends 24-bit colors kee
 - **Open Themes Folder** and **Reload Themes** let you edit themes in any editor. Reload validates the edited files and updates the valid ones atomically. For an invalid file it keeps the last valid palette in memory and shows the errors. No restart is needed.
 - Deleting a selected theme falls back to the built-in theme for that slot and shows a notice. The mode and both selected IDs are saved, and Trellis falls back safely at launch if a file is missing.
 - Previewing, importing and reloading never send bytes to terminal sessions.
-- Themes are global. Per-window, per-tab and per-host themes are deferred.
+- Themes are global. Per-space, per-tab and per-host themes are deferred.
 
 ## Contrast
 

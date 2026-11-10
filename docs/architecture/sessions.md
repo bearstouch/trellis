@@ -58,7 +58,7 @@ Trellis must never signal a PID that the OS has reused for another process.
 1. If any affected session is running and the caller hasn't confirmed, the result is `confirmationRequired`, along with the affected sessions. The UI turns that into a single confirmation dialog summarizing every pane involved (`FR-T03`). The API returns `CONFIRMATION_REQUIRED`.
 2. If the close is confirmed, SIGHUP goes to each terminal process group, matching terminal hangup behavior. Interactive shells such as zsh ignore SIGTERM, so sending SIGTERM here would cause an unnecessary force-stop prompt. The coordinator then polls every 20 ms for up to **2 seconds**.
 3. If a process is still alive, the result is `closePending`. The UI offers an explicit **Force** option, and the API returns `CLOSE_PENDING`; the client must send `force: true`. Force (SIGKILL) is allowed only after a graceful attempt that's at least 2 seconds old.
-4. The store refuses to delete a pane, tab or window while any of its sessions is starting, running or closing. The hierarchy is removed only after cleanup finishes.
+4. The store refuses to delete a pane, tab or space while any of its sessions is starting, running or closing. The hierarchy is removed only after cleanup finishes.
 
 Cancelling a confirmation sends no signal. Closing a pane doesn't guarantee that remote processes stop, including anything detached with tmux or nohup.
 

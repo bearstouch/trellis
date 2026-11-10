@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Troubleshooting · Trellis Docs</title>
+<meta name="description" content="Fixes for common Trellis problems: sessions after quit, workspace recovery, fonts, the trellis command, SSH passwords, colors and updates.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="guide/troubleshooting.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">User guide</p>
+<h1>Troubleshooting</h1>
+<p class="lead">Common problems and what to do about them. If yours isn't here, <a href="https://github.com/bearstouch/trellis/issues">open an issue on GitHub</a>.</p>
+
+<h2 id="sessions-after-quit">Sessions</h2>
+<h3 id="sessions-gone-after-restart">My sessions were gone after a restart</h3>
+<p>Sessions survive quitting Trellis, closing the window and a crash, but not logging out or restarting your Mac. After a restart, your spaces, tabs and splits come back <strong>stopped</strong>; press <strong>Start Session</strong> in a pane to run it again.</p>
+<h3 id="sessions-still-running">Programs are still running after I quit</h3>
+<p>That's the default: sessions keep running in a background helper. To end them, quit and choose <strong>Stop Sessions</strong> when asked, or turn on <strong>Settings → Sessions → Stop sessions when Trellis quits</strong>.</p>
+<h3 id="stop-them-leave-running">“Stop Them” or “Leave Running” at launch</h3>
+<p>Trellis found sessions still running that no pane claims, for example after you closed their pane while Trellis was quitting. <strong>Stop Them</strong> ends them; <strong>Leave Running</strong> leaves them alone.</p>
+<h3 id="old-output-missing">Older output is missing after relaunch</h3>
+<p>A reattached pane replays only its most recent output (up to 4 MiB). Full-screen programs such as <code>vim</code> are asked to redraw. Want output back for panes that were stopped? Turn on <strong>Restore scrollback after quit</strong> in <strong>Settings → Sessions</strong>.</p>
+
+<h2 id="workspace-recovery">Workspace recovery</h2>
+<p>If your saved workspace file is damaged, Trellis opens a recovery screen instead of overwriting it. Choose <strong>Use Backup</strong> to load the last good copy, or <strong>Start Empty</strong>. The damaged file is kept beside it.</p>
+<p>A workspace saved by a <em>newer</em> Trellis opens read-only and is never overwritten. Downgrading isn't supported, so copy <code>~/Library/Application Support/com.bearstouch.trellis/</code> before you try an older version.</p>
+
+<h2 id="font-fallback">The terminal font changed</h2>
+<p>If the font you picked was removed or isn't monospaced, Trellis falls back to Menlo or the system monospace font and shows a notice. Choose another font in <strong>Settings → Appearance</strong>.</p>
+
+<h2 id="cli-not-found">trellis: command not found</h2>
+<ul>
+<li>Install it from <strong>Trellis → Install Command Line Tool…</strong>. It creates <code>~/.local/bin/trellis</code>.</li>
+<li>If Trellis says <code>~/.local/bin</code> isn't on your <code>PATH</code>, add the line it shows to your shell profile and open a new pane.</li>
+<li>Running Trellis from the DMG? Move it to <strong>Applications</strong> first; the tool won't install from the DMG.</li>
+</ul>
+
+<h2 id="ssh-password-prompt">SSH asks for my saved password again</h2>
+<p>A saved host's password is answered by the Trellis that started the session. After you quit and relaunch, SSH sessions kept running in the background can no longer use it, so <code>ssh</code> prompts the next time it needs a password. New connections use the saved password as usual.</p>
+
+<h2 id="light-theme-colors">Dark blocks on a light theme</h2>
+<p>Programs that send exact 24-bit colors get exactly those colors, so some can still draw dark backgrounds under a light theme. Basic ANSI colors are adjusted to stay readable. Try one of the dark themes for that program, or its own light color scheme.</p>
+
+<h2 id="file-links">A file path doesn't open when I ⌘-click it</h2>
+<p>Relative paths open only where <a href="../features/shell-integration.html">shell integration</a> reports the current directory, so check that it's on in <strong>Settings → Sessions</strong> and that you're using zsh, bash or fish locally.</p>
+
+<h2 id="keychain-prompt">Keychain asks for access again</h2>
+<p>Builds you compile yourself aren't signed by Bearstouch, so macOS may ask again for Keychain access to saved passwords and automation tokens after each rebuild. Released builds don't.</p>
+
+<h2 id="updates">Updates</h2>
+<ul>
+<li>No update is offered: check you're on the version you think with <strong>Trellis → About Trellis</strong>, then <strong>Settings → Updates → Check Now</strong>.</li>
+<li>Installing an update quits Trellis. If you cancel the quit, the install waits. <strong>Keep Running</strong> leaves your sessions alive through the update.</li>
+</ul>
+
+<h2 id="reset">Starting over</h2>
+<p>Everything Trellis saves is in <code>~/Library/Application Support/com.bearstouch.trellis/</code>. Quit Trellis with <strong>Stop Sessions</strong>, move that folder somewhere safe, and reopen Trellis for a fresh start. Your SSH keys, SSH config and shell history are never in it.</p>
+<p>To uninstall cleanly, run <code>trellis cli uninstall-plan</code> to see exactly which files and Keychain items Trellis owns. See <a href="../privacy.html">Privacy &amp; data</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

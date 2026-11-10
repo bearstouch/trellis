@@ -8,7 +8,7 @@ Trellis is a focused native macOS terminal that makes many concurrent local and 
 
 ## Users and workflows
 
-- A developer keeps a separate managed window for each project and switches between their tabs without losing running processes.
+- A developer keeps a separate managed space for each project and switches between their tabs without losing running processes.
 - An operator opens saved SSH hosts, inspects several machines in adjacent panes, and reconnects explicitly after a failure.
 - A script creates a project workspace with named tabs, working directories and a repeatable split layout.
 - An authorized agent discovers stable IDs, reads output it has been allowed to read, opens sessions, and sends commands. It goes through the same application services the UI uses.
@@ -18,41 +18,42 @@ Trellis is a focused native macOS terminal that makes many concurrent local and 
 | Term | Definition |
 | --- | --- |
 | Native window | A macOS application window. The MVP has one terminal-bearing native window. |
-| Managed window (workspace) | A persistent, named sidebar item that holds an ordered list of tabs. The UI calls these "Windows"; the API resource is `window`. |
+| Space | A persistent, named sidebar item that holds an ordered list of tabs, usually a loaded [project](../features/project-library.md) plus any temporary tabs you open in it (FR-W08). The API resource is `space`. Called a *window* before; the API and CLI still accept that name for now. |
+| Temporary tab | A tab in a project's space that the project doesn't define. It never changes the project. |
 | Tab | A named container for one binary split tree and its active pane. |
 | Pane | A visible terminal leaf in a tab. Each pane owns exactly one session. |
 | Session | One PTY-backed process, usually a login shell or the system SSH client. |
 | Host | Saved SSH connection metadata. It isn't a running session. Its only credential is an optional password kept in the Keychain, never in the host itself. |
 | Profile | Reusable appearance and launch defaults. The MVP has a single default profile. |
-| Layout | A declarative, versioned description of windows, tabs and pane trees. |
+| Layout | A declarative, versioned description of spaces, tabs and pane trees. |
 | Grant | A user-created automation credential with a capability set and a resource scope. |
 
 Structural rules:
 
-- A window has at least one tab, and a tab has at least one pane.
-- The application can have zero windows, in which case it shows a welcome screen.
-- Selecting another window or tab never stops sessions.
+- A space has at least one tab, and a tab has at least one pane.
+- The application can have zero spaces, in which case it shows a welcome screen.
+- Selecting another space or tab never stops sessions.
 - There is no global "broadcast input to all panes" feature.
 
 ## Scope
 
 | Priority | Features |
 | --- | --- |
-| P0 (MVP) | Sidebar windows; tabs; nested left/right and top/bottom splits; local shells; SSH hosts; native selection and clipboard; built-in dark and light themes plus custom JSON themes; terminal search; keyboard navigation; saved layouts; local CLI and API; explicit automation grants; bounded output reading; import and export of layouts and hosts |
-| P1 | Multiple native windows; dragging tabs between windows; multiple profiles; shell integration (zsh, bash, fish; command-completion events for automation still to come); richer host import; a signed update mechanism; an optional MCP adapter; a session broker, on by default, so sessions survive quitting (FR-R03, FR-R07, implemented), with an opt-in redacted scrollback file (FR-R04, FR-R05, implemented) |
+| P0 (MVP) | Sidebar spaces; tabs; nested left/right and top/bottom splits; local shells; SSH hosts; native selection and clipboard; built-in dark and light themes plus custom JSON themes; terminal search; keyboard navigation; saved layouts; local CLI and API; explicit automation grants; bounded output reading; import and export of projects and hosts |
+| P1 | Multiple native windows; dragging tabs between spaces; multiple profiles; shell integration (zsh, bash, fish; command-completion events for automation still to come); richer host import; a signed update mechanism; an optional MCP adapter; a session broker, on by default, so sessions survive quitting (FR-R03, FR-R07, implemented), with an opt-in redacted scrollback file (FR-R04, FR-R05, implemented) |
 | P2 | tmux awareness; richer terminal protocols; plugins |
 
-Out of scope for the MVP: Windows, Linux or iOS support; cloud sync; a web UI; a remote API server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import; and replaying arbitrary commands on restore.
+Out of scope for the MVP: Spaces, Linux or iOS support; cloud sync; a web UI; a remote API server; an embedded AI provider; an embedded SSH implementation; file transfer; serial ports; full iTerm2 preference import; and replaying arbitrary commands on restore.
 
 ## Primary interaction
 
 The visual direction is **Native calm**.
 
-- The left sidebar lists managed windows. Selecting one shows that window's own tab bar above its terminal area.
+- The left sidebar lists managed spaces. Selecting one shows that space's own tab bar above its terminal area.
 - Selecting a tab restores its split layout and its last focused pane.
 - The tab bar has visible separators, a new-tab button and a rename action. Double-clicking a tab label edits it inline: Enter commits, Escape cancels, and an empty name keeps the previous title. Renaming never restarts a session or changes an ID.
 - Dark application chrome is the first-launch default; Light and System are available, and settings saved by an earlier version keep their mode. Terminal panes follow the theme, white under Trellis Light and dark under Trellis Dark, and use bundled JetBrains Mono by default in every appearance.
-- **Hosts** opens a searchable list with connect and edit actions. Connecting opens a new tab by default, with explicit options to open a new window or a split instead.
+- **Hosts** opens a searchable list with connect and edit actions. Connecting opens a new tab by default, with explicit options to open a new space or a split instead.
 
 Menus say **Split Left/Right** and **Split Top/Bottom**. In the API, `axis: x` means left/right and `axis: y` means top/bottom. This avoids the ambiguous term "vertical split".
 
@@ -77,7 +78,7 @@ A script can build the same workspace, discover its IDs, observe the output it's
 The MVP was delivered in five phases:
 
 1. **Terminal feasibility:** embed the terminal engine and prove a PTY shell, resizing, Unicode and IME, selection, clipboard, alternate-screen apps, accessibility and resource cleanup.
-2. **Organization:** windows, tabs, the split tree, focus, process lifecycle and restoring stopped layouts.
+2. **Organization:** spaces, tabs, the split tree, focus, process lifecycle and restoring stopped layouts.
 3. **Daily use:** SSH hosts, search, clipboard behavior, settings, shortcuts and unsaved-work warnings.
 4. **Automation:** shared commands, the authenticated socket, the CLI, output and event bounds, layout validation and application, and permission checks.
 5. **Release qualification:** the acceptance matrix on the supported architectures and macOS versions, signing and notarization, and published known limitations.

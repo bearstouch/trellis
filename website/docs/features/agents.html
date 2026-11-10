@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coding agents · Trellis Docs</title>
+<meta name="description" content="Run Claude Code, Codex and pi in Trellis panes and see on each tab when an agent is working, needs you or is done.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/agents.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Coding agents <span class="badge">Preview</span></h1>
+<p class="lead">Run Claude Code, Codex and pi in their own panes, in your project's folder, and see on each tab whether an agent is working, needs you or is done. Switch spaces freely: the tab tells you when to come back.</p>
+
+<div class="callout preview">
+<p class="callout-title">Preview</p>
+<p>Coding agents shipped in Trellis 1.1.0 as a preview. The basics are tested, but some behavior may still change.</p>
+</div>
+
+<h2 id="open-an-agent">Open an agent</h2>
+<ol class="steps">
+<li>Focus the pane whose folder you want the agent to work in.</li>
+<li>Click the sparkles icon in the dock, or press <kbd>⌥⌘A</kbd>, to show the <strong>Agents</strong> view of the <a href="sidebar.html">right sidebar</a>.</li>
+<li>Choose where it opens: <strong>New Tab</strong> (the default), <strong>This Tab</strong> or <strong>Split</strong>.</li>
+<li>Click the play button next to the agent.</li>
+</ol>
+<p>The agent starts in the focused pane's folder, on the same machine. In a <a href="remote-workspaces.html">remote workspace</a> it runs on that space's host.</p>
+<ul>
+<li><strong>New Tab</strong> opens a tab in the same space and selects it.</li>
+<li><strong>Split</strong> opens the agent to the right of the focused pane.</li>
+<li><strong>This Tab</strong> runs the agent in the focused pane itself. It's offered only while no agent runs in that tab. If the pane's shell is idle at its prompt, Trellis asks <strong>Replace this shell with…</strong> first; background jobs end with the shell. If a command is running, nothing is ended and Trellis suggests a new tab instead.</li>
+</ul>
+<p>⌥-click the play button to use a split instead of a new tab (or a new tab instead of a split). From the keyboard, open the <a href="command-palette.html">command palette</a> and choose <strong>Launch Agent…</strong>: <kbd>↩</kbd> opens a new tab, <kbd>⌥↩</kbd> a split.</p>
+<p>The circular-arrow button next to an agent opens it with its <strong>Resume</strong> arguments, continuing its last conversation.</p>
+
+<h2 id="built-in-agents">Built-in agents</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Agent</th><th>Command</th><th>Resume</th></tr></thead>
+<tbody>
+<tr><td>Claude Code</td><td><code>claude</code></td><td><code>--continue</code></td></tr>
+<tr><td>pi</td><td><code>pi</code></td><td><code>--continue</code></td></tr>
+<tr><td>Codex</td><td><code>codex</code></td><td><code>resume --last</code></td></tr>
+</tbody>
+</table></div>
+<p>Agents run in your login shell, so they find the same <code>PATH</code> as your terminal, including tools installed by version managers.</p>
+
+<h2 id="agent-state">See what an agent is doing</h2>
+<p>While an agent runs, its tab shows the agent's icon in place of the terminal icon.</p>
+<ul>
+<li><strong>Working:</strong> a light moves along the tab's top edge and the icon breathes. With Reduce Motion on, the edge shows a steady bar instead.</li>
+<li><strong>Needs you:</strong> the agent is waiting for an answer or a permission.</li>
+<li><strong>Done:</strong> the agent finished its turn. Shown until you've seen the tab.</li>
+<li><strong>Error:</strong> the agent's turn failed.</li>
+</ul>
+<p>States are shown in words with a symbol, never by color alone. With several agents in one tab, the most urgent wins. The Agents icon in the dock counts the agent panes that need you, in every space.</p>
+<p>The <strong>Running</strong> list in the Agents view shows every agent in every space, with its tab, space and state. Click a row to go to that pane.</p>
+
+<h3 id="how-state-works">How it knows</h3>
+<p>Trellis passes each agent a small hook on its command line that reports only state changes, such as "working" or "needs input". Nothing from your conversation reaches Trellis, and Trellis never edits your agent configuration. Where an agent has no hook for something, Trellis also uses the terminal's own signals: a bell or notification means needs you, and for Codex pressing <kbd>↩</kbd> means working.</p>
+
+<h2 id="typed-agents">Agents typed in a shell</h2>
+<p>You can also just type <code>claude</code>, <code>codex</code> or <code>pi</code> at a prompt. With shell integration on zsh, bash or fish, the tab shows the agent's icon and titles itself after the agent while it runs, and it's listed under <strong>Running</strong> marked "in a shell".</p>
+<p>With <strong>Settings → Agents → Connect agents typed in a shell</strong> on (the default), local shells also get live state for typed agents: working, needs you, done and notifications. Trellis does this with a shell function named after each agent, defined only in that pane's shell.</p>
+<ul>
+<li>A function or alias of the same name you define yourself wins.</li>
+<li>Run <code>command claude</code> (or <code>command pi</code>, <code>command codex</code>) to skip the wiring.</li>
+<li>Changing the setting applies to shells started afterwards.</li>
+<li>Remote workspace and SSH panes don't get live state for typed agents. Open the agent from the Agents view instead.</li>
+</ul>
+<p>Only the plain command is recognised: <code>npx claude</code> or <code>cd x &amp;&amp; claude</code> isn't. Another program with the same name as an agent (such as a different <code>pi</code>) shows that agent's icon too; run it with <code>command pi</code> or turn the setting off if it rejects the extra arguments.</p>
+
+<h2 id="install">Install a missing agent</h2>
+<p>If an agent isn't installed where the pane runs, Trellis shows a sheet with the vendor's own install command, what it needs on <code>PATH</code> and the vendor's page. <strong>Install and Launch</strong> runs the installer in the pane, visibly and without <code>sudo</code>, then starts the agent. <strong>Cancel</strong> runs nothing. Trellis never bundles or uploads an agent.</p>
+
+<h2 id="restore">After a relaunch</h2>
+<p>Agent panes are saved with your workspace (only the agent, host and folder, never the command line). If an agent pane was stopped when Trellis relaunches, it shows <strong>Start</strong> with the agent's name, and <strong>Resume Last Conversation</strong>; nothing runs by itself. An agent that exited shows <strong>Restart</strong> and <strong>Resume</strong>.</p>
+<p><a href="projects.html">Projects</a> can name an agent per pane, so launching a project opens its agents too.</p>
+
+<h2 id="notifications">Notifications</h2>
+<p>With desktop notifications allowed and <strong>Settings → Agents → Notify me when an agent needs me or finishes while its pane is out of view</strong> on, Trellis posts a notification such as "Claude Code needs you" or "Claude Code finished", with the space and tab as the subtitle. See <a href="notifications.html">Notifications</a>.</p>
+
+<h2 id="your-own-agents">Add your own agent</h2>
+<p>Each agent is a small JSON file named <code>&lt;id&gt;.agent.json</code>. Click <strong>Add Agent Definition…</strong> in the Agents view, or <strong>Settings → Agents → Reveal Agents Folder</strong>, and add a file:</p>
+<pre><code>{
+  "version": 1,
+  "id": "aider",
+  "name": "Aider",
+  "executable": "aider",
+  "arguments": [],
+  "resumeArguments": ["--restore-chat-history"],
+  "integration": "none",
+  "icon": { "monogram": "A" },
+  "install": {
+    "darwin": { "command": "python3 -m pip install --user aider-install &amp;&amp; aider-install", "requires": ["python3"] }
+  },
+  "homepage": "https://aider.chat"
+}</code></pre>
+<dl class="terms">
+<dt><code>id</code></dt><dd>Lower-case letters, digits and <code>-</code>; must match the file name. IDs starting with <code>trellis-</code> are reserved.</dd>
+<dt><code>executable</code></dt><dd>A command name on your login shell's <code>PATH</code>, or an absolute path.</dd>
+<dt><code>arguments</code>, <code>resumeArguments</code></dt><dd>Single-line arguments for a normal start and for <strong>Resume</strong>.</dd>
+<dt><code>integration</code></dt><dd>Use <code>none</code> for your own agents: the tab then follows the terminal's signals only.</dd>
+<dt><code>icon</code></dt><dd><code>{"symbol": "…"}</code> (an SF Symbol), <code>{"monogram": "A"}</code> (one or two characters) or <code>{"image": "aider.svg"}</code> (SVG, PNG or PDF next to the file, up to 32 KB).</dd>
+<dt><code>install</code></dt><dd>Per platform (<code>darwin</code>, <code>linux</code>): a one-line install command and the programs it needs.</dd>
+</dl>
+<p>Click <strong>Reload</strong> in <strong>Settings → Agents</strong> to read the folder again. Files that can't be used are listed under <strong>Files that couldn't be used</strong> with the reason.</p>
+<div class="callout warn">
+<p class="callout-title">Warning</p>
+<p>A definition can name any install command. Only add definitions you trust.</p>
+</div>
+
+<h2 id="limits">Known limits</h2>
+<ul>
+<li>Claude Code needs a version that supports <code>--settings</code> and the <code>PermissionRequest</code> hook for live state.</li>
+<li>Codex reports only finished turns. "Working" comes from pressing <kbd>↩</kbd>, so <kbd>↩</kbd> in one of its menus can show Working until the turn ends.</li>
+<li>pi has no approvals, so it never reports Needs you by itself.</li>
+<li>Extra arguments per built-in agent aren't configurable yet; add your own definition instead.</li>
+<li>Automation can't start or list agents yet.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spaces, tabs &amp; splits · Trellis Docs</title>
+<meta name="description" content="Organize sessions into spaces in the sidebar, each with its own renameable, color-labeled tabs and nested splits.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/workspace.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Spaces, tabs &amp; splits</h1>
+<p class="lead">Spaces in the left sidebar keep each project's sessions together. Every space has its own tab bar, and every tab holds a layout of split panes. Switching never stops a process.</p>
+
+<h2 id="spaces">Spaces</h2>
+<p>A space is one entry in the left sidebar. It's usually what a <a href="projects.html">project</a> becomes when you launch it, but it can also stand alone.</p>
+<ul>
+<li><strong>Create</strong> an empty space with <strong>New Space</strong> (<kbd>⌘N</kbd>) or the <strong>+</strong> button in the sidebar.</li>
+<li><strong>Select</strong> a space by clicking it, or move through the list with <kbd>⌃⌘]</kbd> and <kbd>⌃⌘[</kbd>.</li>
+<li><strong>Rename, move or delete</strong> it from its context menu: <strong>Rename…</strong>, <strong>Move Up</strong>, <strong>Move Down</strong> and <strong>Delete Space…</strong>.</li>
+<li><strong>Reorder</strong> by dragging a space onto another. An accent bar shows where it will land.</li>
+</ul>
+<p>Sessions in other spaces keep running while you work elsewhere. The sidebar marks spaces with activity, exited sessions, and a keyboard symbol for a pane waiting for input. Each space remembers its selected tab and focused pane, so switching back puts you where you were.</p>
+<p>Deleting the last space is fine: Trellis shows the welcome screen, where you can create a new one.</p>
+<div class="callout note"><p class="callout-title">Note</p><p>Spaces used to be called windows. In Trellis, "window" now means only the macOS window that shows the sidebar.</p></div>
+
+<h3 id="collapsed-sidebar">Collapse the sidebar</h3>
+<p>Click the sidebar button or choose <strong>View → Hide Sidebar</strong> (<kbd>⌃⌘S</kbd>) to shrink the sidebar to a narrow rail. Each space becomes a square with its initials; the selected one has a border, and activity and exit markers stay visible.</p>
+<ul>
+<li>Hover a square to see a card of that space's tabs with their live status. Click a tab in the card to jump to it.</li>
+<li>Right-click a square for the same <strong>Rename</strong>, <strong>Move</strong> and <strong>Delete</strong> actions.</li>
+</ul>
+<p>Trellis remembers whether the sidebar is collapsed.</p>
+
+<h3 id="temporary-tabs">Project spaces and temporary tabs</h3>
+<p>A space launched from a project shows a folder symbol, and the project's name when it differs from the space's. Tabs the project defines read normally. Any other tab you add there (a new tab, a duplicate, an agent or host tab) is <em>temporary</em>: its title is in italics.</p>
+<p>Temporary tabs never change the project. Launching the project again keeps them where they are. If you delete the project, the space keeps all its tabs and none are temporary any more.</p>
+
+<h2 id="tabs">Tabs</h2>
+<p>The selected space's tab bar sits above its panes. Each space keeps its own tab order and selection.</p>
+<ul>
+<li><strong>New tab:</strong> <kbd>⌘T</kbd> or the <strong>+</strong> button at the end of the tab bar.</li>
+<li><strong>Rename:</strong> double-click the label, or choose <strong>Rename…</strong> from its context menu. <kbd>↩</kbd> saves, <kbd>Esc</kbd> cancels, and an empty name keeps the old one. Renaming never restarts a session.</li>
+<li><strong>Reorder:</strong> drag a tab along the bar, or use <strong>Move Left</strong> and <strong>Move Right</strong> in its context menu.</li>
+<li><strong>Duplicate:</strong> <strong>Duplicate Tab</strong> copies the layout and launch settings into new sessions. No output or typed input is copied.</li>
+<li><strong>Close:</strong> <kbd>⇧⌘W</kbd> or <strong>Close Tab…</strong>.</li>
+</ul>
+<p>A tab you haven't renamed takes an automatic title from the running program or the current folder when <a href="shell-integration.html">shell integration</a> is on.</p>
+
+<h3 id="tab-colors">Color labels</h3>
+<p>Right-click a tab and pick a <strong>Color</strong>: red, orange, yellow, green, blue, purple or gray. A labeled tab gets a colored stripe along its top edge and a light tint. Choose <strong>None</strong> to remove it. Hover the stripe to see the color name; VoiceOver reads it with the tab.</p>
+
+<h3 id="tab-status">Tab status</h3>
+<p>Tabs show what their panes are doing, in words and symbols as well as color. See <a href="notifications.html">Notifications</a> for the busy bar, the <strong>Input</strong> label, progress and exit status.</p>
+
+<h2 id="splits">Splits</h2>
+<p>Split any pane, as often as you like, to build nested layouts.</p>
+<ul>
+<li><strong>Split Left/Right</strong> puts a new pane beside the focused one.</li>
+<li><strong>Split Top/Bottom</strong> puts a new pane below it.</li>
+<li>Drag a divider to resize, or use the keyboard. A pane never shrinks below 20 columns by 5 rows.</li>
+<li><strong>Maximize / Restore Pane</strong> temporarily fills the tab with the focused pane, then puts the layout back exactly as it was.</li>
+</ul>
+<p>With shell integration, a new split or tab starts in the focused shell's current folder.</p>
+<p>When a tab shows more than one pane, the focused pane's header gets an accent line and tint, and the other panes are slightly dimmed. Nothing is dimmed when the window is inactive or Increase Contrast is on.</p>
+<p>Closing a pane lets its neighbor fill the space. Closing a tab's last pane closes the tab, and closing a space's last tab closes the space.</p>
+<p>If the window gets too small for a layout, Trellis keeps it at its minimum size and lets you scroll. Panes are never removed or squeezed below their minimum.</p>
+
+<h2 id="shortcuts">Shortcuts</h2>
+<div class="table-wrap"><table class="keys">
+<thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+<tbody>
+<tr><td>New Space</td><td><kbd>⌘N</kbd></td></tr>
+<tr><td>New Tab</td><td><kbd>⌘T</kbd></td></tr>
+<tr><td>Next / previous space</td><td><kbd>⌃⌘]</kbd> <kbd>⌃⌘[</kbd></td></tr>
+<tr><td>Next / previous tab</td><td><kbd>⇧⌘]</kbd> <kbd>⇧⌘[</kbd></td></tr>
+<tr><td>Select tab 1–9</td><td><kbd>⌘1</kbd> … <kbd>⌘9</kbd></td></tr>
+<tr><td>Split Left/Right</td><td><kbd>⌘D</kbd></td></tr>
+<tr><td>Split Top/Bottom</td><td><kbd>⇧⌘D</kbd></td></tr>
+<tr><td>Focus left / right / up / down</td><td><kbd>⌥⌘←</kbd> <kbd>⌥⌘→</kbd> <kbd>⌥⌘↑</kbd> <kbd>⌥⌘↓</kbd></td></tr>
+<tr><td>Move divider</td><td><kbd>⌥⇧⌘←</kbd> <kbd>⌥⇧⌘→</kbd> <kbd>⌥⇧⌘↑</kbd> <kbd>⌥⇧⌘↓</kbd></td></tr>
+<tr><td>Maximize / Restore Pane</td><td><kbd>⇧⌘↩</kbd></td></tr>
+<tr><td>Close Pane</td><td><kbd>⌘W</kbd></td></tr>
+<tr><td>Close Tab</td><td><kbd>⇧⌘W</kbd></td></tr>
+<tr><td>Hide / Show Sidebar</td><td><kbd>⌃⌘S</kbd></td></tr>
+</tbody>
+</table></div>
+<p>Rename Tab, Rename Space and Delete Space have no default shortcut. Change any of these in <a href="../guide/keyboard-shortcuts.html">Keyboard shortcuts</a>.</p>
+
+<h2 id="closing">Closing panes, the window and quitting</h2>
+<p>Closing a pane, tab or space with running sessions asks first, with one confirmation that lists every affected pane.</p>
+<p>Closing the Trellis window only hides it. Sessions keep running, and clicking the Dock icon brings the window back.</p>
+<p>Quitting with <kbd>⌘Q</kbd> keeps your sessions running by default: they come back, still running, the next time you open Trellis. To end them on quit instead, turn on <strong>Settings → Sessions → Stop sessions when Trellis quits</strong>. With that on:</p>
+<ul>
+<li>Quitting asks before ending running sessions.</li>
+<li>Closing the window while sessions are live asks once whether to end them. Your spaces, tabs and splits stay as stopped panes either way.</li>
+</ul>
+<p>Spaces, tabs, names and splits are always saved. Stopped panes come back stopped; Trellis never reruns a command or replays what you typed. Press <strong>Restart</strong> in a stopped pane to start it again.</p>
+
+<h2 id="export">Export projects and hosts</h2>
+<p><strong>File → Export Projects &amp; Hosts…</strong> writes your project library and saved hosts to one file; <strong>File → Import Projects &amp; Hosts…</strong> reviews such a file before adding anything. Spaces themselves aren't exported, since they're what projects become once launched. See <a href="projects.html#import-export">Projects</a>.</p>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>

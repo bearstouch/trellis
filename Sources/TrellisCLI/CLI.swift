@@ -297,7 +297,7 @@ public enum CLI {
             params[key] = .number(value)
         }
         func flag(_ key: String, _ name: String) { if command.has(name) { params[key] = .bool(true) } }
-        func window(_ key: String) throws { if let raw = command.value("window") { params[key] = .string(try resolver.window(raw).uuidString) } }
+        func space(_ key: String) throws { if let raw = command.value("space") { params[key] = .string(try resolver.space(raw).uuidString) } }
         func tab(_ key: String) throws { if let raw = command.value("tab") { params[key] = .string(try resolver.tab(raw).uuidString) } }
         func host(_ key: String) throws { if let raw = command.value("host") { params[key] = .string(try resolver.host(raw).uuidString) } }
         func idList(_ option: String) throws -> JSONValue? {
@@ -337,15 +337,15 @@ public enum CLI {
         set("idempotencyKey", "idempotency-key")
         try number("expectedRevision", "expected-revision", integer: true)
         switch command.spec {
-        case "window.get", "window.update", "window.focus", "window.close":
-            try window("id")
-            guard params["id"] != nil else { throw CLIFailure.arguments("--window is required.") }
+        case "space.get", "space.update", "space.focus", "space.close":
+            try space("id")
+            guard params["id"] != nil else { throw CLIFailure.arguments("--space is required.") }
             set("name", "name")
             flag("allowRunning", "allow-running"); flag("force", "force"); flag("activateApp", "activate")
-        case "window.create": set("name", "name"); flag("start", "start")
-        case "window.reorder": params["ids"] = try idList("ids")
+        case "space.create": set("name", "name"); flag("start", "start")
+        case "space.reorder": params["ids"] = try idList("ids")
         case "tab.list", "tab.create", "tab.reorder":
-            try window("windowId")
+            try space("spaceId")
             set("title", "title"); flag("start", "start")
             if let ids = try idList("ids") { params["ids"] = ids }
         case "tab.get", "tab.update", "tab.focus", "tab.close":
@@ -371,7 +371,7 @@ public enum CLI {
             set("name", "name"); set("destination", "destination"); set("user", "user"); set("identityFile", "identity-file")
             try number("port", "port", integer: true)
             if let tags = command.value("tags") { params["tags"] = .array(tags.split(separator: ",").map { .string(String($0)) }) }
-            if command.spec == "host.connect" { try window("windowId"); try uuid("paneId", "pane"); set("axis", "axis") }
+            if command.spec == "host.connect" { try space("spaceId"); try uuid("paneId", "pane"); set("axis", "axis") }
         case "layout.validate", "layout.plan", "layout.apply":
             try document(); set("namespace", "namespace"); flag("startNew", "start-new")
         case "theme.validate", "theme.import":
@@ -388,7 +388,7 @@ public enum CLI {
             guard params["id"] != nil else { throw CLIFailure.arguments("--id is required.") }
         case "appearance.set": set("mode", "mode"); set("lightThemeId", "light-theme"); set("darkThemeId", "dark-theme")
         case "layout.export":
-            if let windows = command.options["window"] { params["windowIds"] = .array(try windows.map { .string(try resolver.window($0).uuidString) }) }
+            if let spaces = command.options["space"] { params["spaceIds"] = .array(try spaces.map { .string(try resolver.space($0).uuidString) }) }
         case "events.subscribe":
             params["topics"] = .array((command.value("topics") ?? "resources,selection,session").split(separator: ",").map { .string(String($0)) })
             if let resources = command.options["resource"] {
@@ -426,16 +426,16 @@ struct Resolver {
         return id
     }
 
-    mutating func window(_ value: String) throws -> UUID {
+    mutating func space(_ value: String) throws -> UUID {
         if let id = UUID(uuidString: value) { return id }
-        return try match(value, in: try list("window.list", [:], key: "windows"), field: "name", kind: "window")
+        return try match(value, in: try list("space.list", [:], key: "spaces"), field: "name", kind: "space")
     }
 
     mutating func tab(_ value: String) throws -> UUID {
         if let id = UUID(uuidString: value) { return id }
         var tabs: [[String: JSONValue]] = []
-        for window in try list("window.list", [:], key: "windows") {
-            if let id = window["id"] { tabs += try list("tab.list", ["windowId": id], key: "tabs") }
+        for space in try list("space.list", [:], key: "spaces") {
+            if let id = space["id"] { tabs += try list("tab.list", ["spaceId": id], key: "tabs") }
         }
         return try match(value, in: tabs, field: "title", kind: "tab")
     }

@@ -2,7 +2,7 @@
 
 A short tour introduces Trellis the first time it opens. It floats over the workspace as an eight-step dialog: an illustration on the left, a few lines of text on the right, a step counter, **Skip Tour** and page dots. The last step offers the settings most people want to choose first.
 
-The steps are: Welcome to Trellis; Windows, tabs and splits; Sessions keep running; Start a project in one step; Remote work that holds on; Coding agents, built in; Everything, from the keyboard; and Make it yours.
+The steps are: Welcome to Trellis; Spaces, tabs and splits; Sessions keep running; Start a project in one step; Remote work that holds on; Coding agents, built in; Everything, from the keyboard; and Make it yours.
 
 All requirements here are P2.
 

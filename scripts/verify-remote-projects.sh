@@ -141,11 +141,11 @@ check "Nothing written outside ~/.trellis (no other new dot-folders)" remote '[ 
 ask "The status line said Installed, up to date (Linux $(remote uname -m))"
 
 bold "2 · Open a remote workspace (FR-RW01, FR-RW04)"
-note "Same host → Open Remote Workspace. In the new window's pane run:"
+note "Same host → Open Remote Workspace. In the new space's pane run:"
 note "    cd /tmp && sleep 900 & for i in \$(seq 1 40); do echo line-\$i; sleep 1; done"
 pause
 check "The shell runs on the host (sleep 900 is there)" remote 'pgrep -u dev -f "sleep 900"'
-ask "The sidebar shows the window as Connected · Verify Box, and the pane header shows Verify Box's path (/tmp)"
+ask "The sidebar shows the space as Connected · Verify Box, and the pane header shows Verify Box's path (/tmp)"
 note "Now split the pane (⌘D)."
 pause
 ask "The new pane opened in /tmp on the host (run pwd in it)"
@@ -165,7 +165,7 @@ while [ -n "$(app_pid)" ]; do sleep 1; done
 check "The host's sessions kept running after quit" remote 'pgrep -u dev -f "sleep 900"'
 note "Relaunching…"; launch_app
 pause
-ask "The remote window came back and its panes re-attached with their earlier output"
+ask "The remote space came back and its panes re-attached with their earlier output"
 
 bold "5 · Project library: import and edit (FR-PL01–FR-PL04)"
 note "Projects (sidebar bottom, or ⌘O) → Import JSON… → $projects/remote-shop.json → Add Project."
@@ -179,7 +179,7 @@ note "Select Verify Shop → Launch… → target Verify Box, folder code/shop �
 pause
 check "api was cloned on the host" remote 'test -d ~/code/shop/api/.git'
 check "web was cloned on the host, branch main" remote '[ "$(git -C ~/code/shop/web rev-parse --abbrev-ref HEAD)" = main ]'
-ask "The plan listed Create ~/code/shop and two clones; the setup terminal showed git; the window opened bound to Verify Box"
+ask "The plan listed Create ~/code/shop and two clones; the setup terminal showed git; the space opened bound to Verify Box"
 ask "The Log pane printed the api commit and the Web tab printed # web (each command ran once)"
 ask "Pane headers show the git branch (main)"
 
@@ -188,7 +188,7 @@ remote 'rm -rf ~/code/shop/web'
 note "web was removed on the host. Launch Verify Shop on Verify Box again (same folder)."
 pause
 check "web was cloned again" remote 'test -d ~/code/shop/web/.git'
-ask "The plan listed only the web clone, and the same window was selected (no second window)"
+ask "The plan listed only the web clone, and the same space was selected (no second space)"
 
 bold "8 · Git status (FR-PL09)"
 note "In the API pane run:  cd ~/code/shop/api && touch new.txt"
@@ -199,14 +199,14 @@ bold "9 · A failing setup (FR-PL07)"
 note "Import $projects/broken.json, add it, Launch on Verify Box (folder code/broken) → Set Up & Open."
 pause
 check "Nothing was cloned for the missing repository" remote '! test -e ~/code/broken/missing'
-ask "The sheet stayed open with git's error and Retry / Open Anyway / Cancel; Cancel closed it with no window"
+ask "The sheet stayed open with git's error and Retry / Open Anyway / Cancel; Cancel closed it with no space"
 
 bold "10 · Launch on this Mac (FR-PL06–FR-PL08)"
 note "Import $projects/local-hello.json, add it, Launch on This Mac, folder $work/local/hello-project → Set Up & Open."
 note "(This clone comes from GitHub over https.)"
 pause
 check "The repository was cloned on this Mac" test -d "$work/local/hello-project/hello/.git"
-ask "A local window opened and its pane printed the latest commit"
+ask "A local space opened and its pane printed the latest commit"
 
 bold "11 · Export a project (FR-PL04)"
 note "Select Verify Shop → Export JSON… → save it as $work/exported.json"
@@ -219,7 +219,7 @@ pause
 ask "It shows this Mac's broker (PID, protocol 3, sessions) and Verify Box's broker (Linux, PID, sessions)"
 
 bold "13 · Remove the helper (FR-RW17)"
-note "Close the remote windows (stopping their sessions), then Hosts → Verify Box → Remove Helper…"
+note "Close the remote spaces (stopping their sessions), then Hosts → Verify Box → Remove Helper…"
 pause
 check "The helper is gone from the host" remote '! test -e ~/.trellis/remote'
 

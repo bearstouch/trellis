@@ -15,9 +15,9 @@ final class MCPSecrets: GrantSecretStore, @unchecked Sendable {
     func remove(grantID: UUID) {}
 }
 
-/// One window with one pane, plus a second window for scope tests; records executed methods.
+/// One space with one pane, plus a second space for scope tests; records executed methods.
 final class MCPFakeDomain: ControlDomain, @unchecked Sendable {
-    let windowA = UUID(), windowB = UUID(), tabA = UUID(), tabB = UUID(), paneA = UUID(), paneB = UUID(), sessionA = UUID(), sessionB = UUID()
+    let spaceA = UUID(), spaceB = UUID(), tabA = UUID(), tabB = UUID(), paneA = UUID(), paneB = UUID(), sessionA = UUID(), sessionB = UUID()
     private let lock = NSLock()
     private var _executed: [(String, JSONValue?)] = []
     var executed: [(String, JSONValue?)] { lock.withLock { _executed } }
@@ -25,11 +25,11 @@ final class MCPFakeDomain: ControlDomain, @unchecked Sendable {
 
     func snapshot() async -> WorkspaceSnapshot {
         var s = WorkspaceSnapshot()
-        s.windows = [
-            ManagedWindow(id: windowA, name: "A", tabIDs: [tabA], activeTabID: tabA), ManagedWindow(id: windowB, name: "B", tabIDs: [tabB], activeTabID: tabB)
+        s.spaces = [
+            Space(id: spaceA, name: "A", tabIDs: [tabA], activeTabID: tabA), Space(id: spaceB, name: "B", tabIDs: [tabB], activeTabID: tabB)
         ]
-        s.tabs[tabA] = WorkspaceTab(id: tabA, windowID: windowA, title: "a", root: .pane(paneA), activePaneID: paneA)
-        s.tabs[tabB] = WorkspaceTab(id: tabB, windowID: windowB, title: "b", root: .pane(paneB), activePaneID: paneB)
+        s.tabs[tabA] = WorkspaceTab(id: tabA, spaceID: spaceA, title: "a", root: .pane(paneA), activePaneID: paneA)
+        s.tabs[tabB] = WorkspaceTab(id: tabB, spaceID: spaceB, title: "b", root: .pane(paneB), activePaneID: paneB)
         s.panes[paneA] = WorkspacePane(id: paneA, tabID: tabA, sessionID: sessionA)
         s.panes[paneB] = WorkspacePane(id: paneB, tabID: tabB, sessionID: sessionB)
         s.sessions[sessionA] = WorkspaceSession(id: sessionA)
@@ -52,8 +52,8 @@ final class MCPEndpointTests: XCTestCase {
         networkLimiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
     private lazy var endpoint = MCPEndpoint(handler: handler, serverVersion: "test", loopbackOnly: true, now: { [clock] in clock.now })
 
-    private func grant(_ capabilities: Set<Capability> = Set(Capability.allCases), scope: WindowScope = .all) async throws -> (AutomationGrant, String) {
-        let created = try await store.create(name: "agent", capabilities: capabilities, windowScope: scope, hostScope: .all, lifetime: 3600)
+    private func grant(_ capabilities: Set<Capability> = Set(Capability.allCases), scope: SpaceScope = .all) async throws -> (AutomationGrant, String) {
+        let created = try await store.create(name: "agent", capabilities: capabilities, spaceScope: scope, hostScope: .all, lifetime: 3600)
         return (created.grant, created.token)
     }
 
@@ -144,15 +144,15 @@ final class MCPEndpointTests: XCTestCase {
     }
 
     func testToolsListShowsOnlyWhatTheGrantCanUse() async throws {
-        let (_, token) = try await grant([.metadataRead, .sessionOutputRead], scope: .windows([domain.windowA]))
+        let (_, token) = try await grant([.metadataRead, .sessionOutputRead], scope: .spaces([domain.spaceA]))
         let session = try await open(token)
         let response = await post(rpc(2, "tools/list"), token: token, session: session)
         let tools = try XCTUnwrap((try json(response)["result"] as? [String: Any])?["tools"] as? [[String: Any]])
         let names = Set(tools.compactMap { $0["name"] as? String })
-        XCTAssertTrue(names.isSuperset(of: ["window_list", "tab_get", "session_get", "session_read_output", "system_info"]))
+        XCTAssertTrue(names.isSuperset(of: ["space_list", "tab_get", "session_get", "session_read_output", "system_info"]))
         XCTAssertFalse(names.contains("session_execute"))
         XCTAssertFalse(names.contains("session_send_input"))
-        XCTAssertFalse(names.contains("window_create"), "All-window tools need all-window scope")
+        XCTAssertFalse(names.contains("space_create"), "All-space tools need all-space scope")
         XCTAssertFalse(names.contains { $0.hasPrefix("events_") })
         for tool in tools {
             XCTAssertEqual((tool["inputSchema"] as? [String: Any])?["type"] as? String, "object")
@@ -191,20 +191,20 @@ final class MCPEndpointTests: XCTestCase {
     }
 
     func testOutOfScopeResourceLooksMissing() async throws {
-        let (_, token) = try await grant(scope: .windows([domain.windowA]))
+        let (_, token) = try await grant(scope: .spaces([domain.spaceA]))
         let session = try await open(token)
-        let hidden = try await call("window_get", ["id": domain.windowB.uuidString], token: token, session: session)
+        let hidden = try await call("space_get", ["id": domain.spaceB.uuidString], token: token, session: session)
         XCTAssertEqual(errorCode(hidden), "NOT_FOUND")
-        let visible = try await call("window_get", ["id": domain.windowA.uuidString], token: token, session: session)
+        let visible = try await call("space_get", ["id": domain.spaceA.uuidString], token: token, session: session)
         XCTAssertEqual(visible["isError"] as? Bool, false)
     }
 
     func testConditionalCapabilitiesStillApply() async throws {
         let (_, token) = try await grant([.metadataRead, .layoutWrite])
         let session = try await open(token)
-        let started = try await call("tab_create", ["windowId": domain.windowA.uuidString, "start": true], token: token, session: session)
+        let started = try await call("tab_create", ["spaceId": domain.spaceA.uuidString, "start": true], token: token, session: session)
         XCTAssertEqual(errorCode(started), "PERMISSION_DENIED", "start: true needs session.start")
-        let stopped = try await call("tab_create", ["windowId": domain.windowA.uuidString], token: token, session: session)
+        let stopped = try await call("tab_create", ["spaceId": domain.spaceA.uuidString], token: token, session: session)
         XCTAssertEqual(stopped["isError"] as? Bool, false)
     }
 
@@ -213,7 +213,7 @@ final class MCPEndpointTests: XCTestCase {
         let session = try await open(token)
         let unknown = await post(rpc(3, "tools/call", ["name": "rm_rf"]), token: token, session: session)
         XCTAssertEqual((try json(unknown)["error"] as? [String: Any])?["code"] as? Int, -32602)
-        let bad = await post(rpc(4, "tools/call", ["name": "window_list", "arguments": [1]]), token: token, session: session)
+        let bad = await post(rpc(4, "tools/call", ["name": "space_list", "arguments": [1]]), token: token, session: session)
         XCTAssertEqual((try json(bad)["error"] as? [String: Any])?["code"] as? Int, -32602)
         let method = await post(rpc(5, "resources/list"), token: token, session: session)
         XCTAssertEqual((try json(method)["error"] as? [String: Any])?["code"] as? Int, -32601)
@@ -233,7 +233,7 @@ final class MCPEndpointTests: XCTestCase {
         let (grant, token) = try await grant()
         let session = try await open(token)
         try await store.revoke(grant.id)
-        let result = try await call("window_list", [:], token: token, session: session)
+        let result = try await call("space_list", [:], token: token, session: session)
         XCTAssertEqual(errorCode(result), "AUTH_REQUIRED")
         let after = await post(rpc(6, "ping"), token: token, session: session)
         XCTAssertEqual(after.status, 404, "The session is gone; initialize fails for a revoked token")

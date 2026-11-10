@@ -83,7 +83,7 @@ final class RemoteProjectLaunchTests: XCTestCase {
         }
     }
 
-    func testAProjectIsSetUpOnTheHostAndOpensAsAWindowBoundToIt() async throws {
+    func testAProjectIsSetUpOnTheHostAndOpensAsASpaceBoundToIt() async throws {
         // The host already has the project folder and one of its repositories; only the other one is cloned.
         try FileManager.default.createDirectory(atPath: home + "/code/shop/web/.git", withIntermediateDirectories: true)
         let project = ProjectDefinition(
@@ -106,11 +106,11 @@ final class RemoteProjectLaunchTests: XCTestCase {
         XCTAssertEqual(launch?.rootExists, true)
 
         await model.runProjectSetup(session)
-        try await until("the window opened") { model.projectLaunch == nil && model.snapshot.windows.contains { $0.name == "Shop" } }
+        try await until("the space opened") { model.projectLaunch == nil && model.snapshot.spaces.contains { $0.name == "Shop" } }
         XCTAssertEqual(try String(contentsOfFile: home + "/git.log", encoding: .utf8), "git clone -- git@github.com:acme/api.git ./api\n")
-        let window = try XCTUnwrap(model.snapshot.windows.first { $0.name == "Shop" })
-        XCTAssertEqual(window.remoteHostID, host.id, "The window is bound to the host")
-        let pane = try XCTUnwrap(model.snapshot.tabs[window.tabIDs[0]]?.activePaneID)
+        let space = try XCTUnwrap(model.snapshot.spaces.first { $0.name == "Shop" })
+        XCTAssertEqual(space.remoteHostID, host.id, "The space is bound to the host")
+        let pane = try XCTUnwrap(model.snapshot.tabs[space.tabIDs[0]]?.activePaneID)
         guard case .remoteShell(host.id, home + "/code/shop/api")? = model.snapshot.sessions[model.snapshot.panes[pane]!.sessionID]?.launch else {
             return XCTFail("Not a shell on the host in the checkout")
         }
@@ -138,14 +138,14 @@ final class RemoteProjectLaunchTests: XCTestCase {
 
         model.remoteHosts?.closeWorkspaceLinks()
         try await until("the setup knows the link is down") { setup.remoteTransport?.linkLost == true }
-        XCTAssertTrue(model.hasRemoteWorkspace(host.id), "A running setup is reconnected for, though no window is bound to the host yet")
+        XCTAssertTrue(model.hasRemoteWorkspace(host.id), "A running setup is reconnected for, though no space is bound to the host yet")
         let failure = await model.connectRemote(hostID: host.id, interactive: false)
         XCTAssertNil(failure)
         try await until("the setup resumed") { setup.remoteTransport?.linkLost == false }
         XCTAssertEqual(orphanPrompts, 0, "The setup is never offered as an orphan")
 
         FileManager.default.createFile(atPath: home + "/release", contents: nil)
-        try await until("the window opened") { model.projectLaunch == nil && model.snapshot.windows.contains { $0.name == "Shop" } }
+        try await until("the space opened") { model.projectLaunch == nil && model.snapshot.spaces.contains { $0.name == "Shop" } }
     }
     func testASetupCancelledWhileDisconnectedIsHungUpOnReconnect() async throws {
         try "#!/bin/sh\necho \"git $*\" >> \"$HOME/git.log\"\nexec sleep 30\n".write(toFile: home + "/bin/git", atomically: true, encoding: .utf8)
@@ -164,7 +164,7 @@ final class RemoteProjectLaunchTests: XCTestCase {
         model.remoteHosts?.closeWorkspaceLinks()
         try await until("the setup knows the link is down") { setup.remoteTransport?.linkLost == true }
         model.cancelProjectLaunch(session)
-        XCTAssertTrue(model.hasRemoteWorkspace(host.id), "No window is bound to the host, but its hangup still needs the link")
+        XCTAssertTrue(model.hasRemoteWorkspace(host.id), "No space is bound to the host, but its hangup still needs the link")
         let failure = await model.connectRemote(hostID: host.id, interactive: false)
         XCTAssertNil(failure)
         XCTAssertFalse(model.hasRemoteWorkspace(host.id), "Sent: nothing more to reconnect for")

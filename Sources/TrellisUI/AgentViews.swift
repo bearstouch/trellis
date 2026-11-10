@@ -261,6 +261,11 @@ struct AgentSettingsView: View {
                 }
             }
             Toggle("Notify me when an agent needs me or finishes while its pane is out of view", isOn: $model.agentNotificationsEnabled)
+            Toggle("Connect agents typed in a shell", isOn: $model.typedAgentWiringEnabled)
+            Text(
+                "Typing an agent’s command in a zsh, bash or fish pane on this Mac runs it with the same hooks, so it shows its state and is listed under Running. Your own function or alias of the same name wins, and “command <agent>” runs it without hooks. Applies to shells started after the change."
+            )
+            .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
             Text(
                 "Trellis wires each agent’s own hooks at launch, without changing your agent settings. A hook can only set its own pane’s state; it gets no automation access, and nothing from the conversation reaches Trellis. Add an agent by dropping a <id>.agent.json file in the Agents folder."
             )

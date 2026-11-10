@@ -49,11 +49,8 @@ public struct ProjectLibraryView: View {
                     }
                     Spacer()
                     // A closure, not `set: switchEditor`: Swift 6.3.3 (Xcode 26.6, CI) crashes in IRGen on that method-reference thunk.
-                    Picker("Editor", selection: Binding(get: { showsJSON }, set: { switchEditor($0) })) {
-                        Text("Form").tag(false)
-                        Text("JSON").tag(true)
-                    }
-                    .pickerStyle(.segmented).fixedSize().accessibilityLabel("Editor")
+                    SegmentedPicker("Editor", selection: showsJSON, options: [(false, "Form"), (true, "JSON")]) { switchEditor($0) }
+                        .fixedSize().accessibilityLabel("Editor")
                 }
                 .padding(28)
                 Divider().padding(.horizontal, 28)
@@ -76,7 +73,7 @@ public struct ProjectLibraryView: View {
         .confirmationDialog("Delete “\(stored?.name ?? "")”?", isPresented: $confirmingDelete) {
             Button("Delete Project", role: .destructive, action: delete)
         } message: {
-            Text("Only the project definition is removed. Its folders, repositories and open windows are not changed.")
+            Text("Only the project definition is removed. Its folders, repositories and open spaces are not changed.")
         }
         .confirmationDialog(
             "Save changes to “\(draft.name)”?", isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } })
@@ -114,8 +111,8 @@ public struct ProjectLibraryView: View {
                 }
             }
             sidebarAction("New Project", symbol: "plus") { select(nil) }
-            sidebarAction("New from Window…", symbol: "macwindow") { captureActiveWindow() }
-                .disabled(workspace.snapshot.activeWindowID == nil).help("Make a project from the workspace's active window")
+            sidebarAction("New from Space…", symbol: "macwindow") { captureActiveSpace() }
+                .disabled(workspace.snapshot.activeSpaceID == nil).help("Make a project from the workspace's active space")
             sidebarAction("Import JSON…", symbol: "square.and.arrow.down") { importJSON() }
             sidebarAction("Export JSON…", symbol: "square.and.arrow.up") { exportJSON() }
                 .disabled(stored == nil).help(stored == nil ? "Save the project first" : "Save the selected project as a JSON file")
@@ -361,11 +358,8 @@ public struct ProjectLibraryView: View {
 
     @ViewBuilder private func splitDetail(axis: SplitAxis, ratio: Double, tab: Int, path: [Int]) -> some View {
         Text("Split").font(.headline)
-        Picker("Direction", selection: Binding(get: { axis }, set: { draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio) })) {
-            Text("Side by side").tag(SplitAxis.x)
-            Text("Top and bottom").tag(SplitAxis.y)
-        }
-        .pickerStyle(.segmented).frame(width: 280)
+        SegmentedPicker("Direction", selection: axis, options: [(.x, "Side by side"), (.y, "Top and bottom")]) { draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio) }
+            .frame(width: 280)
         VStack(alignment: .leading, spacing: 3) {
             Text("First pane's share: \(Int((ratio * 100).rounded()))%").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
             Slider(value: Binding(get: { ratio }, set: { draft.updateSplit(tab: tab, path: path, axis: axis, ratio: ($0 * 100).rounded() / 100) }), in: 0.1...0.9)
@@ -528,9 +522,9 @@ public struct ProjectLibraryView: View {
         message = "Not saved yet. Review the project, then add it."
     }
 
-    private func captureActiveWindow() {
-        guard let id = workspace.snapshot.activeWindowID else { return }
-        guard let capture = workspace.captureProject(windowID: id) else { message = "That window can't be captured."; return }
+    private func captureActiveSpace() {
+        guard let id = workspace.snapshot.activeSpaceID else { return }
+        guard let capture = workspace.captureProject(spaceID: id) else { message = "That space can't be captured."; return }
         model.pendingDraft = capture
     }
 

@@ -27,26 +27,26 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         do {
             switch method {
             case "system.info": return .success(systemInfo(access))
-            case "window.list": return .success(.object(["windows": .array(visibleWindows(access).map(windowJSON)), "revision": revision(model.snapshot.revision)]))
-            case "window.get": return .success(try windowDetail(try p.uuid("id")))
-            case "window.create": return .success(try await createWindow(p))
-            case "window.update":
+            case "space.list": return .success(.object(["spaces": .array(visibleSpaces(access).map(spaceJSON)), "revision": revision(model.snapshot.revision)]))
+            case "space.get": return .success(try spaceDetail(try p.uuid("id")))
+            case "space.create": return .success(try await createSpace(p))
+            case "space.update":
                 let id = try p.uuid("id"), name = try p.string("name")
-                let result = try await run(.renameWindow(id: id, name: name), expecting: try p.revision().map { .window(id, revision: $0) })
-                return .success(try windowJSON(result.snapshot, id))
-            case "window.reorder":
+                let result = try await run(.renameSpace(id: id, name: name), expecting: try p.revision().map { .space(id, revision: $0) })
+                return .success(try spaceJSON(result.snapshot, id))
+            case "space.reorder":
                 let ids = try p.uuids("ids")
-                let result = try await run(.reorderWindows(ids: ids), expecting: try p.revision().map { .workspace(revision: $0) })
-                return .success(.object(["ids": .array(result.snapshot.windows.map { .string($0.id.uuidString) }), "revision": revision(result.snapshot.revision)]))
-            case "window.focus":
-                let result = try await run(.selectWindow(id: try p.uuid("id")))
-                return .success(.object(["activeWindowId": .string(result.snapshot.activeWindowID?.uuidString ?? ""), "revision": revision(result.snapshot.revision)]))
-            case "window.close":
+                let result = try await run(.reorderSpaces(ids: ids), expecting: try p.revision().map { .workspace(revision: $0) })
+                return .success(.object(["ids": .array(result.snapshot.spaces.map { .string($0.id.uuidString) }), "revision": revision(result.snapshot.revision)]))
+            case "space.focus":
+                let result = try await run(.selectSpace(id: try p.uuid("id")))
+                return .success(.object(["activeSpaceId": .string(result.snapshot.activeSpaceID?.uuidString ?? ""), "revision": revision(result.snapshot.revision)]))
+            case "space.close":
                 let id = try p.uuid("id")
-                return try await close(.deleteWindow(id: id), p, expecting: try p.revision().map { .window(id, revision: $0) })
+                return try await close(.deleteSpace(id: id), p, expecting: try p.revision().map { .space(id, revision: $0) })
             case "tab.list":
-                let windowID = try p.uuid("windowId")
-                let tabs = model.snapshot.windows.first { $0.id == windowID }?.tabIDs.compactMap { model.snapshot.tabs[$0] } ?? []
+                let spaceID = try p.uuid("spaceId")
+                let tabs = model.snapshot.spaces.first { $0.id == spaceID }?.tabIDs.compactMap { model.snapshot.tabs[$0] } ?? []
                 return .success(.object(["tabs": .array(tabs.map { tabJSON($0, access, tree: false) })]))
             case "tab.get":
                 guard let tab = model.snapshot.tabs[try p.uuid("id")] else { throw ControlError.notFound }
@@ -67,9 +67,9 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 }
                 return .success(tabJSON(try existing(result.snapshot.tabs[id]), access, tree: false))
             case "tab.reorder":
-                let windowID = try p.uuid("windowId")
-                let result = try await run(.reorderTabs(windowID: windowID, ids: try p.uuids("ids")), expecting: try p.revision().map { .window(windowID, revision: $0) })
-                return .success(try windowJSON(result.snapshot, windowID))
+                let spaceID = try p.uuid("spaceId")
+                let result = try await run(.reorderTabs(spaceID: spaceID, ids: try p.uuids("ids")), expecting: try p.revision().map { .space(spaceID, revision: $0) })
+                return .success(try spaceJSON(result.snapshot, spaceID))
             case "tab.focus":
                 let id = try p.uuid("id")
                 let result = try await run(.selectTab(id: id))
@@ -143,22 +143,22 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         do { return try await model.automationExecute(command, expecting: expecting, then: follow) } catch { throw Self.map(error) }
     }
 
-    @MainActor private func createWindow(_ p: Params) async throws -> JSONValue {
+    @MainActor private func createSpace(_ p: Params) async throws -> JSONValue {
         let name = try p.string("name"), start = try p.optionalBool("start") == true
-        let result = try await run(.createWindow(name: name))
-        guard let windowID = result.createdWindowID, let window = result.snapshot.windows.first(where: { $0.id == windowID }),
-            let tab = result.snapshot.tabs[window.activeTabID]
+        let result = try await run(.createSpace(name: name))
+        guard let spaceID = result.createdSpaceID, let space = result.snapshot.spaces.first(where: { $0.id == spaceID }),
+            let tab = result.snapshot.tabs[space.activeTabID]
         else { throw ControlError.internalError }
         if start { await model.automationStart(tab.root.paneIDs) }
-        // `revision` is the window's (for window.update); the collection revision is separate.
+        // `revision` is the space's (for space.update); the collection revision is separate.
         return .object([
-            "windowId": .string(windowID.uuidString), "tabId": .string(tab.id.uuidString), "panes": .array(tab.root.paneIDs.map { paneCreated($0) }),
-            "revision": revision(window.revision), "tabRevision": revision(tab.revision), "workspaceRevision": revision(model.snapshot.revision)
+            "spaceId": .string(spaceID.uuidString), "tabId": .string(tab.id.uuidString), "panes": .array(tab.root.paneIDs.map { paneCreated($0) }),
+            "revision": revision(space.revision), "tabRevision": revision(tab.revision), "workspaceRevision": revision(model.snapshot.revision)
         ])
     }
 
     @MainActor private func createTab(_ p: Params, _ access: GrantAccess) async throws -> JSONValue {
-        let windowID = try p.uuid("windowId")
+        let spaceID = try p.uuid("spaceId")
         let title = try p.optionalString("title").map { raw -> String in
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             // Validate before creating so a bad title never leaves a half-applied tab.
@@ -167,7 +167,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         }
         let start = try p.optionalBool("start") == true
         // Create and title in one store transaction: a failure leaves no tab.
-        let result = try await run(.createTab(windowID: windowID), then: { created in title.flatMap { title in created.createdTabID.map { .renameTab(id: $0, title: title) } } })
+        let result = try await run(.createTab(spaceID: spaceID), then: { created in title.flatMap { title in created.createdTabID.map { .renameTab(id: $0, title: title) } } })
         guard let tabID = result.createdTabID, let tab = result.snapshot.tabs[tabID] else { throw ControlError.internalError }
         if start { await model.automationStart(tab.root.paneIDs) }
         var body = tabJSON(try existing(model.snapshot.tabs[tabID]), access, tree: true)
@@ -441,12 +441,12 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
     private static let inputTooLarge = ControlError.application("LIMIT_EXCEEDED", "Input is limited to 64 KiB per call.")
 
     @MainActor private func connect(_ p: Params, _ access: GrantAccess) async throws -> Result<JSONValue, ControlError> {
-        let hostID = try p.uuid("hostId"), windowID = try p.uuid("windowId")
+        let hostID = try p.uuid("hostId"), spaceID = try p.uuid("spaceId")
         guard let host = hosts.hosts.first(where: { $0.id == hostID }) else { throw ControlError.notFound }
         let paneID: UUID
         if let target = try p.optionalString("paneId") {
-            // A split target must be in the authorized window, never elsewhere.
-            guard let targetID = UUID(uuidString: target), let pane = model.snapshot.panes[targetID], model.snapshot.tabs[pane.tabID]?.windowID == windowID else {
+            // A split target must be in the authorized space, never elsewhere.
+            guard let targetID = UUID(uuidString: target), let pane = model.snapshot.panes[targetID], model.snapshot.tabs[pane.tabID]?.spaceID == spaceID else {
                 throw ControlError.notFound
             }
             let axis: SplitAxis
@@ -463,7 +463,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             paneID = created
         } else {
             let title = host.name
-            let result = try await run(.createTab(windowID: windowID), then: { result in result.createdTabID.map { .renameTab(id: $0, title: title) } })
+            let result = try await run(.createTab(spaceID: spaceID), then: { result in result.createdTabID.map { .renameTab(id: $0, title: title) } })
             guard let tabID = result.createdTabID, let tab = model.snapshot.tabs[tabID] else { throw ControlError.internalError }
             paneID = tab.activePaneID
         }
@@ -549,13 +549,13 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
     }
 
     /// Hosts outside the grant look exactly like missing ones, and bindings to
-    /// windows outside it are ignored so a plan never reveals hidden resources.
+    /// spaces outside it are ignored so a plan never reveals hidden resources.
     @MainActor private func plan(_ document: LayoutDocument, namespace: String?, _ access: GrantAccess) throws -> LayoutPlan {
         var bindings: [String: LayoutBinding] = [:]
         if let namespace {
             do { bindings = try model.layoutBindings(namespace) } catch { throw Self.map(error) }
-            let kinds: [LayoutResourceKind: ResourceKind] = [.window: .window, .tab: .tab, .split: .branch, .pane: .pane]
-            bindings = bindings.filter { _, binding in kinds[binding.kind].flatMap { access.owningWindow($0, binding.id) }.map(access.canSee) == true }
+            let kinds: [LayoutResourceKind: ResourceKind] = [.space: .space, .tab: .tab, .split: .branch, .pane: .pane]
+            bindings = bindings.filter { _, binding in kinds[binding.kind].flatMap { access.owningSpace($0, binding.id) }.map(access.canSee) == true }
         }
         return LayoutPlanner.plan(
             document, bindings: bindings, snapshot: model.snapshot,
@@ -582,7 +582,7 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
 
     @MainActor private func planJSON(_ result: LayoutPlan, _ access: GrantAccess) -> JSONValue {
         let unmanaged = result.unmanaged.filter { id in
-            access.owningWindow(.window, id).map(access.canSee) ?? access.owningWindow(.tab, id).map(access.canSee) ?? false
+            access.owningSpace(.space, id).map(access.canSee) ?? access.owningSpace(.tab, id).map(access.canSee) ?? false
         }
         return .object([
             "baseRevision": revision(result.baseRevision), "applicable": .bool(result.canApply), "errors": LayoutJSON.issuesJSON(result.errors),
@@ -637,10 +637,10 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
             ]))
     }
 
-    /// Exports visible windows with fresh keys. Launch details need execute and
+    /// Exports visible spaces with fresh keys. Launch details need execute and
     /// host references need host-read; otherwise the document is marked redacted.
     @MainActor private func layoutExport(_ p: Params, _ access: GrantAccess) throws -> JSONValue {
-        let requested = try p.object["windowIds"] == nil ? nil : Set(p.uuids("windowIds"))
+        let requested = try p.object["spaceIds"] == nil ? nil : Set(p.uuids("spaceIds"))
         let snapshot = model.snapshot
         var counter = 0, redacted = false
         func key(_ prefix: String) -> JSONValue {
@@ -670,15 +670,15 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
                 return .object(["type": .string("split"), "key": key("s"), "axis": .string(axis.rawValue), "ratio": .number(ratio), "children": .array(children.map(node))])
             }
         }
-        let windows = snapshot.windows.filter { access.canSee(window: $0.id) && (requested?.contains($0.id) ?? true) }
-        if let requested, requested.count != windows.count { throw ControlError.notFound }
+        let spaces = snapshot.spaces.filter { access.canSee(space: $0.id) && (requested?.contains($0.id) ?? true) }
+        if let requested, requested.count != spaces.count { throw ControlError.notFound }
         let document: JSONValue = .object([
-            "version": .number(1),
-            "windows": .array(
-                windows.map { window in
+            "version": .number(2),
+            "spaces": .array(
+                spaces.map { space in
                     .object([
-                        "key": key("w"), "name": .string(window.name),
-                        "tabs": .array(window.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in .object(["key": key("t"), "title": .string(tab.title), "root": node(tab.root)]) })
+                        "key": key("sp"), "name": .string(space.name),
+                        "tabs": .array(space.tabIDs.compactMap { snapshot.tabs[$0] }.map { tab in .object(["key": key("t"), "title": .string(tab.title), "root": node(tab.root)]) })
                     ])
                 })
         ])
@@ -822,30 +822,35 @@ public final class AutomationService: ControlDomain, @unchecked Sendable {
         ])
     }
 
-    @MainActor private func visibleWindows(_ access: GrantAccess) -> [(WorkspaceSnapshot, UUID)] {
-        model.snapshot.windows.filter { access.canSee(window: $0.id) }.map { (model.snapshot, $0.id) }
+    @MainActor private func visibleSpaces(_ access: GrantAccess) -> [(WorkspaceSnapshot, UUID)] {
+        model.snapshot.spaces.filter { access.canSee(space: $0.id) }.map { (model.snapshot, $0.id) }
     }
 
-    private func windowJSON(_ pair: (WorkspaceSnapshot, UUID)) -> JSONValue { (try? windowJSON(pair.0, pair.1)) ?? .null }
+    private func spaceJSON(_ pair: (WorkspaceSnapshot, UUID)) -> JSONValue { (try? spaceJSON(pair.0, pair.1)) ?? .null }
 
-    private func windowJSON(_ snapshot: WorkspaceSnapshot, _ id: UUID) throws -> JSONValue {
-        guard let window = snapshot.windows.first(where: { $0.id == id }) else { throw ControlError.notFound }
-        return .object([
-            "id": .string(window.id.uuidString), "name": .string(window.name), "revision": revision(window.revision),
-            "tabIds": .array(window.tabIDs.map { .string($0.uuidString) }), "activeTabId": .string(window.activeTabID.uuidString),
-            "active": .bool(snapshot.activeWindowID == window.id)
-        ])
+    private func spaceJSON(_ snapshot: WorkspaceSnapshot, _ id: UUID) throws -> JSONValue {
+        guard let space = snapshot.spaces.first(where: { $0.id == id }) else { throw ControlError.notFound }
+        var object: [String: JSONValue] = [
+            "id": .string(space.id.uuidString), "name": .string(space.name), "revision": revision(space.revision),
+            "tabIds": .array(space.tabIDs.map { .string($0.uuidString) }), "activeTabId": .string(space.activeTabID.uuidString),
+            "active": .bool(snapshot.activeSpaceID == space.id)
+        ]
+        // FR-W08, read-only: the library project this space was loaded from.
+        if let project = space.projectID { object["projectId"] = .string(project.uuidString) }
+        return .object(object)
     }
 
-    @MainActor private func windowDetail(_ id: UUID) throws -> JSONValue { try windowJSON(model.snapshot, id) }
+    @MainActor private func spaceDetail(_ id: UUID) throws -> JSONValue { try spaceJSON(model.snapshot, id) }
 
     @MainActor private func tabJSON(_ tab: WorkspaceTab, _ access: GrantAccess, tree: Bool) -> JSONValue {
         var object: [String: JSONValue] = [
-            "id": .string(tab.id.uuidString), "windowId": .string(tab.windowID.uuidString), "title": .string(tab.title),
+            "id": .string(tab.id.uuidString), "spaceId": .string(tab.spaceID.uuidString), "title": .string(tab.title),
             "revision": revision(tab.revision), "activePaneId": .string(tab.activePaneID.uuidString),
             "paneIds": .array(tab.root.paneIDs.map { .string($0.uuidString) })
         ]
         if let color = tab.color { object["color"] = .string(color.rawValue) }
+        // FR-W08, read-only: a tab its space's project doesn't define.
+        object["temporary"] = .bool(model.isTemporaryTab(tab))
         if tree { object["layout"] = layoutJSON(tab.root) }
         if let maximized = model.maximizedPanes[tab.id] { object["maximizedPaneId"] = .string(maximized.uuidString) }
         return .object(object)

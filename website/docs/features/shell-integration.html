@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shell integration · Trellis Docs</title>
+<meta name="description" content="How Trellis learns your zsh, bash or fish shell's folder, running command and exit status, without editing your dotfiles.">
+<link rel="icon" href="../assets/trellis.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try { var t = localStorage.getItem("trellis-docs-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script src="../assets/nav.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body data-root="../" data-page="features/shell-integration.html">
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar" id="topbar"></header>
+<div class="layout">
+<nav class="sidebar" id="sidebar" aria-label="Documentation"></nav>
+<main class="content" id="content">
+<article class="doc">
+<p class="eyebrow">Features</p>
+<h1>Shell integration</h1>
+<p class="lead">Shell integration lets a local zsh, bash or fish shell tell Trellis its current folder, the command it's running and how that command ended. It's on by default and needs no setup.</p>
+
+<h2 id="how-it-works">How it works</h2>
+<p>When Trellis starts a supported login shell, it loads a small bundled script alongside your own startup files. Your dotfiles aren't edited, and they still load as usual (<code>.zshrc</code>, <code>.bash_profile</code>, <code>config.fish</code> and the rest).</p>
+<ul>
+<li><strong>zsh</strong> and <strong>fish</strong> are supported.</li>
+<li><strong>bash</strong> 3.2 and later, including the macOS <code>/bin/bash</code> and Homebrew's bash 5.</li>
+</ul>
+<p>Other shells, custom commands and panes connected over SSH start unchanged.</p>
+
+<h2 id="what-you-get">What you get</h2>
+<ul>
+<li><strong>Current folder.</strong> The pane header shows the shell's folder. New splits and new tabs start there.</li>
+<li><strong>Folder restored after relaunch.</strong> A stopped shell pane starts again in the last folder it was in.</li>
+<li><strong>Exit status.</strong> After a failing command, the tab and pane show a failure symbol with "Exit 1" (or whatever the code was). It clears when the next command starts.</li>
+<li><strong>Automatic titles.</strong> A tab you haven't renamed shows the running program (<code>vim</code>), or else the folder name (<code>~</code> at home).</li>
+<li><strong>Prompt navigation.</strong> <strong>Edit → Previous Prompt</strong> (<kbd>⌘↑</kbd>) and <strong>Next Prompt</strong> (<kbd>⌘↓</kbd>) scroll to earlier and later prompts.</li>
+<li><strong>Quieter busy bar.</strong> Output at the prompt never counts as activity. See <a href="notifications.html#busy">Notifications</a>.</li>
+<li><strong>Command-finished alerts.</strong> A long command that finishes while you're looking elsewhere posts a desktop notification. See <a href="notifications.html#command-finished">Notifications</a>.</li>
+<li><strong>Tasks, directory jump and git status.</strong> <a href="tasks.html">Tasks</a> need it to run, <a href="directory-jump.html">Directory jump</a> learns your folders from it, and the <a href="changes.html">Changes</a> badge uses it to track the focused pane's repository.</li>
+</ul>
+
+<h2 id="settings">Turn it on or off</h2>
+<ul>
+<li><strong>Settings → Sessions → Shell integration</strong> turns it on or off. The change applies to sessions you start afterwards.</li>
+<li><strong>Settings → Sessions → Shell</strong> lists the shells installed on your Mac and marks the ones with integration. <strong>Other…</strong> takes any absolute path, and a note under the picker says whether that shell gets integration.</li>
+</ul>
+
+<h2 id="ssh">SSH panes</h2>
+<p>Trellis installs nothing on remote hosts. If the remote shell already has its own integration (iTerm2's is the most common), Trellis reads what it prints in a saved host's pane or a pane started as <code>ssh</code>, <code>mosh</code> or <code>autossh</code>. The pane header then shows <code>SSH · host:/path</code>, and titles, exit status and command-finished notifications work.</p>
+<p>Anything printed in the pane could fake this information, so it's for display only. Trellis never uses a remote folder for file links, new panes or the saved launch folder.</p>
+<div class="callout note"><p class="callout-title">Note</p><p>A host you reach by typing <code>ssh</code> inside a local shell isn't detected as remote, and its marks are ignored.</p></div>
+
+<h2 id="privacy">Privacy</h2>
+<ul>
+<li>The command line is never saved, logged, exported or returned by the API. Only the program name is shown, as a title or in a notification.</li>
+<li>Each session gets a secret that its shell uses to prove its reports are genuine. A program that prints fake reports changes nothing.</li>
+<li>The current folder is saved only as a local pane's launch folder and, unless you turn it off, in the <a href="directory-jump.html">directory history</a>.</li>
+</ul>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li>bash reports only the first command of a line, so <code>env | grep x</code> shows as <code>env</code>.</li>
+<li>With integration off, or in another shell, the folder, titles, exit status, task runs and command-finished alerts aren't available.</li>
+</ul>
+</article>
+<nav class="pager" id="pager"></nav>
+</main>
+<aside class="toc" id="toc"></aside>
+</div>
+</body>
+</html>
