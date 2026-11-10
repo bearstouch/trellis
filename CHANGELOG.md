@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0-beta.3] - 2026-11-10
+
+The third 1.2 beta.
+
 ### Added
 
 - **User guide:** a static HTML user guide in `website/docs/` explains the Trellis concepts and how to use every feature, with keyboard shortcut and settings references, search (⌘K) and light and dark modes. Open `website/docs/index.html` or serve the folder from any static host.
@@ -370,7 +374,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.2...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.3...HEAD
+[1.2.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.2...v1.2.0-beta.3
 [1.2.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...v1.2.0-beta.2
 [1.2.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.1.0...v1.2.0-beta.1
 [1.1.0]: https://github.com/bearstouch/trellis/compare/v1.1.0-beta.1...v1.1.0
