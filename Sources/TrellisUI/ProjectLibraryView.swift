@@ -49,11 +49,8 @@ public struct ProjectLibraryView: View {
                     }
                     Spacer()
                     // A closure, not `set: switchEditor`: Swift 6.3.3 (Xcode 26.6, CI) crashes in IRGen on that method-reference thunk.
-                    Picker("Editor", selection: Binding(get: { showsJSON }, set: { switchEditor($0) })) {
-                        Text("Form").tag(false)
-                        Text("JSON").tag(true)
-                    }
-                    .pickerStyle(.segmented).fixedSize().accessibilityLabel("Editor")
+                    SegmentedPicker("Editor", selection: showsJSON, options: [(false, "Form"), (true, "JSON")]) { switchEditor($0) }
+                        .fixedSize().accessibilityLabel("Editor")
                 }
                 .padding(28)
                 Divider().padding(.horizontal, 28)
@@ -361,11 +358,8 @@ public struct ProjectLibraryView: View {
 
     @ViewBuilder private func splitDetail(axis: SplitAxis, ratio: Double, tab: Int, path: [Int]) -> some View {
         Text("Split").font(.headline)
-        Picker("Direction", selection: Binding(get: { axis }, set: { draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio) })) {
-            Text("Side by side").tag(SplitAxis.x)
-            Text("Top and bottom").tag(SplitAxis.y)
-        }
-        .pickerStyle(.segmented).frame(width: 280)
+        SegmentedPicker("Direction", selection: axis, options: [(.x, "Side by side"), (.y, "Top and bottom")]) { draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio) }
+            .frame(width: 280)
         VStack(alignment: .leading, spacing: 3) {
             Text("First pane's share: \(Int((ratio * 100).rounded()))%").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
             Slider(value: Binding(get: { ratio }, set: { draft.updateSplit(tab: tab, path: path, axis: axis, ratio: ($0 * 100).rounded() / 100) }), in: 0.1...0.9)

@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Export and import carry projects and hosts.** **File → Export Projects & Hosts…** replaces Export Windows & Hosts: the file (version 2) holds your project library and saved hosts, not spaces, which are what projects become once launched. **Import Projects & Hosts…** adds projects under new identities, never over yours (a name already in use gets " (imported)"), and opens nothing. Older exports still import their hosts and projects; their windows are skipped and the review says so. See FR-R02 and [Integrations](docs/integrations.md#configuration-import-and-export).
 - **Desktop notifications:** each notification now says where it came from. Its subtitle names the space and tab ("api › Build"), followed by the agent or running program when known ("api › Build · make"); the command line itself is never shown. Agent notifications read "Waiting for your input" or "Finished its turn". See [Workspace](docs/features/workspace.md) (FR-T08), FR-SI08 and FR-AG14.
 
+### Fixed
+
+- **Slowdown after long sessions:** Trellis no longer gets slower the longer it stays open with the Agents view showing. On macOS 26 the **New Tab / This Tab / Split** control leaked a little bookkeeping on every interface update, so after a day or two each update took a quarter of a second and typing stalled about once a second while an agent was working. The same control in the scratchpad's Save as Task sheet, the project editor, Appearance settings and the welcome tour is fixed too.
+
 ## [1.2.0-beta.2] - 2026-11-09
 
 The second 1.2 beta.

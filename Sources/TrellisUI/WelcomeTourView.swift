@@ -264,12 +264,10 @@ private struct WelcomeTourCopy: View {
     @ViewBuilder private var setup: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Appearance").font(.system(size: 13, weight: .semibold)).foregroundStyle(model.themeColor(.foreground))
-            Picker("Appearance", selection: Binding(get: { model.appearance.chromeMode }, set: { model.setChromeModeFromWelcomeTour($0) })) {
-                Text("System").tag(ChromeMode.system)
-                Text("Dark").tag(ChromeMode.dark)
-                Text("Light").tag(ChromeMode.light)
+            SegmentedPicker("Appearance", selection: model.appearance.chromeMode, options: [(.system, "System"), (.dark, "Dark"), (.light, "Light")]) { [weak model] in
+                model?.setChromeModeFromWelcomeTour($0)
             }
-            .pickerStyle(.segmented).labelsHidden().frame(maxWidth: .infinity).accessibilityIdentifier("welcomeTour.appearance")
+            .labelsHidden().frame(maxWidth: .infinity).accessibilityIdentifier("welcomeTour.appearance")
         }
         if model.welcomeTourCLIStatus != .unavailable {
             Divider().overlay(model.separatorOverlay)

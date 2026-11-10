@@ -154,9 +154,7 @@ struct AppearanceSettingsView: View {
     @State private var fontNames: [String] = []
     var body: some View {
         Form {
-            Picker("Application appearance", selection: $draft.chromeMode) {
-                ForEach(ChromeMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-            }.pickerStyle(.segmented)
+            SegmentedPicker("Application appearance", selection: draft.chromeMode, options: ChromeMode.allCases.map { ($0, $0.rawValue.capitalized) }) { draft.chromeMode = $0 }
             Text("Choose matching light and dark palettes for the app and terminal.").font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker("Light theme", selection: $draft.lightThemeID) {
                 ForEach(model.availableThemes(for: .light), id: \.id) { Text($0.name).tag($0.id) }

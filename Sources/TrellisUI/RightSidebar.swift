@@ -161,13 +161,11 @@ struct AgentsSidebarView: View {
                 }.accessibilityElement(children: .combine)
             }
             // This Tab (FR-AG17) only while the focused tab has no agent; New Tab stands in for it meanwhile.
-            let placement = Binding(get: { model.effectiveAgentPlacement }, set: { model.agentPlacement = $0 })
-            Picker("Open agent in", selection: placement) {
-                Text("New Tab").tag(AppWorkspaceModel.AgentPlacement.tab)
-                if model.canLaunchAgentInFocusedTab { Text("This Tab").tag(AppWorkspaceModel.AgentPlacement.currentTab) }
-                Text("Split").tag(AppWorkspaceModel.AgentPlacement.split)
+            let thisTab: [(value: AppWorkspaceModel.AgentPlacement, label: String)] = model.canLaunchAgentInFocusedTab ? [(.currentTab, "This Tab")] : []
+            SegmentedPicker("Open agent in", selection: model.effectiveAgentPlacement, options: [(.tab, "New Tab")] + thisTab + [(.split, "Split")]) { [weak model] in
+                model?.agentPlacement = $0
             }
-            .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+            .labelsHidden().controlSize(.small)
             .help(
                 "Where ▶ starts the agent: a new tab, this tab's focused pane in place of its idle shell, or a split beside it. ⌥-click ▶ for a split, or a new tab from Split")
         }
