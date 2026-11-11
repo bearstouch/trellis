@@ -54,6 +54,11 @@ public struct AgentSessionRow: Identifiable, Equatable, Sendable {
     public let status: String
     /// Typed in a shell (FR-AG15) rather than launched; listed only while it runs.
     public let typed: Bool
+    /// What its hooks reported while it runs (FR-AG19); empty otherwise.
+    public var settings = AgentSettings()
+
+    /// The subtitle's second part: the model when reported, else the agent's name.
+    public var agentLabel: String { settings.modelName ?? agent.name }
 }
 
 extension AppWorkspaceModel {
@@ -128,13 +133,16 @@ extension AppWorkspaceModel {
                     if let agent = agentDefinition(paneID: id) {
                         let state: AgentState? = terminal?.sessionState == .running ? agentStates[id]?.state ?? .ready : nil
                         let status = state?.label ?? SessionStatusText.describe(terminal?.sessionState ?? .stopped, exitCode: terminal?.exitCode)
-                        return AgentSessionRow(id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: status, typed: false)
+                        return AgentSessionRow(
+                            id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: status, typed: false,
+                            settings: state == nil ? AgentSettings() : agentStates[id]?.settings ?? AgentSettings())
                     }
                     // Without hooks nothing reports its state, so it reads Running rather than a Ready it can't vouch for.
                     guard terminal?.sessionState == .running, let agent = detectedAgent(paneID: id) else { return nil }
                     let state = agentStates[id]?.state
                     return AgentSessionRow(
-                        id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: state?.label ?? L("Running"), typed: true)
+                        id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: state?.label ?? L("Running"), typed: true,
+                        settings: agentStates[id]?.settings ?? AgentSettings())
                 }
             }
         }

@@ -209,8 +209,17 @@ struct AgentsSidebarView: View {
             HStack(spacing: 10) {
                 AgentIconView(icon: row.agent.icon, directory: model.agentCatalog.iconDirectories[row.agent.id], size: 12).frame(width: 18).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))
-                    Text(row.typed ? L("%1$@ · %2$@ · in a shell", row.spaceName, row.agent.name) : "\(row.spaceName) · \(row.agent.name)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
+                    HStack(spacing: 5) {
+                        Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))
+                        // FR-AG19: the agent's own word for its effort, so it reads the same as `/effort`.
+                        if let effort = row.settings.effort {
+                            Text(effort).font(.system(size: 9.5, weight: .medium, design: .monospaced)).lineLimit(1).fixedSize()
+                                .foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 4).padding(.vertical, 0.5)
+                                .background(RoundedRectangle(cornerRadius: 3.5).fill(model.themeColor(.mutedForeground).opacity(0.16)))
+                                .help(L("Reasoning effort: %@", effort))
+                        }
+                    }
+                    Text(row.typed ? L("%1$@ · %2$@ · in a shell", row.spaceName, row.agentLabel) : "\(row.spaceName) · \(row.agentLabel)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -228,7 +237,8 @@ struct AgentsSidebarView: View {
         .help(L("Show this agent's pane"))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.typed ? L("%1$@ in a shell, %2$@, %3$@", row.agent.name, row.tabTitle, row.spaceName) : "\(row.agent.name), \(row.tabTitle), \(row.spaceName)")
-        .accessibilityValue(row.status).accessibilityHint(L("Shows this pane")).accessibilityAddTraits(.isButton)
+        .accessibilityValue(([row.status] + [row.settings.modelName, row.settings.effort.map { L("%@ effort", $0) }].compactMap { $0 }).joined(separator: ", ")).accessibilityHint(L("Shows this pane"))
+        .accessibilityAddTraits(.isButton)
     }
 
     private func launch(_ id: String, resume: Bool) {

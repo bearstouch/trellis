@@ -272,9 +272,9 @@ extension AppWorkspaceModel {
             installLifecycle(terminal, paneID: paneID, sessionID: record.sessionID, attemptID: nil)
             let adoption = BrokerAdoption(
                 sessionID: record.sessionID, processID: attachment.record.processID, exitCode: nil, nonce: attachment.nonce, replay: replay, transport: transport,
-                agentEvent: attachment.agentEvent)
+                agentEvent: attachment.agentEvent, agentInfo: attachment.agentInfo)
             if terminal.adopt(adoption) {
-                restoreAgentState(paneID: paneID, event: adoption.agentEvent)
+                restoreAgentState(paneID: paneID, event: adoption.agentEvent, info: adoption.agentInfo)
             } else {
                 enqueue(.recordSessionExit(sessionID: record.sessionID, code: nil))
             }

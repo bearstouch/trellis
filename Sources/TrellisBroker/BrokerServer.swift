@@ -52,6 +52,8 @@ public final class BrokerServer: @unchecked Sendable {
         /// Names this session to its agent hooks (FR-AG08); `agentEvent` is the last one they reported.
         let agentNonce: String?
         var agentEvent: String?
+        /// The last `info …` its hooks reported (FR-AG19).
+        var agentInfo: String?
         var io: DispatchIO?
         #if canImport(Darwin)
             var exitSource: DispatchSourceProcess?
@@ -341,7 +343,8 @@ public final class BrokerServer: @unchecked Sendable {
                 .attached(
                     BrokerAttachment(
                         record: session.record, nonce: session.nonce, passwordPrompt: session.promptActive, truncated: ring.truncated,
-                        offset: v2 ? ring.appendedTotal : nil, resumed: v2 ? resumed : nil, agentEvent: session.agentEvent)))
+                        offset: v2 ? ring.appendedTotal : nil, resumed: v2 ? resumed : nil, agentEvent: session.agentEvent,
+                        agentInfo: client?.features.contains(BrokerProtocol.agentInfoFeature) == true ? session.agentInfo : nil)))
             // Full-screen programs redraw for the newly attached view.
             if session.waitStatus == nil, !session.readEnded {
                 let group = tcgetpgrp(session.descriptor)
@@ -617,8 +620,20 @@ public final class BrokerServer: @unchecked Sendable {
     /// Only a running session's own nonce counts; the event reaches the app only if it said it can decode one.
     private func agentEvent(nonce: String, event: String) {
         guard let session = sessions.values.first(where: { $0.agentNonce == nonce && $0.waitStatus == nil }) else { return }
-        session.agentEvent = event
-        guard session.attached, let client, client.greeted, client.features.contains(BrokerProtocol.agentEventsFeature) else { return }
+        let info = event.hasPrefix(AgentHook.infoEvent + " ")
+        if info {
+            // Settings repeat with every tool call; only a change is worth a message.
+            guard session.agentInfo != event else { return }
+            session.agentInfo = event
+        } else {
+            session.agentEvent = event
+            // A typed agent started again in the same shell (FR-AG18) starts with the app's settings cleared, so the new
+            // run's first report must reach it even when it repeats the last run's.
+            if event == "start" || event == "end" { session.agentInfo = nil }
+        }
+        guard session.attached, let client, client.greeted, client.features.contains(BrokerProtocol.agentEventsFeature),
+            !info || client.features.contains(BrokerProtocol.agentInfoFeature)
+        else { return }
         reply(nil, .agentEvent(sessionID: session.id, event: event))
     }
 

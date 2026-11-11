@@ -82,7 +82,9 @@ public struct AgentCommand: Equatable, Sendable {
             "Notification": [hook("needs-input", matcher: "permission_prompt|elicitation_dialog")],
             "Stop": [hook("done")],
             "StopFailure": [hook("error")],
-            "SessionEnd": [hook("end")]
+            "SessionEnd": [hook("end")],
+            // Reports only the new model (FR-AG19); an older Claude Code skips the unknown event with a warning.
+            "PostModelSwitch": [hook("info")]
         ]
         let data = (try? JSONSerialization.data(withJSONObject: ["hooks": hooks], options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data("{}".utf8)
         return String(decoding: data, as: UTF8.self)

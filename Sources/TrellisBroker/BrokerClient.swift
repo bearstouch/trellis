@@ -76,7 +76,7 @@ public final class BrokerConnection {
     /// v2 and name their client ID.
     public func hello(minimumVersion: Int = BrokerProtocol.minimumVersion, clientID: String? = nil) async throws {
         let message = BrokerMessage.hello(
-            protocolVersion: minimumVersion, features: [BrokerProtocol.inputRejectedFeature, BrokerProtocol.agentEventsFeature], maximumVersion: BrokerProtocol.version,
+            protocolVersion: minimumVersion, features: [BrokerProtocol.inputRejectedFeature, BrokerProtocol.agentEventsFeature, BrokerProtocol.agentInfoFeature], maximumVersion: BrokerProtocol.version,
             clientID: clientID)
         switch try await request(message) {
         case .welcome(let version, let pid, let info) where version >= minimumVersion && version <= BrokerProtocol.version:

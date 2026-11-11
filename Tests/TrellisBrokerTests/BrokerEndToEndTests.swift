@@ -143,6 +143,53 @@
             XCTAssertEqual(attachment.agentEvent, "working")
         }
 
+        /// FR-AG19: the model and effort in a hook's payload reach the app once per change, beside the state, and a
+        /// re-attach gets the last ones; a subagent's payload says nothing.
+        func testAgentSettingsReachTheAppOncePerChangeAndSurviveReattach() async throws {
+            let launcher = try launcher()
+            let (socket, first) = try await start(launcher)
+            var events: [String] = []
+            first.onAgentEvent = { events.append($1) }
+            let agentSocket = BrokerFiles.parent(socket) + "/" + BrokerProtocol.agentSocketName
+            let id = UUID()
+            let sink = Sink()
+            first.register(sink, sessionID: id)
+            let script = """
+                printf '%s' '{"model":"claude-opus-5-5","prompt":"secret"}' | "$HELPER" agent-hook start
+                printf '%s' '{"effort":{"level":"high"}}' | "$HELPER" agent-hook working
+                printf '%s' '{"effort":{"level":"high"}}' | "$HELPER" agent-hook working
+                printf '%s' '{"agent_id":"a1","effort":{"level":"low"}}' | "$HELPER" agent-hook working
+                printf '%s' '{"to_model":"claude-sonnet-5-5"}' | "$HELPER" agent-hook info
+                printf '%s' '{}' | "$HELPER" agent-hook end
+                printf '%s' '{"model":"claude-sonnet-5-5"}' | "$HELPER" agent-hook start
+                printf 'sent\n'; exec sleep 600
+                """
+            let reply = try await first.request(
+                .spawn(
+                    BrokerSpawnRequest(
+                        sessionID: id, executable: "/bin/sh", arguments: ["/bin/sh", "-c", script],
+                        environment: [
+                            "PATH=/usr/bin:/bin", "HELPER=\(launcher.helperPath)", "\(BrokerProtocol.agentSocketVariable)=\(agentSocket)",
+                            "\(BrokerProtocol.agentNonceVariable)=\(AgentHook.makeNonce())"
+                        ], directory: "/", columns: 80, rows: 24)))
+            guard case .spawned = reply else { return XCTFail("\(reply)") }
+            try await waitFor { sink.text.contains("sent") && events.count >= 10 }
+            try await Task.sleep(for: .milliseconds(200))
+            XCTAssertEqual(
+                events,
+                [
+                    "start", "info model=claude-opus-5-5", "working", "info effort=high", "working", "working",
+                    "info model=claude-sonnet-5-5", "end", "start", "info model=claude-sonnet-5-5"
+                ], "A new run's settings reach the app even when they repeat the last run's")
+            first.close()
+
+            let second = try await connect(launcher, socket: socket)
+            second.register(Sink(), sessionID: id)
+            guard case .attached(let attachment) = try await second.request(.attach(sessionID: id, columns: 80, rows: 24)) else { return XCTFail("No attach") }
+            XCTAssertEqual(attachment.agentEvent, "start", "Settings never replace the state")
+            XCTAssertEqual(attachment.agentInfo, "info model=claude-sonnet-5-5")
+        }
+
         func testInputOverTheLimitIsReportedNotDroppedSilently() async throws {
             let launcher = try launcher()
             let (_, connection) = try await start(launcher)

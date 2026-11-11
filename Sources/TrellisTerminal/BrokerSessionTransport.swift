@@ -17,11 +17,13 @@ public struct BrokerAdoption {
     public let transport: (any TerminalProcessTransport)?
     /// The last agent event the broker kept for this session (FR-AG08).
     public let agentEvent: String?
+    /// The last `info …` event (FR-AG19).
+    public let agentInfo: String?
     public init(
-        sessionID: UUID, processID: Int32?, exitCode: Int32?, nonce: String?, replay: Data, transport: (any TerminalProcessTransport)?, agentEvent: String? = nil
+        sessionID: UUID, processID: Int32?, exitCode: Int32?, nonce: String?, replay: Data, transport: (any TerminalProcessTransport)?, agentEvent: String? = nil, agentInfo: String? = nil
     ) {
         self.sessionID = sessionID; self.processID = processID; self.exitCode = exitCode; self.nonce = nonce; self.replay = replay; self.transport = transport
-        self.agentEvent = agentEvent
+        self.agentEvent = agentEvent; self.agentInfo = agentInfo
     }
 }
 
@@ -393,7 +395,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
         let running = attachment.record.running
         return BrokerAdoption(
             sessionID: sessionID, processID: running ? attachment.record.processID : nil, exitCode: attachment.record.exitCode,
-            nonce: attachment.nonce, replay: replay, transport: running ? transport : nil, agentEvent: attachment.agentEvent)
+            nonce: attachment.nonce, replay: replay, transport: running ? transport : nil, agentEvent: attachment.agentEvent, agentInfo: attachment.agentInfo)
     }
 
     public func release(sessionID: UUID) { open?.post(.release(sessionID: sessionID)) }

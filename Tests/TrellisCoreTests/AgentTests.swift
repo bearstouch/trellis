@@ -118,7 +118,10 @@ final class AgentCommandTests: XCTestCase {
         let settings = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(command.words[3].utf8)) as? [String: Any])
         let hooks = try XCTUnwrap(settings["hooks"] as? [String: [[String: Any]]])
         XCTAssertEqual(
-            Set(hooks.keys), ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Notification", "Stop", "StopFailure", "SessionEnd"])
+            Set(hooks.keys),
+            ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Notification", "Stop", "StopFailure", "SessionEnd", "PostModelSwitch"])
+        let modelSwitch = try XCTUnwrap((hooks["PostModelSwitch"]?.first?["hooks"] as? [[String: Any]])?.first?["command"] as? String)
+        XCTAssertEqual(modelSwitch, "'\(helper)' agent-hook info", "A model switch reports settings, never a state")
         let stop = try XCTUnwrap((hooks["Stop"]?.first?["hooks"] as? [[String: Any]])?.first?["command"] as? String)
         XCTAssertEqual(stop, "'\(helper)' agent-hook done", "A helper path with spaces stays one word")
         XCTAssertEqual(hooks["Notification"]?.first?["matcher"] as? String, "permission_prompt|elicitation_dialog", "The idle reminder never reads as Needs you")
@@ -220,6 +223,26 @@ final class AgentStateReducerTests: XCTestCase {
         reducer.apply(.hook(.working), visible: true)
         reducer.apply(.hook(.done), visible: true)
         XCTAssertNil(reducer.badge, "Finishing in view needs no badge")
+    }
+
+    /// FR-AG19.
+    func testSettingsAreReadOnlyFromTheInfoEventAndMergeWithoutTouchingTheState() {
+        XCTAssertEqual(AgentSettings(infoEvent: "info effort=high model=claude-opus-5-5"), AgentSettings(model: "claude-opus-5-5", effort: "high"))
+        for bad in ["working", "info", "info effort=turbo", "info model=a b", "info model=x;y", "info effort=low model=x extra"] { XCTAssertNil(AgentSettings(infoEvent: bad), bad) }
+        var reducer = AgentStateReducer(integration: .claudeHooks)
+        reducer.apply(.hook(.working))
+        XCTAssertTrue(reducer.apply(.settings(AgentSettings(model: "claude-opus-5-5"))))
+        XCTAssertTrue(reducer.apply(.settings(AgentSettings(effort: "low"))))
+        XCTAssertFalse(reducer.apply(.settings(AgentSettings(effort: "low"))), "The same settings change nothing")
+        XCTAssertEqual(reducer.settings, AgentSettings(model: "claude-opus-5-5", effort: "low"), "A value not reported keeps the last")
+        XCTAssertEqual(reducer.state, .working)
+    }
+
+    func testModelIDsReadAsTheirFamilyAndVersion() {
+        let names = ["claude-opus-5-5", "claude-sonnet-5-5[1m]", "claude-haiku-4-5-20251001", "claude-fable-5", "opus", "gpt-5.1-codex", "claude-3-5-sonnet-20241022"]
+            .map { AgentSettings(model: $0).modelName }
+        XCTAssertEqual(names, ["Opus 5.5", "Sonnet 5.5 1M", "Haiku 4.5", "Fable 5", "Opus", "gpt-5.1-codex", "claude-3-5-sonnet-20241022"])
+        XCTAssertNil(AgentSettings().modelName)
     }
 
     func testABellNeverTurnsAFinishedTurnBackIntoAQuestion() {

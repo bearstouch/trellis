@@ -26,6 +26,8 @@ public enum BrokerProtocol {
     public static let inputRejectedFeature = "inputRejected"
     /// `agentEvent` (FR-AG08): announced by apps that show agent state.
     public static let agentEventsFeature = "agentEvents"
+    /// `agentEvent` with an `info …` event (FR-AG19): announced by apps that show an agent's model and effort.
+    public static let agentInfoFeature = "agentInfo"
     /// Beside the broker's socket; agent hooks send their datagrams here (FR-AG08).
     public static let agentSocketName = "agent.sock"
     public static let agentSocketVariable = "TRELLIS_AGENT_SOCKET"
@@ -231,11 +233,14 @@ public struct BrokerAttachment: Codable, Equatable, Sendable {
     public var resumed: Bool?
     /// The last agent event the session's hooks reported (FR-AG08), so a re-attached pane shows the state it missed.
     public var agentEvent: String?
+    /// The last `info …` event (FR-AG19), sent only to a client that announced `agentInfoFeature`.
+    public var agentInfo: String?
     public init(
-        record: BrokerSessionRecord, nonce: String?, passwordPrompt: Bool, truncated: Bool, offset: UInt64? = nil, resumed: Bool? = nil, agentEvent: String? = nil
+        record: BrokerSessionRecord, nonce: String?, passwordPrompt: Bool, truncated: Bool, offset: UInt64? = nil, resumed: Bool? = nil, agentEvent: String? = nil,
+        agentInfo: String? = nil
     ) {
         self.record = record; self.nonce = nonce; self.passwordPrompt = passwordPrompt; self.truncated = truncated
-        self.offset = offset; self.resumed = resumed; self.agentEvent = agentEvent
+        self.offset = offset; self.resumed = resumed; self.agentEvent = agentEvent; self.agentInfo = agentInfo
     }
 }
 
@@ -284,7 +289,7 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     case gitStatus(path: String)
     case gitState(BrokerGitStatus?)
     /// An agent hook reported `event` for this session (FR-AG08). Sent only to a client that announced
-    /// `agentEventsFeature`.
+    /// `agentEventsFeature`; an `info …` event (FR-AG19) only to one that also announced `agentInfoFeature`.
     case agentEvent(sessionID: UUID, event: String)
     // v4.
     /// `sessionIdleTimeout`: seconds a running session may stay unattached and silent before the broker ends it

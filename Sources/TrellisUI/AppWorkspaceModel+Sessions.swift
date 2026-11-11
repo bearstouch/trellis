@@ -82,7 +82,7 @@ extension AppWorkspaceModel {
             enqueue(.recordSessionExit(sessionID: record.sessionID, code: nil))
             return false
         }
-        restoreAgentState(paneID: paneID, event: adoption.agentEvent)
+        restoreAgentState(paneID: paneID, event: adoption.agentEvent, info: adoption.agentInfo)
         return true
     }
 

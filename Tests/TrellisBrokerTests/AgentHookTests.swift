@@ -30,6 +30,37 @@ final class AgentHookTests: XCTestCase {
         XCTAssertNil(AgentHook.decode([UInt8](repeating: 0x41, count: AgentHook.datagramLimit + 1)))
     }
 
+    /// FR-AG19: only an effort from the list and a model ID cross, in their own datagram an older receiver drops.
+    func testSettingsTravelInTheirOwnDatagramWithOnlyListedValues() throws {
+        let nonce = AgentHook.makeNonce()
+        let datagram = try XCTUnwrap(AgentHook.encodeInfo(nonce: nonce, effort: "high", model: "claude-sonnet-5-5[1m]"))
+        XCTAssertEqual(String(decoding: datagram, as: UTF8.self), "TRELLIS-AGENT-1 \(nonce) info effort=high model=claude-sonnet-5-5[1m]")
+        XCTAssertEqual(AgentHook.decode(datagram)?.event, "info effort=high model=claude-sonnet-5-5[1m]")
+        XCTAssertEqual(AgentHook.decode(Array("TRELLIS-AGENT-1 \(nonce) info model=opus effort=low".utf8))?.event, "info effort=low model=opus", "Canonical order")
+        XCTAssertEqual(AgentHook.encodeInfo(nonce: nonce, effort: "extreme", model: "two words").map { String(decoding: $0, as: UTF8.self) }, nil)
+        XCTAssertEqual(AgentHook.infoEvent(effort: "turbo", model: "claude-opus-5-5"), "info model=claude-opus-5-5", "An unknown level is dropped, not forwarded")
+        for bad in [
+            "info", "info effort=turbo", "info model=a;b", "info effort=low effort=high", "info prompt=hi", "info effort=low model=x extra",
+            "info model=\(String(repeating: "a", count: 65))"
+        ] {
+            XCTAssertNil(AgentHook.decode(Array("TRELLIS-AGENT-1 \(nonce) \(bad)".utf8)), bad)
+        }
+        XCTAssertFalse(AgentHook.events.contains(AgentHook.infoEvent), "Info never names a state")
+        XCTAssertNil(AgentHook.encode(nonce: nonce, event: "info"))
+    }
+
+    func testOnlyTheEffortAndModelAreReadFromAHookPayload() throws {
+        func read(_ json: String) -> (effort: String?, model: String?)? { AgentHook.settings(from: Array(json.utf8)) }
+        let start = read(#"{"hook_event_name":"SessionStart","model":"claude-opus-5-5","prompt":"secret","tool_input":{"command":"rm"}}"#)
+        XCTAssertEqual(start?.model, "claude-opus-5-5"); XCTAssertNil(start?.effort)
+        XCTAssertEqual(read(#"{"hook_event_name":"PreToolUse","effort":{"level":"xhigh"},"tool_input":{}}"#)?.effort, "xhigh")
+        XCTAssertEqual(read(#"{"hook_event_name":"PostModelSwitch","from_model":"a","to_model":"claude-haiku-5-5","model":"a"}"#)?.model, "claude-haiku-5-5")
+        XCTAssertNil(read(#"{"agent_id":"sub","effort":{"level":"low"}}"#), "A subagent's hooks don't speak for the session")
+        let odd = read(#"{"model":{"id":"x"},"effort":"high"}"#)
+        XCTAssertNil(odd?.model); XCTAssertNil(odd?.effort)
+        XCTAssertNil(read("not json"))
+    }
+
     func testAHookStuckInALoopIsLimitedPerSession() {
         var limiter = AgentEventLimiter(limit: 3)
         XCTAssertEqual((0..<5).map { _ in limiter.allow("a", now: 10) }, [true, true, true, false, false])
