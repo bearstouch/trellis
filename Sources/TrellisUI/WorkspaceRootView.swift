@@ -38,6 +38,21 @@ public struct WorkspaceRootView: View {
                     Text("Trellis")
                     Text(AppVersion.current).monospacedDigit().opacity(0.7).accessibilityLabel("Version \(AppVersion.current)")
                 }
+                // The live binding, so a customized shortcut shows what actually opens the palette.
+                if let chord = model.keyboard.shortcuts[.commandPalette] {
+                    Text("·").accessibilityHidden(true)
+                    Button {
+                        model.openCommandPalette()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(chord.description).monospacedDigit()
+                            Text("Command Palette")
+                        }.contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help("Open the Command Palette (\(chord.description))")
+                    .accessibilityLabel("Command Palette, \(chord.description)")
+                    .disabled(model.commandPaletteVisible || model.welcomeTourVisible || model.isRestoring || model.recoveryMessage != nil)
+                }
                 Spacer()
                 if model.persistenceReadOnly { Text("Changes won’t be saved") }
                 if let notice = model.themeNotice { Text(notice).lineLimit(1).help(notice) }
@@ -1314,6 +1329,17 @@ public struct LaunchSettingsView: View {
                     .accessibilityIdentifier("settings.sessionDefaultNotice")
                     .onDisappear { model.dismissSessionDefaultNotice() }
             }
+            Picker(
+                "End idle kept sessions after",
+                selection: Binding(get: { model.keptSessionIdleTimeoutHours }, set: { model.setKeptSessionIdleTimeout(hours: $0) })
+            ) {
+                ForEach(KeptSessionIdleTimeout.choices, id: \.self) { Text(KeptSessionIdleTimeout.label(hours: $0)).tag($0) }
+            }.accessibilityIdentifier("settings.keptSessionIdleTimeout")
+            caption(
+                model.keptSessionIdleTimeoutHours == 0
+                    ? "Sessions left running with Trellis closed or disconnected are kept until they end by themselves."
+                    : "A session left running with Trellis closed or disconnected is ended once it has printed nothing for this long. Sessions shown in a pane are never ended."
+            ).accessibilityIdentifier("settings.keptSessionIdleTimeoutNote")
             Toggle(
                 "Restore scrollback after quit",
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })

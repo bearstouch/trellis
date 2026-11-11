@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Command Palette hint:** the status bar shows the Command Palette shortcut (⇧⌘P by default, or your custom binding) next to the version; clicking it opens the palette.
+- **Idle timeout for kept sessions:** a session left running with Trellis closed or disconnected is now ended once it has printed nothing for 24 hours. **Settings → Sessions → End idle kept sessions after** offers No timeout, 1, 2, 4, 12, 24, 48 and 96 hours. Sessions shown in a pane are never ended. Applies to remote workspace hosts too, once their helper is updated.
+
+### Changed
+
+- **Kept sessions no longer run forever by default:** before, a session kept after quit ran until it ended by itself. Pick **No timeout** to keep that behavior.
+
 ## [1.2.0] - 2026-11-10
 
 The stable 1.2 release. Coming from 1.1.0, you also get everything listed under the 1.2 betas: windows renamed to spaces, temporary tabs in project spaces, a right sidebar with Files, Changes, Tasks, Agents and the scratchpad, agents typed in a shell with live state, the welcome tour, translucent panes, the white Trellis Light terminal, and export and import of projects and hosts.
