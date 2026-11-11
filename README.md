@@ -98,7 +98,7 @@ An ordinary new workspace starts a login shell. Use Quit to close live sessions 
 
 ### Using the CLI against a dev build
 
-1. Run the app, open **Settings → Automation**, and create a grant. The token is shown only once.
+1. Run the app, open **Settings → Automation**, and create a grant from a preset (Observer, Operator, Agent orchestrator, Full control or Custom). The token is shown only once; grants can be edited later without a new token.
 2. Save the token to a file that only you can read, for example `.build/token.txt`. Never pass a token as an argument.
 3. Call the CLI:
 

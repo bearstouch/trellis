@@ -88,7 +88,7 @@ public struct ProjectionV2: Sendable {
     // MARK: Visibility
 
     public func visibleSpaces() -> [Space] { snapshot.spaces.filter { access.canSee(space: $0.id) } }
-    public func canSee(_ kind: ResourceKind, _ id: UUID) -> Bool { access.owningSpace(kind, id).map(access.canSee) ?? false }
+    public func canSee(_ kind: ResourceKind, _ id: UUID) -> Bool { access.owningSpace(kind, id).map { access.canSee(space: $0) } ?? false }
 
     /// A host ID is shown only with host.read and the host in scope (resources.md#machine).
     public func showsHost(_ id: UUID) -> Bool { capabilities.contains(.hostRead) && access.hostAccess(hosts[id]) == .allowed }
@@ -121,8 +121,9 @@ public struct ProjectionV2: Sendable {
         object.set("name", space.name)
         object.set("revision", space.revision)
         object.set("machine", machine(kind: space.remoteHostID == nil ? "local" : "remote", hostID: space.remoteHostID))
-        if let projectID = space.projectID {
-            // name, target and folder need project.read (and session.execute), which grants can hold from phase 3.
+        // Project scope covers a project space's `project` field (permissions.md#scopes); the space itself follows space scope.
+        if let projectID = space.projectID, access.reaches(project: projectID) {
+            // name, target and folder need project.read (and session.execute), with the project projection of phase 7.
             var project = ResultObjectV2()
             project.set("id", projectID)
             if live.projectMissing { project.set("missing", true) }

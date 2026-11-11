@@ -22,7 +22,7 @@ Every method follows the [conventions](index.md#conventions-api2-02). In the tab
 | --- | --- | --- | --- |
 | `space.list` | `limit?`, `cursor?` | `spaces`, `revision` (workspace) | workspace.read |
 | `space.get` | `id` | `space` | workspace.read |
-| `space.create` | `name`, `start?` | `space`, `tab`, `panes` | workspace.write (+session.start if `start`) |
+| `space.create` | `name`, `start?` | `space`, `tab`, `panes` | workspace.write (+session.start if `start`), all or `created` spaces |
 | `space.update` | `id`, `name` | `space` | workspace.write |
 | `space.reorder` | `ids` | `spaces`, `revision` | workspace.write, all-spaces |
 | `space.focus` | `id` | `space` | workspace.write |
@@ -72,7 +72,7 @@ A new pane inherits the source pane's machine and folder, as in the UI: a split 
 | `session.readOutput` | `id`, `view` `screen`/`scrollback`/`stream`, `cursor?`, `maxBytes?` | as v1 (`text` or `base64`, `nextCursor`, `truncated`, `gap`) | session.output.read |
 
 - `launch` is `{"kind": "shell", "directory"?, "environment"?}`, `{"kind": "process", "executable", "arguments"?, "directory", "environment"?}` or `{"kind": "ssh", "hostId"}` (the host must be in scope). Paths are absolute; `TRELLIS_` environment names are reserved. In a remote workspace only `shell` is accepted, and it runs on the space's host (as layouts do, FR-RW10).
-- Without `launch`, `session.start` uses the pane's saved launch, which may be an SSH host (needs the host in scope) or an agent (needs **agent.control**). The same applies to `start: true` on `space.create`, `tab.create`, `tab.duplicate` and `pane.split`, checked before anything is created: a duplicated agent or SSH pane, or a new pane in a remote workspace (the space's host).
+- Without `launch`, `session.start` uses the pane's saved launch, which may be an SSH host (needs the host in scope) or an agent (needs **agent.control** and the agent in the grant's agent scope). The same applies to `start: true` on `space.create`, `tab.create`, `tab.duplicate` and `pane.split`, checked before anything is created: a duplicated agent or SSH pane, or a new pane in a remote workspace (the space's host).
 - `launch.kind: "agent"` is accepted only through `agent.start`; `session.start` refuses it with `-32602` so agent permissions can't be bypassed.
 - `session.start`'s and `session.restart`'s `expectedRevision` is the pane's (`paneId`); the other session methods compare the session's. A running pane is `INVALID_STATE` for `session.start` (`details.state`). `session.stop` asks gracefully; `force: true` is honoured only once the graceful request is 2 s old, so the first call is `CLOSE_PENDING` either way if the process ignores it.
 - `session.sendInput` takes exactly one of `text` and `base64` (64 KiB decoded, `LIMIT_EXCEEDED` above) and returns `acceptedBytes` and `mode`; `session.execute` returns `submitted` and `acceptedBytes`.
@@ -110,7 +110,7 @@ Passwords are never set or read through the API; saving one stays a UI action (F
 - `host.list` filters by `query` (every word matches a name, destination, user or tag) and `tags` (every tag, any case). It has no `revision`: the host library has no collection revision. `host.create` takes no `expectedRevision` for the same reason. `host.create` returns the new host even to a grant limited to approved hosts; it can't be used through that grant until it is approved.
 - `host.update` needs at least one field; `null` clears `user`, `port`, `identityFile` or `tags`. Sending any of `destination`, `user`, `port` or `identityFile`, `null` included, needs **session.execute**.
 - `host.delete` returns `deleted` without `workspaceRevision`.
-- `host.connect`'s `placement` is `{"kind": "tab", "spaceId"}`, `{"kind": "split", "paneId", "axis"?}` or `{"kind": "space", "name"?}`; a new space needs all-spaces scope. Its `expectedRevision` is the host's, so a client connects to the host it read. An ssh pane never opens in a remote workspace (`INVALID_STATE`). The new tab or space is named after the host.
+- `host.connect`'s `placement` is `{"kind": "tab", "spaceId"}`, `{"kind": "split", "paneId", "axis"?}` or `{"kind": "space", "name"?}`; a new space needs all or `created` space scope, and with `created` it joins the grant's scope. Its `expectedRevision` is the host's, so a client connects to the host it read. An ssh pane never opens in a remote workspace (`INVALID_STATE`). The new tab or space is named after the host.
 
 ## Remote workspaces
 

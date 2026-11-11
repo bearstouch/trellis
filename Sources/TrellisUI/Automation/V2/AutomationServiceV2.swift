@@ -62,11 +62,19 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
     /// limits the runtime capture to the spaces the result shows; by default, the spaces the grant can see.
     @MainActor func projection(_ call: CallV2, spaces: Set<UUID>? = nil) -> ProjectionV2 {
         let snapshot = model.snapshot
+        // The live grant: a space this call just created is already in its `created` scope.
+        let grant = call.grant
         var scope = spaces
-        if scope == nil, case .spaces(let ids) = call.access.grant.spaceScope { scope = ids }
+        if scope == nil {
+            switch grant.spaceScope {
+            case .all: break
+            case .created: scope = grant.createdSpaces
+            case .spaces(let ids): scope = ids
+            }
+        }
         return ProjectionV2(
             snapshot: snapshot, runtime: runtime(spaces: scope), hosts: Dictionary(hosts.hosts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
-            grant: call.access.grant)
+            grant: grant)
     }
 
     @MainActor func runtime(spaces spaceIDs: Set<UUID>?) -> RuntimeV2 {

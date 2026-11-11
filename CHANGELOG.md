@@ -13,9 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Command Palette hint:** the status bar shows the Command Palette shortcut (⇧⌘P by default, or your custom binding) next to the version; clicking it opens the palette.
 - **Share the MCP server over Tailscale:** **Settings → Remote Control → Share over Tailscale** publishes the MCP server to your tailnet over HTTPS with `tailscale serve`, so Claude Code, Codex or your own bots on other machines can drive Trellis without an open port or plain-HTTP tokens. Choose which tailnet devices may connect, and copy a ready setup for Claude Code, Codex or any MCP client. Trellis never uses Funnel and removes its entry when sharing stops or Trellis quits.
 - **Idle timeout for kept sessions:** a session left running with Trellis closed or disconnected is now ended once it has printed nothing for 24 hours. **Settings → Session Broker → End idle kept sessions after** offers No timeout, 1, 2, 4, 12, 24, 48 and 96 hours. Sessions shown in a pane are never ended. Applies to remote workspace hosts too, once their helper is updated.
+- **Grant presets and editable grants:** **Settings → Automation** now starts a grant from a preset (Observer, Operator, Agent orchestrator, Full control or Custom), lists every capability by area in plain language, and limits a grant to all spaces, only the spaces it creates, or chosen spaces, as well as to chosen projects, hosts and agents. **Edit…** changes an existing grant without a new token: removing access applies at once (connected clients sign in again), and giving more access asks first.
 
 ### Changed
 
+- **Grants file format:** `grants.json` is converted to a new format the first time this version starts; the old file is kept as `grants.json.v1.bak`. Existing grants keep their tokens and can do exactly what they could before. An earlier version of Trellis can't read the new file; restore the backup there.
 - **Kept sessions no longer run forever by default:** before, a session kept after quit ran until it ended by itself. Pick **No timeout** to keep that behavior.
 
 ## [1.2.0] - 2026-11-10

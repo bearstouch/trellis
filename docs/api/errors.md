@@ -21,7 +21,7 @@ Errors follow JSON-RPC 2.0:
 
 | `data.code` | When | Retryable |
 | --- | --- | --- |
-| `AUTH_REQUIRED` | Not authenticated, authentication failed, or the grant has expired or been revoked | no |
+| `AUTH_REQUIRED` | Not authenticated, authentication failed, the grant has expired or been revoked, or it was narrowed in Settings → Automation since this connection authenticated (authenticate again to use the new limits) | no |
 | `PERMISSION_DENIED` | A capability is missing, the call needs all-spaces scope, a host needs approving again, or a pane is bound to a host outside scope | no |
 | `NOT_FOUND` | The resource doesn't exist, **or** is outside the grant's scope | no |
 | `CONFLICT` | Revision mismatch (`expectedRevision`, `currentRevision`), an idempotency key reused, a layout conflict, or a duplicate theme ID | Only while the original keyed call is still running |

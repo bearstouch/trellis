@@ -1,7 +1,7 @@
 import Foundation
 
-/// Protocol 2 capabilities (docs/api/v2/permissions.md, API2-06). Grants still store v1 capabilities until phase 3;
-/// `granted(by:)` maps them as migration.md does, so a grant can do exactly what it could under v1 and nothing more.
+/// Protocol 2 capabilities (docs/api/v2/permissions.md, API2-06). Grants store them (grants.json schema 2); protocol 1
+/// sees them under their v1 names (`Capability.init?(_:)`), and a migrated v1 grant holds exactly the mapped set.
 public enum CapabilityV2: String, CaseIterable, Codable, Sendable, Comparable {
     case workspaceRead = "workspace.read"
     case workspaceWrite = "workspace.write"
@@ -44,6 +44,20 @@ public enum CapabilityV2: String, CaseIterable, Codable, Sendable, Comparable {
         }
     }
 
-    /// What a stored grant allows under protocol 2. Capabilities v1 had no equivalent for are never added.
-    public static func granted(by grant: AutomationGrant) -> Set<Self> { Set(grant.capabilities.map(Self.init)) }
+    /// What a stored grant allows under protocol 2.
+    public static func granted(by grant: AutomationGrant) -> Set<Self> { grant.capabilitiesV2 }
+
+    /// The area a capability belongs to, for grouping in the grant sheet (permissions.md#presets).
+    public var area: Area {
+        switch self {
+        case .workspaceRead, .workspaceWrite: .workspace
+        case .sessionStart, .sessionExecute, .sessionInput, .sessionOutputRead, .sessionClose: .sessions
+        case .agentControl, .agentRespond, .agentInstall: .agents
+        case .hostRead, .hostWrite, .remoteConnect, .remoteManage: .hosts
+        case .projectRead, .projectWrite, .projectLaunch, .taskRead, .taskRun: .projects
+        case .themeRead, .themeWrite: .appearance
+        }
+    }
+
+    public enum Area: String, CaseIterable, Sendable { case workspace, sessions, agents, hosts, projects, appearance }
 }

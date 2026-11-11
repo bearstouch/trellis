@@ -845,7 +845,12 @@ struct TrellisMain {
                 v2Domain: automationV2 ? AutomationServiceV2(model: model, hosts: hosts, instanceID: instanceID) : nil)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
-            let forwarder = EventForwarder(hub: events, instanceID: instanceID)
+            let forwarder = EventForwarder(
+                hub: events, instanceID: instanceID,
+                delivered: { batch in
+                    let closed = Set(batch.filter { $0.type == "space.deleted" }.map(\.resourceID))
+                    if !closed.isEmpty { await grantStore.forgetCreatedSpaces(closed) }
+                })
             model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
             // Appearance is global; the hub gates it on theme.read, not window scope.
             let appearanceResource = UUID(uuidString: "00000000-0000-0000-0000-00000000A99E")!
@@ -876,6 +881,16 @@ struct TrellisMain {
                         await events.removeGrant(grantID)
                         await mcp.closeSessions(grantID: grantID)
                         control.closeConnections(await handler.connections(for: grantID))
+                    }
+                }
+                // Narrowing applies at once (permissions.md#editing-grants): subscriptions that lost access end, MCP sessions
+                // start again with the new tool list, and socket connections get AUTH_REQUIRED on their next call. Protocol
+                // 2's grant.changed event (phase 4) is emitted from here.
+                await grantStore.onEdit { edit in
+                    guard edit.change.narrows else { return }
+                    Task {
+                        await events.revalidate(edit.new)
+                        await mcp.closeSessions(grantID: edit.new.id)
                     }
                 }
             }

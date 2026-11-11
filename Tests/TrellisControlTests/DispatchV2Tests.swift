@@ -30,7 +30,7 @@ final class DispatchV2Tests: XCTestCase {
         case .branch: domain.branchA
         case .session: domain.sessionA
         case .host: host.id
-        case .anyLayout: domain.spaceA
+        case .anyLayout, .project, .agent: domain.spaceA
         }
     }
 

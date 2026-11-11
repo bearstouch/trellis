@@ -47,6 +47,8 @@ public enum MethodCatalogV2 {
         case .session: "session"
         case .host: "host"
         case .anyLayout: "resource"
+        case .project: "project"
+        case .agent: "agent"
         }
     }
 
@@ -111,13 +113,23 @@ public enum MethodCatalogV2 {
                 }
             }
             for rule in spec.resources {
-                switch paths[rule.param]?.type {
-                case .uuid? where !rule.list, .uuidList? where rule.list: break
+                // Agents are named by definition ID strings; every other resource by UUID.
+                switch (rule.kind, paths[rule.param]?.type) {
+                case (.agent, .string?) where !rule.list, (.agent, .stringList?) where rule.list: break
+                case (.agent, _): problem("agent parameter \(rule.param) must be declared as \(rule.list ? "a string list" : "a string")")
+                case (_, .uuid?) where !rule.list, (_, .uuidList?) where rule.list: break
                 default: problem("resource parameter \(rule.param) must be declared as \(rule.list ? "a UUID list" : "a UUID")")
                 }
             }
+            for group in spec.anyOf {
+                if Set(group).count < 2 || Set(group).count != group.count { problem("an anyOf group needs two or more different capabilities") }
+                if !spec.capabilities.isDisjoint(with: group) { problem("an anyOf group overlaps the required capabilities") }
+            }
+            if spec.createsSpace && spec.createsSpaceIf != nil { problem("createsSpace and createsSpaceIf are exclusive") }
+            if (spec.createsSpace || spec.createsSpaceIf != nil) && spec.requiresAllSpaces { problem("a method that needs all spaces can't also allow created scope") }
             var conditions = spec.conditional.map(\.condition)
             if let condition = spec.allSpacesIf { conditions.append(condition) }
+            if let condition = spec.createsSpaceIf { conditions.append(condition) }
             for condition in conditions { problems += Self.problems(in: condition, paths: paths).map { "\(name): \($0)" } }
             for rule in spec.conditional where spec.capabilities.contains(rule.capability) { problem("\(rule.capability.rawValue) is both required and conditional") }
             for rule in spec.rules {

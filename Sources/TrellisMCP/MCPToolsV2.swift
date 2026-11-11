@@ -12,10 +12,9 @@ extension MCPTools {
 
     /// v2 tools whose base requirements this grant can ever satisfy; conditional capabilities and scope are checked per call.
     public static func v2Visible(to grant: AutomationGrant) -> [MCPTool] {
-        let granted = CapabilityV2.granted(by: grant)
-        return v2.filter { tool in
+        v2.filter { tool in
             guard let spec = MethodCatalogV2.spec(tool.method) else { return false }
-            return spec.capabilities.isSubset(of: granted) && (!spec.requiresAllSpaces || grant.spaceScope == .all)
+            return spec.isReachable(with: grant.capabilitiesV2) && (!spec.requiresAllSpaces || grant.spaceScope == .all) && (!spec.createsSpace || grant.mayCreateSpaces)
         }
     }
 }

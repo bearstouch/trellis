@@ -229,7 +229,8 @@ final class GrantAuthorizationTests: XCTestCase {
         let disk = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
         let (_, token) = try await disk.create(name: "CI", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         var text = try String(contentsOf: url, encoding: .utf8)
-        text = text.replacingOccurrences(of: "metadata.read", with: "future.capability")
+        // grants.json schema 2 stores protocol 2 names (metadata.read is workspace.read there).
+        text = text.replacingOccurrences(of: "workspace.read", with: "future.capability")
         try OwnerOnlyFile.publish(Data(text.utf8), to: url)
         let reloaded = GrantStore(url: url, secrets: secrets, now: { [clock] in clock.now })
         await reloaded.load()

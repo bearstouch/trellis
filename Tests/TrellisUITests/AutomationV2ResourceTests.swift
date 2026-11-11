@@ -26,6 +26,17 @@ final class HarnessV2 {
         sessions[name] = nil
     }
 
+    /// A grant with protocol 2 settings (presets, created scope, agent and project scopes).
+    @discardableResult
+    func grant(_ name: String, settings: GrantSettings) async throws -> AutomationGrant {
+        var settings = settings
+        settings.name = name
+        let (grant, token) = try await base.grants.create(settings, lifetime: 3600)
+        tokens[name] = token
+        sessions[name] = nil
+        return grant
+    }
+
     func call(_ method: String, _ params: [String: Any] = [:], as name: String = "full") async throws -> [String: Any] {
         if sessions[name] == nil {
             let session = ControlSession(peerUID: geteuid(), handler: base.handler)
@@ -241,7 +252,7 @@ final class AutomationV2ResourceTests: XCTestCase {
         let paneID = try XCTUnwrap(v.model.snapshot.tabs[try XCTUnwrap(UUID(uuidString: tabID))]?.activePaneID)
         _ = try await v.model.automationExecute(.configureStoppedSession(paneID: paneID, launch: .agent(AgentLaunch(agentID: "trellis-claude-code", directory: nil))))
         let committed = v.model.snapshot
-        // A duplicated agent pane would start an agent: that needs agent.control, which no grant holds before phase 3.
+        // A duplicated agent pane would start an agent: that needs agent.control, which a grant made with v1 capabilities never holds.
         let duplicate = try await v.call("tab.duplicate", ["id": tabID, "start": true])
         XCTAssertEqual(errorCode(duplicate), "PERMISSION_DENIED")
         XCTAssertEqual(details(duplicate)?["missing"] as? [String], ["agent.control"])

@@ -20,13 +20,17 @@ final class EventForwarder: @unchecked Sendable {
     /// Sessions whose output was skipped; their next event is flagged as a gap.
     private var skipped = Set<UUID>()
 
-    init(hub: EventHub, instanceID: UUID) {
+    /// `delivered` runs after each metadata batch reached subscribers (closed spaces leave `created` scopes only then, so
+    /// their grants still get the `space.deleted` event).
+    init(hub: EventHub, instanceID: UUID, delivered: @escaping @Sendable ([WorkspaceEvent]) async -> Void = { _ in }) {
         let (stream, continuation) = AsyncStream<Item>.makeStream()
         self.continuation = continuation
         Task.detached { [self] in
             for await item in stream {
                 switch item {
-                case .metadata(let events): await hub.publish(events)
+                case .metadata(let events):
+                    await hub.publish(events)
+                    await delivered(events)
                 case .output(let session, let space, let data, let next, let gap):
                     await hub.publishOutput(
                         session: session, spaceID: space, data: data, next: OutputCursor(instanceID: instanceID, sessionID: session, offset: next), gap: gap)

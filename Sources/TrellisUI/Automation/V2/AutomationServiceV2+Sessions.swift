@@ -83,8 +83,8 @@ extension AutomationServiceV2 {
         guard state == .stopped else { throw Self.invalidState("Only a stopped pane can start; use session.restart.", state: state?.rawValue) }
     }
 
-    /// Without `launch` the pane's saved launch runs. An agent needs agent.control, which grants hold from phase 3, so
-    /// it is refused here; a saved host or a remote workspace's host must be in scope.
+    /// Without `launch` the pane's saved launch runs. An agent needs agent.control and the agent in the grant's agent
+    /// scope; a saved host or a remote workspace's host must be in host scope.
     @MainActor private func requireStoredLaunchAccess(_ paneID: UUID, _ call: CallV2) throws {
         guard let session = model.snapshot.panes[paneID].flatMap({ model.snapshot.sessions[$0.sessionID] }) else { return }
         try requireLaunchAccess(session.launch, call)
@@ -93,9 +93,12 @@ extension AutomationServiceV2 {
     /// What starting a saved launch needs beyond session.start; also checked before `start: true` creates panes (a
     /// duplicated agent or ssh tab, a new pane in a remote workspace), so starting on create bypasses nothing.
     @MainActor func requireLaunchAccess(_ launch: SessionLaunch, _ call: CallV2) throws {
-        if case .agent = launch, !CapabilityV2.granted(by: call.access.grant).contains(.agentControl) {
-            throw ControlError.api(
-                .permissionDenied, "Starting an agent pane needs agent.control; use agent.start.", details: .object(["missing": .array([.string(CapabilityV2.agentControl.rawValue)])]))
+        if case .agent(let agent) = launch {
+            guard call.access.grant.holds(.agentControl) else {
+                throw ControlError.api(
+                    .permissionDenied, "Starting an agent pane needs agent.control.", details: .object(["missing": .array([.string(CapabilityV2.agentControl.rawValue)])]))
+            }
+            guard call.access.canUse(agent: agent.agentID) else { throw ControlError.api(.permissionDenied, "This pane runs an agent outside this grant's agent scope.") }
         }
         let hostID: UUID
         switch launch {

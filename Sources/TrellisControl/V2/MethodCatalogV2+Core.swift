@@ -76,8 +76,8 @@ extension MethodCatalogV2 {
         MethodSpecV2("space.list", "Spaces in scope, in sidebar order.", capabilities: [.workspaceRead], paginated: true),
         MethodSpecV2("space.get", "One space.", params: [id("space")], capabilities: [.workspaceRead], resources: [ResourceRuleV2(.space, "id")]),
         MethodSpecV2(
-            "space.create", "Create a local space with one tab and one stopped pane, optionally starting it.", params: [name, start], capabilities: [.workspaceWrite],
-            conditional: [ConditionalCapabilityV2(.sessionStart, if: .present("start"))], allSpaces: true, effect: .mutating(revision: .container("workspace")),
+            "space.create", "Create a local space with one tab and one stopped pane, optionally starting it; with created scope it joins the grant's scope.", params: [name, start], capabilities: [.workspaceWrite],
+            conditional: [ConditionalCapabilityV2(.sessionStart, if: .present("start"))], createsSpace: true, effect: .mutating(revision: .container("workspace")),
             errors: [.invalidState, .launchFailed]),
         MethodSpecV2(
             "space.update", "Rename a space.", params: [id("space"), name], capabilities: [.workspaceWrite], resources: [ResourceRuleV2(.space, "id")],
@@ -241,6 +241,6 @@ extension MethodCatalogV2 {
             "host.connect", "Open an ssh session to a saved host in a new tab, a split or a new space; expectedRevision is the host's.",
             params: [ParamV2("hostId", .uuid, required: true, "The saved host."), placement], capabilities: [.sessionStart, .workspaceWrite],
             resources: [ResourceRuleV2(.host, "hostId"), ResourceRuleV2(.space, "placement.spaceId"), ResourceRuleV2(.pane, "placement.paneId")],
-            allSpacesIf: .equals("placement.kind", .string("space")), effect: .mutating(revision: .resource(param: "hostId")), errors: [.invalidState, .launchFailed])
+            createsSpaceIf: .equals("placement.kind", .string("space")), effect: .mutating(revision: .resource(param: "hostId")), errors: [.invalidState, .launchFailed])
     ]
 }

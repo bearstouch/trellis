@@ -7,6 +7,25 @@ public struct CallV2: Sendable {
     public let params: ParamsV2
     public let access: GrantAccess
     public let identity: ControlIdentity
+    /// The `created` scope's membership; nil only in tests without a grant store, where creations aren't recorded.
+    let ledger: CreatedSpaceLedger?
+
+    public init(spec: MethodSpecV2, params: ParamsV2, access: GrantAccess, identity: ControlIdentity, ledger: CreatedSpaceLedger? = nil) {
+        self.spec = spec; self.params = params; self.access = access; self.identity = identity; self.ledger = ledger
+    }
+
+    /// Adds a space this call created to its grant's `created` scope. Call it from inside the store transaction that
+    /// creates the space (a `then` follow-up), so nothing sees the space before the grant does. UI-created spaces never
+    /// come through here.
+    public func recordCreatedSpace(_ id: UUID) { ledger?.record(id, grant: access.grant.id) }
+
+    /// The call's grant with every space it has created so far, including during this call: what projections of the
+    /// call's own results must use.
+    public var grant: AutomationGrant {
+        var grant = access.grant
+        if let ledger { grant.createdSpaces.formUnion(ledger.spaces(of: grant.id)) }
+        return grant
+    }
 }
 
 /// What an `expectedRevision` is compared with.
@@ -73,17 +92,25 @@ public enum ResultsV2 {
         ])
     }
 
-    /// The caller's own grant (permissions.md#grant-view). `preset`, `revision` and the project and agent scopes come
-    /// with grant schema 2 (phase 3) and are omitted until then.
+    /// The caller's own grant (permissions.md#grant-view): preset, revision, capabilities, every scope and the times.
+    /// Approved hosts say whether their approval still matches the host's connection (`current`).
     public static func grantView(_ grant: AutomationGrant, hosts: [UUID: SavedHost]) -> JSONValue {
         var view = ResultObjectV2()
         view.set("id", grant.id)
         view.set("name", grant.name)
-        view.set("capabilities", JSONValue.array(CapabilityV2.granted(by: grant).sorted().map { .string($0.rawValue) }))
+        view.set("preset", grant.preset.rawValue)
+        view.set("revision", grant.revision)
+        view.set("capabilities", JSONValue.array(grant.capabilitiesV2.sorted().map { .string($0.rawValue) }))
         var scope: [String: JSONValue] = [:]
+        func ids(_ ids: Set<UUID>) -> JSONValue { .array(ids.map(ConventionsV2.id).sorted().map(JSONValue.string)) }
         switch grant.spaceScope {
         case .all: scope["spaces"] = .string("all")
-        case .spaces(let ids): scope["spaces"] = .array(ids.map(ConventionsV2.id).sorted().map(JSONValue.string))
+        case .created: scope["spaces"] = .string("created")
+        case .spaces(let set): scope["spaces"] = ids(set)
+        }
+        switch grant.projectScope {
+        case .all: scope["projects"] = .string("all")
+        case .projects(let set): scope["projects"] = ids(set)
         }
         switch grant.hostScope {
         case .all: scope["hosts"] = .string("all")
@@ -95,6 +122,10 @@ public enum ResultsV2 {
                         "current": .bool(hosts[approval.hostID]?.connectionRevision == approval.connectionRevision)
                     ])
                 })
+        }
+        switch grant.agentScope {
+        case .all: scope["agents"] = .string("all")
+        case .agents(let set): scope["agents"] = .array(set.sorted().map(JSONValue.string))
         }
         view.set("scope", JSONValue.object(scope))
         view.set("createdAt", grant.createdAt)
@@ -110,6 +141,8 @@ struct DispatcherV2: Sendable {
     let idempotency: IdempotencyCache
     /// The real catalog; tests pass declarations of later phases' shapes to exercise authorization and idempotency.
     var catalog: [String: MethodSpecV2] = MethodCatalogV2.byName
+    /// Where calls record the spaces they create (`created` scope); the grant store's.
+    var ledger: CreatedSpaceLedger?
 
     func authenticationResult(grant: AutomationGrant, connectionID: UUID) async -> JSONValue {
         .object([
@@ -126,7 +159,7 @@ struct DispatcherV2: Sendable {
         }
         let access = GrantAccess(grant: grant, snapshot: await domain.snapshot())
         if case .failure(let error) = await authorize(spec, params, access) { return .failure(error) }
-        let call = CallV2(spec: spec, params: params, access: access, identity: identity)
+        let call = CallV2(spec: spec, params: params, access: access, identity: identity, ledger: ledger)
         guard spec.isMutating, let key = params.idempotencyKey else { return await run(call) }
         // Namespaced so a key used on a v1 connection never replays into v2, or the reverse.
         switch await idempotency.begin(grant: grant.id, key: key, method: "v2:" + spec.name, params: .object(params.values)) {
@@ -151,7 +184,7 @@ struct DispatcherV2: Sendable {
         switch call.spec.name {
         case "grant.get":
             let hosts = await hosts(of: call.access.grant)
-            return .success(ConventionsV2.resource("grant", ResultsV2.grantView(call.access.grant, hosts: hosts)))
+            return .success(ConventionsV2.resource("grant", ResultsV2.grantView(call.grant, hosts: hosts)))
         default: return await domain.perform(call)
         }
     }
@@ -165,32 +198,41 @@ struct DispatcherV2: Sendable {
 
     /// Visibility first (out-of-scope IDs look exactly like missing ones), then scope width, then capabilities.
     private func authorize(_ spec: MethodSpecV2, _ params: ParamsV2, _ access: GrantAccess) async -> Result<Void, ControlError> {
+        let hidden = ControlError.api(.notFound, "No such resource is available to this grant.")
         for rule in spec.resources {
-            let ids: [UUID]
+            let values: [String]
             switch ConditionV2.value(at: rule.param, in: params.values) {
             case nil, .null?: continue
-            case .string(let text)?: ids = ConventionsV2.parseID(text).map { [$0] } ?? []
-            case .array(let items)?: ids = items.compactMap { if case .string(let text) = $0 { ConventionsV2.parseID(text) } else { nil } }
+            case .string(let text)?: values = [text]
+            case .array(let items)?: values = items.compactMap { if case .string(let text) = $0 { text } else { nil } }
             default: return .failure(.invalidParams)
             }
-            for id in ids {
-                if rule.kind == .host {
+            if rule.kind == .agent {
+                guard values.allSatisfy(access.canUse(agent:)) else { return .failure(hidden) }
+                continue
+            }
+            for id in values.compactMap(ConventionsV2.parseID) {
+                switch rule.kind {
+                case .host:
                     switch access.hostAccess(await domain.host(id)) {
                     case .allowed: continue
-                    case .hidden: return .failure(.api(.notFound, "No such resource is available to this grant."))
+                    case .hidden: return .failure(hidden)
                     case .needsReapproval:
                         return .failure(.api(.permissionDenied, "This host's connection changed after it was approved. Reapprove it in Settings → Automation."))
                     }
-                }
-                guard let space = access.owningSpace(rule.kind, id), access.canSee(space: space) else {
-                    return .failure(.api(.notFound, "No such resource is available to this grant."))
+                // Whether the project exists is the domain's answer; outside the scope it looks the same.
+                case .project: guard access.reaches(project: id) else { return .failure(hidden) }
+                default: guard let space = access.owningSpace(rule.kind, id), access.canSee(space: space) else { return .failure(hidden) }
                 }
             }
         }
         if spec.needsAllSpaces(for: params.values), access.grant.spaceScope != .all {
             return .failure(.api(.permissionDenied, "This operation needs access to all spaces."))
         }
-        let missing = spec.requiredCapabilities(for: params.values).subtracting(CapabilityV2.granted(by: access.grant))
+        if spec.createsSpace(for: params.values), !access.grant.mayCreateSpaces {
+            return .failure(.api(.permissionDenied, "Creating a space needs access to all spaces, or to the spaces this grant creates."))
+        }
+        let missing = spec.missingCapabilities(for: params.values, granted: access.grant.capabilitiesV2)
         guard missing.isEmpty else {
             return .failure(
                 .api(.permissionDenied, "This grant does not allow that operation.", details: .object(["missing": .array(missing.sorted().map { .string($0.rawValue) })])))

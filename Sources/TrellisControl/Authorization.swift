@@ -2,8 +2,9 @@ import Darwin
 import Foundation
 import TrellisCore
 
-/// `anyLayout` accepts a space, tab, pane, branch, or session ID (event filters).
-public enum ResourceKind: Sendable { case space, tab, pane, branch, session, host, anyLayout }
+/// `anyLayout` accepts a space, tab, pane, branch, or session ID (event filters). `project` (a UUID) and `agent` (a
+/// definition ID string) are scoped by the grant's project and agent scopes, not by space.
+public enum ResourceKind: Sendable { case space, tab, pane, branch, session, host, anyLayout, project, agent }
 
 /// Capabilities and resources a method needs before the domain sees it.
 public struct MethodRequirement: Sendable {
@@ -135,9 +136,22 @@ public struct GrantAccess: Sendable {
 
     public func canSee(space id: UUID) -> Bool {
         guard snapshot.spaces.contains(where: { $0.id == id }) else { return false }
-        switch grant.spaceScope {
-        case .all: return true
-        case .spaces(let ids): return ids.contains(id)
+        return grant.reaches(space: id)
+    }
+
+    /// Whether the project is in the grant's project scope; whether it exists is the domain's answer.
+    public func reaches(project id: UUID) -> Bool {
+        switch grant.projectScope {
+        case .all: true
+        case .projects(let ids): ids.contains(id)
+        }
+    }
+
+    /// Whether the grant may start or install this agent definition; runs of other agents stay readable.
+    public func canUse(agent id: String) -> Bool {
+        switch grant.agentScope {
+        case .all: true
+        case .agents(let ids): ids.contains(id)
         }
     }
 
@@ -150,7 +164,7 @@ public struct GrantAccess: Sendable {
         case .session: return snapshot.panes.values.first { $0.sessionID == id }.flatMap { snapshot.tabs[$0.tabID]?.spaceID }
         case .branch:
             return snapshot.tabs.values.first { tab in Self.branchIDs(tab.root).contains(id) }?.spaceID
-        case .host: return nil
+        case .host, .project, .agent: return nil
         case .anyLayout: return [ResourceKind.space, .tab, .pane, .session, .branch].lazy.compactMap { owningSpace($0, id) }.first
         }
     }
@@ -273,7 +287,7 @@ public actor AuthorizingControlHandler: ControlHandler {
     ) {
         self.grants = grants; self.domain = domain; self.limiter = limiter; self.networkLimiter = networkLimiter
         self.idempotency = idempotency; self.events = events
-        v2 = v2Domain.map { DispatcherV2(domain: $0, idempotency: idempotency) }
+        v2 = v2Domain.map { DispatcherV2(domain: $0, idempotency: idempotency, ledger: grants.createdSpaceLedger) }
         supportedProtocolVersions = v2Domain == nil ? [1] : [1, 2]
     }
 
@@ -300,11 +314,13 @@ public actor AuthorizingControlHandler: ControlHandler {
             return .failure(.authenticationFailed)
         }
         connections[connectionID] = grant.id
-        let identity = ControlIdentity(connectionID: connectionID, peerUID: peerUID, grantID: grant.id, protocolVersion: version)
+        let identity = ControlIdentity(connectionID: connectionID, peerUID: peerUID, grantID: grant.id, protocolVersion: version, grantRevision: grant.revision)
         if version == 2, let v2 { return .success((identity, await v2.authenticationResult(grant: grant, connectionID: connectionID))) }
+        // Protocol 1 has no `created` scope: it sees the spaces the grant created as a plain set.
         let scope: JSONValue =
             switch grant.spaceScope {
             case .all: .string("all")
+            case .created: .array(grant.createdSpaces.map(\.uuidString).sorted().map(JSONValue.string))
             case .spaces(let ids): .array(ids.map(\.uuidString).sorted().map(JSONValue.string))
             }
         return .success(
@@ -331,19 +347,26 @@ public actor AuthorizingControlHandler: ControlHandler {
             return .failure(.authenticationFailed)
         }
         connections[connectionID] = grant.id
-        return .success(ControlIdentity(connectionID: connectionID, peerUID: geteuid(), grantID: grant.id))
+        return .success(ControlIdentity(connectionID: connectionID, peerUID: geteuid(), grantID: grant.id, grantRevision: grant.revision))
     }
 
-    /// The identity's grant while it is still active; nil after expiry or revocation.
+    /// The identity's grant while it is still active; nil after expiry, revocation, or a narrowing edit since it
+    /// authenticated (as `dispatch` answers AUTH_REQUIRED then).
     public func activeGrant(for identity: ControlIdentity) async -> AutomationGrant? {
-        guard let id = identity.grantID else { return nil }
-        return await grants.activeGrant(id: id)
+        guard let id = identity.grantID, let grant = await grants.activeGrant(id: id) else { return nil }
+        if let revision = identity.grantRevision, revision < grant.reauthenticateBelow { return nil }
+        return grant
     }
 
     public func dispatch(_ method: String, params: JSONValue?, identity: ControlIdentity) async -> Result<JSONValue, ControlError> {
         guard let grantID = identity.grantID, let grant = await grants.activeGrant(id: grantID) else {
             connections.removeValue(forKey: identity.connectionID)
             return .failure(.application("AUTH_REQUIRED", "This grant expired or was revoked. Authenticate again with a valid grant."))
+        }
+        // An edit that narrowed the grant ends this authentication, so the client re-reads what it may do.
+        if let revision = identity.grantRevision, revision < grant.reauthenticateBelow {
+            connections.removeValue(forKey: identity.connectionID)
+            return .failure(.application("AUTH_REQUIRED", "This grant was changed. Authenticate again to read what it allows."))
         }
         // A v2 connection never sees v1 names or aliases, and a v1 connection never reaches the v2 catalog.
         if identity.protocolVersion == 2 {

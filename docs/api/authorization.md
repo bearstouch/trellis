@@ -1,6 +1,6 @@
 # Authorization
 
-Every automation client authenticates with a **grant**. The user creates grants in **Settings → Automation**. A grant combines a set of capabilities, a space scope, a host scope and an expiry. Authorization is enforced at the service boundary (`AuthorizationPolicy` in `Sources/TrellisControl/Authorization.swift`), including for internal calls from adapters.
+Every automation client authenticates with a **grant**. The user creates and edits grants in **Settings → Automation**. A grant combines a set of capabilities, a space scope, a host scope and an expiry. Authorization is enforced at the service boundary (`AuthorizationPolicy` in `Sources/TrellisControl/Authorization.swift`), including for internal calls from adapters.
 
 ## Grants and tokens
 
@@ -9,13 +9,37 @@ Every automation client authenticates with a **grant**. The user creates grants 
 | Token format | `trl_` followed by 32 random bytes in base64url without padding |
 | Token storage | Keychain generic password: service `Trellis Automation`, account = grant UUID, accessibility *when unlocked, this device only* |
 | Grant metadata | `<state-dir>/grants.json`, mode `0600`, written atomically. Stores only `sha256:<hex>` of the token, which is compared in constant time. |
-| Grant fields | `id`, `name`, `tokenHash`, `capabilities`, `windowScope` (the space scope; it keeps its name from before spaces were called that), `hostScope`, `createdAt`, `expiresAt`, `revokedAt` |
+| File format | Schema 2: `{"schemaVersion": 2, "grants": [...]}`. Each grant has `id`, `name`, `tokenHash`, `preset`, `revision`, `capabilities` (stored under their protocol 2 names: `workspace.read` for `metadata.read`, `workspace.write` for `layout.write`, the others unchanged), `scope` (`spaces`, `projects`, `hosts`, `agents`), `createdSpaces`, `createdAt`, `expiresAt` and `revokedAt`. |
+| Upgrade | A schema 1 file (a bare array with `windowScope`) is migrated once: it is copied byte for byte to `grants.json.v1.bak` (mode `0600`), then replaced. Every grant keeps its token, expiry and scopes and gets exactly the mapped capabilities, never more; protocol 1 sees it exactly as before. An earlier release can't read schema 2 (it shows no grants and writes nothing); restore the backup to use the old grants there. |
 | Lifetime | Between 60 seconds and 90 days. The UI offers 1 hour, 1 day (default), 7, 30 and 90 days. |
 | Revocation | Takes effect immediately: open connections and subscriptions are closed. Revoked and expired grants stay in the file for the record. |
+| Editing | Name, capabilities, scopes and expiry can be changed; the token can't. See [Editing grants](#editing-grants). |
 
-The token is shown only once, in the grant-creation flow. If `grants.json` can't be read, Trellis preserves it, marks the store read-only, and treats no grant as active.
+The token is shown only once, in the grant-creation flow. If `grants.json` can't be read, or has a newer `schemaVersion`, or names a capability or scope this build doesn't know, Trellis preserves it, marks the store read-only, and treats no grant as active.
 
 Tokens never go on a command line. The CLI reads the token from standard input (`--token-stdin`) or from the Keychain (`--keychain-grant GRANT_UUID`), and it rejects `--token`, `--password` and `--secret`. Tokens never go into environment variables that shells inherit, either; launched sessions have Trellis control variables removed from their environment.
+
+## Presets and editing grants
+
+The grant sheet leads with presets. Each one sets its capabilities and a starting scope, which you can still change:
+
+| Preset | What it can do (protocol 1 names) | Starting scope |
+| --- | --- | --- |
+| **Observer** | `metadata.read`, `session.output.read`, `host.read`, `theme.read`, plus reading projects and tasks (protocol 2) | all spaces and hosts |
+| **Operator** | Observer + `layout.write`, `session.start`, `session.input`, `session.close`, plus running tasks (protocol 2) | all spaces, approved hosts |
+| **Agent orchestrator** | Operator, plus agent, project and remote workspace capabilities that only protocol 2 uses | only spaces this grant creates, approved hosts |
+| **Full control** | every capability | everything |
+| **Custom** | what you choose | what you choose |
+
+Custom lists every capability grouped by area, described in plain language with the capability name underneath; changing any capability turns a preset into Custom. Some capabilities belong to areas only protocol 2 (in development) uses: agents, remote workspaces, projects and tasks. Protocol 1 doesn't see them, and a grant's v1 `capabilities` list only the v1 ones it holds.
+
+### Editing grants
+
+**Edit…** next to an active grant opens the same form.
+
+- **Narrowing** (removing a capability, narrowing a scope, an earlier expiry) applies at once. Subscriptions the grant no longer allows end, MCP sessions of the grant end, and every open connection gets `AUTH_REQUIRED` on its next call, so the client authenticates again and sees the new limits.
+- **Widening** (adding a capability or scope, a later expiry) asks for confirmation first; **Cancel** leaves the grant exactly as it was. Open connections keep working and get the new access on their next call.
+- **Reapprove** next to a changed host refreshes host approvals as before.
 
 ## Capabilities
 
@@ -38,6 +62,7 @@ Tokens never go on a command line. The CLI reads the token from standard input (
 ## Scope
 
 - **Space scope** is either `all` or an explicit set of space IDs. Tabs, panes and sessions created inside a scoped space inherit its scope.
+- A grant made for protocol 2 can have the **only spaces this grant creates** scope (`created`, the Agent orchestrator preset). Protocol 1 treats it as the set of spaces the grant has created through protocol 2 so far: `spaceScope` in the `auth.authenticate` result lists them, and since creating a space needs all-spaces scope in protocol 1, a protocol 1 client can't add to it.
 - These operations require **all-spaces** scope: creating a new top-level space, reordering spaces, `layout.apply`, and all theme and appearance writes.
 - **Host scope** is either `all` or a set of approved hosts. Each approval is bound to the host's *connection revision*. If a host's destination or another launch-affecting field changes, the call returns `PERMISSION_DENIED` until the user approves the host again.
 - **Out-of-scope IDs return `NOT_FOUND`**, exactly as if they didn't exist, so a client can't discover resources it isn't allowed to see. Metadata events are redacted the same way; for example, `space.*` events go only to grants with all-spaces scope.

@@ -121,6 +121,19 @@ public actor EventHub {
 
     public func removeGrant(_ grantID: UUID) { subscriptions = subscriptions.filter { $0.value.grantID != grantID } }
 
+    /// After an edit narrows a grant, ends its subscriptions that `events.subscribe` would now refuse: every one without
+    /// metadata.read, output ones without session.output.read, appearance ones without theme.read. Delivery already
+    /// re-checks space scope per event.
+    public func revalidate(_ grant: AutomationGrant) {
+        subscriptions = subscriptions.filter { _, subscription in
+            guard subscription.grantID == grant.id else { return true }
+            guard grant.allows(.metadataRead) else { return false }
+            if subscription.topics.contains("output"), !grant.allows(.sessionOutputRead) { return false }
+            if subscription.topics.contains("appearance"), !grant.allows(.themeRead) { return false }
+            return true
+        }
+    }
+
     /// Records metadata events in the ring and delivers them in order.
     public func publish(_ events: [WorkspaceEvent]) async {
         for workspaceEvent in events {
@@ -141,7 +154,7 @@ public actor EventHub {
     public func publishOutput(session: UUID, spaceID: UUID?, data: Data, next: OutputCursor, gap: Bool = false) async {
         guard !data.isEmpty else { return }
         for subscription in subscriptions.values where subscription.topics.contains("output") {
-            guard let grant = await activeGrant(subscription), grant.allows(.sessionOutputRead), visible(spaceID, grant),
+            guard let grant = await activeGrant(subscription), grant.allows(.metadataRead), grant.allows(.sessionOutputRead), visible(spaceID, grant),
                 subscription.resourceIDs.isEmpty || subscription.resourceIDs.contains(session)
             else { continue }
             send(
@@ -168,14 +181,11 @@ public actor EventHub {
         return subscriptions[subscription.id] == nil ? nil : grant
     }
 
-    private func visible(_ spaceID: UUID?, _ grant: AutomationGrant) -> Bool {
-        switch grant.spaceScope {
-        case .all: true
-        case .spaces(let ids): spaceID.map(ids.contains) ?? false
-        }
-    }
+    private func visible(_ spaceID: UUID?, _ grant: AutomationGrant) -> Bool { spaceID.map(grant.reaches) ?? (grant.spaceScope == .all) }
 
     private func deliverEvent(_ event: Event, to subscription: Subscription, grant: AutomationGrant) {
+        // Re-checked per event: a narrowing edit applies before `revalidate` runs.
+        guard grant.allows(.metadataRead) else { return }
         let workspace = event.event
         if workspace.topic == "appearance" {
             // Appearance is global: it needs theme.read, independent of space scope.

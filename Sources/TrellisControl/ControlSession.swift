@@ -78,8 +78,12 @@ public struct ControlIdentity: Equatable, Sendable {
     public let grantID: UUID?
     /// The protocol negotiated by `auth.authenticate`: 1, or 2 when the app runs with `--automation-v2`.
     public let protocolVersion: Int
-    public init(connectionID: UUID, peerUID: uid_t, grantID: UUID? = nil, protocolVersion: Int = 1) {
+    /// The grant's revision when this connection authenticated; an edit that narrows the grant past it ends the
+    /// authentication (`AUTH_REQUIRED`).
+    public let grantRevision: UInt64?
+    public init(connectionID: UUID, peerUID: uid_t, grantID: UUID? = nil, protocolVersion: Int = 1, grantRevision: UInt64? = nil) {
         self.connectionID = connectionID; self.peerUID = peerUID; self.grantID = grantID; self.protocolVersion = protocolVersion
+        self.grantRevision = grantRevision
     }
 }
 

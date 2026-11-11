@@ -182,13 +182,20 @@ public struct MethodSpecV2: Sendable {
     /// Declared parameters; the conventions add `limit`/`cursor`, `expectedRevision` and `idempotencyKey`.
     public let declaredParams: [ParamV2]
     public let capabilities: Set<CapabilityV2>
+    /// Groups of which the grant needs at least one each (`agent.respond` or `session.input`, permissions.md), the
+    /// intent-level capability first.
+    public let anyOf: [[CapabilityV2]]
     public let conditional: [ConditionalCapabilityV2]
     public let rules: [ParamRuleV2]
     public let resources: [ResourceRuleV2]
     /// Needs a grant whose space scope is `all`.
     public let requiresAllSpaces: Bool
-    /// Needs all-spaces scope only with these parameters (`host.connect` into a new space).
+    /// Needs all-spaces scope only with these parameters.
     public let allSpacesIf: ConditionV2?
+    /// Creates a top-level space: needs `all` or `created` space scope, and with `created` the space joins it.
+    public let createsSpace: Bool
+    /// Creates a top-level space only with these parameters (`host.connect` into a new space).
+    public let createsSpaceIf: ConditionV2?
     public let effect: EffectV2
     /// Codes particular to the method; `errors` adds the ones every method of its kind can return.
     public let declaredErrors: Set<APIErrorCode>
@@ -196,13 +203,14 @@ public struct MethodSpecV2: Sendable {
     public let paginated: Bool
 
     public init(
-        _ name: String, _ summary: String, params: [ParamV2] = [], capabilities: Set<CapabilityV2> = [], conditional: [ConditionalCapabilityV2] = [],
-        rules: [ParamRuleV2] = [], resources: [ResourceRuleV2] = [], allSpaces: Bool = false, allSpacesIf: ConditionV2? = nil, effect: EffectV2 = .read,
-        errors: Set<APIErrorCode> = [], paginated: Bool = false
+        _ name: String, _ summary: String, params: [ParamV2] = [], capabilities: Set<CapabilityV2> = [], anyOf: [[CapabilityV2]] = [],
+        conditional: [ConditionalCapabilityV2] = [], rules: [ParamRuleV2] = [], resources: [ResourceRuleV2] = [], allSpaces: Bool = false,
+        allSpacesIf: ConditionV2? = nil, createsSpace: Bool = false, createsSpaceIf: ConditionV2? = nil, effect: EffectV2 = .read, errors: Set<APIErrorCode> = [],
+        paginated: Bool = false
     ) {
-        self.name = name; self.summary = summary; declaredParams = params; self.capabilities = capabilities; self.conditional = conditional
-        self.rules = rules; self.resources = resources; requiresAllSpaces = allSpaces; self.allSpacesIf = allSpacesIf; self.effect = effect
-        declaredErrors = errors; self.paginated = paginated
+        self.name = name; self.summary = summary; declaredParams = params; self.capabilities = capabilities; self.anyOf = anyOf; self.conditional = conditional
+        self.rules = rules; self.resources = resources; requiresAllSpaces = allSpaces; self.allSpacesIf = allSpacesIf; self.createsSpace = createsSpace
+        self.createsSpaceIf = createsSpaceIf; self.effect = effect; declaredErrors = errors; self.paginated = paginated
     }
 
     /// `space` for `space.list`, `remote` for `remote.helper.install`.
@@ -235,7 +243,9 @@ public struct MethodSpecV2: Sendable {
     /// Every application error the method can return: its own plus those implied by its shape.
     public var errors: Set<APIErrorCode> {
         var codes = declaredErrors.union([.authRequired, .limitExceeded])
-        if !capabilities.isEmpty || !conditional.isEmpty || requiresAllSpaces || allSpacesIf != nil || resources.contains(where: { $0.kind == .host }) {
+        if !capabilities.isEmpty || !anyOf.isEmpty || !conditional.isEmpty || requiresAllSpaces || allSpacesIf != nil || createsSpace || createsSpaceIf != nil
+            || resources.contains(where: { $0.kind == .host })
+        {
             codes.insert(.permissionDenied)
         }
         if !resources.isEmpty { codes.insert(.notFound) }
@@ -244,11 +254,28 @@ public struct MethodSpecV2: Sendable {
         return codes
     }
 
-    /// The capabilities this call needs with these parameters.
+    /// The capabilities this call needs with these parameters, apart from the `anyOf` groups.
     public func requiredCapabilities(for params: [String: JSONValue]) -> Set<CapabilityV2> {
         capabilities.union(conditional.filter { $0.condition.applies(to: params) }.map(\.capability))
     }
 
+    /// What `granted` lacks for this call, for `details.missing`. An unmet `anyOf` group is reported by its first member,
+    /// the intent-level capability (`agent.respond` rather than `session.input`).
+    public func missingCapabilities(for params: [String: JSONValue], granted: Set<CapabilityV2>) -> Set<CapabilityV2> {
+        var missing = requiredCapabilities(for: params).subtracting(granted)
+        // An empty group (refused by the catalog checks) can't be met: it fails closed on its first required capability.
+        for group in anyOf where granted.isDisjoint(with: group) { missing.insert(group.first ?? capabilities.sorted().first ?? .workspaceRead) }
+        return missing
+    }
+
+    /// Whether a grant holding `granted` can ever call this method (before conditional capabilities and scope).
+    public func isReachable(with granted: Set<CapabilityV2>) -> Bool {
+        capabilities.isSubset(of: granted) && anyOf.allSatisfy { !granted.isDisjoint(with: $0) }
+    }
+
     /// Whether this call needs a grant whose space scope is `all`.
     public func needsAllSpaces(for params: [String: JSONValue]) -> Bool { requiresAllSpaces || allSpacesIf?.applies(to: params) == true }
+
+    /// Whether this call creates a top-level space (needs `all` or `created` scope; with `created` it joins the scope).
+    public func createsSpace(for params: [String: JSONValue]) -> Bool { createsSpace || createsSpaceIf?.applies(to: params) == true }
 }

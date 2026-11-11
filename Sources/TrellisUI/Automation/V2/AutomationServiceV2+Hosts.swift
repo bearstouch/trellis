@@ -108,7 +108,10 @@ extension AutomationServiceV2 {
             let name = try Self.name(placement, "name") ?? title
             let result = try await run(
                 .createSpace(name: name),
-                then: { result in result.createdSpaceID.flatMap { id in result.snapshot.spaces.first { $0.id == id }?.activeTabID }.map { .renameTab(id: $0, title: title) } })
+                then: { result in
+                    if let id = result.createdSpaceID { call.recordCreatedSpace(id) }
+                    return result.createdSpaceID.flatMap { id in result.snapshot.spaces.first { $0.id == id }?.activeTabID }.map { .renameTab(id: $0, title: title) }
+                })
             guard let space = result.createdSpaceID.flatMap({ id in result.snapshot.spaces.first { $0.id == id } }), let tab = result.snapshot.tabs[space.activeTabID] else {
                 throw ControlError.internalError
             }

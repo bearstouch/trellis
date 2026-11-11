@@ -260,11 +260,13 @@ extension MethodSpecV2 {
 
     /// Capabilities and scope as methods.md writes them: `workspace.write (+session.start if start), all spaces`.
     public var requirementSummary: String {
-        var parts = capabilities.sorted().map(\.rawValue).joined(separator: " + ")
+        var parts = (capabilities.sorted().map(\.rawValue) + anyOf.map { $0.map(\.rawValue).joined(separator: " or ") }).joined(separator: " + ")
         let extras = conditional.map { "+\($0.capability.rawValue) if \($0.condition.summary)" }
         if !extras.isEmpty { parts += (parts.isEmpty ? "" : " ") + "(" + extras.joined(separator: ", ") + ")" }
         if requiresAllSpaces { parts += (parts.isEmpty ? "" : ", ") + "all spaces" }
         if let allSpacesIf { parts += (parts.isEmpty ? "" : ", ") + "all spaces if " + allSpacesIf.summary }
+        if createsSpace { parts += (parts.isEmpty ? "" : ", ") + "all or created spaces" }
+        if let createsSpaceIf { parts += (parts.isEmpty ? "" : ", ") + "all or created spaces if " + createsSpaceIf.summary }
         return parts.isEmpty ? "none" : parts
     }
 

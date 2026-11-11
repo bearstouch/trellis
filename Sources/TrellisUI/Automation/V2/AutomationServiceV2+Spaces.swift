@@ -24,7 +24,13 @@ extension AutomationServiceV2 {
         case "space.get": return ConventionsV2.resource("space", try space(call, try p.uuid("id")))
         case "space.create":
             guard let name = try Self.name(p, "name") else { throw ControlError.invalidParams("name is required.", fields: ["name": "1–200 characters"]) }
-            let result = try await run(.createSpace(name: name), expecting: p.expectedRevision.map { .workspace(revision: $0) })
+            // Recorded inside the store transaction, so the space is in a `created` grant's scope before anything sees it.
+            let result = try await run(
+                .createSpace(name: name), expecting: p.expectedRevision.map { .workspace(revision: $0) },
+                then: { created in
+                    if let id = created.createdSpaceID { call.recordCreatedSpace(id) }
+                    return nil
+                })
             guard let spaceID = result.createdSpaceID, let space = result.snapshot.spaces.first(where: { $0.id == spaceID }), let tab = result.snapshot.tabs[space.activeTabID]
             else { throw ControlError.internalError }
             if try p.optionalBool("start") == true { await model.automationStart(tab.root.paneIDs) }

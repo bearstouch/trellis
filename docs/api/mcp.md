@@ -103,7 +103,7 @@ All clients share the server's limits: 32 sessions and 16 connections in total.
 - A network client has no user ID to check, so the token is its only credential. Its grant's expiry, revocation and scope apply exactly as on the socket.
 - Failed authentications are rate-limited to 5 per 60 seconds (`429` with `Retry-After`). The limit is counted separately from the socket's, so failures from the network can't lock out the local CLI.
 - Sessions expire after 30 minutes of inactivity. At most 32 sessions exist at once; opening another closes the least recently used one.
-- Revoking a grant immediately ends its MCP sessions, as it does its socket connections. A tool call on an expired grant returns `AUTH_REQUIRED` and ends the session.
+- Revoking a grant immediately ends its MCP sessions, as it does its socket connections, and so does narrowing it in Settings → Automation (the client starts a new session and gets the new tool list). A tool call on an expired grant returns `AUTH_REQUIRED` and ends the session.
 
 ## Tools
 

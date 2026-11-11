@@ -21,23 +21,28 @@ final class SpaceAliasTests: XCTestCase {
         XCTAssertNil(AuthorizationPolicy.requirements["window.list"], "Aliases are resolved before the catalog, never listed in it")
     }
 
-    /// grants.json keeps the stored names it had before the rename, so a grant reads the same in older and newer builds.
-    func testGrantsKeepTheirStoredScopeNames() throws {
+    /// A grants.json written before the rename (schema 1, `windowScope`/`windows`) still reads, once: the migration to
+    /// schema 2 keeps the scope and never writes the old names again.
+    func testGrantsStoredUnderTheOldScopeNamesMigrate() async throws {
         let space = UUID()
         let json = #"""
-            {"id":"\#(UUID().uuidString)","name":"ci","tokenHash":"abc","capabilities":["metadata.read"],
+            [{"id":"\#(UUID().uuidString)","name":"ci","tokenHash":"abc","capabilities":["metadata.read"],
              "windowScope":{"windows":{"_0":["\#(space.uuidString)"]}},"hostScope":{"all":{}},
-             "createdAt":"2026-01-01T00:00:00Z","expiresAt":"2027-01-01T00:00:00Z"}
+             "createdAt":"2026-01-01T00:00:00Z","expiresAt":"2027-01-01T00:00:00Z"},
+             {"id":"\#(UUID().uuidString)","name":"all","tokenHash":"def","capabilities":["metadata.read"],
+             "windowScope":{"all":{}},"hostScope":{"all":{}},"createdAt":"2026-01-01T00:00:00Z","expiresAt":"2027-01-01T00:00:00Z"}]
             """#
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-        let grant = try decoder.decode(AutomationGrant.self, from: Data(json.utf8))
-        XCTAssertEqual(grant.spaceScope, .spaces([space]))
-        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-        let written = String(decoding: try encoder.encode(grant), as: UTF8.self)
-        XCTAssertTrue(written.contains("\"windowScope\"") && written.contains("\"windows\""), written)
-        XCTAssertFalse(written.contains("spaceScope"))
-        let all = try decoder.decode(AutomationGrant.self, from: Data(json.replacingOccurrences(of: #"{"windows":{"_0":["\#(space.uuidString)"]}}"#, with: #"{"all":{}}"#).utf8))
-        XCTAssertEqual(all.spaceScope, .all)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tsa-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("grants.json")
+        try OwnerOnlyFile.publish(Data(json.utf8), to: url)
+        let store = GrantStore(url: url, secrets: NoSecretsStore())
+        await store.load()
+        let grants = await store.grants
+        XCTAssertEqual(grants.map(\.spaceScope), [.spaces([space]), .all])
+        let written = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(written.contains("\"spaces\" : ["), written)
+        XCTAssertFalse(written.contains("windowScope") || written.contains("\"windows\"") || written.contains("spaceScope"), written)
     }
 
     func testLayoutVersionOneNamesWindowsAndVersionTwoNamesSpaces() {
@@ -64,4 +69,9 @@ final class SpaceAliasTests: XCTestCase {
             guard case .failure = LayoutJSON.parse(document(version, list)) else { return XCTFail("Accepted version \(version) with \(list)") }
         }
     }
+}
+
+private struct NoSecretsStore: GrantSecretStore {
+    func store(_ token: String, grantID: UUID) throws {}
+    func remove(grantID: UUID) {}
 }
