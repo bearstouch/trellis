@@ -89,7 +89,10 @@ extension AppWorkspaceModel {
 }
 
 struct ProjectSupportFailure: LocalizedError {
+    /// What failed, for protocol 2's error codes; the sheet shows only the message.
+    enum Reason: Equatable { case other, folder, disconnected, helperOutdated, unavailable, layout }
     let message: String
-    init(_ message: String) { self.message = message }
+    var reason: Reason = .other
+    init(_ message: String, reason: Reason = .other) { self.message = message; self.reason = reason }
     var errorDescription: String? { message }
 }

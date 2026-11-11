@@ -88,27 +88,27 @@ extension AppWorkspaceModel {
         taskCatalogGeneration &+= 1
         let generation = taskCatalogGeneration
         let target = [paneID, taskCatalog?.paneID, presentation.activePane?.id].lazy.compactMap { $0 }.first { self.snapshot.panes[$0] != nil }
-        guard let pane = target.flatMap({ snapshot.panes[$0] }), let launch = snapshot.sessions[pane.sessionID]?.launch else {
+        guard let target else {
             taskCatalog = nil
             return
         }
-        // FR-RW11: a remote workspace pane's project is read on its host, from the shell's authenticated directory.
-        if let hostID = launch.remoteHostID {
-            var catalog: TaskCatalog?
-            if let directory = remoteWorkingDirectory(paneID: pane.id) { catalog = await loadRemoteTaskCatalog(directory: directory, hostID: hostID, paneID: pane.id) }
-            guard generation == taskCatalogGeneration else { return }
-            if taskCatalog != catalog { taskCatalog = catalog }
-            return
-        }
-        guard !Self.isRemote(launch), let directory = paneDirectory(pane.id) else {
-            taskCatalog = nil
-            return
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let paneID = pane.id
-        let catalog = await Task.detached(priority: .utility) { Self.loadTaskCatalog(directory: directory, home: home, paneID: paneID) }.value
+        let catalog = await loadTaskCatalog(paneID: target)
         guard generation == taskCatalogGeneration else { return }
         if taskCatalog != catalog { taskCatalog = catalog }
+    }
+
+    /// A pane's project and its tasks, read off the main actor (FR-TK02, FR-TK03); nil when the pane has none. Protocol 2's
+    /// task.* read it the same way, without touching the Tasks view's catalog.
+    func loadTaskCatalog(paneID: UUID) async -> TaskCatalog? {
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return nil }
+        // FR-RW11: a remote workspace pane's project is read on its host, from the shell's authenticated directory.
+        if let hostID = launch.remoteHostID {
+            guard let directory = remoteWorkingDirectory(paneID: pane.id) else { return nil }
+            return await loadRemoteTaskCatalog(directory: directory, hostID: hostID, paneID: pane.id)
+        }
+        guard !Self.isRemote(launch), let directory = paneDirectory(pane.id) else { return nil }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return await Task.detached(priority: .utility) { Self.loadTaskCatalog(directory: directory, home: home, paneID: paneID) }.value
     }
 
     nonisolated static func loadTaskCatalog(directory: String, home: String, paneID: UUID) -> TaskCatalog? {
@@ -219,31 +219,56 @@ extension AppWorkspaceModel {
     /// Ctrl-U to kill only what is left of the cursor.
     @discardableResult
     func typeTask(_ task: LaunchTask, file: LaunchFile?, root: String, paneID: UUID, taskID: String) -> Bool {
+        do { try startTask(task, file: file, root: root, paneID: paneID, taskID: taskID) } catch {
+            errorMessage = error.message
+            return false
+        }
+        return true
+    }
+
+    /// Why a task wasn't typed: the pane's availability, a line that can't be quoted, or a failed write.
+    enum TaskStartFailure: Error, Equatable {
+        case unavailable(TaskRunAvailability)
+        case unquotable(String)
+        case notSent
+
+        var message: String {
+            switch self {
+            case .unavailable(let availability): availability.reason ?? TaskRunAvailability.noIntegration.reason ?? ""
+            case .unquotable(let name): L("“%@” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long.", name)
+            case .notSent: L("The task could not be typed. The session may have stopped.")
+            }
+        }
+    }
+
+    /// Types a task into a pane that is ready for it, exactly as Run does; the Tasks view and protocol 2's task.run share
+    /// it, so both type the same line and follow the same run.
+    func startTask(_ task: LaunchTask, file: LaunchFile?, root: String, paneID: UUID, taskID: String) throws(TaskStartFailure) {
         let availability = taskAvailability(paneID: paneID)
         guard availability == .ready, let terminal = terminals[paneID], let shell = taskShell(paneID: paneID) else {
-            errorMessage = availability.reason ?? TaskRunAvailability.noIntegration.reason
-            return false
+            throw .unavailable(availability == .ready ? .noIntegration : availability)
         }
         guard
             let line = TaskCommand.compose(
                 command: task.command, directory: task.directory(projectRoot: root),
                 currentDirectory: taskCurrentDirectory(paneID: paneID, directory: task.directory(projectRoot: root)),
                 environment: file?.environment(for: task) ?? [], shell: shell.path, kind: shell.kind)
-        else {
-            errorMessage = L("“%@” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long.", task.name)
-            return false
-        }
-        return sendTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: task.name)
+        else { throw .unquotable(task.name) }
+        try typeTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: task.name)
     }
 
     /// Types `line` after Ctrl-E Ctrl-U and follows it as a task run. Callers check `taskAvailability` first.
     func sendTaskLine(_ line: String, to terminal: NativeTerminal, paneID: UUID, taskID: String, name: String) -> Bool {
-        do { try terminal.adapter.send(Data(("\u{05}\u{15}" + line + "\r").utf8)) } catch {
-            errorMessage = L("The task could not be typed. The session may have stopped.")
+        do { try typeTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: name) } catch {
+            errorMessage = error.message
             return false
         }
-        taskRuns[paneID] = TaskRun(taskID: taskID, name: name, at: activityNow())
         return true
+    }
+
+    private func typeTaskLine(_ line: String, to terminal: NativeTerminal, paneID: UUID, taskID: String, name: String) throws(TaskStartFailure) {
+        do { try terminal.adapter.send(Data(("\u{05}\u{15}" + line + "\r").utf8)) } catch { throw .notSent }
+        taskRuns[paneID] = TaskRun(taskID: taskID, name: name, at: activityNow())
     }
 
     // MARK: State and stopping (FR-TK07, FR-TK08)

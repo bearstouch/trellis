@@ -36,6 +36,8 @@ public struct PaneRuntimeV2: Sendable, Equatable {
     public var needsInput: InputWaitReason?
     public var progress: TerminalProgress?
     public var agent: AgentSummaryV2?
+    /// The task Run typed into the pane, active or just finished (FR-TK07).
+    public var task: TaskRun?
     public init() {}
 }
 
@@ -53,8 +55,12 @@ public struct TabRuntimeV2: Sendable, Equatable {
 
 public struct SpaceRuntimeV2: Sendable, Equatable {
     public enum Activity: String, Sendable { case output, exit }
-    /// The space's project was deleted from the library.
+    /// The space's project was deleted from the library (known only once the library loaded).
     public var projectMissing = false
+    /// The project's name, and the folder the space was launched in as the launch remembers it (absolute on this Mac,
+    /// relative to home on a host), when known.
+    public var projectName: String?
+    public var projectFolder: String?
     public var activity: Activity?
     public init() {}
 }
@@ -96,7 +102,7 @@ public struct ProjectionV2: Sendable {
         access = GrantAccess(grant: grant, snapshot: snapshot); capabilities = CapabilityV2.granted(by: grant)
     }
 
-    private var executes: Bool { capabilities.contains(.sessionExecute) }
+    var executes: Bool { capabilities.contains(.sessionExecute) }
 
     // MARK: Visibility
 
@@ -136,9 +142,14 @@ public struct ProjectionV2: Sendable {
         object.set("machine", machine(kind: space.remoteHostID == nil ? "local" : "remote", hostID: space.remoteHostID))
         // Project scope covers a project space's `project` field (permissions.md#scopes); the space itself follows space scope.
         if let projectID = space.projectID, access.reaches(project: projectID) {
-            // name, target and folder need project.read (and session.execute), with the project projection of phase 7.
+            // name and target need project.read; folder also session.execute (resources.md#space).
             var project = ResultObjectV2()
             project.set("id", projectID)
+            if capabilities.contains(.projectRead) {
+                project.set("name", live.projectName)
+                project.set("target", projectTarget(space.remoteHostID.map { .host($0) } ?? .local))
+                if executes { project.set("folder", live.projectFolder) }
+            }
             if live.projectMissing { project.set("missing", true) }
             object.set("project", project.json)
         }
@@ -232,6 +243,7 @@ public struct ProjectionV2: Sendable {
         attention.set("progress", live.progress.map(progress))
         object.set("attention", attention.json)
         if let agent = live.agent { object.set("agent", JSONValue.object(["agentId": .string(agent.agentID), "state": .string(agent.state.rawValue)])) }
+        if let task = live.task { object.set("task", JSONValue.object(["taskId": .string(task.taskID), "phase": .string(Self.phase(task))])) }
         return object.json
     }
 

@@ -65,29 +65,17 @@ final class PermissionsV2Tests: XCTestCase {
 
     // MARK: - Composition (API2-06a, second table)
 
-    /// The agent and remote methods from the real catalog (phases 5 and 6), then declarations of phase 7's methods as
-    /// permissions.md composes them; phase 7 declares the real ones.
+    /// The real declarations (phases 5–7), and one sample pane.close. What a project runs (its commands and agents) is
+    /// known only from its definition, so those rows are checked over the real model (AutomationV2ProjectTests).
     static let composed: [MethodSpecV2] = [
         MethodCatalogV2.spec("agent.start")!, MethodCatalogV2.spec("agent.respond")!, MethodCatalogV2.spec("agent.install")!, MethodCatalogV2.spec("agent.runs")!,
-        MethodSpecV2(
-            "task.run", "Run a trusted task.", params: [ParamV2("name", .string(maxBytes: 200), required: true, "Task.")], capabilities: [.taskRun],
-            effect: .mutating(revision: .exempt(reason: "Runs change no resource."))),
-        MethodSpecV2(
-            "project.launch", "Launch a project.",
-            params: [ParamV2("id", .uuid, required: true, "Project."), ParamV2("agents", .boolean, "Start its agents."), ParamV2("hostId", .uuid, "Host target.")],
-            capabilities: [.projectLaunch, .sessionStart, .sessionExecute],
-            conditional: [ConditionalCapabilityV2(.agentControl, if: .present("agents")), ConditionalCapabilityV2(.remoteConnect, if: .present("hostId"))],
-            resources: [ResourceRuleV2(.project, "id"), ResourceRuleV2(.host, "hostId")], createsSpace: true, effect: .mutating(revision: .container("workspace"))),
-        MethodSpecV2(
-            "project.update", "Edit a project.",
-            params: [ParamV2("id", .uuid, required: true, "Project."), ParamV2("name", .string(maxBytes: 200), "Name."), ParamV2("commands", .stringList(), "Pane commands.")],
-            capabilities: [.projectWrite], conditional: [ConditionalCapabilityV2(.sessionExecute, if: .provided("commands"))], rules: [.atLeastOne(["name", "commands"])],
-            resources: [ResourceRuleV2(.project, "id")], effect: .mutating(revision: .exempt(reason: "Sample."))),
+        MethodCatalogV2.spec("task.run")!, MethodCatalogV2.spec("project.launch")!, MethodCatalogV2.spec("project.update")!,
         MethodCatalogV2.spec("remote.open")!, MethodCatalogV2.spec("remote.helper.install")!, MethodCatalogV2.spec("remote.helper.remove")!,
         MethodSpecV2(
             "pane.close", "Close a pane.", params: [ParamV2("id", .uuid, required: true, "Pane."), ParamV2("allowRunning", .boolean, "Stop sessions.")],
             capabilities: [.workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionClose, if: .present("allowRunning"))], resources: [ResourceRuleV2(.pane, "id")],
-            effect: .mutating(revision: .resource(param: "id"), destructive: true))
+            effect: .mutating(revision: .resource(param: "id"), destructive: true)),
+        MethodCatalogV2.spec("project.create")!
     ]
 
     func testCompositionRowsAllowAndDeny() async throws {
@@ -96,6 +84,8 @@ final class PermissionsV2Tests: XCTestCase {
         domain.setHost(host)
         let dispatcher = dispatcher(Self.composed)
         let project = JSONValue.string(UUID().uuidString)
+        let local = JSONValue.object(["kind": .string("local")])
+        let onHost = JSONValue.object(["kind": .string("host"), "hostId": .string(host.id.uuidString)])
         let agent: [String: JSONValue] = ["agentId": .string("trellis-codex"), "placement": .object(["kind": .string("pane"), "paneId": pane])]
         let answer: [String: JSONValue] = ["sessionId": .string(domain.sessionA.uuidString), "action": .string("approve")]
         // (row, method, params, enough, one short, what the short grant misses)
@@ -112,21 +102,22 @@ final class PermissionsV2Tests: XCTestCase {
                 "install an agent", "agent.install", agent, [.agentInstall, .sessionExecute, .agentControl, .workspaceWrite], [.agentInstall, .agentControl, .workspaceWrite],
                 ["session.execute"]
             ),
-            ("run a trusted task", "task.run", ["name": .string("build")], [.taskRun], [.taskRead], ["task.run"]),
-            ("launch a project", "project.launch", ["id": project], [.projectLaunch, .sessionStart, .sessionExecute], [.projectLaunch, .sessionStart], ["session.execute"]),
+            ("run a trusted task", "task.run", ["paneId": pane, "taskId": .string("file:build")], [.taskRun], [.taskRead], ["task.run"]),
+            ("launch a project", "project.launch", ["id": project, "target": local], [.projectLaunch, .sessionStart], [.projectLaunch], ["session.start"]),
             (
-                "…with agents", "project.launch", ["id": project, "agents": .bool(true)], [.projectLaunch, .sessionStart, .sessionExecute, .agentControl],
-                [.projectLaunch, .sessionStart, .sessionExecute], ["agent.control"]
+                "…running its setup", "project.launch", ["id": project, "target": local, "setup": .bool(true)], [.projectLaunch, .sessionStart, .sessionExecute],
+                [.projectLaunch, .sessionStart], ["session.execute"]
             ),
             (
-                "…on a host", "project.launch", ["id": project, "hostId": .string(host.id.uuidString)], [.projectLaunch, .sessionStart, .sessionExecute, .remoteConnect],
-                [.projectLaunch, .sessionStart, .sessionExecute], ["remote.connect"]
+                "…in a chosen folder", "project.launch", ["id": project, "target": local, "folder": .string("~/shop")], [.projectLaunch, .sessionStart, .sessionExecute],
+                [.projectLaunch, .sessionStart], ["session.execute"]
             ),
             (
-                "edit a project's commands", "project.update", ["id": project, "commands": .array([.string("make")])], [.projectWrite, .sessionExecute], [.projectWrite],
-                ["session.execute"]
+                "…on a host", "project.launch", ["id": project, "target": onHost], [.projectLaunch, .sessionStart, .remoteConnect], [.projectLaunch, .sessionStart],
+                ["remote.connect"]
             ),
-            ("rename a project", "project.update", ["id": project, "name": .string("X")], [.projectWrite], [.projectRead], ["project.write"]),
+            ("create a project", "project.create", ["document": .object([:])], [.projectWrite, .sessionExecute], [.projectWrite], ["session.execute"]),
+            ("edit a project", "project.update", ["id": project, "document": .object([:])], [.projectWrite], [.projectRead], ["project.write"]),
             ("open a remote workspace", "remote.open", ["hostId": .string(host.id.uuidString)], [.remoteConnect, .workspaceWrite], [.remoteConnect], ["workspace.write"]),
             // Installing a missing helper on the way needs remote.manage too; that is decided once the host is probed, so the
             // real model covers it (AutomationV2RemoteTests: CONFIRMATION_REQUIRED with reason helperInstall).
@@ -152,7 +143,7 @@ final class PermissionsV2Tests: XCTestCase {
         }
         // A project launch onto a host needs the host in scope too, and creating its space needs all or created scope.
         let (unapproved, _) = try await grant([.projectLaunch, .sessionStart, .sessionExecute, .remoteConnect], GrantScope(hosts: .approved([])))
-        let hidden = await call(dispatcher, "project.launch", ["id": project, "hostId": .string(host.id.uuidString)], unapproved)
+        let hidden = await call(dispatcher, "project.launch", ["id": project, "target": onHost], unapproved)
         XCTAssertEqual(outcome(hidden), "NOT_FOUND")
         let (narrow, _) = try await grant([.remoteConnect, .workspaceWrite], GrantScope(spaces: .spaces([domain.spaceA])))
         let refusedSpace = await call(dispatcher, "remote.open", ["hostId": .string(host.id.uuidString)], narrow)
@@ -278,9 +269,10 @@ final class PermissionsV2Tests: XCTestCase {
 
         let inScope = UUID(), outside = UUID()
         let (oneProject, _) = try await grant([.projectLaunch, .sessionStart, .sessionExecute], GrantScope(projects: .projects([inScope])))
-        let launch = await call(dispatcher, "project.launch", ["id": .string(outside.uuidString)], oneProject)
+        let local = JSONValue.object(["kind": .string("local")])
+        let launch = await call(dispatcher, "project.launch", ["id": .string(outside.uuidString), "target": local], oneProject)
         XCTAssertEqual(outcome(launch), "NOT_FOUND", "A project outside scope is NOT_FOUND for launch")
-        let allowed = await call(dispatcher, "project.launch", ["id": .string(inScope.uuidString.uppercased())], oneProject)
+        let allowed = await call(dispatcher, "project.launch", ["id": .string(inScope.uuidString.uppercased()), "target": local], oneProject)
         XCTAssertEqual(outcome(allowed), "OK")
 
         let access = GrantAccess(grant: codexOnly, snapshot: await domain.snapshot())

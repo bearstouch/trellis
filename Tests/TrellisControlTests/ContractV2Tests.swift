@@ -45,8 +45,10 @@ final class ContractV2Tests: XCTestCase {
                 "pane.split", "pane.resize", "pane.focus", "pane.maximize", "pane.close", "session.get", "session.start", "session.restart", "session.stop",
                 "session.sendInput", "session.execute", "session.readOutput", "agent.list", "agent.get", "agent.runs", "agent.start", "agent.restart", "agent.respond",
                 "agent.install", "host.list", "host.get", "host.create", "host.update", "host.delete", "host.connect", "remote.open", "remote.status",
-                "remote.reconnect", "remote.helper.install", "remote.helper.remove", "events.subscribe", "events.unsubscribe", "events.poll"
-            ], "Phases 1, 2, 4, 5 and 6")
+                "remote.reconnect", "remote.helper.install", "remote.helper.remove", "project.list", "project.get", "project.create", "project.update",
+                "project.delete", "project.capture", "project.check", "project.launch", "task.list", "task.get", "task.run", "task.stop", "events.subscribe",
+                "events.unsubscribe", "events.poll"
+            ], "Phases 1, 2 and 4–7")
     }
 
     func testEveryMethodHasAPolicyADescriptionAndAContractRow() throws {

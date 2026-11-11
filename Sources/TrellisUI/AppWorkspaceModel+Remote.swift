@@ -199,12 +199,12 @@ extension AppWorkspaceModel {
     /// disconnected): each needs the link back after a drop (FR-RW07).
     public func hasRemoteWorkspace(_ hostID: UUID) -> Bool {
         snapshot.spaces.contains { $0.remoteHostID == hostID } || projectLaunch?.terminal?.remoteTransport?.hostID == hostID
-            || pendingRemoteHangups[hostID]?.isEmpty == false
+            || automationSetupTerminals.contains { $0.remoteTransport?.hostID == hostID } || pendingRemoteHangups[hostID]?.isEmpty == false
     }
 
-    /// The host's terminals: its panes, and a project setup running there (FR-PL07), which is in no pane.
+    /// The host's terminals: its panes, and project setups running there (FR-PL07), which are in no pane.
     private func remoteTerminals(_ hostID: UUID) -> [NativeTerminal] {
-        (Array(terminals.values) + [projectLaunch?.terminal].compactMap { $0 }).filter { $0.remoteTransport?.hostID == hostID }
+        (Array(terminals.values) + [projectLaunch?.terminal].compactMap { $0 } + automationSetupTerminals).filter { $0.remoteTransport?.hostID == hostID }
     }
 
     /// A live session on the host still waiting for its pane to re-attach. One that ended or was closed while the link

@@ -28,8 +28,8 @@ Protocol 2 has its **own stream**: its own `sequence` (from 1 per app instance) 
 | `shell` | `command.started`, `command.finished` (`exitCode?`, `durationMs`), `folder.changed` (`path`, which needs session.execute) | resource is the session; `paneId` | workspace.read |
 | `agent` | `agent.state` (`state`, `previous`), `agent.settings` (`model?`, `effort?`), `agent.started`, `agent.ended`, `agent.availability` (`status`: installed, missing, checking or unknown; `hostId` for a host) | `agentId`; pane-level ones are about the session and carry `paneId` | workspace.read (+ the host's rules for a host's availability) |
 | `remote` | `remote.link` (`state`, `attempt?`, `nextAttemptAt?`, `reason?` for `needsInput` and `disconnected`: a [reason code](resources.md#remote-link-reasons)), `remote.helper` (`status`: current, outdated, missing, unsupported or unknown) | resource is the host | host.read, host in scope at its current connection |
-| `project` | `project.created/updated/deleted` (`revision`, `changed?`), `project.launched` (`spaceId`, `target.kind`, `hostId?`, `folder?`) | — | project.read, project in scope |
-| `task` | `task.run` (`phase`: submitted, running, finished or cancelled; `exitCode?`, `durationMs?`) | resource is the task ID; `paneId`, `sessionId` | task.read |
+| `project` | `project.created/updated/deleted` (`revision`, `changed?`), `project.launched` (`spaceId`, `target.kind`, `hostId?`, `folder?`) | — Changes and launches made in the app and through `project.*` alike | project.read, project in scope |
+| `task` | `task.run` (`phase`: submitted, running, finished or cancelled; `exitCode?`, `durationMs?`) | resource is the task ID (`file:<name>` or `detected:<name>`); `paneId`, `sessionId`. Runs started in the app and through `task.run` alike | task.read |
 | `host` | `host.created/updated/deleted` (`connectionRevision`, `revision`, `changed?`) | — | host.read, host approved |
 | `appearance` | `appearance.changed` | `mode`, `lightThemeId`, `darkThemeId`, `effectiveThemeId`, `revision` | theme.read |
 | `grant` | `grant.changed` (the subscriber's own grant was edited) | `revision` | none |

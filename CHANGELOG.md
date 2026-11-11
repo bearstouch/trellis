@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Grants file format:** `grants.json` is converted to a new format the first time this version starts; the old file is kept as `grants.json.v1.bak`. Existing grants keep their tokens and can do exactly what they could before. An earlier version of Trellis can't read the new file; restore the backup there.
 - **Kept sessions no longer run forever by default:** before, a session kept after quit ran until it ended by itself. Pick **No timeout** to keep that behavior.
 
+### Fixed
+
+- **Agent panes in a project's JSON:** the project editor's JSON view, **Import JSON…**, **Export JSON…** and project exports now keep a pane's `agent`. Before, the JSON view didn't show it and refused it as an unknown field, so switching to JSON and back, or exporting and importing a project, dropped its agent panes.
+
 ## [1.2.0] - 2026-11-10
 
 The stable 1.2 release. Coming from 1.1.0, you also get everything listed under the 1.2 betas: windows renamed to spaces, temporary tabs in project spaces, a right sidebar with Files, Changes, Tasks, Agents and the scratchpad, agents typed in a shell with live state, the welcome tour, translucent panes, the white Trellis Light terminal, and export and import of projects and hosts.

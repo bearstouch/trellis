@@ -3,7 +3,7 @@ import TrellisCore
 
 /// The protocol 2 method catalog (docs/api/v2/methods.md). Each phase adds its area here; nothing else lists methods.
 public enum MethodCatalogV2 {
-    public static let methods: [MethodSpecV2] = system + workspace + spaces + tabs + panes + sessions + agents + hosts + remote + events
+    public static let methods: [MethodSpecV2] = system + workspace + spaces + tabs + panes + sessions + agents + hosts + remote + projects + tasks + events
 
     public static let byName: [String: MethodSpecV2] = Dictionary(methods.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
 
@@ -130,6 +130,8 @@ public enum MethodCatalogV2 {
             var conditions = spec.conditional.map(\.condition)
             if let condition = spec.allSpacesIf { conditions.append(condition) }
             if let condition = spec.createsSpaceIf { conditions.append(condition) }
+            if let condition = spec.waitsIf { conditions.append(condition) }
+            if spec.waits && spec.waitsIf != nil { problem("waits and waitsIf are exclusive") }
             for condition in conditions { problems += Self.problems(in: condition, paths: paths).map { "\(name): \($0)" } }
             for rule in spec.conditional where spec.capabilities.contains(rule.capability) { problem("\(rule.capability.rawValue) is both required and conditional") }
             for rule in spec.rules {

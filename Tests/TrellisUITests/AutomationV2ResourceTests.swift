@@ -14,11 +14,13 @@ final class HarnessV2 {
     private var tokens: [String: String] = [:]
     private var nextID = 1
 
-    init() throws {
+    /// `projects` is the project library the adapter and the model's palette read, as the app wires it.
+    init(projects: ProjectListModel? = nil) throws {
         base = try Harness()
         base.handler = AuthorizingControlHandler(
             grants: base.grants, domain: AutomationService(model: base.model, hosts: base.hosts), idempotency: IdempotencyCache(now: { [clock = base.clock] in clock.now }),
-            v2Domain: AutomationServiceV2(model: base.model, hosts: base.hosts))
+            v2Domain: AutomationServiceV2(model: base.model, hosts: base.hosts, projects: projects))
+        if let projects { base.model.commandPaletteProjects = { projects.projects } }
     }
 
     /// Clients of a harness whose handler is already set up (an `EventsHarness`'s, with its event hub).

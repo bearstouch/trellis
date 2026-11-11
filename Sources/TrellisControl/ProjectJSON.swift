@@ -33,11 +33,11 @@ public enum ProjectJSON {
             guard case .object(let raw)? = value, case .string(let type)? = raw["type"] else { fail(`where`, "a node needs a type of pane or split."); return nil }
             switch type {
             case "pane":
-                guard let fields = object(value, ["type", "title", "directory", "command", "repository"], ["type"], `where`) else { return nil }
+                guard let fields = object(value, ["type", "title", "directory", "command", "agent", "repository"], ["type"], `where`) else { return nil }
                 return .pane(
                     ProjectPane(
                         title: string(fields, "title", `where`), directory: string(fields, "directory", `where`), command: string(fields, "command", `where`),
-                        repository: repository(fields, `where`)))
+                        repository: repository(fields, `where`), agent: string(fields, "agent", `where`)))
             case "split":
                 guard let fields = object(value, ["type", "axis", "ratio", "children"], ["type", "axis", "children"], `where`) else { return nil }
                 guard let axis = string(fields, "axis", `where`).flatMap(SplitAxis.init(rawValue:)) else { fail(`where`, "axis must be x or y."); return nil }
@@ -106,6 +106,7 @@ public enum ProjectJSON {
             case .pane(let pane):
                 var fields: [(String, StableJSON.Value)] = [("type", .string("pane"))]
                 text(&fields, "title", pane.title); text(&fields, "directory", pane.directory); text(&fields, "command", pane.command)
+                text(&fields, "agent", pane.agent)
                 repository(&fields, pane.repository)
                 return .object(fields)
             case .split(let axis, let ratio, let first, let second):

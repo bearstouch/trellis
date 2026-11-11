@@ -8,10 +8,13 @@ import TrellisCore
 public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
     let model: AppWorkspaceModel
     let hosts: HostListModel
+    /// The project library (project.*, a space's `project` field); nil where no library is wired, which answers the
+    /// project methods INVALID_STATE and never calls a project missing.
+    let projects: ProjectListModel?
     let instanceID: UUID
 
-    @MainActor public init(model: AppWorkspaceModel, hosts: HostListModel, instanceID: UUID = UUID()) {
-        self.model = model; self.hosts = hosts; self.instanceID = instanceID
+    @MainActor public init(model: AppWorkspaceModel, hosts: HostListModel, projects: ProjectListModel? = nil, instanceID: UUID = UUID()) {
+        self.model = model; self.hosts = hosts; self.projects = projects; self.instanceID = instanceID
     }
 
     public func snapshot() async -> WorkspaceSnapshot { await model.snapshotForAutomation() }
@@ -37,6 +40,8 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
             case "agent": return .success(try await performAgents(call))
             case "host": return .success(try await performHosts(call))
             case "remote": return .success(try await performRemote(call))
+            case "project": return .success(try await performProjects(call))
+            case "task": return .success(try await performTasks(call))
             default: return .failure(.methodNotFound)
             }
         } catch let error as ControlError {
@@ -54,6 +59,7 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
         case .resource(.pane, let id): return model.snapshot.panes[id] == nil ? nil : model.automationRevisions.panes[id] ?? 0
         case .resource(.session, let id): return model.snapshot.sessions[id] == nil ? nil : model.automationRevisions.sessions[id] ?? 0
         case .resource(.host, let id): return hosts.hosts.first { $0.id == id }?.revision
+        case .resource(.project, let id): return projects?.projects.first { $0.id == id }?.revision
         default: return nil
         }
     }
@@ -82,10 +88,16 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
     @MainActor func runtime(spaces spaceIDs: Set<UUID>?) -> RuntimeV2 {
         var runtime = RuntimeV2()
         let snapshot = model.snapshot
-        let projects = snapshot.spaces.contains { $0.projectID != nil } ? Set(model.commandPaletteProjects().map(\.id)) : []
+        // Only a library that was read can say a project is gone; before that, or after a failed read, none is missing.
+        let library = projects.flatMap { $0.isLoaded ? Dictionary($0.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }) : nil }
+        let folders = snapshot.spaces.contains { $0.projectID != nil } ? model.projectSpaceFolders() : [:]
         for space in snapshot.spaces where spaceIDs?.contains(space.id) ?? true {
             var spaceState = SpaceRuntimeV2()
-            if let project = space.projectID { spaceState.projectMissing = !projects.contains(project) }
+            if let project = space.projectID {
+                if let library { spaceState.projectMissing = library[project] == nil }
+                spaceState.projectName = library?[project]?.name
+                spaceState.projectFolder = folders[space.id]
+            }
             if let activity = model.activity[space.id] { spaceState.activity = activity.hasExit ? .exit : activity.hasOutput ? .output : nil }
             runtime.spaces[space.id] = spaceState
             for tab in space.tabIDs.compactMap({ snapshot.tabs[$0] }) {
@@ -122,6 +134,7 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
         }
         state.folder = model.currentDirectory(paneID: pane.id) ?? model.remoteWorkingDirectory(paneID: pane.id)
         state.needsInput = model.inputWaits[pane.id]
+        state.task = model.taskRuns[pane.id]
         return state
     }
 

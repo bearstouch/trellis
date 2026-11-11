@@ -195,9 +195,10 @@ extension MethodCatalogV2 {
             ], capabilities: [.sessionInput], rules: [.exactlyOne(["text", "base64"])], resources: [ResourceRuleV2(.session, "id")],
             effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .remoteDisconnected]),
         MethodSpecV2(
-            "session.execute", "Type one command line plus Return into a running session.",
-            params: [id("session"), ParamV2("command", .string(), required: true, "One line, no CR or LF.")], capabilities: [.sessionExecute],
-            resources: [ResourceRuleV2(.session, "id")], effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .remoteDisconnected]),
+            "session.execute", "Type one command line plus Return into a running session; with wait, return when the shell reports it finished.",
+            params: [id("session"), ParamV2("command", .string(), required: true, "One line, no CR or LF."), executeWait], capabilities: [.sessionExecute],
+            resources: [ResourceRuleV2(.session, "id")], effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .remoteDisconnected],
+            waitsIf: .present("wait")),
         MethodSpecV2(
             "session.readOutput", "Read a session's screen, its scrollback or its raw output stream from a cursor.",
             params: [
@@ -206,6 +207,16 @@ extension MethodCatalogV2 {
                 ParamV2("maxBytes", .integer(minimum: 1, maximum: 262_144), "At most this many bytes; default 65536.")
             ], capabilities: [.sessionOutputRead], resources: [ResourceRuleV2(.session, "id")], errors: [.invalidCursor])
     ]
+
+    /// The longest `session.execute` wait: the socket answers it out of order, so it holds no other call up.
+    public static let maximumExecuteWaitMs: Int64 = 600_000
+    static let executeWait = ParamV2(
+        "wait",
+        .structure(
+            ObjectSchemaV2([
+                ParamV2("until", .string(values: ["finished"]), required: true, "finished: the shell's command-finished mark (needs shell integration)."),
+                ParamV2("timeoutMs", .integer(minimum: 1, maximum: maximumExecuteWaitMs), "Give up waiting after this long, 1–600000 ms; default 30000.")
+            ])), "Wait for the command to finish (exitCode, durationMs, timedOut); needs authenticated shell integration.")
 
     // MARK: Hosts
 

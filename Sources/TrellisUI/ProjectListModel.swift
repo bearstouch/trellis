@@ -26,6 +26,11 @@ public final class ProjectListModel: ObservableObject {
     /// The committed list changed after the first load (old, new); protocol 2's project events come from here.
     public var onProjectsChanged: (([ProjectDefinition], [ProjectDefinition]) -> Void)?
     private var refreshed = false
+    /// The library's own revision, as last mirrored (project.list's `revision`).
+    public private(set) var revision: UInt64 = 0
+    /// The library was read and is usable: before that, or when it couldn't be read, a project that isn't listed may
+    /// still exist, so nothing may be called missing.
+    public private(set) var isLoaded = false
 
     public init(library: ProjectLibrary) { self.library = library }
 
@@ -119,6 +124,8 @@ public final class ProjectListModel: ObservableObject {
     private func refresh() async {
         let old = projects, first = !refreshed
         projects = await library.projects
+        revision = await library.revision
+        isLoaded = await library.isLoaded
         refreshed = true
         loadFailed = await library.loadFailed
         if !first, old != projects { onProjectsChanged?(old, projects) }

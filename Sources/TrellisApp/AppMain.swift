@@ -842,9 +842,10 @@ struct TrellisMain {
             let automationV2 = CommandLine.arguments.contains("--automation-v2")
             // Protocol 2's typed stream has its own sequence and ring (events.md); protocol 1's hub is unchanged.
             let eventsV2 = automationV2 ? EventHubV2(instanceID: instanceID, grants: grantStore) : nil
+            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
             let handler = AuthorizingControlHandler(
                 grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events,
-                v2Domain: automationV2 ? AutomationServiceV2(model: model, hosts: hosts, instanceID: instanceID) : nil, eventsV2: eventsV2)
+                v2Domain: automationV2 ? AutomationServiceV2(model: model, hosts: hosts, projects: projects, instanceID: instanceID) : nil, eventsV2: eventsV2)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
             let forwarder = EventForwarder(
@@ -917,7 +918,6 @@ struct TrellisMain {
                     }
                 }
             }
-            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
             if eventsV2 != nil { projects.onProjectsChanged = { forwarder.send(.live(EventDraftV2.projectChanges($0, $1))) } }
             let delegate = AppDelegate(
                 model: model, hosts: hosts, projects: projects, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)

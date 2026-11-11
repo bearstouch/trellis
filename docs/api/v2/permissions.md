@@ -41,8 +41,11 @@ Intent-level capabilities never widen what a grant can execute: anything that de
 | Answer an agent | agent.respond (session.input also suffices: the method declares the pair as "any of", and `details.missing` names agent.respond) |
 | Install an agent | agent.install + session.execute (+ agent.control + workspace.write: the installer then starts the agent in a pane, as the app's Install and Launch does) |
 | Run a trusted task | task.run (the task's command is fixed by the trusted file or detection) |
-| Launch a project that runs setup, pane commands or agents | project.launch + session.start + session.execute (+agent.control for agents, +remote.connect for a host target) |
-| Create or edit a project's commands, agents or repository | project.write + session.execute |
+| Launch a project | project.launch + session.start (+remote.connect for a host target, which must be in host scope; all or `created` spaces) |
+| …that runs setup or pane commands, or in a chosen folder | + session.execute |
+| …that starts agents | + agent.control, each agent in the agent scope |
+| Check a project on a host (connects to it) | project.read + remote.connect |
+| Create a project, or edit a project's commands, agents, repositories or folders | project.write + session.execute |
 | Open a remote workspace | remote.connect + workspace.write, host in scope, all or `created` spaces (+session.start to start its shell; +remote.manage to install a missing helper, unless the host's automatic install is on: otherwise `CONFIRMATION_REQUIRED`, `helperInstall`) |
 | Reconnect a remote workspace | remote.connect, host in scope (the same helper rule) |
 | Install, update or remove the remote helper | remote.manage, host in scope (+session.close to stop this Mac's sessions there while removing) |
@@ -59,7 +62,7 @@ Intent-level capabilities never widen what a grant can execute: anything that de
 | Hosts | `all` or approved hosts, each bound to its `connectionRevision` (unchanged from v1) | hosts, SSH panes, remote workspaces, agent availability on hosts |
 | Agents | `all` or a set of agent definition IDs | `agent.start`, `agent.restart`, `agent.install`; runs of other agents stay readable |
 
-- Creating a top-level space needs `all` or `created` space scope (`space.create`, `host.connect` with `placement.kind: space`, `remote.open`, and later `project.launch`); a set of space IDs can't create spaces. With `created`, the new space joins the grant's scope, so an orchestrator can make and manage its own spaces without seeing the user's.
+- Creating a top-level space needs `all` or `created` space scope (`space.create`, `host.connect` with `placement.kind: space`, `remote.open` and `project.launch`); a set of space IDs can't create spaces. With `created`, the new space joins the grant's scope, so an orchestrator can make and manage its own spaces without seeing the user's.
 - **How `created` is recorded.** A space created through protocol 2 is recorded for the creating grant inside the same workspace transaction that creates it, so no later call, result or event sees the space before the grant does. Spaces created in the app (the sidebar, menus, palette, project and remote launches started by the user) never join. The record is kept with the grant whatever its scope, so narrowing a grant from `all` to `created` keeps the spaces it made; a closed space leaves it once its `space.deleted` event has been delivered. The recorded IDs are stored in `grants.json`.
 - **Protocol 1** has no `created` scope: until the switch it treats such a grant as the set of spaces it has created so far (`spaceScope` in its `auth.authenticate` result lists them), and since protocol 1 never records, it can't create spaces with it.
 - A project space is visible if the space is in scope; its `project` field is shown only if the project is in project scope too. Launching needs both the project and (for a host target) the host in scope.

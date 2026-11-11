@@ -209,17 +209,20 @@ public struct MethodSpecV2: Sendable {
     /// May wait on a remote host or on the person (ssh asking in the app's console, a helper upload), so the socket
     /// answers it out of order and keeps serving the connection's later calls meanwhile.
     public let waits: Bool
+    /// Waits only with these parameters (`session.execute` with `wait`, a project launch on a host or with setup), so
+    /// the same method without them keeps its place in the connection's order.
+    public let waitsIf: ConditionV2?
 
     public init(
         _ name: String, _ summary: String, params: [ParamV2] = [], capabilities: Set<CapabilityV2> = [], anyOf: [[CapabilityV2]] = [],
         conditional: [ConditionalCapabilityV2] = [], rules: [ParamRuleV2] = [], resources: [ResourceRuleV2] = [], allSpaces: Bool = false,
         allSpacesIf: ConditionV2? = nil, createsSpace: Bool = false, createsSpaceIf: ConditionV2? = nil, effect: EffectV2 = .read, errors: Set<APIErrorCode> = [],
-        paginated: Bool = false, socketOnly: Bool = false, waits: Bool = false
+        paginated: Bool = false, socketOnly: Bool = false, waits: Bool = false, waitsIf: ConditionV2? = nil
     ) {
         self.name = name; self.summary = summary; declaredParams = params; self.capabilities = capabilities; self.anyOf = anyOf; self.conditional = conditional
         self.rules = rules; self.resources = resources; requiresAllSpaces = allSpaces; self.allSpacesIf = allSpacesIf; self.createsSpace = createsSpace
         self.createsSpaceIf = createsSpaceIf; self.effect = effect; declaredErrors = errors; self.paginated = paginated; self.socketOnly = socketOnly
-        self.waits = waits
+        self.waits = waits; self.waitsIf = waitsIf
     }
 
     /// `space` for `space.list`, `remote` for `remote.helper.install`.
@@ -284,6 +287,9 @@ public struct MethodSpecV2: Sendable {
 
     /// Whether this call needs a grant whose space scope is `all`.
     public func needsAllSpaces(for params: [String: JSONValue]) -> Bool { requiresAllSpaces || allSpacesIf?.applies(to: params) == true }
+
+    /// Whether this call may wait on a host, the person or a command, so the socket answers it out of order.
+    public func waits(for params: [String: JSONValue]) -> Bool { waits || waitsIf?.applies(to: params) == true }
 
     /// Whether this call creates a top-level space (needs `all` or `created` scope; with `created` it joins the scope).
     public func createsSpace(for params: [String: JSONValue]) -> Bool { createsSpace || createsSpaceIf?.applies(to: params) == true }

@@ -26,7 +26,7 @@ final class FakeDomainV2: ControlDomainV2, @unchecked Sendable {
         if let answer = subject.revision(in: await base.snapshot()) { return answer }
         switch subject {
         case .resource(.host, let id): return await base.host(id)?.revision
-        case .resource(.pane, let id), .resource(.session, let id): return lock.withLock { _revisions[id] }
+        case .resource(.pane, let id), .resource(.session, let id), .resource(.project, let id): return lock.withLock { _revisions[id] }
         default: return nil
         }
     }
@@ -228,7 +228,7 @@ final class ProtocolV2Tests: XCTestCase {
         let (_, token) = try await grant()
         let session = ControlSession(peerUID: geteuid(), handler: handler(v2: true))
         _ = try await authenticate(session, token, version: 2)
-        for method in ["window.list", "window.get", "events.event", "auth.whoami", "project.launch", "layout.apply"] {
+        for method in ["window.list", "window.get", "events.event", "auth.whoami", "task.trust", "layout.apply"] {
             let r11 = try await call(session, method)
             XCTAssertEqual(error(r11)?["code"] as? Int, -32601, method)
         }

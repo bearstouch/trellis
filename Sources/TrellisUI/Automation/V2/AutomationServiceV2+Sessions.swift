@@ -56,12 +56,50 @@ extension AutomationServiceV2 {
             }
             let data = Data((command + "\r").utf8)
             guard data.count <= Self.inputLimit else { throw Self.inputTooLarge }
-            try send(id, data, paste: false)
-            // Submitted means the bytes were queued, not that the command finished (`wait` arrives in phase 7).
-            return .object(["submitted": .bool(true), "acceptedBytes": ConventionsV2.number(data.count)])
+            guard let wait = try p.optionalObject("wait") else {
+                try send(id, data, paste: false)
+                // Submitted means the bytes were queued, not that the command finished (that is `wait`).
+                return .object(["submitted": .bool(true), "acceptedBytes": ConventionsV2.number(data.count)])
+            }
+            return try await executeAndWait(id, data, timeoutMs: try wait.optionalInteger("timeoutMs") ?? 30_000)
         case "session.readOutput": return try readOutput(call)
         default: throw ControlError.methodNotFound
         }
+    }
+
+    /// session.execute with `wait`: the command is typed at the shell's prompt and followed to its finish mark (FR-SI02).
+    /// The wait is registered before the bytes go, so a quick command's marks are never missed; the socket answers the call
+    /// out of order (`waitsIf`), so nothing else on the connection waits behind it.
+    @MainActor private func executeAndWait(_ sessionID: UUID, _ data: Data, timeoutMs: Int64) async throws -> JSONValue {
+        guard let pane = model.snapshot.panes.values.first(where: { $0.sessionID == sessionID }) else { throw Self.notFound }
+        // A remote workspace whose link is down answers REMOTE_DISCONNECTED first, as for any input.
+        try requireLinkUp(sessionID)
+        if let refusal = model.commandWaitRefusal(paneID: pane.id, sessionID: sessionID) {
+            switch refusal {
+            case "noIntegration":
+                throw Self.invalidState("Waiting needs shell integration (FR-SI02) in this pane, so Trellis knows when the command finishes. Send it without wait.", state: refusal)
+            case "busy":
+                throw Self.invalidState("The shell is running a command, so the next one to finish might not be this one. Retry at its prompt.", state: refusal, retryable: true)
+            default: throw Self.invalidState("The session is not running.", state: model.snapshot.sessions[sessionID]?.state.rawValue ?? "exited")
+            }
+        }
+        let wait = model.beginCommandWait(paneID: pane.id, sessionID: sessionID)
+        do { try send(sessionID, data, paste: false) } catch {
+            model.endCommandWait(wait, paneID: pane.id)
+            throw error
+        }
+        var object: [String: JSONValue] = ["submitted": .bool(true), "acceptedBytes": ConventionsV2.number(data.count)]
+        switch await model.awaitCommand(wait, paneID: pane.id, timeout: .milliseconds(timeoutMs)) {
+        case .finished(let code, let duration):
+            object["timedOut"] = .bool(false)
+            if let code { object["exitCode"] = ConventionsV2.number(code) }
+            object["durationMs"] = ConventionsV2.number(Int64((duration * 1_000).rounded()))
+        case .sessionEnded:
+            object["timedOut"] = .bool(false)
+            object["sessionEnded"] = .bool(true)
+        case .timedOut: object["timedOut"] = .bool(true)
+        }
+        return .object(object)
     }
 
     @MainActor func session(_ call: CallV2, _ id: UUID) throws -> JSONValue {

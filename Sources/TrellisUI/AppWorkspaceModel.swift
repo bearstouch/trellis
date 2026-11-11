@@ -492,6 +492,13 @@ public final class AppWorkspaceModel: ObservableObject {
     var pendingProjectCommands: [UUID: String] = [:]
     /// The project being launched (FR-PL06, FR-PL07); its sheet shows while set.
     @Published public internal(set) var projectLaunch: ProjectLaunchSession?
+    /// Project setups protocol 2's project.launch runs, in no sheet and no pane (FR-PL07); a host's link stays wanted while
+    /// one runs there, as for the sheet's.
+    var automationSetupTerminals: [NativeTerminal] = []
+    /// How long an API-run setup may take before it is ended (it has no console to answer a prompt in).
+    var automationSetupLimit: Duration = .seconds(900)
+    /// session.execute calls waiting for their command's finish mark, by pane (methods.md#sessions); runtime only.
+    var commandWaits: [UUID: [CommandWait]] = [:]
     /// Remembers where a project was launched (FR-PL06); set by the app.
     public var onProjectLaunched: ((UUID, ProjectTarget, String) -> Void)?
     /// Each pane's git branch and counts (FR-PL09); runtime only, never persisted.
@@ -1438,6 +1445,7 @@ public final class AppWorkspaceModel: ObservableObject {
             submitProjectCommand(paneID: paneID)
         }
         updateTaskRun(paneID: paneID, event: event)
+        updateCommandWaits(paneID: paneID, event: event)
         let before = shellStates[paneID]
         var state = before ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
         let wasRunning = state.commandRunning

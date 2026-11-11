@@ -46,6 +46,8 @@ final class DispatchV2Tests: XCTestCase {
             case .integer(let minimum, _): return .number(Double(minimum ?? 1))
             case .number(let minimum, _): return .number(max(minimum ?? 0.5, 0.5))
             case .boolean: return .bool(false)
+            // A document (a project) the domain validates itself; the fake domain takes any object.
+            case .object: return .object([:])
             case .structure(let schema):
                 guard let tag = schema.tag, let variant = schema.variants.first else { return .object([:]) }
                 var object: [String: JSONValue] = [tag: .string(variant.value)]
@@ -66,6 +68,8 @@ final class DispatchV2Tests: XCTestCase {
         domain.setHost(host)
         domainV2.setRevision(domain.paneA, 7)
         domainV2.setRevision(domain.sessionA, 9)
+        // Projects are named by the fake space ID (`id(.project)`); the domain versions them.
+        domainV2.setRevision(domain.spaceA, 3)
         // Every v2 capability, the agent ones included (a grant made with v1 capabilities holds none of them).
         let grant = try await store.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases)), lifetime: 3600).grant
         var checked: [String] = []
@@ -83,9 +87,10 @@ final class DispatchV2Tests: XCTestCase {
             checked.append(spec.name)
         }
         XCTAssertEqual(domainV2.performed, checked, "Stale calls never reach the domain; current ones do")
-        XCTAssertEqual(checked.count, MethodCatalogV2.methods.filter(\.isMutating).count - 2, "Every mutating method but the two exempt ones")
+        XCTAssertEqual(checked.count, MethodCatalogV2.methods.filter(\.isMutating).count - 4, "Every mutating method but the four exempt ones")
         XCTAssertTrue(checked.contains("pane.resize") && checked.contains("session.sendInput") && checked.contains("host.connect"))
         XCTAssertTrue(["agent.start", "agent.restart", "agent.respond", "agent.install"].allSatisfy(checked.contains))
+        XCTAssertTrue(["project.update", "project.delete", "project.launch", "task.run", "task.stop"].allSatisfy(checked.contains))
     }
 
     /// API2-05 for every method: a grant without its capabilities gets PERMISSION_DENIED naming exactly what is missing,
@@ -95,6 +100,10 @@ final class DispatchV2Tests: XCTestCase {
         let themeOnly = try await grant([.themeRead])
         let otherSpace = try await grant(spaces: .spaces([domain.spaceB]))
         let noHosts = try await grant(hosts: .approved([]))
+        // Projects are named by the fake space ID; this grant reaches every capability but another project.
+        let otherProject = try await store.create(
+            GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases), scope: GrantScope(projects: .projects([UUID()]))), lifetime: 3600
+        ).grant
         var denied = 0, hidden = 0
         for spec in MethodCatalogV2.methods {
             let params = validParams(spec)
@@ -108,7 +117,7 @@ final class DispatchV2Tests: XCTestCase {
             }
             let kinds = Set(spec.resources.filter { ConditionV2.value(at: $0.param, in: params) != nil }.map(\.kind))
             guard !kinds.isEmpty else { continue }
-            let scoped = kinds == [.host] ? noHosts : otherSpace
+            let scoped = kinds.contains(.project) ? otherProject : kinds == [.host] ? noHosts : otherSpace
             guard case .failure(let error) = await call(spec.name, params, scoped) else { XCTFail("\(spec.name) reached a resource outside scope"); continue }
             XCTAssertEqual(error.appCode, "NOT_FOUND", spec.name)
             hidden += 1

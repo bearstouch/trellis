@@ -192,7 +192,9 @@ public actor ControlSession {
     /// once per connection; more are answered in order, which only delays the connection, never refuses a call.
     private func waitsOutOfOrder(_ request: ControlRequest) -> Bool {
         guard reply != nil, wireVersion == 2, identity != nil, waiting.count < Self.maximumWaiting else { return false }
-        if MethodCatalogV2.spec(request.method)?.waits == true { return true }
+        var params: [String: JSONValue] = [:]
+        if case .object(let object)? = request.params { params = object }
+        if MethodCatalogV2.spec(request.method)?.waits(for: params) == true { return true }
         guard request.method == "events.poll", case .number(let timeout)? = request.params?["timeoutMs"] else { return false }
         return timeout > 0
     }

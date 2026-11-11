@@ -45,7 +45,7 @@ Where something runs. Used by spaces, panes and agent availability.
 | Field | Notes |
 | --- | --- |
 | `machine` | `local`, or `remote` for a [remote workspace](../../features/remote-workspaces.md) (FR-RW01). A space never has kind `ssh`. |
-| `project` | Present for a project-bound space (FR-W08). `name` and `target` need **project.read**; `folder` also needs **session.execute**. A space whose project was deleted keeps `id` and gets `missing: true`. |
+| `project` | Present for a project-bound space (FR-W08) whose project is in the grant's project scope. `name` and `target` need **project.read**; `folder` also needs **session.execute**. `target` is `{"kind": "local"}` or `{"kind": "host", "hostId"}` (the host's ID as for machines); `folder` is the folder the space was launched in, as `project.launch` takes it (absolute on this Mac, relative to home on a host), omitted when Trellis can't tell. A space whose project was deleted keeps `id` and gets `missing: true`, once the project library has loaded: a library that hasn't loaded (or couldn't be read) calls nothing missing. |
 | `attention` | `needsInput`: panes waiting for input in this space. `activity`: `output`, `exit` or omitted, for inactive spaces (the sidebar dot). |
 
 ## Tab
@@ -94,7 +94,7 @@ Panes are first-class in v2.
 | `shell` | Shell-integration state (FR-SI01–SI09). `integration` is `authenticated`, `remote` (marks from a remote shell, display-only) or `none`. Command text is never exposed. |
 | `attention` | `needsInput` (`password`, or `attention`: the program rang the bell or posted a notification while the pane wasn't in view, FR-T06), `progress` (OSC 9;4, cleared after 15 s). |
 | `agent` | Present while the pane runs an agent: a summary of its [agent run](#agent-run). |
-| `task` | Present while a [task run](#task-run) is active or just finished in this pane. |
+| `task` | Present while a [task run](#task-run) is active or just finished in this pane: `taskId` and `phase`. |
 
 ## Session
 
@@ -214,28 +214,31 @@ An agent running in a pane, whether started as an agent pane or typed in a shell
 {
   "id": "…", "name": "Lotus", "revision": 9, "notes": "…",
   "repository": {"url": "git@github.com:me/lotus.git"},
-  "tabs": [{"key": "t1", "title": "Editor", "color": "blue", "directory": "app", "layout": {…}}],
+  "tabs": [{"key": "t1", "title": "Editor", "color": "blue", "directory": "app",
+            "layout": {"type": "split", "axis": "x", "ratio": 0.5, "children": [
+              {"type": "pane", "key": "t1-1", "title": "Server", "command": "make dev"},
+              {"type": "pane", "key": "t1-2", "agent": "trellis-claude-code"}]}}],
   "lastFolders": [{"target": {"kind": "local"}, "folder": "/Users/me/src/lotus"}],
   "spaces": ["…"]
 }
 ```
 
-The definition is the project library entry (FR-PL01–PL10). Pane entries can hold `command` and `agent`; `command`, `repository` and folders need **session.execute** to read, because they say what runs where. `spaces` lists open spaces bound to it, within scope.
+The definition is the project library entry (FR-PL01–PL10). `revision` moves when the definition is saved, not when it is launched. Tabs and panes carry the layout `key` a launch gives them (`t1`, `t1-0` for a tab's only pane, then one digit per level of split), the same keys `project.check`'s plan and `project.launch`'s `launches` use. Pane entries can hold `command` and `agent`; `command`, `repository` and folders (`directory`, `lastFolders`) need **session.execute** to read, because they say what runs where; a pane's `agent` and titles don't. `lastFolders` lists the folder last launched per target (absolute on this Mac, relative to home on a host). `spaces` lists open spaces bound to it, within scope.
 
 ## Task
 
 Tasks belong to a pane's project folder: `.trellis/launch.json` plus detected tasks (FR-TK).
 
 ```json
-{"id": "file:build", "name": "build", "source": "file", "group": "build", "trusted": true, "command": "swift build"}
+{"id": "file:build", "name": "build", "source": "file", "group": "build", "trusted": true, "command": "swift build", "cwd": "app", "env": ["CI"]}
 ```
 
-`source` is `file`, `npm`, `make`, `cmake`, `swift`, `python` or `cargo`. `trusted` is false for `launch.json` tasks not yet approved in the app. `command`, `cwd` and `env` keys (never values) need **session.execute**; commands from repository files are untrusted text.
+`id` is `file:<name>` for a `launch.json` task and `detected:<name>` for a detected one. `source` is `file`, `npm`, `make`, `cmake`, `swift`, `python` or `cargo`. `trusted` is false for `launch.json` tasks whose exact file version hasn't been approved in the app; detected tasks are always true (fixed templates). `command`, `cwd` and `env` keys (never values) need **session.execute**; commands from repository files are untrusted text.
 
 ## Task run
 
 ```json
-{"paneId": "…", "taskId": "file:build", "name": "build", "phase": "finished", "submittedAt": "…", "startedAt": "…", "exitCode": 0, "durationMs": 41230, "stopRequested": false}
+{"paneId": "…", "taskId": "file:build", "name": "build", "phase": "finished", "exitCode": 0, "durationMs": 41230, "stopRequested": false}
 ```
 
-`phase`: `submitted`, `running`, `finished`. A run lives in its pane until the pane runs something else; it is runtime state and isn't saved.
+`phase`: `submitted`, `running`, `finished`. `submittedAt` is present while submitted, `startedAt` while running, `exitCode` (when the shell reported one) and `durationMs` once finished. A run lives in its pane until the pane runs something else; it is runtime state and isn't saved. It is the app's run: a task started in the Tasks view or through `task.run` is the same record.
