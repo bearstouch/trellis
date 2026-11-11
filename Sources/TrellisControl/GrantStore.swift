@@ -17,6 +17,10 @@ public final class CreatedSpaceLedger: @unchecked Sendable {
 
     public func spaces(of grant: UUID) -> Set<UUID> { lock.withLock { spaces[grant] ?? [] } }
 
+    /// The grants that created this space (protocol 2 stamps each event with them, so a closed space's last events stay
+    /// visible to its `created` grants after the space left their scope).
+    public func grants(creating space: UUID) -> Set<UUID> { lock.withLock { Set(spaces.filter { $0.value.contains(space) }.keys) } }
+
     /// Drops closed spaces; true when anything was removed.
     func forget(_ removed: Set<UUID>) -> Bool {
         lock.withLock {

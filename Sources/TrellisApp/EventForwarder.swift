@@ -8,6 +8,10 @@ final class EventForwarder: @unchecked Sendable {
     enum Item: Sendable {
         case metadata([WorkspaceEvent])
         case output(session: UUID, space: UUID?, data: Data, next: UInt64, gap: Bool = false)
+        /// Protocol 2: a published transition, diffed here, off the main actor.
+        case transition(WorkspaceSnapshot, WorkspaceSnapshot)
+        /// Protocol 2 live-state and library events.
+        case live([EventDraftV2])
     }
 
     /// Pending raw output allowed in flight; beyond it output events are
@@ -22,7 +26,7 @@ final class EventForwarder: @unchecked Sendable {
 
     /// `delivered` runs after each metadata batch reached subscribers (closed spaces leave `created` scopes only then, so
     /// their grants still get the `space.deleted` event).
-    init(hub: EventHub, instanceID: UUID, delivered: @escaping @Sendable ([WorkspaceEvent]) async -> Void = { _ in }) {
+    init(hub: EventHub, hubV2: EventHubV2? = nil, instanceID: UUID, delivered: @escaping @Sendable ([WorkspaceEvent]) async -> Void = { _ in }) {
         let (stream, continuation) = AsyncStream<Item>.makeStream()
         self.continuation = continuation
         Task.detached { [self] in
@@ -32,9 +36,15 @@ final class EventForwarder: @unchecked Sendable {
                     await hub.publish(events)
                     await delivered(events)
                 case .output(let session, let space, let data, let next, let gap):
-                    await hub.publishOutput(
-                        session: session, spaceID: space, data: data, next: OutputCursor(instanceID: instanceID, sessionID: session, offset: next), gap: gap)
+                    let cursor = OutputCursor(instanceID: instanceID, sessionID: session, offset: next)
+                    await hub.publishOutput(session: session, spaceID: space, data: data, next: cursor, gap: gap)
+                    if let hubV2, hubV2.hasOutputSubscribers { await hubV2.publishOutput(session: session, spaceID: space, data: data, next: cursor, gap: gap) }
                     lock.withLock { pendingOutput -= data.count }
+                case .transition(let old, let new):
+                    let events = WorkspaceDiffV2.diff(old, new)
+                    if let hubV2, !events.isEmpty { await hubV2.publish(events) }
+                case .live(let events):
+                    if let hubV2, !events.isEmpty { await hubV2.publish(events) }
                 }
             }
         }

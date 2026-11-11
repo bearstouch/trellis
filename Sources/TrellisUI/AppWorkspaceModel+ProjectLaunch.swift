@@ -278,6 +278,7 @@ extension AppWorkspaceModel {
             if !integration { submitProjectCommand(paneID: paneID) }
         }
         onProjectLaunched?(launch.project.id, launch.target, launch.folder)
+        liveProjectLaunched(launch.project.id, space: spaceID, target: launch.target, folder: launch.folder)
     }
 
     private func sessionID(ofPane paneID: UUID) -> UUID? { snapshot.panes[paneID]?.sessionID }

@@ -43,8 +43,9 @@ final class ContractV2Tests: XCTestCase {
                 "system.info", "grant.get", "workspace.get", "workspace.save", "space.list", "space.get", "space.create", "space.update", "space.reorder", "space.focus",
                 "space.close", "tab.list", "tab.get", "tab.create", "tab.update", "tab.duplicate", "tab.reorder", "tab.focus", "tab.close", "pane.list", "pane.get",
                 "pane.split", "pane.resize", "pane.focus", "pane.maximize", "pane.close", "session.get", "session.start", "session.restart", "session.stop",
-                "session.sendInput", "session.execute", "session.readOutput", "host.list", "host.get", "host.create", "host.update", "host.delete", "host.connect"
-            ], "Phases 1 and 2")
+                "session.sendInput", "session.execute", "session.readOutput", "host.list", "host.get", "host.create", "host.update", "host.delete", "host.connect",
+                "events.subscribe", "events.unsubscribe", "events.poll"
+            ], "Phases 1, 2 and 4")
     }
 
     func testEveryMethodHasAPolicyADescriptionAndAContractRow() throws {

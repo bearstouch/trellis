@@ -111,7 +111,8 @@ final class DispatchV2Tests: XCTestCase {
             hidden += 1
         }
         XCTAssertEqual(domainV2.performed, [])
-        XCTAssertEqual(denied, MethodCatalogV2.methods.count - 2, "Every method but system.info and grant.get needs a capability")
+        // events.* need the capabilities of the topics asked for (EventsV2Tests), and none for no topics.
+        XCTAssertEqual(denied, MethodCatalogV2.methods.count - 5, "Every method but system.info, grant.get and events.* needs a capability")
         XCTAssertGreaterThanOrEqual(hidden, 30)
     }
 

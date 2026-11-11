@@ -840,18 +840,30 @@ struct TrellisMain {
             let events = EventHub(instanceID: instanceID, grants: grantStore)
             // --automation-v2 accepts protocol 2 beside protocol 1 (development and tests) until v2 replaces v1.
             let automationV2 = CommandLine.arguments.contains("--automation-v2")
+            // Protocol 2's typed stream has its own sequence and ring (events.md); protocol 1's hub is unchanged.
+            let eventsV2 = automationV2 ? EventHubV2(instanceID: instanceID, grants: grantStore) : nil
             let handler = AuthorizingControlHandler(
                 grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events,
-                v2Domain: automationV2 ? AutomationServiceV2(model: model, hosts: hosts, instanceID: instanceID) : nil)
+                v2Domain: automationV2 ? AutomationServiceV2(model: model, hosts: hosts, instanceID: instanceID) : nil, eventsV2: eventsV2)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
             let forwarder = EventForwarder(
-                hub: events, instanceID: instanceID,
+                hub: events, hubV2: eventsV2, instanceID: instanceID,
                 delivered: { batch in
                     let closed = Set(batch.filter { $0.type == "space.deleted" }.map(\.resourceID))
                     if !closed.isEmpty { await grantStore.forgetCreatedSpaces(closed) }
                 })
             model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
+            if eventsV2 != nil {
+                // Sent before the v1 batch of the same transition, so a closed space leaves `created` scopes after both.
+                model.onWorkspaceTransition = { forwarder.send(.transition($0, $1)) }
+                model.onLiveEvents = { forwarder.send(.live($0)) }
+                hosts.onHostsChanged = { forwarder.send(.live(EventDraftV2.hostChanges($0, $1))) }
+                hosts.remote?.onHelperChanged = { [weak hosts] id, record in
+                    let host = EventHostV2(id: id, connectionRevision: hosts?.hosts.first { $0.id == id }?.connectionRevision)
+                    forwarder.send(.live([.remoteHelper(host: host, status: record?.state.rawValue ?? "unknown")]))
+                }
+            }
             // Appearance is global; the hub gates it on theme.read, not window scope.
             let appearanceResource = UUID(uuidString: "00000000-0000-0000-0000-00000000A99E")!
             model.onAppearanceChanged = { [weak model] in
@@ -866,6 +878,14 @@ struct TrellisMain {
                                 "effectiveThemeId": model.effectiveTheme.id, "revision": String(model.appearanceRevision)
                             ])
                     ]))
+                if eventsV2 != nil {
+                    forwarder.send(
+                        .live([
+                            .appearance(
+                                mode: settings.chromeMode.rawValue, lightThemeID: settings.lightThemeID, darkThemeID: settings.darkThemeID,
+                                effectiveThemeID: model.effectiveTheme.id, revision: model.appearanceRevision)
+                        ]))
+                }
             }
             model.onSessionOutput = { [weak model] session, pane, data, next in
                 let space = model?.snapshot.panes[pane].flatMap { model?.snapshot.tabs[$0.tabID]?.spaceID }
@@ -873,28 +893,32 @@ struct TrellisMain {
             }
             Task {
                 await events.setDelivery { connection, data in control.push(data, to: connection) }
+                await eventsV2?.setDelivery { connection, data in control.push(data, to: connection) }
                 // Once only: an early client may already have loaded (and since changed) the grants.
                 await grantStore.ensureLoaded()
                 // Revocation disconnects clients and ends their subscriptions at once.
                 await grantStore.onRevocation { grantID in
                     Task {
                         await events.removeGrant(grantID)
+                        await eventsV2?.removeGrant(grantID)
                         await mcp.closeSessions(grantID: grantID)
                         control.closeConnections(await handler.connections(for: grantID))
                     }
                 }
                 // Narrowing applies at once (permissions.md#editing-grants): subscriptions that lost access end, MCP sessions
-                // start again with the new tool list, and socket connections get AUTH_REQUIRED on their next call. Protocol
-                // 2's grant.changed event (phase 4) is emitted from here.
+                // start again with the new tool list, and socket connections get AUTH_REQUIRED on their next call. Every edit
+                // (reapproval included) sends protocol 2's grant.changed to that grant's own subscribers and pollers first.
                 await grantStore.onEdit { edit in
-                    guard edit.change.narrows else { return }
                     Task {
+                        await eventsV2?.grantEdited(edit.new, narrowed: edit.change.narrows)
+                        guard edit.change.narrows else { return }
                         await events.revalidate(edit.new)
                         await mcp.closeSessions(grantID: edit.new.id)
                     }
                 }
             }
             let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
+            if eventsV2 != nil { projects.onProjectsChanged = { forwarder.send(.live(EventDraftV2.projectChanges($0, $1))) } }
             let delegate = AppDelegate(
                 model: model, hosts: hosts, projects: projects, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate

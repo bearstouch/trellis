@@ -151,9 +151,13 @@ public actor ControlSession {
     /// that never asks for 2 sees exactly the v1 wire format.
     private var wireVersion = 1
     private var closed = false
+    /// Writes a reply out of order (the server's outbox). With it, a waiting protocol 2 `events.poll` is answered when it
+    /// returns while the frames after it are handled meanwhile; without it (tests), it is answered in order.
+    private let reply: (@Sendable (Data) -> Bool)?
+    private var waiting: [UUID: Task<Void, Never>] = [:]
 
-    public init(peerUID: uid_t, expectedUID: uid_t = geteuid(), handler: any ControlHandler) {
-        self.peerUID = peerUID; self.expectedUID = expectedUID; self.handler = handler
+    public init(peerUID: uid_t, expectedUID: uid_t = geteuid(), handler: any ControlHandler, reply: (@Sendable (Data) -> Bool)? = nil) {
+        self.peerUID = peerUID; self.expectedUID = expectedUID; self.handler = handler; self.reply = reply
     }
 
     /// Returns the bytes to write and whether the connection must close.
@@ -178,7 +182,39 @@ public actor ControlSession {
 
     public func connectionClosed() async {
         closed = true
+        for task in waiting.values { task.cancel() }
+        waiting.removeAll()
         await handler.disconnected(connectionID: connectionID)
+    }
+
+    /// A poll that may wait runs beside later frames. JSON-RPC replies carry their request's id, so order doesn't matter.
+    private func waitsOutOfOrder(_ request: ControlRequest) -> Bool {
+        guard reply != nil, wireVersion == 2, identity != nil, request.method == "events.poll", case .number(let timeout)? = request.params?["timeoutMs"] else { return false }
+        return timeout > 0
+    }
+
+    private func answerLater(_ request: ControlRequest, id: ControlRequestID, identity: ControlIdentity) {
+        let key = UUID()
+        waiting[key] = Task { [handler] in
+            let result = await handler.dispatch(request.method, params: request.params, identity: identity)
+            self.finishWaiting(key, result: result, id: id, identity: identity)
+        }
+    }
+
+    private func finishWaiting(_ key: UUID, result: Result<JSONValue, ControlError>, id: ControlRequestID, identity finished: ControlIdentity) {
+        waiting.removeValue(forKey: key)
+        guard !closed, let reply else { return }
+        if case .failure(let error) = result, error.appCode == "AUTH_REQUIRED", identity == finished { identity = nil }
+        _ = reply(encoded(result, id: id))
+    }
+
+    private func encoded(_ result: Result<JSONValue, ControlError>, id: ControlRequestID) -> Data {
+        switch result {
+        case .success(let value):
+            let encoded = Self.encode(result: value, id: id)
+            return encoded.count <= ControlFramer.maximumFrame ? encoded : Self.encode(error: .responseTooLarge, id: id, version: wireVersion)
+        case .failure(let error): return Self.encode(error: error, id: id, version: wireVersion)
+        }
     }
 
     private func finish(_ output: Data) -> (output: Data, close: Bool) {
@@ -212,6 +248,9 @@ public actor ControlSession {
                 identity = nil
                 result = .failure(error)
             }
+        } else if let identity, waitsOutOfOrder(request) {
+            answerLater(request, id: id, identity: identity)
+            return nil
         } else if let identity {
             result = await handler.dispatch(request.method, params: request.params, identity: identity)
             // An expired or revoked grant ends this connection's authentication.
@@ -219,12 +258,7 @@ public actor ControlSession {
         } else {
             result = .failure(.unauthenticated)
         }
-        switch result {
-        case .success(let value):
-            let encoded = Self.encode(result: value, id: id)
-            return encoded.count <= ControlFramer.maximumFrame ? encoded : Self.encode(error: .responseTooLarge, id: id, version: wireVersion)
-        case .failure(let error): return Self.encode(error: error, id: id, version: wireVersion)
-        }
+        return encoded(result, id: id)
     }
 
     /// Bounds the recursive `JSONValue` decoder: a 1 MiB frame of `[` would

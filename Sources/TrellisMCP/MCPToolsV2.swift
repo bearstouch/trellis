@@ -3,8 +3,9 @@ import TrellisControl
 
 extension MCPTools {
     /// Protocol 2 tools, one per catalog method, with schemas and annotations generated from the catalog so they can't
-    /// drift from what the server validates. Served from the switch (phase 8); until then `tools/list` stays v1.
-    public static let v2: [MCPTool] = MethodCatalogV2.methods.map { spec in
+    /// drift from what the server validates. Served from the switch (phase 8); until then `tools/list` stays v1. Socket-only
+    /// methods (`events.subscribe`) aren't tools: MCP follows events with `events_poll`.
+    public static let v2: [MCPTool] = MethodCatalogV2.methods.filter { !$0.socketOnly }.map { spec in
         MCPTool(
             name: spec.toolName, method: spec.name, description: spec.toolDescription, inputSchema: spec.inputSchema, readOnly: !spec.isMutating,
             destructive: spec.isDestructive)

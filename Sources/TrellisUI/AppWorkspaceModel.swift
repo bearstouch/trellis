@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import TrellisBroker
+import TrellisControl
 import TrellisCore
 import TrellisTerminal
 
@@ -358,12 +359,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var defaultDirectory: String
     @Published public private(set) var activity: [UUID: SpaceActivity] = [:]
     /// Tabs with a pane printing output right now (FR-T05).
-    @Published public private(set) var busyTabIDs: Set<UUID> = []
+    @Published public private(set) var busyTabIDs: Set<UUID> = [] { didSet { if onLiveEvents != nil, busyTabIDs != oldValue { liveBusyChanged(from: oldValue) } } }
     private var outputActivity = PaneOutputActivity()
     /// Panes whose program waits for the user (FR-T06); runtime-only, never persisted.
-    @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:]
+    @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:] { didSet { if onLiveEvents != nil, inputWaits != oldValue { liveInputWaitsChanged(from: oldValue) } } }
     /// Panes reporting OSC 9;4 progress (FR-T09); runtime-only, never persisted.
-    @Published public private(set) var progress: [UUID: TerminalProgress] = [:]
+    @Published public private(set) var progress: [UUID: TerminalProgress] = [:] { didSet { if onLiveEvents != nil, progress != oldValue { liveProgressChanged(from: oldValue) } } }
     private var progressTrackers: [UUID: PaneProgressTracker] = [:]
     private var progressExpiryTask: Task<Void, Never>?
     private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
@@ -377,11 +378,15 @@ public final class AppWorkspaceModel: ObservableObject {
     /// FR-AG01: the agents this Trellis can launch, bundled and from the Agents folder.
     @Published public internal(set) var agentCatalog = AgentCatalogSnapshot(definitions: AgentCatalog.bundled())
     /// FR-AG10: each agent pane's state, by pane; runtime only, never persisted.
-    @Published public internal(set) var agentStates: [UUID: AgentStateReducer] = [:]
+    @Published public internal(set) var agentStates: [UUID: AgentStateReducer] = [:] { didSet { if onLiveEvents != nil, agentStates != oldValue { liveAgentsChanged(from: oldValue) } } }
     /// FR-AG07: whether each agent is on this Mac's login PATH, by agent ID; only ever from a check.
-    @Published public internal(set) var agentAvailability: [String: AgentAvailability] = [:]
+    @Published public internal(set) var agentAvailability: [String: AgentAvailability] = [:] {
+        didSet { if onLiveEvents != nil, agentAvailability != oldValue { liveAvailabilityChanged(from: oldValue) } }
+    }
     /// FR-AG12: agents a launch found missing on a host, by host.
-    @Published public internal(set) var remoteMissingAgents: [UUID: Set<String>] = [:]
+    @Published public internal(set) var remoteMissingAgents: [UUID: Set<String>] = [:] {
+        didSet { if onLiveEvents != nil, remoteMissingAgents != oldValue { liveRemoteMissingChanged(from: oldValue) } }
+    }
     /// FR-AG12: the install offer on screen.
     @Published public var agentInstallOffer: AgentInstallOffer?
     /// The user's Agents folder; nil offers only the bundled agents.
@@ -437,7 +442,11 @@ public final class AppWorkspaceModel: ObservableObject {
     var closingTabIDs = Set<UUID>()
     var closingPaneIDs = Set<UUID>()
     @Published public internal(set) var maximizedPanes: [UUID: UUID] = [:] {
-        didSet { if maximizedPanes != oldValue { automationRevisions.maximizedChanged(from: oldValue, to: maximizedPanes) } }
+        didSet {
+            guard maximizedPanes != oldValue else { return }
+            automationRevisions.maximizedChanged(from: oldValue, to: maximizedPanes)
+            liveMaximizedChanged(from: oldValue)
+        }
     }
     private var pendingDividerResize: (splitID: UUID, ratio: Double, tabID: UUID)?
     private var dividerResizeTask: Task<Void, Never>?
@@ -486,7 +495,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// The library's projects for the command palette (FR-PL08); set by the app.
     public var commandPaletteProjects: () -> [ProjectDefinition] = { [] }
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
-    @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
+    @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:] { didSet { if onLiveEvents != nil, taskRuns != oldValue { liveTaskRunsChanged(from: oldValue) } } }
     /// The Tasks view's project, read when the view opens or focus moves (FR-TK02); nil when the active pane has none.
     @Published public internal(set) var taskCatalog: TaskCatalog?
     @Published public internal(set) var pendingTaskReview: TaskReview?
@@ -602,6 +611,14 @@ public final class AppWorkspaceModel: ObservableObject {
     public var openProjects: (() -> Void)?
     /// Metadata events derived from each published snapshot, in order.
     public var onWorkspaceEvents: (([WorkspaceEvent]) -> Void)?
+    /// Protocol 2: each published transition, before `onWorkspaceEvents` (so a closed space leaves `created` scopes only
+    /// after both streams have it); the app diffs it off the main actor (`WorkspaceDiffV2`). Set only with `--automation-v2`.
+    public var onWorkspaceTransition: ((WorkspaceSnapshot, WorkspaceSnapshot) -> Void)?
+    /// Protocol 2 live-state events (attention, shell marks, agents, remote links, task runs, project launches), emitted
+    /// when the state changes, never per output chunk. Nil (the default) skips building them.
+    public var onLiveEvents: (([EventDraftV2]) -> Void)?
+    /// The agent each pane's live state belongs to, so `agent.ended` can name it after the pane forgot it.
+    var liveAgentIDs: [UUID: String] = [:]
     /// Raw output appended to the journal: session, pane, bytes, next offset.
     public var onSessionOutput: ((UUID, UUID, Data, UInt64) -> Void)?
     /// Bounded raw output for automation readers; memory only.
@@ -644,7 +661,7 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
     /// Each remote workspace host's link, for the sidebar and pane headers (FR-RW07, FR-RW16).
-    @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:]
+    @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:] { didSet { if onLiveEvents != nil, remoteLinks != oldValue { liveRemoteLinksChanged(from: oldValue) } } }
     /// Remote sessions closed while their host was unreachable, hung up once it is reachable again.
     var pendingRemoteHangups: [UUID: Set<UUID>] = [:]
     /// Automatic reconnects (FR-RW07); its clock, sleep and randomness are injectable for tests.
@@ -919,6 +936,7 @@ public final class AppWorkspaceModel: ObservableObject {
         // A closed pane or space, or a restart, discards the saved text of the session it replaced (FR-R04).
         let removed = previous.sessions.keys.filter { next.sessions[$0] == nil }
         if restoreScrollback, !removed.isEmpty, let scrollbackStore { Task { await scrollbackStore.delete(sessionIDs: removed) } }
+        onWorkspaceTransition?(previous, next)
         if let onWorkspaceEvents {
             let events = WorkspaceEvents.diff(previous, next)
             if !events.isEmpty { onWorkspaceEvents(events) }
@@ -1410,11 +1428,13 @@ public final class AppWorkspaceModel: ObservableObject {
             submitProjectCommand(paneID: paneID)
         }
         updateTaskRun(paneID: paneID, event: event)
-        var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
+        let before = shellStates[paneID]
+        var state = before ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
         let wasRunning = state.commandRunning
         state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
+        liveShellChanged(paneID: paneID, event: event, from: before, to: state)
         clearTypedAgentState(paneID: paneID, event: event, state: state)
         // Replayed marks (FR-R03) describe commands that finished while Trellis was closed; they never notify.
         if wasRunning, !state.commandRunning, terminals[paneID]?.isReplaying != true { postCommandFinished(state, paneID: paneID) }

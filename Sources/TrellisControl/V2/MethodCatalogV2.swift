@@ -3,7 +3,7 @@ import TrellisCore
 
 /// The protocol 2 method catalog (docs/api/v2/methods.md). Each phase adds its area here; nothing else lists methods.
 public enum MethodCatalogV2 {
-    public static let methods: [MethodSpecV2] = system + workspace + spaces + tabs + panes + sessions + hosts
+    public static let methods: [MethodSpecV2] = system + workspace + spaces + tabs + panes + sessions + hosts + events
 
     public static let byName: [String: MethodSpecV2] = Dictionary(methods.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
 

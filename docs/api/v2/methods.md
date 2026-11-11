@@ -158,4 +158,10 @@ As in v1 ([Layouts](../layouts.md)), renamed to the v2 capabilities: `layout.val
 
 ## Events
 
-`events.subscribe`, `events.unsubscribe` and `events.poll`: see [Events](events.md).
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `events.subscribe` | `topics`, `resourceIds?`, `spaceIds?`, `afterSequence?`, `instanceId?` | `subscriptionId`, `sequence`, `instanceId`; then `events.event` notifications | each topic's (none for `grant`); socket only |
+| `events.unsubscribe` | `subscriptionId` | `deleted` (`kind: subscription`) | — |
+| `events.poll` | `topics`, `spaceIds?`, `afterSequence?`, `instanceId?`, `timeoutMs?`, `limit?` | `events`, `nextSequence`, `instanceId`, `gap?` | each topic's; any transport |
+
+Topics, envelopes, redaction and the wait rules are in [Events](events.md).

@@ -24,6 +24,10 @@ public final class HostListModel: ObservableObject {
     /// Opens a connection; set by the app to the workspace model.
     public var onConnect: ((SavedHost, AppWorkspaceModel.HostPlacement) -> Void)?
 
+    /// The committed list changed after the first load (old, new); protocol 2's host events come from here.
+    public var onHostsChanged: (([SavedHost], [SavedHost]) -> Void)?
+    private var refreshed = false
+
     /// The latest committed host, read when a session spawns.
     public func host(_ id: UUID) async -> SavedHost? { await library.hosts.first { $0.id == id } }
 
@@ -79,8 +83,11 @@ public final class HostListModel: ObservableObject {
     }
 
     private func refresh() async {
+        let old = hosts, first = !refreshed
         hosts = await library.hosts
+        refreshed = true
         loadFailed = await library.loadFailed
+        if !first, old != hosts { onHostsChanged?(old, hosts) }
     }
 
     /// Injected for tests; production reads the user's ~/.ssh/config read-only.

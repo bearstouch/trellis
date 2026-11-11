@@ -274,6 +274,7 @@ public actor AuthorizingControlHandler: ControlHandler {
     private let networkLimiter: AuthenticationRateLimiter
     private let idempotency: IdempotencyCache
     private let events: EventHub?
+    private let eventsV2: EventHubV2?
     /// Protocol 2, present only when the app runs with `--automation-v2` (until the switch removes v1).
     private let v2: DispatcherV2?
     public nonisolated let supportedProtocolVersions: [Int]
@@ -283,11 +284,11 @@ public actor AuthorizingControlHandler: ControlHandler {
     public init(
         grants: GrantStore, domain: any ControlDomain, limiter: AuthenticationRateLimiter = AuthenticationRateLimiter(),
         networkLimiter: AuthenticationRateLimiter = AuthenticationRateLimiter(), idempotency: IdempotencyCache = IdempotencyCache(), events: EventHub? = nil,
-        v2Domain: (any ControlDomainV2)? = nil
+        v2Domain: (any ControlDomainV2)? = nil, eventsV2: EventHubV2? = nil
     ) {
         self.grants = grants; self.domain = domain; self.limiter = limiter; self.networkLimiter = networkLimiter
-        self.idempotency = idempotency; self.events = events
-        v2 = v2Domain.map { DispatcherV2(domain: $0, idempotency: idempotency, ledger: grants.createdSpaceLedger) }
+        self.idempotency = idempotency; self.events = events; self.eventsV2 = eventsV2
+        v2 = v2Domain.map { DispatcherV2(domain: $0, idempotency: idempotency, ledger: grants.createdSpaceLedger, events: eventsV2) }
         supportedProtocolVersions = v2Domain == nil ? [1] : [1, 2]
     }
 
@@ -404,6 +405,7 @@ public actor AuthorizingControlHandler: ControlHandler {
     public func disconnected(connectionID: UUID) async {
         connections.removeValue(forKey: connectionID)
         await events?.removeConnection(connectionID)
+        await eventsV2?.removeConnection(connectionID)
     }
 
     private func subscription(_ method: String, params: JSONValue?, grant: AutomationGrant, connectionID: UUID) async -> Result<JSONValue, ControlError> {

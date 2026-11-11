@@ -23,6 +23,9 @@ public final class ProjectListModel: ObservableObject {
     public var onLaunch: ((ProjectDefinition) -> Void)?
     /// Names a saved host for list summaries; set by the app.
     public var hostName: (UUID) -> String? = { _ in nil }
+    /// The committed list changed after the first load (old, new); protocol 2's project events come from here.
+    public var onProjectsChanged: (([ProjectDefinition], [ProjectDefinition]) -> Void)?
+    private var refreshed = false
 
     public init(library: ProjectLibrary) { self.library = library }
 
@@ -114,8 +117,11 @@ public final class ProjectListModel: ObservableObject {
     }
 
     private func refresh() async {
+        let old = projects, first = !refreshed
         projects = await library.projects
+        refreshed = true
         loadFailed = await library.loadFailed
+        if !first, old != projects { onProjectsChanged?(old, projects) }
     }
 
     public static func message(for error: ProjectLibraryError) -> String {

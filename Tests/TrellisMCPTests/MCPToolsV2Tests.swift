@@ -6,7 +6,8 @@ import TrellisCore
 /// Protocol 2 MCP tools are generated from the method catalog (served from the switch, phase 8).
 final class MCPToolsV2Tests: XCTestCase {
     func testToolsAreGeneratedFromTheCatalog() throws {
-        XCTAssertEqual(MCPTools.v2.map(\.method), MethodCatalogV2.methods.map(\.name))
+        XCTAssertEqual(MCPTools.v2.map(\.method), MethodCatalogV2.methods.filter { !$0.socketOnly }.map(\.name))
+        XCTAssertNil(MCPTools.v2.first { $0.method == "events.subscribe" }, "Subscriptions need the socket; MCP polls")
         XCTAssertEqual(Set(MCPTools.v2.map(\.name)).count, MCPTools.v2.count, "Tool names are unique")
         for tool in MCPTools.v2 {
             let spec = try XCTUnwrap(MethodCatalogV2.spec(tool.method))
@@ -25,7 +26,8 @@ final class MCPToolsV2Tests: XCTestCase {
     func testVisibilityFollowsTheGrant() async throws {
         let store = GrantStore(url: nil, secrets: NoopSecrets())
         let (grant, _) = try await store.create(name: "Reader", capabilities: [.themeRead], spaceScope: .spaces([]), hostScope: .all, lifetime: 3600)
-        XCTAssertEqual(MCPTools.v2Visible(to: grant).map(\.name), ["system_info", "grant_get"], "Methods that need no capability are always listed")
+        // events_poll's capabilities follow the topics asked for (appearance needs only theme.read), so it is listed too.
+        XCTAssertEqual(MCPTools.v2Visible(to: grant).map(\.name), ["system_info", "grant_get", "events_poll"], "Methods that need no capability are always listed")
     }
 }
 

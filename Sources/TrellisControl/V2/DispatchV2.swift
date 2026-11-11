@@ -143,6 +143,8 @@ struct DispatcherV2: Sendable {
     var catalog: [String: MethodSpecV2] = MethodCatalogV2.byName
     /// Where calls record the spaces they create (`created` scope); the grant store's.
     var ledger: CreatedSpaceLedger?
+    /// The typed event stream (`events.*`); nil answers them with -32601.
+    var events: EventHubV2?
 
     func authenticationResult(grant: AutomationGrant, connectionID: UUID) async -> JSONValue {
         .object([
@@ -185,7 +187,43 @@ struct DispatcherV2: Sendable {
         case "grant.get":
             let hosts = await hosts(of: call.access.grant)
             return .success(ConventionsV2.resource("grant", ResultsV2.grantView(call.grant, hosts: hosts)))
+        case "events.subscribe", "events.unsubscribe", "events.poll":
+            guard let events else { return .failure(.methodNotFound) }
+            return await Self.events(call, hub: events)
         default: return await domain.perform(call)
+        }
+    }
+
+    /// `events.*` (events.md). Topic capabilities and the resource and space filters were checked from the declaration.
+    static func events(_ call: CallV2, hub: EventHubV2) async -> Result<JSONValue, ControlError> {
+        let params = call.params
+        func ids(_ key: String) -> Set<UUID> {
+            guard case .array(let items)? = params[key] else { return [] }
+            return Set(items.compactMap { if case .string(let text) = $0 { ConventionsV2.parseID(text) } else { nil } })
+        }
+        func integer(_ key: String) -> Int64? { if case .number(let value)? = params[key] { ConventionsV2.integer(value) } else { nil } }
+        if call.spec.name == "events.unsubscribe" {
+            guard let id = try? params.uuid("subscriptionId") else { return .failure(.invalidParams) }
+            guard await hub.unsubscribe(id, connectionID: call.identity.connectionID) else { return .failure(.api(.notFound, "No such subscription on this connection.")) }
+            return .success(.object(["deleted": .object(["kind": .string("subscription"), "id": ConventionsV2.idJSON(id)])]))
+        }
+        guard case .array(let raw)? = params["topics"], !raw.isEmpty else {
+            return .failure(.invalidParams("Name at least one topic.", fields: ["topics": "non-empty array of topics"]))
+        }
+        let topics = Set(raw.compactMap { if case .string(let name) = $0 { EventTopicV2(rawValue: name) } else { nil } })
+        let after = integer("afterSequence").map { UInt64(max(0, $0)) }
+        let instance = try? params.optionalUUID("instanceId")
+        if call.spec.name == "events.poll" {
+            let filter = EventFilterV2(topics: topics, spaceIDs: ids("spaceIds"))
+            return await hub.poll(
+                grantID: call.access.grant.id, filter: filter, afterSequence: after, instanceID: instance ?? nil, timeoutMs: Int(integer("timeoutMs") ?? 0),
+                limit: Int(integer("limit") ?? Int64(EventHubV2.defaultPollLimit)))
+        }
+        let filter = EventFilterV2(topics: topics, resourceIDs: ids("resourceIds"), spaceIDs: ids("spaceIds"))
+        switch await hub.subscribe(connectionID: call.identity.connectionID, grant: call.grant, filter: filter, afterSequence: after, instanceID: instance ?? nil) {
+        case .success(let (id, sequence)):
+            return .success(.object(["subscriptionId": ConventionsV2.idJSON(id), "sequence": .number(Double(sequence)), "instanceId": ConventionsV2.idJSON(hub.instanceID)]))
+        case .failure(let error): return .failure(error)
         }
     }
 

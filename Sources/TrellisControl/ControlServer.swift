@@ -130,8 +130,9 @@ public final class ControlServer: @unchecked Sendable {
                 close(client)
                 continue
             }
-            let session = ControlSession(peerUID: peerUID, expectedUID: endpoint.uid, handler: handler)
             let outbox = Outbox(fd: client)
+            // Replies to waiting polls share the outbox with events and in-order replies, and its budget.
+            let session = ControlSession(peerUID: peerUID, expectedUID: endpoint.uid, handler: handler, reply: { outbox.enqueue($0) })
             lock.withLock {
                 connectionFDs[session.connectionID] = client
                 outboxes[session.connectionID] = outbox

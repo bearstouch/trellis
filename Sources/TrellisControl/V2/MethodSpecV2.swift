@@ -201,16 +201,18 @@ public struct MethodSpecV2: Sendable {
     public let declaredErrors: Set<APIErrorCode>
     /// A `list` method: takes `limit` and `cursor`, returns `nextCursor` while more remain.
     public let paginated: Bool
+    /// Needs a connection the server can push to (`events.subscribe`), so it is not an MCP tool.
+    public let socketOnly: Bool
 
     public init(
         _ name: String, _ summary: String, params: [ParamV2] = [], capabilities: Set<CapabilityV2> = [], anyOf: [[CapabilityV2]] = [],
         conditional: [ConditionalCapabilityV2] = [], rules: [ParamRuleV2] = [], resources: [ResourceRuleV2] = [], allSpaces: Bool = false,
         allSpacesIf: ConditionV2? = nil, createsSpace: Bool = false, createsSpaceIf: ConditionV2? = nil, effect: EffectV2 = .read, errors: Set<APIErrorCode> = [],
-        paginated: Bool = false
+        paginated: Bool = false, socketOnly: Bool = false
     ) {
         self.name = name; self.summary = summary; declaredParams = params; self.capabilities = capabilities; self.anyOf = anyOf; self.conditional = conditional
         self.rules = rules; self.resources = resources; requiresAllSpaces = allSpaces; self.allSpacesIf = allSpacesIf; self.createsSpace = createsSpace
-        self.createsSpaceIf = createsSpaceIf; self.effect = effect; declaredErrors = errors; self.paginated = paginated
+        self.createsSpaceIf = createsSpaceIf; self.effect = effect; declaredErrors = errors; self.paginated = paginated; self.socketOnly = socketOnly
     }
 
     /// `space` for `space.list`, `remote` for `remote.helper.install`.

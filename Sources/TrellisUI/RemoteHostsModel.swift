@@ -17,7 +17,16 @@ public final class RemoteHostsModel: ObservableObject {
         public let terminal: NativeTerminal
     }
 
-    @Published public private(set) var preferences: [UUID: RemoteHostPreferences] = [:]
+    @Published public private(set) var preferences: [UUID: RemoteHostPreferences] = [:] {
+        didSet {
+            guard let onHelperChanged else { return }
+            for id in Set(oldValue.keys).union(preferences.keys) where oldValue[id]?.helper?.state != preferences[id]?.helper?.state {
+                onHelperChanged(id, preferences[id]?.helper)
+            }
+        }
+    }
+    /// A host's helper status changed (FR-RW17); protocol 2's `remote.helper` comes from here.
+    public var onHelperChanged: ((UUID, RemoteHelperRecord?) -> Void)?
     @Published public private(set) var activity: [UUID: Activity] = [:]
     @Published public private(set) var messages: [UUID: String] = [:]
     @Published public var console: Console?
