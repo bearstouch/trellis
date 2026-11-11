@@ -81,6 +81,7 @@ nav:
           - Permissions: api/v2/permissions.md
           - Events: api/v2/events.md
           - Migration: api/v2/migration.md
+          - Implementation plan: api/v2/implementation.md
   - Platform:
       - Integrations: integrations.md
       - macOS support: platform/macos.md

@@ -15,6 +15,7 @@ What stays the same: every mutation still goes through `WorkspaceCommandService`
 | [Permissions](permissions.md) | Capabilities, presets, scopes and grant editing |
 | [Events](events.md) | Topics, event types, subscriptions and `events.poll` |
 | [Migration](migration.md) | v1 → v2 mapping for methods, grants, the CLI and MCP tools |
+| [Implementation plan](implementation.md) | Phases, risks and verification for building v2 |
 
 ## Principles
 
