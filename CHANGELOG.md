@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Languages:** Trellis is now available in Portuguese (Portugal), French and Spanish as well as English. It follows your Mac's language; **Settings → Appearance → Language** picks another one for Trellis alone, with no relaunch. Terminal output, names you chose, the `trellis` command and the automation API stay as they are. `--language en|pt-PT|fr|es` picks a language for one launch.
+- **Model and effort for Claude Code:** the Agents view's Running list shows the model a Claude Code session uses ("Ardaven · Opus 5.5") and its reasoning effort as a small label next to the tab name, once Claude Code reports them. Trellis reads only these two settings from Claude Code's hooks.
 - **Command Palette hint:** the status bar shows the Command Palette shortcut (⇧⌘P by default, or your custom binding) next to the version; clicking it opens the palette.
 - **Idle timeout for kept sessions:** a session left running with Trellis closed or disconnected is now ended once it has printed nothing for 24 hours. **Settings → Session Broker → End idle kept sessions after** offers No timeout, 1, 2, 4, 12, 24, 48 and 96 hours. Sessions shown in a pane are never ended. Applies to remote workspace hosts too, once their helper is updated.
 

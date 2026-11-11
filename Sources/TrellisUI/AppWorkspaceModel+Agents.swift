@@ -415,15 +415,24 @@ extension AppWorkspaceModel {
     }
 
     func receiveAgentEvent(sessionID: UUID, event: String) {
-        guard let event = AgentEvent(rawValue: event), let pane = snapshot.panes.values.first(where: { $0.sessionID == sessionID }) else { return }
-        applyAgentSignal(.hook(event), paneID: pane.id)
+        guard let pane = snapshot.panes.values.first(where: { $0.sessionID == sessionID }) else { return }
+        if let settings = AgentSettings(infoEvent: event) {
+            // FR-AG19: settings only decorate a state the hooks already set.
+            guard agentStates[pane.id]?.hooked == true else { return }
+            applyAgentSignal(.settings(settings), paneID: pane.id)
+        } else if let event = AgentEvent(rawValue: event) {
+            applyAgentSignal(.hook(event), paneID: pane.id)
+        }
     }
 
-    /// A pane that adopted a kept session shows the last state its hooks reported, without notifying again.
-    func restoreAgentState(paneID: UUID, event: String?) {
+    /// A pane that adopted a kept session shows the last state and settings its hooks reported, without notifying again.
+    func restoreAgentState(paneID: UUID, event: String?, info: String? = nil) {
         guard let definition = agentDefinition(paneID: paneID) else { return }
         var reducer = AgentStateReducer(integration: definition.integration)
-        if let event = event.flatMap(AgentEvent.init(rawValue:)) { reducer.apply(.hook(event), visible: true) }
+        if let event = event.flatMap(AgentEvent.init(rawValue:)) {
+            reducer.apply(.hook(event), visible: true)
+            if let settings = info.flatMap(AgentSettings.init(infoEvent:)) { reducer.apply(.settings(settings), visible: true) }
+        }
         agentStates[paneID] = reducer
     }
 
