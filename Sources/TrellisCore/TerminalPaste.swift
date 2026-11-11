@@ -49,8 +49,8 @@ public struct TerminalPastePlan: Equatable, Sendable {
             shown += 1
         }
         if shown > 8192 {
-            visible += "\n… Preview truncated; \(text.utf8.count) bytes total."
-            if hiddenEscape { visible += " The rest includes escape (ESC) characters not shown here." }
+            visible += "\n" + L("… Preview truncated; %d bytes total.", text.utf8.count)
+            if hiddenEscape { visible += " " + L("The rest includes escape (ESC) characters not shown here.") }
         }
         lineCount = lines
         preview = visible

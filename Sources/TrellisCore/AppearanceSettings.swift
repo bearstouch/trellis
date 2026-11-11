@@ -18,10 +18,10 @@ public enum TerminalBellStyle: String, Codable, CaseIterable, Sendable {
     case sound, visual, soundAndVisual, off
     public var displayName: String {
         switch self {
-        case .sound: "Sound";
-        case .visual: "Visual flash";
-        case .soundAndVisual: "Sound and flash";
-        case .off: "Off"
+        case .sound: L("Sound");
+        case .visual: L("Visual flash");
+        case .soundAndVisual: L("Sound and flash");
+        case .off: L("Off")
         }
     }
 }
@@ -55,11 +55,13 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public static let backgroundOpacityRange = 0.3...1.0
     /// Frosts what shows through a translucent pane background (FR-TH10).
     public var backgroundBlur = true
+    /// The language of the app's own text (FR-LN01); System follows the Mac's preferred languages.
+    public var language: AppLanguage = .system
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
-        case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur
+        case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, language
     }
     /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
@@ -88,6 +90,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         let opacity = (try? c.decodeIfPresent(Double.self, forKey: .backgroundOpacity)) ?? 1
         backgroundOpacity = opacity.isFinite && Self.backgroundOpacityRange.contains(opacity) ? opacity : 1
         backgroundBlur = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundBlur)) ?? true
+        // Settings saved before FR-LN01, or naming a language this build doesn't have, follow the system.
+        language = (try? c.decodeIfPresent(AppLanguage.self, forKey: .language)) ?? .system
     }
     /// True when terminals must be updated: everything except chrome mode, theme selection, notifications and blur.
     public func terminalRenderingDiffers(from other: Self) -> Bool {
@@ -96,6 +100,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         normalized.desktopNotifications = other.desktopNotifications
         normalized.commandFinishedNotificationSeconds = other.commandFinishedNotificationSeconds
         normalized.backgroundBlur = other.backgroundBlur
+        normalized.language = other.language
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {
@@ -122,7 +127,10 @@ public struct TerminalFontChoice: Equatable, Sendable {
     public static func resolve(_ requested: String, available: (String) -> Bool) -> Self {
         if available(requested) { return Self(name: requested, notice: nil) }
         let fallback = available("Menlo") ? "Menlo" : nil
-        return Self(name: fallback, notice: "\(requested) is unavailable or not monospaced. Using \(fallback ?? "the system monospace font").")
+        let notice =
+            fallback.map { L("%1$@ is unavailable or not monospaced. Using %2$@.", requested, $0) }
+            ?? L("%@ is unavailable or not monospaced. Using the system monospace font.", requested)
+        return Self(name: fallback, notice: notice)
     }
 }
 

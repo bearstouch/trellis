@@ -8,11 +8,11 @@ public enum SidebarView: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .files: "Files"
-        case .changes: "Changes"
-        case .scratchpad: "Scratchpad"
-        case .tasks: "Tasks"
-        case .agents: "Agents"
+        case .files: L("Files")
+        case .changes: L("Changes")
+        case .scratchpad: L("Scratchpad")
+        case .tasks: L("Tasks")
+        case .agents: L("Agents")
         }
     }
 
@@ -60,13 +60,13 @@ extension AppWorkspaceModel {
     /// Why the focused pane can't use a view; nil when it can (FR-SB04). Plain SSH sessions have no verified folder or
     /// machine to act on; the scratchpad runs only on this Mac.
     public func sidebarUnavailableReason(_ view: SidebarView) -> String? {
-        guard let paneID = presentation.activePane?.id, snapshot.panes[paneID] != nil else { return "Open a pane first." }
+        guard let paneID = presentation.activePane?.id, snapshot.panes[paneID] != nil else { return L("Open a pane first.") }
         let machine = paneContext(paneID).machine
-        if machine == .ssh { return "\(view.title) isn't available in SSH panes." }
-        if view == .scratchpad, machine != .local { return "The scratchpad runs only in panes on this Mac." }
+        if machine == .ssh { return L("%@ isn't available in SSH panes.", view.title) }
+        if view == .scratchpad, machine != .local { return L("The scratchpad runs only in panes on this Mac.") }
         // The remote helper reads only allow-listed files; it can't list folders (FR-FB01).
-        if view == .files, machine != .local { return "Files shows only folders on this Mac." }
-        if view == .changes, machine != .local { return "Changes reads git only in panes on this Mac." }
+        if view == .files, machine != .local { return L("Files shows only folders on this Mac.") }
+        if view == .changes, machine != .local { return L("Changes reads git only in panes on this Mac.") }
         return nil
     }
 
@@ -134,7 +134,7 @@ extension AppWorkspaceModel {
                     guard terminal?.sessionState == .running, let agent = detectedAgent(paneID: id) else { return nil }
                     let state = agentStates[id]?.state
                     return AgentSessionRow(
-                        id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: state?.label ?? "Running", typed: true)
+                        id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: state?.label ?? L("Running"), typed: true)
                 }
             }
         }
@@ -144,19 +144,29 @@ extension AppWorkspaceModel {
     public var agentTarget: (directory: String?, machine: String)? {
         guard let paneID = presentation.activePane?.id, snapshot.panes[paneID] != nil else { return nil }
         let context = paneContext(paneID)
-        return (context.directory, context.machine == .local ? "this Mac" : context.machine.name)
+        return (context.directory, context.machine == .local ? L("this Mac") : context.machine.name)
     }
 
+    /// True when the agent is known to be absent from the focused pane's machine (FR-AG07); never read from the status wording.
+    public func agentIsMissing(_ agent: AgentDefinition) -> Bool {
+        guard let paneID = presentation.activePane?.id else { return false }
+        if isRemoteWorkspace(paneID: paneID) {
+            let host = snapshot.panes[paneID].flatMap { snapshot.sessions[$0.sessionID]?.launch.remoteHostID }
+            return host.map { remoteMissingAgents[$0]?.contains(agent.id) == true } ?? false
+        }
+        if case .missing? = agentAvailability[agent.id] { return true }
+        return false
+    }
     /// An agent's install status on the focused pane's machine, in words; nil when it is installed or unknown (FR-AG07).
     public func agentStatusText(_ agent: AgentDefinition) -> String? {
         guard let paneID = presentation.activePane?.id else { return nil }
         if isRemoteWorkspace(paneID: paneID) {
             let host = snapshot.panes[paneID].flatMap { snapshot.sessions[$0.sessionID]?.launch.remoteHostID }
-            return host.flatMap { remoteMissingAgents[$0]?.contains(agent.id) == true ? "Not installed on \(remoteHostName($0))" : nil }
+            return host.flatMap { remoteMissingAgents[$0]?.contains(agent.id) == true ? L("Not installed on %@", remoteHostName($0)) : nil }
         }
         switch agentAvailability[agent.id] {
-        case .missing?: return "Not installed on this Mac"
-        case .checking?: return "Checking…"
+        case .missing?: return L("Not installed on this Mac")
+        case .checking?: return L("Checking…")
         default: return nil
         }
     }

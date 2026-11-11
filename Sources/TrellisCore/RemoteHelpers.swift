@@ -106,10 +106,10 @@ public struct RemoteHelperRecord: Codable, Equatable, Sendable {
     public var summary: String {
         let platform = RemotePlatform.displayName(system: system, machine: machine)
         return switch state {
-        case .current: "Installed, up to date (\(platform))"
-        case .outdated: "Update available (\(platform))"
-        case .missing: "Not installed (\(platform))"
-        case .unsupported: "Not available for \(platform)"
+        case .current: L("Installed, up to date (%@)", platform)
+        case .outdated: L("Update available (%@)", platform)
+        case .missing: L("Not installed (%@)", platform)
+        case .unsupported: L("Not available for %@", platform)
         }
     }
 }

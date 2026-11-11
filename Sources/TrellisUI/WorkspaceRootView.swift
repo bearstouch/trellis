@@ -36,7 +36,7 @@ public struct WorkspaceRootView: View {
                 HStack(spacing: 5) {
                     Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 14, height: 14).accessibilityHidden(true)
                     Text("Trellis")
-                    Text(AppVersion.current).monospacedDigit().opacity(0.7).accessibilityLabel("Version \(AppVersion.current)")
+                    Text(AppVersion.current).monospacedDigit().opacity(0.7).accessibilityLabel(L("Version %@", AppVersion.current))
                 }
                 // The live binding, so a customized shortcut shows what actually opens the palette.
                 if let chord = model.keyboard.shortcuts[.commandPalette] {
@@ -46,26 +46,26 @@ public struct WorkspaceRootView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text(chord.description).monospacedDigit()
-                            Text("Command Palette")
+                            Text(L("Command Palette"))
                         }.contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain).help("Open the Command Palette (\(chord.description))")
-                    .accessibilityLabel("Command Palette, \(chord.description)")
+                    .buttonStyle(.plain).help(L("Open the Command Palette (%@)", chord.description))
+                    .accessibilityLabel(L("Command Palette, %@", chord.description))
                     .disabled(model.commandPaletteVisible || model.welcomeTourVisible || model.isRestoring || model.recoveryMessage != nil)
                 }
                 Spacer()
-                if model.persistenceReadOnly { Text("Changes won’t be saved") }
+                if model.persistenceReadOnly { Text(L("Changes won’t be saved")) }
                 if let notice = model.themeNotice { Text(notice).lineLimit(1).help(notice) }
                 if let notice = model.appearanceNotice { Text(notice).lineLimit(1).help(notice) }
                 let status = model.accessibility.status
-                Text(status).foregroundStyle(sessionStatusColor).accessibilityLabel("Session status \(status)")
+                Text(status).foregroundStyle(sessionStatusColor).accessibilityLabel(L("Session status %@", status))
                 Text("·  UTF-8  ·")
                 PaneMachineLabel(machine: model.focusedMachine, model: model)
                 if let name = model.presentation.selectedSpace?.name {
                     Text("·").accessibilityHidden(true)
                     HStack(spacing: 4) {
                         Image(systemName: "folder").accessibilityHidden(true)
-                        Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel("Space \(name)")
+                        Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel(L("Space %@", name))
                     }
                 }
             }
@@ -97,41 +97,41 @@ public struct WorkspaceRootView: View {
         }
         .sheet(item: $spaceToRename) { space in
             VStack(alignment: .leading, spacing: 16) {
-                Text("Rename Space").font(.headline)
-                TextField("Space name", text: $spaceName).onSubmit { rename(space) }
+                Text(L("Rename Space")).font(.headline)
+                TextField(L("Space name"), text: $spaceName).onSubmit { rename(space) }
                 HStack {
                     Spacer()
-                    Button("Cancel") { spaceToRename = nil }.keyboardShortcut(.cancelAction)
-                    Button("Rename") { rename(space) }.keyboardShortcut(.defaultAction)
+                    Button(L("Cancel")) { spaceToRename = nil }.keyboardShortcut(.cancelAction)
+                    Button(L("Rename")) { rename(space) }.keyboardShortcut(.defaultAction)
                 }
             }.padding(24).frame(width: 330)
         }
         .sheet(item: Binding(get: { model.pendingPaste }, set: { if $0 == nil { model.cancelPaste() } })) { paste in
             VStack(alignment: .leading, spacing: 14) {
-                Text(paste.plan.isPath ? "Review Escaped Path" : "Review Paste").font(.headline)
-                Text("Target: \(paste.targetName)").font(.subheadline)
-                Text("\(paste.plan.lineCount) line(s) · \(paste.plan.text.utf8.count) bytes · No newline added")
+                Text(paste.plan.isPath ? L("Review Escaped Path") : L("Review Paste")).font(.headline)
+                Text(L("Target: %@", paste.targetName)).font(.subheadline)
+                Text(L("%1$@ line(s) · %2$@ bytes · No newline added", "\(paste.plan.lineCount)", "\(paste.plan.text.utf8.count)"))
                     .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
                 if paste.plan.unsupportedShell {
-                    Text("This shell is not supported for path escaping. POSIX quoting is shown below; check it before pasting as text.")
+                    Text(L("This shell is not supported for path escaping. POSIX quoting is shown below; check it before pasting as text."))
                         .font(.callout)
                 }
                 ScrollView {
                     Text(paste.plan.preview).font(.system(size: 12, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                 }.frame(height: 220).background(model.themeColor(.background))
-                Text("Controls appear in ⟨brackets⟩. Changing panes discards this review.")
+                Text(L("Controls appear in ⟨brackets⟩. Changing panes discards this review."))
                     .font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
                 HStack {
                     Spacer()
-                    Button("Cancel") { model.cancelPaste() }.keyboardShortcut(.cancelAction)
-                    Button(paste.plan.unsupportedShell ? "Paste Quoted Text" : "Paste") { model.confirmPaste(paste.id) }
+                    Button(L("Cancel")) { model.cancelPaste() }.keyboardShortcut(.cancelAction)
+                    Button(paste.plan.unsupportedShell ? L("Paste Quoted Text") : L("Paste")) { model.confirmPaste(paste.id) }
                 }
             }.padding(24).frame(width: 540)
         }
         .modifier(TaskSheets(model: model))
         .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
-            Button("OK") { model.errorMessage = nil }
+            Button(L("OK")) { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
         }
@@ -158,8 +158,8 @@ public struct WorkspaceRootView: View {
         } label: {
             Image(systemName: "sidebar.left")
         }
-        .buttonStyle(.plain).help(shortcutHelp(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", .toggleSidebar))
-        .accessibilityLabel(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar")
+        .buttonStyle(.plain).help(shortcutHelp(model.sidebarCollapsed ? L("Show Sidebar") : L("Hide Sidebar"), .toggleSidebar))
+        .accessibilityLabel(model.sidebarCollapsed ? L("Show Sidebar") : L("Hide Sidebar"))
     }
 
     private var newSpaceButton: some View {
@@ -168,14 +168,14 @@ public struct WorkspaceRootView: View {
         } label: {
             Image(systemName: "plus")
         }
-        .buttonStyle(.plain).help(shortcutHelp("New Space", .newSpace)).accessibilityLabel("New Space")
+        .buttonStyle(.plain).help(shortcutHelp(L("New Space"), .newSpace)).accessibilityLabel(L("New Space"))
     }
 
     private var expandedSidebar: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 sidebarToggle
-                Text("SPACES").font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
+                Text(L("SPACES")).font(.system(size: 10, weight: .semibold)).foregroundStyle(model.themeColor(.mutedForeground))
                     .accessibilityHidden(true)
                 Spacer()
                 newSpaceButton
@@ -186,28 +186,28 @@ public struct WorkspaceRootView: View {
                     ForEach(model.snapshot.spaces) { space in
                         spaceRow(space, descriptor: descriptors.first { $0.id == space.id })
                     }
-                }.accessibilityElement(children: .contain).accessibilityLabel("Spaces")
+                }.accessibilityElement(children: .contain).accessibilityLabel(L("Spaces"))
             }
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
             Button {
                 model.openProjects?()
             } label: {
-                Label("Projects", systemImage: "folder.badge.gearshape")
+                Label(L("Projects"), systemImage: "folder.badge.gearshape")
             }
-            .buttonStyle(.plain).help(model.keyboard.shortcuts[.showProjects].map { "Project library (\($0))" as String } ?? "Project library").padding(.horizontal, 10).padding(.top, 6)
+            .buttonStyle(.plain).help(model.keyboard.shortcuts[.showProjects].map { L("Project library (%@)", $0.description) } ?? L("Project library")).padding(.horizontal, 10).padding(.top, 6)
             Button {
                 model.openHosts?()
             } label: {
-                Label("Hosts", systemImage: "server.rack")
+                Label(L("Hosts"), systemImage: "server.rack")
             }
-            .buttonStyle(.plain).help("Saved SSH hosts").padding(.horizontal, 10).padding(.top, 6)
+            .buttonStyle(.plain).help(L("Saved SSH hosts")).padding(.horizontal, 10).padding(.top, 6)
             Button {
                 model.openSettings?()
             } label: {
-                Label("Settings", systemImage: "slider.horizontal.3")
+                Label(L("Settings"), systemImage: "slider.horizontal.3")
             }
-            .buttonStyle(.plain).help("Settings (⌘,)").padding(.horizontal, 10).padding(.top, 6)
+            .buttonStyle(.plain).help(L("Settings (⌘,)")).padding(.horizontal, 10).padding(.top, 6)
         }
         .padding(.horizontal, 10)
     }
@@ -223,7 +223,7 @@ public struct WorkspaceRootView: View {
                     ForEach(model.snapshot.spaces) { space in
                         spaceTile(space, descriptor: descriptors.first { $0.id == space.id })
                     }
-                }.padding(.vertical, 8).frame(maxWidth: .infinity).accessibilityElement(children: .contain).accessibilityLabel("Spaces")
+                }.padding(.vertical, 8).frame(maxWidth: .infinity).accessibilityElement(children: .contain).accessibilityLabel(L("Spaces"))
             }.scrollIndicators(.hidden)
             Spacer(minLength: 0)
             Divider().overlay(model.separatorOverlay)
@@ -232,19 +232,19 @@ public struct WorkspaceRootView: View {
             } label: {
                 Image(systemName: "folder.badge.gearshape")
             }
-            .buttonStyle(.plain).help("Project library").accessibilityLabel("Projects")
+            .buttonStyle(.plain).help(L("Project library")).accessibilityLabel(L("Projects"))
             Button {
                 model.openHosts?()
             } label: {
                 Image(systemName: "server.rack")
             }
-            .buttonStyle(.plain).help("Saved SSH hosts").accessibilityLabel("Hosts")
+            .buttonStyle(.plain).help(L("Saved SSH hosts")).accessibilityLabel(L("Hosts"))
             Button {
                 model.openSettings?()
             } label: {
                 Image(systemName: "slider.horizontal.3")
             }
-            .buttonStyle(.plain).help("Settings (⌘,)").accessibilityLabel("Settings")
+            .buttonStyle(.plain).help(L("Settings (⌘,)")).accessibilityLabel(L("Settings"))
         }
         .frame(maxWidth: .infinity)
     }
@@ -263,24 +263,24 @@ public struct WorkspaceRootView: View {
                     // FR-W08: the project this space was loaded from, when it isn't simply its name.
                     if let project, project != space.name {
                         Label(project, systemImage: "folder").font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
-                            .help("Loaded from the project \(project)")
+                            .help(L("Loaded from the project %@", project))
                     }
                     // FR-RW16: the link in words and a symbol, never color alone.
                     if let host = space.remoteHostID {
                         let link = model.remoteLinks[host] ?? .disconnected(nil)
                         Label("\(model.remoteHostName(host)) · \(link.label)", systemImage: link.symbol)
                             .font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1)
-                            .help(link == .connected ? "Connected to \(model.remoteHostName(host))" : linkHelp(link))
+                            .help(link == .connected ? L("Connected to %@", model.remoteHostName(host)) : linkHelp(link))
                     }
                 }
                 Spacer()
                 if model.spacesNeedingInput.contains(space.id) {
-                    Image(systemName: "keyboard").font(.system(size: 10)).help("Waiting for input")
+                    Image(systemName: "keyboard").font(.system(size: 10)).help(L("Waiting for input"))
                 }
                 if model.activity[space.id]?.hasExit == true {
-                    Image(systemName: "stop.circle").help("A session exited")
+                    Image(systemName: "stop.circle").help(L("A session exited"))
                 } else if model.activity[space.id]?.hasOutput == true {
-                    Circle().fill(model.themeColor(.accent)).frame(width: 6, height: 6).help("New terminal output")
+                    Circle().fill(model.themeColor(.accent)).frame(width: 6, height: 6).help(L("New terminal output"))
                 }
                 Text("\(space.tabIDs.count)").foregroundStyle(model.themeColor(.mutedForeground)).font(.system(size: 10))
             }.padding(.horizontal, 10).padding(.vertical, 8)
@@ -293,7 +293,7 @@ public struct WorkspaceRootView: View {
     }
 
     private func linkHelp(_ link: RemoteLinkDisplay) -> String {
-        [link.label, link.detail, link.isUp ? nil : "The space’s menu has Retry Now and Reconnect…."].compactMap { $0 }.joined(separator: " ")
+        [link.label, link.detail, link.isUp ? nil : L("The space’s menu has Retry Now and Reconnect….")].compactMap { $0 }.joined(separator: " ")
     }
 
     private func spaceDrag(_ space: Space) -> DragReorder {
@@ -319,7 +319,7 @@ public struct WorkspaceRootView: View {
                 .overlay(alignment: .bottomTrailing) {
                     if model.spacesNeedingInput.contains(space.id) {
                         Image(systemName: "keyboard.fill").font(.system(size: 8)).foregroundStyle(model.themeColor(.accent))
-                            .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: 4, y: 4).help("Waiting for input")
+                            .background(Circle().fill(model.themeColor(.sidebarBackground)).padding(-2)).offset(x: 4, y: 4).help(L("Waiting for input"))
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
@@ -332,9 +332,9 @@ public struct WorkspaceRootView: View {
                 .overlay(alignment: .topTrailing) {
                     if model.activity[space.id]?.hasExit == true {
                         Image(systemName: "stop.circle.fill").font(.system(size: 9)).foregroundStyle(model.themeColor(.mutedForeground))
-                            .background(Circle().fill(model.themeColor(.sidebarBackground))).offset(x: 4, y: -4).help("A session exited")
+                            .background(Circle().fill(model.themeColor(.sidebarBackground))).offset(x: 4, y: -4).help(L("A session exited"))
                     } else if model.activity[space.id]?.hasOutput == true {
-                        Circle().fill(model.themeColor(.accent)).frame(width: 7, height: 7).offset(x: 3, y: -3).help("New terminal output")
+                        Circle().fill(model.themeColor(.accent)).frame(width: 7, height: 7).offset(x: 3, y: -3).help(L("New terminal output"))
                     }
                 }
                 .contentShape(shape)
@@ -359,22 +359,22 @@ public struct WorkspaceRootView: View {
 
     @ViewBuilder private var mainArea: some View {
         if model.isRestoring {
-            ProgressView("Restoring workspace…").frame(maxWidth: .infinity, maxHeight: .infinity).background(model.translucentChromeBackground)
+            ProgressView(L("Restoring workspace…")).frame(maxWidth: .infinity, maxHeight: .infinity).background(model.translucentChromeBackground)
         } else if let message = model.recoveryMessage {
             VStack(spacing: 16) {
-                Text("Recover Workspace").font(.title2)
+                Text(L("Recover Workspace")).font(.title2)
                 Text(message).multilineTextAlignment(.center).frame(maxWidth: 430)
                 if model.backupAvailable {
-                    Button("Use Backup") { Task { await model.recoverWorkspace(useBackup: true) } }
+                    Button(L("Use Backup")) { Task { await model.recoverWorkspace(useBackup: true) } }
                 }
-                Button("Start Empty") { Task { await model.recoverWorkspace(useBackup: false) } }
+                Button(L("Start Empty")) { Task { await model.recoverWorkspace(useBackup: false) } }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(model.translucentChromeBackground)
         } else if model.presentation.isEmpty {
             VStack(spacing: 14) {
                 TrellisLogoMark(blinks: !model.reduceMotion).frame(width: 64, height: 64)
-                Text("Your terminals, organized.").font(.system(size: 19, weight: .medium))
+                Text(L("Your terminals, organized.")).font(.system(size: 19, weight: .medium))
                 // A view's key equivalent runs before the menu's, which the open palette or tour disables (FR-CP02, FR-ON04).
-                Button("New Space") { Task { await model.createSpace() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
+                Button(L("New Space")) { Task { await model.createSpace() } }.keyboardShortcut("n").disabled(model.commandPaletteVisible || model.welcomeTourVisible)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(model.chromeFill(.background))
         } else {
             HStack(spacing: 0) {
@@ -412,14 +412,14 @@ public struct WorkspaceRootView: View {
                         reviewTabLabel(review)
                         Divider().overlay(model.separatorOverlay).frame(height: 20)
                     }
-                }.accessibilityElement(children: .contain).accessibilityLabel("Tabs")
+                }.accessibilityElement(children: .contain).accessibilityLabel(L("Tabs"))
             }.scrollIndicators(.hidden)
             Button {
                 Task { await model.createTab() }
             } label: {
                 Image(systemName: "plus")
             }
-            .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp("New Tab", .newTab)).accessibilityLabel("New Tab")
+            .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp(L("New Tab"), .newTab)).accessibilityLabel(L("New Tab"))
         }.frame(height: 40).background(model.chromeFill(.surface))
     }
 
@@ -440,7 +440,7 @@ public struct WorkspaceRootView: View {
                     sidebarWidth = min(max(start - value.translation.width, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
                 }.onEnded { _ in sidebarDragStart = nil }
             )
-            .accessibilityElement().accessibilityLabel("Sidebar width").accessibilityValue("\(Int(sidebarWidth)) points")
+            .accessibilityElement().accessibilityLabel(L("Sidebar width")).accessibilityValue(L("%d points", Int(sidebarWidth)))
             .accessibilityAdjustableAction { direction in
                 let next = sidebarWidth + (direction == .increment ? 20 : -20)
                 sidebarWidth = min(max(next, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
@@ -458,7 +458,7 @@ public struct WorkspaceRootView: View {
             } label: {
                 Image(systemName: "xmark").font(.system(size: 9))
             }
-            .buttonStyle(.plain).help("Close Review").accessibilityLabel("Close Review of \(review.file.name)")
+            .buttonStyle(.plain).help(L("Close Review")).accessibilityLabel(L("Close Review of %@", review.file.name))
         }
         .foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
         .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 240).frame(height: 40)
@@ -466,10 +466,10 @@ public struct WorkspaceRootView: View {
         .overlay(alignment: .bottom) { if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) } }
         .contentShape(Rectangle())
         .onTapGesture { model.showReview() }
-        .help("Review: \(review.file.path)")
+        .help(L("Review: %@", review.file.path))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Review \(review.file.name)")
-        .accessibilityValue("diff of \(review.file.path)")
+        .accessibilityLabel(L("Review %@", review.file.name))
+        .accessibilityValue(L("diff of %@", review.file.path))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
         .accessibilityAction { model.showReview() }
     }
@@ -484,8 +484,8 @@ public struct WorkspaceRootView: View {
         let linkDown = model.tabLinkDown(tabID: tab.id)
         let temporary = model.isTemporaryTab(tab)
         let parts: [String] = [
-            descriptor?.value ?? "", temporary ? "temporary tab" : "", linkDown.map { "\($0.hostName), \($0.link.label)" } ?? "", agentBadge.map { "\($0.agent.name) \($0.state.spokenText)" } ?? "",
-            wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? "output in progress" : ""
+            descriptor?.value ?? "", temporary ? L("temporary tab") : "", linkDown.map { "\($0.hostName), \($0.link.label)" } ?? "", agentBadge.map { "\($0.agent.name) \($0.state.spokenText)" } ?? "",
+            wait?.text.lowercased() ?? "", progress?.spokenText ?? "", busy ? L("output in progress") : ""
         ]
         let value = parts.filter { !$0.isEmpty }.joined(separator: ", ")
         let label = HStack(spacing: 8) {
@@ -506,10 +506,10 @@ public struct WorkspaceRootView: View {
             .foregroundStyle(tab.color.map { AnyShapeStyle($0.swatchColor) } ?? AnyShapeStyle(.foreground))
             .accessibilityHidden(true)
             if model.editingTabID == tab.id {
-                TextField("Tab name", text: $model.tabRenameDraft)
+                TextField(L("Tab name"), text: $model.tabRenameDraft)
                     .textFieldStyle(.plain).focused($tabNameFocused)
-                    .accessibilityLabel("Tab name")
-                    .accessibilityHint("Return saves, Escape cancels")
+                    .accessibilityLabel(L("Tab name"))
+                    .accessibilityHint(L("Return saves, Escape cancels"))
                     .onAppear { tabNameFocused = true }
                     .onChange(of: model.tabRenameFocusRequest) { _, _ in
                         // The palette's AppKit field took focus without SwiftUI noticing, so `true` alone may change nothing.
@@ -524,7 +524,7 @@ public struct WorkspaceRootView: View {
                 // Simultaneous double-tap: an exclusive one delays every single click by the double-click interval.
                 // FR-W08: a tab the space's project doesn't define reads as temporary, in italics and in words.
                 Text(model.displayTitle(tab)).lineLimit(1).italic(temporary)
-                    .help(temporary ? "Temporary tab: not part of this space's project" : "")
+                    .help(temporary ? L("Temporary tab: not part of this space's project") : "")
                     .onTapGesture { Task { await model.selectTab(tab.id) } }
                     .simultaneousGesture(TapGesture(count: 2).onEnded { beginTabRename(tab) })
             }
@@ -545,7 +545,7 @@ public struct WorkspaceRootView: View {
                 AgentTabBadge(state: state).help("\(agentBadge?.agent.name ?? ""): \(state.label)")
             case .input:
                 // A word in a capsule, not color alone (FR-T06); the tab's value speaks it.
-                Label("Input", systemImage: "keyboard").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium)).lineLimit(1)
+                Label(L("Input"), systemImage: "keyboard").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium)).lineLimit(1)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
                     .overlay(Capsule().strokeBorder(model.themeColor(.accent).opacity(0.6), lineWidth: 1))
@@ -564,7 +564,7 @@ public struct WorkspaceRootView: View {
             } label: {
                 Image(systemName: "xmark").font(.system(size: 9))
             }
-            .buttonStyle(.plain).help("Close Tab").accessibilityLabel("Close \(model.displayTitle(tab))")
+            .buttonStyle(.plain).help(L("Close Tab")).accessibilityLabel(L("Close %@", model.displayTitle(tab)))
         }.foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
             .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 125, maxWidth: 220).frame(height: 40)
             // The tint sits above the opaque active background, so a selected tab keeps it.
@@ -586,13 +586,13 @@ public struct WorkspaceRootView: View {
             )
             .onTapGesture { if model.editingTabID != tab.id { Task { await model.selectTab(tab.id) } } }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(descriptor?.label ?? "Tab \(model.displayTitle(tab))")
+            .accessibilityLabel(descriptor?.label ?? L("Tab %@", model.displayTitle(tab)))
             .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
             .accessibilityAction { Task { await model.selectTab(tab.id) } }
-            .accessibilityAction(named: "Rename") { beginTabRename(tab) }
-            .accessibilityAction(named: "Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }
-            .accessibilityAction(named: "Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }
+            .accessibilityAction(named: L("Rename")) { beginTabRename(tab) }
+            .accessibilityAction(named: L("Move Left")) { Task { await model.moveTab(tab.id, offset: -1) } }
+            .accessibilityAction(named: L("Move Right")) { Task { await model.moveTab(tab.id, offset: 1) } }
             .contextMenu {
                 TabContextMenu(
                     model: model, tab: tab, canMoveLeft: model.presentation.visibleTabs.first?.id != tab.id,
@@ -614,15 +614,15 @@ public struct WorkspaceRootView: View {
                     case .paused: Color.orange
                     default: fill
                     }
-                TabProgressBar(progress: progress, fill: barFill, animated: !model.reduceMotion).help("Progress: \(progress.visibleText)")
+                TabProgressBar(progress: progress, fill: barFill, animated: !model.reduceMotion).help(L("Progress: %@", progress.visibleText))
             }
         case .agentWorking:
             TabAgentThread(fill: fill, animated: !model.reduceMotion)
         case .busy:
             TabBusyBar(fill: fill, track: tab.color?.swatchColor.opacity(0.3) ?? .clear, animated: !model.reduceMotion)
-                .help(tab.color.map { "Printing output · \($0.displayName) label" } ?? "Printing output")
+                .help(tab.color.map { L("Printing output · %@ label", $0.displayName) } ?? L("Printing output"))
         case .label:
-            Rectangle().fill(fill).frame(height: 3).help(tab.color.map { "\($0.displayName) label" } ?? "")
+            Rectangle().fill(fill).frame(height: 3).help(tab.color.map { L("%@ label", $0.displayName) } ?? "")
         case nil:
             EmptyView()
         }
@@ -798,9 +798,9 @@ private struct TabContextMenu: View, Equatable {
     }
 
     var body: some View {
-        Button("Rename…", action: rename)
-        Picker("Color", selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
-            Text("None").tag(TabColor?.none)
+        Button(L("Rename…"), action: rename)
+        Picker(L("Color"), selection: Binding(get: { tab.color }, set: { color in Task { await model.setTabColor(tab.id, color: color) } })) {
+            Text(L("None")).tag(TabColor?.none)
             ForEach(TabColor.allCases, id: \.self) { color in
                 Label {
                     Text(color.displayName)
@@ -809,11 +809,11 @@ private struct TabContextMenu: View, Equatable {
                 }.tag(TabColor?.some(color))
             }
         }
-        Button("Duplicate Tab") { Task { await model.createTab(spaceID: tab.spaceID, duplicate: tab.id) } }
-        Button("Move Left") { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
-        Button("Move Right") { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
+        Button(L("Duplicate Tab")) { Task { await model.createTab(spaceID: tab.spaceID, duplicate: tab.id) } }
+        Button(L("Move Left")) { Task { await model.moveTab(tab.id, offset: -1) } }.disabled(!canMoveLeft)
+        Button(L("Move Right")) { Task { await model.moveTab(tab.id, offset: 1) } }.disabled(!canMoveRight)
         Divider().overlay(separator)
-        Button("Close Tab…") { Task { await model.closeTab(tab.id) } }
+        Button(L("Close Tab…")) { Task { await model.closeTab(tab.id) } }
     }
 }
 
@@ -973,25 +973,25 @@ private struct SpaceItemActions: ViewModifier {
             .accessibilityLabel(descriptor?.label ?? space.name)
             .accessibilityValue(value)
             .accessibilityAddTraits(selected ? [.isSelected] : [])
-            .accessibilityAction(named: "Retry Now") { if canReconnect, let host = space.remoteHostID { model.remoteReconnector.retryNow(host) } }
-            .accessibilityAction(named: "Reconnect") { if canReconnect, let host = space.remoteHostID { Task { await model.reconnectRemote(hostID: host) } } }
-            .accessibilityAction(named: "Rename") { rename(space) }
-            .accessibilityAction(named: "Move Up") { Task { await model.moveSpace(space.id, offset: -1) } }
-            .accessibilityAction(named: "Move Down") { Task { await model.moveSpace(space.id, offset: 1) } }
+            .accessibilityAction(named: L("Retry Now")) { if canReconnect, let host = space.remoteHostID { model.remoteReconnector.retryNow(host) } }
+            .accessibilityAction(named: L("Reconnect")) { if canReconnect, let host = space.remoteHostID { Task { await model.reconnectRemote(hostID: host) } } }
+            .accessibilityAction(named: L("Rename")) { rename(space) }
+            .accessibilityAction(named: L("Move Up")) { Task { await model.moveSpace(space.id, offset: -1) } }
+            .accessibilityAction(named: L("Move Down")) { Task { await model.moveSpace(space.id, offset: 1) } }
             .contextMenu {
                 if let host = space.remoteHostID {
                     // Retry Now never prompts; Reconnect… lets ssh ask for a password or a host-key decision (FR-RW07).
-                    Button("Retry Now") { model.remoteReconnector.retryNow(host) }.disabled(!canReconnect)
-                    Button("Reconnect to \(model.remoteHostName(host))…") { Task { await model.reconnectRemote(hostID: host) } }.disabled(!canReconnect)
+                    Button(L("Retry Now")) { model.remoteReconnector.retryNow(host) }.disabled(!canReconnect)
+                    Button(L("Reconnect to %@…", model.remoteHostName(host))) { Task { await model.reconnectRemote(hostID: host) } }.disabled(!canReconnect)
                     Divider().overlay(model.separatorOverlay)
                 }
-                Button("Rename…") { rename(space) }
-                Button("Move Up") { Task { await model.moveSpace(space.id, offset: -1) } }
+                Button(L("Rename…")) { rename(space) }
+                Button(L("Move Up")) { Task { await model.moveSpace(space.id, offset: -1) } }
                     .disabled(model.snapshot.spaces.first?.id == space.id)
-                Button("Move Down") { Task { await model.moveSpace(space.id, offset: 1) } }
+                Button(L("Move Down")) { Task { await model.moveSpace(space.id, offset: 1) } }
                     .disabled(model.snapshot.spaces.last?.id == space.id)
                 Divider().overlay(model.separatorOverlay)
-                Button("Delete Space…", role: .destructive) { Task { await model.deleteSpace(space.id) } }
+                Button(L("Delete Space…"), role: .destructive) { Task { await model.deleteSpace(space.id) } }
             }
     }
 }
@@ -1012,7 +1012,7 @@ private struct SpaceHoverPreview: ViewModifier {
             .onHover {
                 overTile = $0; schedule()
             }
-            .accessibilityAction(named: "Show Tabs") { presented = true }
+            .accessibilityAction(named: L("Show Tabs")) { presented = true }
             // Not `.popover`: a transient popover swallows the click that dismisses it, so tabs, Settings and Hosts
             // ignored the first click while a card was up.
             .background(PassThroughPopoverAnchor(presented: $presented, edge: .maxX, content: AnyView(card)))
@@ -1062,7 +1062,7 @@ private struct SpaceTabsPreviewCard: View {
             HStack {
                 Text(space.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 12)
-                Text("\(tabs.count) \(tabs.count == 1 ? "tab" : "tabs")").font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
+                Text(tabs.count == 1 ? L("1 tab") : L("%d tabs", tabs.count)).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
             }.padding(.horizontal, 6).padding(.bottom, 4).accessibilityElement(children: .combine)
             ForEach(tabs) { tab in
                 Button {
@@ -1076,7 +1076,7 @@ private struct SpaceTabsPreviewCard: View {
         .padding(10).frame(width: 280, alignment: .leading)
         .foregroundStyle(model.themeColor(.foreground))
         .background(model.themeColor(.surface))
-        .accessibilityElement(children: .contain).accessibilityLabel("Tabs in \(space.name)")
+        .accessibilityElement(children: .contain).accessibilityLabel(L("Tabs in %@", space.name))
     }
 
     private func row(_ tab: SpaceTabPreview) -> some View {
@@ -1087,16 +1087,16 @@ private struct SpaceTabsPreviewCard: View {
             if let agent = tab.agent { AgentIconView(icon: agent.icon, directory: tab.agentIconDirectory).accessibilityHidden(true) }
             Text(tab.title).lineLimit(1).fontWeight(tab.isActive ? .semibold : .regular)
             Spacer(minLength: 8)
-            if tab.paneCount > 1 { Text("\(tab.paneCount) panes").foregroundStyle(model.themeColor(.mutedForeground)) }
-            if let code = tab.failedCommandExit { Label("exit \(code)", systemImage: "exclamationmark.circle").labelStyle(.titleAndIcon) }
-            if tab.hasExitedSession { Label("Exited", systemImage: "stop.circle").labelStyle(.titleAndIcon) }
+            if tab.paneCount > 1 { Text(L("%d panes", tab.paneCount)).foregroundStyle(model.themeColor(.mutedForeground)) }
+            if let code = tab.failedCommandExit { Label(L("exit %d", Int(code)), systemImage: "exclamationmark.circle").labelStyle(.titleAndIcon) }
+            if tab.hasExitedSession { Label(L("Exited"), systemImage: "stop.circle").labelStyle(.titleAndIcon) }
             // A working agent reads as busy, like any tab printing output; only states that need a look get a capsule.
             if tab.agentState == .working {
                 BusyLabel(color: model.themeColor(.accent))
             } else if let state = tab.agentState {
                 AgentTabBadge(state: state)
             } else if let wait = tab.inputWait {
-                Label(wait == .password ? "Password" : "Input", systemImage: "keyboard").labelStyle(.titleAndIcon)
+                Label(wait == .password ? L("Password") : L("Input"), systemImage: "keyboard").labelStyle(.titleAndIcon)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(model.themeColor(.accent).opacity(0.18)))
             } else if let progress = tab.progress {
@@ -1112,12 +1112,12 @@ private struct SpaceTabsPreviewCard: View {
     }
 
     static func spoken(_ tab: SpaceTabPreview) -> String {
-        var parts = ["Tab \(tab.title)"]
-        if tab.isActive { parts.append("active") }
-        if let color = tab.color { parts.append("\(color.displayName.lowercased()) label") }
-        if tab.paneCount > 1 { parts.append("\(tab.paneCount) panes") }
+        var parts = [L("Tab %@", tab.title)]
+        if tab.isActive { parts.append(L("active")) }
+        if let color = tab.color { parts.append(L("%@ label", color.displayName.lowercased())) }
+        if tab.paneCount > 1 { parts.append(L("%d panes", tab.paneCount)) }
         if let code = tab.failedCommandExit { parts.append(WorkspaceAccessibility.commandFailureText(code)) }
-        if tab.hasExitedSession { parts.append("a session exited") }
+        if tab.hasExitedSession { parts.append(L("a session exited")) }
         if let name = tab.agentStateName, let state = tab.agentState {
             parts.append("\(name) \(state.spokenText)")
         } else if let wait = tab.inputWait {
@@ -1125,7 +1125,7 @@ private struct SpaceTabsPreviewCard: View {
         } else if let progress = tab.progress {
             parts.append(progress.spokenText)
         } else if tab.isBusy {
-            parts.append("output in progress")
+            parts.append(L("output in progress"))
         }
         return parts.joined(separator: ", ")
     }
@@ -1275,9 +1275,11 @@ public struct LaunchSettingsView: View {
     private var integrationNote: String {
         let name = (shell as NSString).lastPathComponent
         guard ShellIntegrationKind(executable: shell) != nil else {
-            return "\(name.isEmpty ? "This shell" : name) has no shell integration: Trellis won't track its directory or commands."
+            return name.isEmpty
+                ? L("This shell has no shell integration: Trellis won't track its directory or commands.")
+                : L("%@ has no shell integration: Trellis won't track its directory or commands.", name)
         }
-        return model.shellIntegrationEnabled ? "\(name) supports shell integration." : "\(name) supports shell integration; it's turned off below."
+        return model.shellIntegrationEnabled ? L("%@ supports shell integration.", name) : L("%@ supports shell integration; it's turned off below.", name)
     }
     /// A wrapping caption: the form never grows wider than the pane.
     private func caption(_ text: String) -> some View {
@@ -1285,78 +1287,78 @@ public struct LaunchSettingsView: View {
     }
     public var body: some View {
         Form {
-            Picker("Shell", selection: shellSelection) {
+            Picker(L("Shell"), selection: shellSelection) {
                 ForEach(shells) { option in
-                    Text(option.integration == nil ? "\(option.name)  —  \(option.path)" : "\(option.name)  —  \(option.path)  ·  Shell integration")
+                    Text(option.integration == nil ? "\(option.name)  —  \(option.path)" : L("%1$@  —  %2$@  ·  Shell integration", option.name, option.path))
                         .tag(option.path)
                 }
                 Divider()
-                Text("Other…").tag(Self.customTag)
+                Text(L("Other…")).tag(Self.customTag)
             }.accessibilityIdentifier("settings.shell")
             if customShell {
-                TextField("Shell executable", text: $shell).accessibilityIdentifier("settings.shellPath")
+                TextField(L("Shell executable"), text: $shell).accessibilityIdentifier("settings.shellPath")
             }
             caption(integrationNote).accessibilityIdentifier("settings.shellIntegrationNote")
-            TextField("Working directory", text: $directory)
-            caption("For new local sessions. Use an absolute path.")
-            TextField("Scrollback lines (0–50,000)", value: $scrollbackLines, format: .number.grouping(.never))
+            TextField(L("Working directory"), text: $directory)
+            caption(L("For new local sessions. Use an absolute path."))
+            TextField(L("Scrollback lines (0–50,000)"), value: $scrollbackLines, format: .number.grouping(.never))
                 .accessibilityIdentifier("settings.scrollbackLines")
-            caption("For every pane, up to 16 MiB of text. Lowering it drops older output.")
+            caption(L("For every pane, up to 16 MiB of text. Lowering it drops older output."))
             if !message.isEmpty { Text(message).font(.caption).wrappingSettingsCaption().accessibilityIdentifier("settings.result") }
             Toggle(
-                "Shell integration (zsh, bash, fish)",
+                L("Shell integration (zsh, bash, fish)"),
                 isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
             ).accessibilityIdentifier("settings.shellIntegration")
-            caption("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions.")
+            caption(L("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions."))
             Toggle(
-                "Remember directories",
+                L("Remember directories"),
                 isOn: Binding(get: { model.directoryHistoryEnabled }, set: { model.setDirectoryHistoryEnabled($0) })
             ).accessibilityIdentifier("settings.directoryHistory")
-            caption("Lists where your shells have been under Jump to Directory (⌘J). Kept on this Mac; system, credential and network folders are skipped.")
+            caption(L("Lists where your shells have been under Jump to Directory (⌘J). Kept on this Mac; system, credential and network folders are skipped."))
             // Always enabled: a backup or set-aside copy can hold paths while the list is empty (FR-DJ08).
-            Button("Clear Directory History…") { Task { await model.clearDirectoryHistory() } }
+            Button(L("Clear Directory History…")) { Task { await model.clearDirectoryHistory() } }
                 .accessibilityIdentifier("settings.clearDirectoryHistory")
             Toggle(
-                "Stop sessions when Trellis quits",
+                L("Stop sessions when Trellis quits"),
                 isOn: Binding(get: { !model.keepSessionsRunning }, set: { model.setKeepSessionsRunning(!$0) })
             ).accessibilityIdentifier("settings.stopSessionsOnQuit")
             caption(
                 model.keepSessionsRunning
-                    ? "Sessions run in a background helper: they keep running when you quit, close the window or Trellis stops unexpectedly, and reconnect next time. Logging out or restarting ends them."
-                    : "Quitting or closing the window stops every session. Sessions still survive if Trellis stops unexpectedly.")
+                    ? L("Sessions run in a background helper: they keep running when you quit, close the window or Trellis stops unexpectedly, and reconnect next time. Logging out or restarting ends them.")
+                    : L("Quitting or closing the window stops every session. Sessions still survive if Trellis stops unexpectedly."))
             if model.sessionDefaultNoticePending {
-                caption("New: sessions now keep running after quit by default. Turn this on to stop them when Trellis quits.")
+                caption(L("New: sessions now keep running after quit by default. Turn this on to stop them when Trellis quits."))
                     .accessibilityIdentifier("settings.sessionDefaultNotice")
                     .onDisappear { model.dismissSessionDefaultNotice() }
             }
             Toggle(
-                "Restore scrollback after quit",
+                L("Restore scrollback after quit"),
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
             ).accessibilityIdentifier("settings.restoreScrollback")
-            caption("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis.")
+            caption(L("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis."))
             Picker(
-                "Workspace disk writes",
+                L("Workspace disk writes"),
                 selection: Binding(get: { model.saveBudgetMegabytesPerHour }, set: { model.setSaveBudget(megabytesPerHour: $0) })
             ) {
-                ForEach(WorkspaceWriteBudget.choices, id: \.self) { Text("Up to \($0) MB per hour").tag($0) }
+                ForEach(WorkspaceWriteBudget.choices, id: \.self) { Text(L("Up to %d MB per hour", $0)).tag($0) }
             }.accessibilityIdentifier("settings.saveBudget")
             caption(
                 model.savesThrottled
-                    ? "Limit reached: changes are now saved together every 5 minutes. Quit and ⌘S still save at once."
-                    : "Past this, changes to spaces, tabs and settings are saved together every 5 minutes instead of right away."
+                    ? L("Limit reached: changes are now saved together every 5 minutes. Quit and ⌘S still save at once.")
+                    : L("Past this, changes to spaces, tabs and settings are saved together every 5 minutes instead of right away.")
             ).accessibilityIdentifier("settings.saveBudgetNote")
-            Toggle("Desktop notifications", isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
-            caption("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane.")
-            Picker("Notify when a command finishes", selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {
-                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? "Off" : "After \($0) s").tag($0) }
+            Toggle(L("Desktop notifications"), isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
+            caption(L("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane."))
+            Picker(L("Notify when a command finishes"), selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {
+                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? L("Off") : L("After %d s", $0)).tag($0) }
             }.disabled(!model.appearance.desktopNotifications).accessibilityIdentifier("settings.commandFinishedNotification")
-            caption("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line.")
-            Toggle("GPU rendering (Metal)", isOn: appearanceSetting(\.gpuRendering)).accessibilityIdentifier("settings.gpuRendering")
-            caption("Draws terminals with Metal, or with the CPU if Metal fails.")
+            caption(L("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line."))
+            Toggle(L("GPU rendering (Metal)"), isOn: appearanceSetting(\.gpuRendering)).accessibilityIdentifier("settings.gpuRendering")
+            caption(L("Draws terminals with Metal, or with the CPU if Metal fails."))
             HStack {
                 Spacer()
-                Button("Save") {
-                    guard (0...50_000).contains(scrollbackLines) else { message = "Use 0–50,000 scrollback lines."; return }
+                Button(L("Save")) {
+                    guard (0...50_000).contains(scrollbackLines) else { message = L("Use 0–50,000 scrollback lines."); return }
                     saving = true
                     Task {
                         // Nothing is saved unless the shell and directory are valid.
@@ -1366,7 +1368,7 @@ public struct LaunchSettingsView: View {
                             settings.scrollbackLines = scrollbackLines
                             saved = model.applyAppearance(settings)
                         }
-                        message = saved ? "Saved." : "Check that the shell is executable and the directory is accessible."
+                        message = saved ? L("Saved.") : L("Check that the shell is executable and the directory is accessible.")
                         saving = false
                     }
                 }.disabled(saving)

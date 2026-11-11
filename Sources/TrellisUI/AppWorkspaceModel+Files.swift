@@ -233,12 +233,12 @@ extension AppWorkspaceModel {
             switch await Task.detached(priority: .userInitiated, operation: { FileLinkPolicy.action(path: path) }).value {
             case .open(let target)? where editor == .defaultApp || entry.isDirectory: openFileInApp(target, nil)
             case .open(let target)?, .reveal(let target)?: revealFiles([target])
-            case nil: errorMessage = "\(entry.name) can't be opened."
+            case nil: errorMessage = L("%@ can't be opened.", entry.name)
             }
         case EditorApp.newTab.id: await openTabForDirectory(entry.isDirectory ? entry.path : (entry.path as NSString).deletingLastPathComponent, target: .local)
         default:
             guard let app = appURL(for: editor) else {
-                errorMessage = "\(editor.name) isn't installed on this Mac."
+                errorMessage = L("%@ isn't installed on this Mac.", editor.name)
                 return
             }
             openFileInApp(url, app)
@@ -263,7 +263,7 @@ extension AppWorkspaceModel {
         case .name: text = entry.name
         }
         copyToPasteboard(text)
-        showFilesStatus("Copied \(style == .absolute ? Self.abbreviatingHome(text) : text)")
+        showFilesStatus(L("Copied %@", style == .absolute ? Self.abbreviatingHome(text) : text))
     }
 
     /// Inserts the path, quoted for the shell, at the focused pane's prompt through the paste route; nothing runs.

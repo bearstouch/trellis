@@ -18,12 +18,12 @@ public enum RemoteLinkDisplay: Equatable, Sendable {
 
     public var label: String {
         switch self {
-        case .connecting: "Connecting…"
-        case .connected: "Connected"
-        case .reconnecting(let attempt, _): "Reconnecting (attempt \(attempt))…"
-        case .offline: "Offline, waiting for the network"
-        case .needsInput: "Reconnect needs you"
-        case .disconnected: "Disconnected"
+        case .connecting: L("Connecting…")
+        case .connected: L("Connected")
+        case .reconnecting(let attempt, _): L("Reconnecting (attempt %d)…", attempt)
+        case .offline: L("Offline, waiting for the network")
+        case .needsInput: L("Reconnect needs you")
+        case .disconnected: L("Disconnected")
         }
     }
     public var symbol: String {
@@ -40,7 +40,7 @@ public enum RemoteLinkDisplay: Equatable, Sendable {
         switch self {
         case .needsInput(let reason): reason
         case .disconnected(let reason): reason
-        case .reconnecting(_, let at): "Next attempt \(at.formatted(.relative(presentation: .named)))."
+        case .reconnecting(_, let at): L("Next attempt %@.", at.formatted(.relative(presentation: .named)))
         default: nil
         }
     }
@@ -66,7 +66,7 @@ extension AppWorkspaceModel {
             if let directory { publish(try await service.execute(.configureStoppedSession(paneID: pane.id, launch: .remoteShell(hostID: host.id, directory: directory))).snapshot) }
             await start(paneID: pane.id)
             return id
-        } catch { errorMessage = "The remote workspace could not be created."; return nil }
+        } catch { errorMessage = L("The remote workspace could not be created."); return nil }
     }
 
     public func isRemoteWorkspace(paneID: UUID) -> Bool {
@@ -101,9 +101,11 @@ extension AppWorkspaceModel {
         if !wasConnected { remoteLinks[hostID] = .connecting }
         let linked = await remoteHosts.workspaceLink(host, interactive: true)
         guard case .success(let link) = linked, let connection = link.connection else {
-            let message = linked.failure.map(RemoteHostsModel.message(for:)) ?? "The connection failed."
+            let message = linked.failure.map(RemoteHostsModel.message(for:)) ?? L("The connection failed.")
             remoteLinks[hostID] = .disconnected(message)
-            return await refuse("Could not connect to \(host.name). \(message)")
+            // The failure message is saved and returned by the API, so it stays English whatever the app shows.
+            let english = Localization.$sourceTextOnly.withValue(true) { linked.failure.map(RemoteHostsModel.message(for:)) ?? "The connection failed." }
+            return await refuse("Could not connect to \(host.name). \(english)")
         }
         remoteLinks[hostID] = .connected
         // FR-RW09: the host is reachable again, so its other panes resume or re-attach now rather than waiting for Reconnect.
@@ -216,7 +218,7 @@ extension AppWorkspaceModel {
         guard let remoteHosts, !shuttingDown, remoteReconnecting.insert(hostID).inserted else { return .cancelled }
         defer { remoteReconnecting.remove(hostID) }
         guard let host = await resolveHost?(hostID) else {
-            remoteLinks[hostID] = .disconnected("This saved host no longer exists.")
+            remoteLinks[hostID] = .disconnected(L("This saved host no longer exists."))
             return .cancelled
         }
         // Quit while the host was being resolved: no link is opened after the others were closed.

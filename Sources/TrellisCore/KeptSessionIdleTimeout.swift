@@ -12,9 +12,9 @@ public enum KeptSessionIdleTimeout {
 
     public static func label(hours: Int) -> String {
         switch hours {
-        case 0: "No timeout"
-        case 1: "1 hour"
-        default: "\(hours) hours"
+        case 0: L("No timeout")
+        case 1: L("1 hour")
+        default: L("%d hours", hours)
         }
     }
 }

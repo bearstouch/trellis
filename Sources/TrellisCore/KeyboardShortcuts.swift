@@ -40,7 +40,19 @@ public struct KeyChord: Codable, Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-public enum ShortcutMenu: String, CaseIterable, Sendable { case file, edit, view, pane, window }
+public enum ShortcutMenu: String, CaseIterable, Sendable {
+    case file, edit, view, pane, window
+
+    public var title: String {
+        switch self {
+        case .file: L("File")
+        case .edit: L("Edit")
+        case .view: L("View")
+        case .pane: L("Pane")
+        case .window: L("Window")
+        }
+    }
+}
 
 public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     // The Space actions keep their stored names from before windows were renamed spaces, so customized shortcuts carry over.
@@ -57,49 +69,49 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .newSpace: "New Space"
-        case .newTab: "New Tab"
-        case .renameTab: "Rename Tab…"
-        case .renameSpace: "Rename Space…"
-        case .closePane: "Close Pane"
-        case .closeTab: "Close Tab"
-        case .deleteSpace: "Delete Space…"
-        case .saveWorkspace: "Save Workspace"
-        case .showHosts: "Hosts…"
-        case .showProjects: "Projects…"
-        case .findInPane: "Find in Pane…"
-        case .findNext: "Find Next"
-        case .findPrevious: "Find Previous"
-        case .previousPrompt: "Previous Prompt"
-        case .nextPrompt: "Next Prompt"
-        case .clearPane: "Clear"
-        case .zoomIn: "Zoom In"
-        case .zoomOut: "Zoom Out"
-        case .actualSize: "Actual Size"
-        case .toggleSidebar: "Toggle Sidebar"
-        case .toggleFiles: "Toggle Files"
-        case .toggleChanges: "Toggle Changes"
-        case .toggleScratchpad: "Toggle Scratchpad"
-        case .toggleTasks: "Toggle Tasks"
-        case .toggleAgents: "Toggle Agents"
-        case .commandPalette: "Command Palette…"
-        case .jumpToDirectory: "Jump to Directory…"
-        case .splitLeftRight: "Split Left/Right"
-        case .splitTopBottom: "Split Top/Bottom"
-        case .maximizePane: "Maximize / Restore Pane"
-        case .focusLeft: "Focus Left"
-        case .focusRight: "Focus Right"
-        case .focusUp: "Focus Up"
-        case .focusDown: "Focus Down"
-        case .resizeLeft: "Move Divider Left"
-        case .resizeRight: "Move Divider Right"
-        case .resizeUp: "Move Divider Up"
-        case .resizeDown: "Move Divider Down"
-        case .nextSpace: "Next Space"
-        case .previousSpace: "Previous Space"
-        case .nextTab: "Next Tab"
-        case .previousTab: "Previous Tab"
-        default: "Select Tab \(tabIndex! + 1)"
+        case .newSpace: L("New Space")
+        case .newTab: L("New Tab")
+        case .renameTab: L("Rename Tab…")
+        case .renameSpace: L("Rename Space…")
+        case .closePane: L("Close Pane")
+        case .closeTab: L("Close Tab")
+        case .deleteSpace: L("Delete Space…")
+        case .saveWorkspace: L("Save Workspace")
+        case .showHosts: L("Hosts…")
+        case .showProjects: L("Projects…")
+        case .findInPane: L("Find in Pane…")
+        case .findNext: L("Find Next")
+        case .findPrevious: L("Find Previous")
+        case .previousPrompt: L("Previous Prompt")
+        case .nextPrompt: L("Next Prompt")
+        case .clearPane: L("Clear")
+        case .zoomIn: L("Zoom In")
+        case .zoomOut: L("Zoom Out")
+        case .actualSize: L("Actual Size")
+        case .toggleSidebar: L("Toggle Sidebar")
+        case .toggleFiles: L("Toggle Files")
+        case .toggleChanges: L("Toggle Changes")
+        case .toggleScratchpad: L("Toggle Scratchpad")
+        case .toggleTasks: L("Toggle Tasks")
+        case .toggleAgents: L("Toggle Agents")
+        case .commandPalette: L("Command Palette…")
+        case .jumpToDirectory: L("Jump to Directory…")
+        case .splitLeftRight: L("Split Left/Right")
+        case .splitTopBottom: L("Split Top/Bottom")
+        case .maximizePane: L("Maximize / Restore Pane")
+        case .focusLeft: L("Focus Left")
+        case .focusRight: L("Focus Right")
+        case .focusUp: L("Focus Up")
+        case .focusDown: L("Focus Down")
+        case .resizeLeft: L("Move Divider Left")
+        case .resizeRight: L("Move Divider Right")
+        case .resizeUp: L("Move Divider Up")
+        case .resizeDown: L("Move Divider Down")
+        case .nextSpace: L("Next Space")
+        case .previousSpace: L("Previous Space")
+        case .nextTab: L("Next Tab")
+        case .previousTab: L("Previous Tab")
+        default: L("Select Tab %d", tabIndex! + 1)
         }
     }
 
@@ -175,11 +187,13 @@ public enum ShortcutIssue: Error, Equatable, Sendable, CustomStringConvertible {
 
     public var description: String {
         switch self {
+        case .conflict(let chord, let actions) where actions.count == 2:
+            L("%1$@ is assigned to both %2$@ and %3$@. Choose a different shortcut for one of them.", chord.description, actions[0].title, actions[1].title)
         case .conflict(let chord, let actions):
-            "\(chord) is assigned to both \(actions.map(\.title).joined(separator: " and ")). Choose a different shortcut for one of them."
-        case .reserved(let chord, let action, let owner): "\(chord) is reserved for \(owner) and cannot be used for \(action.title)."
-        case .requiresCommand(let chord, let action): "\(chord) for \(action.title) must include ⌘ so terminal control keys keep working."
-        case .unsupportedKey(let chord, let action): "\(chord) is not a supported key for \(action.title)."
+            L("%1$@ is assigned to both %2$@. Choose a different shortcut for one of them.", chord.description, actions.map(\.title).joined(separator: " \(L("and")) "))
+        case .reserved(let chord, let action, let owner): L("%1$@ is reserved for %2$@ and cannot be used for %3$@.", chord.description, owner, action.title)
+        case .requiresCommand(let chord, let action): L("%1$@ for %2$@ must include ⌘ so terminal control keys keep working.", chord.description, action.title)
+        case .unsupportedKey(let chord, let action): L("%1$@ is not a supported key for %2$@.", chord.description, action.title)
         }
     }
 }
@@ -189,13 +203,15 @@ public enum ShortcutIssue: Error, Equatable, Sendable, CustomStringConvertible {
 public struct ShortcutMap: Equatable, Sendable {
     /// Native editing and application commands. Text fields and the terminal's
     /// copy/paste depend on these, so they can never be reassigned.
-    public static let reserved: [KeyChord: String] = [
-        KeyChord("c"): "Copy", KeyChord("v"): "Paste", KeyChord("x"): "Cut", KeyChord("a"): "Select All",
-        KeyChord("z"): "Undo", KeyChord("z", [.command, .shift]): "Redo", KeyChord("q"): "Quit Trellis",
-        KeyChord("h"): "Hide Trellis", KeyChord("h", [.command, .option]): "Hide Others", KeyChord(","): "Settings…",
-        KeyChord("m"): "Minimize", KeyChord("`"): "Cycle Windows", KeyChord("tab"): "Switch Applications",
-        KeyChord("space"): "Spotlight", KeyChord("o", [.command, .option]): "Option-as-Meta toggle (disabled)"
-    ]
+    public static var reserved: [KeyChord: String] {
+        [
+            KeyChord("c"): L("Copy"), KeyChord("v"): L("Paste"), KeyChord("x"): L("Cut"), KeyChord("a"): L("Select All"),
+            KeyChord("z"): L("Undo"), KeyChord("z", [.command, .shift]): L("Redo"), KeyChord("q"): L("Quit Trellis"),
+            KeyChord("h"): L("Hide Trellis"), KeyChord("h", [.command, .option]): L("Hide Others"), KeyChord(","): L("Settings…"),
+            KeyChord("m"): L("Minimize"), KeyChord("`"): L("Cycle Windows"), KeyChord("tab"): L("Switch Applications"),
+            KeyChord("space"): "Spotlight", KeyChord("o", [.command, .option]): L("Option-as-Meta toggle (disabled)")
+        ]
+    }
     public private(set) var chords: [ShortcutAction: KeyChord]
 
     public static let defaults = Self(chords: Dictionary(uniqueKeysWithValues: ShortcutAction.allCases.compactMap { action in action.defaultChord.map { (action, $0) } }))

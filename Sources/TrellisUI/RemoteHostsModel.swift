@@ -94,7 +94,7 @@ public final class RemoteHostsModel: ObservableObject {
                 case .failure(.cancelled): return Self.message(for: .cancelled)
                 // No helper at all, so no broker of this Mac's runs there.
                 case .failure where bridge.probe?.installed.isEmpty == true: break
-                case .failure(let failure): return "The helper was kept: its running sessions couldn’t be checked. " + Self.message(for: failure)
+                case .failure(let failure): return L("The helper was kept: its running sessions couldn’t be checked. %@", Self.message(for: failure))
                 }
             }
             if let connection {
@@ -102,9 +102,9 @@ public final class RemoteHostsModel: ObservableObject {
                     if case .sessions(let records)? = try? await connection.request(.list) { records.filter(\.running).count } else { nil }
                 // Cancelled while listing: cancelling never changes the host.
                 if link?.state == .closed || self.cancelled.contains(host.id) { link?.close(); return Self.message(for: .cancelled) }
-                guard let running else { link?.close(); return "The helper was kept: its running sessions couldn’t be checked." }
+                guard let running else { link?.close(); return L("The helper was kept: its running sessions couldn’t be checked.") }
                 if running > 0 {
-                    guard self.confirmStopSessions(host, running) else { link?.close(); return "The helper was kept, with its \(running) running session(s)." }
+                    guard self.confirmStopSessions(host, running) else { link?.close(); return L("The helper was kept, with its %d running session(s).", running) }
                     connection.sendStopAll()
                     try? await Task.sleep(for: .milliseconds(600))
                 }
@@ -204,8 +204,8 @@ public final class RemoteHostsModel: ObservableObject {
         switch result {
         case .success:
             return switch purpose {
-            case .install: "The helper is installed."
-            case .remove: "The helper was removed."
+            case .install: L("The helper is installed.")
+            case .remove: L("The helper was removed.")
             default: nil
             }
         case .failure(let failure): return Self.message(for: failure)
@@ -257,51 +257,55 @@ public final class RemoteHostsModel: ObservableObject {
 
     public static func message(for failure: RemoteHostLink.Failure) -> String {
         switch failure {
-        case .spawn(let code): "ssh could not be started (\(String(cString: strerror(code))))."
-        case .exited(let code): "ssh ended\(code.map { " (exit \($0))" } ?? "") before the helper answered. The connection console shows ssh’s message."
-        case .unsupported(let platform): "Trellis has no helper for \(platform)."
-        case .noChecksumTool: "The host has no sha256sum, shasum or openssl, so the helper can’t be verified there. Nothing was installed."
-        case .artifactUnavailable(let platform): "This build of Trellis doesn’t include the helper for \(platform)."
-        case .declined: "Nothing was installed."
-        case .remote("DIGEST"): "The upload didn’t match its SHA-256 on the host, so it was deleted. Nothing was installed."
-        case .remote("MKDIR"): "~/.trellis could not be created on the host. Check that your home folder there is writable."
-        case .remote("MISSING"): "The helper is missing on the host. Install it again."
-        case .remote("GZIP"): "The host has no gzip, which the helper upload needs. Nothing was installed."
-        case .remote(let code): "The host refused the request (\(code))."
-        case .incompatible: "The helper on the host speaks another protocol version. Update it."
-        case .cancelled: "Cancelled."
-        case .lost: "The connection was lost."
-        case .unreachable(let reason): reason.isEmpty ? "The host can’t be reached." : "The host can’t be reached (\(reason))."
-        case .needsInput(let reason): "Reconnecting needs you: \(reason)"
+        case .spawn(let code): L("ssh could not be started (%@).", String(cString: strerror(code)))
+        case .exited(let code):
+            code.map { L("ssh ended (exit %d) before the helper answered. The connection console shows ssh’s message.", Int($0)) }
+                ?? L("ssh ended before the helper answered. The connection console shows ssh’s message.")
+        case .unsupported(let platform): L("Trellis has no helper for %@.", platform)
+        case .noChecksumTool: L("The host has no sha256sum, shasum or openssl, so the helper can’t be verified there. Nothing was installed.")
+        case .artifactUnavailable(let platform): L("This build of Trellis doesn’t include the helper for %@.", platform)
+        case .declined: L("Nothing was installed.")
+        case .remote("DIGEST"): L("The upload didn’t match its SHA-256 on the host, so it was deleted. Nothing was installed.")
+        case .remote("MKDIR"): L("~/.trellis could not be created on the host. Check that your home folder there is writable.")
+        case .remote("MISSING"): L("The helper is missing on the host. Install it again.")
+        case .remote("GZIP"): L("The host has no gzip, which the helper upload needs. Nothing was installed.")
+        case .remote(let code): L("The host refused the request (%@).", code)
+        case .incompatible: L("The helper on the host speaks another protocol version. Update it.")
+        case .cancelled: L("Cancelled.")
+        case .lost: L("The connection was lost.")
+        case .unreachable(let reason): reason.isEmpty ? L("The host can’t be reached.") : L("The host can’t be reached (%@).", reason)
+        case .needsInput(let reason): L("Reconnecting needs you: %@", reason)
         }
     }
 
     private func showInstallAlert(_ host: SavedHost, _ probe: RemoteProbe, _ artifact: RemoteArtifact, _ update: Bool) -> Bool {
         let alert = NSAlert()
-        alert.messageText = update ? "Update the Trellis helper on “\(host.name)”?" : "Install the Trellis helper on “\(host.name)”?"
+        alert.messageText = update ? L("Update the Trellis helper on “%@”?", host.name) : L("Install the Trellis helper on “%@”?", host.name)
         let size = ByteCountFormatter.string(fromByteCount: Int64(artifact.fileSize), countStyle: .file)
         alert.informativeText =
-            "Trellis copies its helper for \(probe.displayName) (\(size)) to ~/.trellis/remote/\(artifact.directory) on \(host.destination), checks its SHA-256 there, and uses it to keep your sessions running. It needs no administrator rights and changes nothing outside ~/.trellis."
-        alert.addButton(withTitle: update ? "Update" : "Install")
-        alert.addButton(withTitle: "Cancel")
+            L(
+                "Trellis copies its helper for %1$@ (%2$@) to ~/.trellis/remote/%3$@ on %4$@, checks its SHA-256 there, and uses it to keep your sessions running. It needs no administrator rights and changes nothing outside ~/.trellis.",
+                probe.displayName, size, artifact.directory, host.destination)
+        alert.addButton(withTitle: update ? L("Update") : L("Install"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func showRemoveAlert(_ host: SavedHost) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Remove the Trellis helper from “\(host.name)”?"
-        alert.informativeText = "Deletes ~/.trellis/remote and ~/.trellis/run on \(host.destination), for every Mac that uses this host. Nothing else is changed."
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Remove the Trellis helper from “%@”?", host.name)
+        alert.informativeText = L("Deletes ~/.trellis/remote and ~/.trellis/run on %@, for every Mac that uses this host. Nothing else is changed.", host.destination)
+        alert.addButton(withTitle: L("Remove"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func showStopSessionsAlert(_ host: SavedHost, _ count: Int) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "\(count) session(s) are still running on “\(host.name)”."
-        alert.informativeText = "Removing the helper stops them first. Their output and running commands end."
-        alert.addButton(withTitle: "Stop and Remove")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("%1$d session(s) are still running on “%2$@”.", count, host.name)
+        alert.informativeText = L("Removing the helper stops them first. Their output and running commands end.")
+        alert.addButton(withTitle: L("Stop and Remove"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 }

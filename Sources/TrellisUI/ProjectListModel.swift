@@ -93,20 +93,24 @@ public final class ProjectListModel: ObservableObject {
     /// "3 tabs · 2 repositories".
     public func summary(_ project: ProjectDefinition) -> String {
         let tabs = project.tabs.count, repositories = project.checkouts.count, agents = project.agentCount
-        return "\(tabs) tab\(tabs == 1 ? "" : "s")" + (repositories == 0 ? "" : " · \(repositories) repositor\(repositories == 1 ? "y" : "ies")")
-            + (agents == 0 ? "" : " · \(agents) agent\(agents == 1 ? "" : "s")")
+        let parts: [String?] = [
+            tabs == 1 ? L("1 tab") : L("%d tabs", tabs),
+            repositories == 0 ? nil : repositories == 1 ? L("1 repository") : L("%d repositories", repositories),
+            agents == 0 ? nil : agents == 1 ? L("1 agent") : L("%d agents", agents)
+        ]
+        return parts.compactMap { $0 }.joined(separator: " · ")
     }
 
     /// "Last: build-box, This Mac", or nil before the first launch.
     public func lastLaunched(_ project: ProjectDefinition) -> String? {
         let names = project.lastFolders.keys.sorted().compactMap { key -> String? in
             switch ProjectTarget(key: key) {
-            case .local?: "This Mac"
+            case .local?: L("This Mac")
             case .host(let id)?: hostName(id)
             case nil: nil
             }
         }
-        return names.isEmpty ? nil : "Last: " + names.joined(separator: ", ")
+        return names.isEmpty ? nil : L("Last: %@", names.joined(separator: ", "))
     }
 
     private func refresh() async {
@@ -116,11 +120,11 @@ public final class ProjectListModel: ObservableObject {
 
     public static func message(for error: ProjectLibraryError) -> String {
         switch error {
-        case .invalid: "Check the highlighted fields."
-        case .notFound: "This project was deleted."
-        case .conflict: "This project changed since you opened it. Reselect it to see the latest version."
-        case .readOnly: "Saved projects could not be read, so changes are not saved. Reset the project library to continue."
-        case .io: "Saved projects could not be written. Check disk space and permissions, then try again."
+        case .invalid: L("Check the highlighted fields.")
+        case .notFound: L("This project was deleted.")
+        case .conflict: L("This project changed since you opened it. Reselect it to see the latest version.")
+        case .readOnly: L("Saved projects could not be read, so changes are not saved. Reset the project library to continue.")
+        case .io: L("Saved projects could not be written. Check disk space and permissions, then try again.")
         }
     }
 }

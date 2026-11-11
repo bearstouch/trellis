@@ -68,11 +68,11 @@ public enum TaskRunAvailability: Equatable, Sendable {
     public var reason: String? {
         switch self {
         case .ready: nil
-        case .notRunning: "The pane's shell isn't running."
-        case .remote: "Tasks run in local shells and remote workspace shells, not in SSH panes."
-        case .noIntegration: "Run needs shell integration, so Trellis knows the shell is waiting at its prompt."
-        case .busy: "The shell is running a command. Wait for its prompt, or stop the command."
-        case .taskActive: "A task is already running in this pane."
+        case .notRunning: L("The pane's shell isn't running.")
+        case .remote: L("Tasks run in local shells and remote workspace shells, not in SSH panes.")
+        case .noIntegration: L("Run needs shell integration, so Trellis knows the shell is waiting at its prompt.")
+        case .busy: L("The shell is running a command. Wait for its prompt, or stop the command.")
+        case .taskActive: L("A task is already running in this pane.")
         }
     }
 }
@@ -126,7 +126,7 @@ extension AppWorkspaceModel {
             case .failure(let error)?: state = .invalid(LaunchFileJSON.describe(error))
             }
         } catch {
-            state = .invalid("launch.json must be a regular file you own, at most 64 KB, and not a symbolic link.")
+            state = .invalid(L("launch.json must be a regular file you own, at most 64 KB, and not a symbolic link."))
         }
         let rootURL = URL(fileURLWithPath: root, isDirectory: true)
         let detected = TaskDetector.detect(
@@ -230,7 +230,7 @@ extension AppWorkspaceModel {
                 currentDirectory: taskCurrentDirectory(paneID: paneID, directory: task.directory(projectRoot: root)),
                 environment: file?.environment(for: task) ?? [], shell: shell.path, kind: shell.kind)
         else {
-            errorMessage = "“\(task.name)” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long."
+            errorMessage = L("“%@” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long.", task.name)
             return false
         }
         return sendTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: task.name)
@@ -239,7 +239,7 @@ extension AppWorkspaceModel {
     /// Types `line` after Ctrl-E Ctrl-U and follows it as a task run. Callers check `taskAvailability` first.
     func sendTaskLine(_ line: String, to terminal: NativeTerminal, paneID: UUID, taskID: String, name: String) -> Bool {
         do { try terminal.adapter.send(Data(("\u{05}\u{15}" + line + "\r").utf8)) } catch {
-            errorMessage = "The task could not be typed. The session may have stopped."
+            errorMessage = L("The task could not be typed. The session may have stopped.")
             return false
         }
         taskRuns[paneID] = TaskRun(taskID: taskID, name: name, at: activityNow())
@@ -269,7 +269,7 @@ extension AppWorkspaceModel {
     public func stopTask(paneID: UUID) {
         guard var run = taskRuns[paneID], run.isActive, let terminal = terminals[paneID] else { return }
         do { try terminal.adapter.send(Data([0x03])) } catch {
-            errorMessage = "Stop could not be sent. The session may have stopped."
+            errorMessage = L("Stop could not be sent. The session may have stopped.")
             return
         }
         if run.stopRequestedAt == nil {
@@ -287,7 +287,7 @@ extension AppWorkspaceModel {
     /// Ctrl-\: SIGQUIT to the foreground job, which most programs don't catch.
     public func forceStopTask(paneID: UUID) {
         guard canForceStop(paneID: paneID), let terminal = terminals[paneID] else { return }
-        do { try terminal.adapter.send(Data([0x1C])) } catch { errorMessage = "Force Stop could not be sent. The session may have stopped." }
+        do { try terminal.adapter.send(Data([0x1C])) } catch { errorMessage = L("Force Stop could not be sent. The session may have stopped.") }
     }
 
     // MARK: Editing launch.json (FR-TK04)
@@ -303,19 +303,19 @@ extension AppWorkspaceModel {
     func addTask(_ task: LaunchTask) async -> LaunchTask? {
         guard let catalog = taskCatalog else { return nil }
         // Trellis never writes a host's files in this version (FR-RW11).
-        guard catalog.hostID == nil else { errorMessage = "launch.json on a remote host is read-only in Trellis. Add the task on the host."; return nil }
+        guard catalog.hostID == nil else { errorMessage = L("launch.json on a remote host is read-only in Trellis. Add the task on the host."); return nil }
         if case .invalid(let reason) = catalog.file {
-            errorMessage = "launch.json wasn't changed. " + reason
+            errorMessage = L("launch.json wasn't changed. %@", reason)
             return nil
         }
         let url = LaunchFile.url(projectRoot: catalog.root)
         let current: Data?
         do { current = try OwnerOnlyFile.read(url, limit: LaunchFile.maximumBytes) } catch {
-            errorMessage = "launch.json wasn't changed. It must be a regular file you own, at most 64 KB, and not a symbolic link."
+            errorMessage = L("launch.json wasn't changed. It must be a regular file you own, at most 64 KB, and not a symbolic link.")
             return nil
         }
         guard current == catalog.data else {
-            errorMessage = "launch.json changed since the Tasks view read it. Nothing was written; check the file and try again."
+            errorMessage = L("launch.json changed since the Tasks view read it. Nothing was written; check the file and try again.")
             await refreshTaskCatalog()
             return nil
         }
@@ -326,7 +326,7 @@ extension AppWorkspaceModel {
         guard added else { return stored }
         let data = LaunchFileJSON.encode(updated)
         if case .failure(let error) = LaunchFileJSON.parse(data) {
-            errorMessage = "The task can't be added: " + LaunchFileJSON.describe(error)
+            errorMessage = L("The task can't be added: %@", LaunchFileJSON.describe(error))
             return nil
         }
         guard writeRepositoryFile(data, to: url) else { return nil }
@@ -341,7 +341,7 @@ extension AppWorkspaceModel {
     /// Opens launch.json in the user's editor, creating an empty one first when there is none.
     public func editLaunchFile() async {
         guard let catalog = taskCatalog else { return }
-        guard catalog.hostID == nil else { errorMessage = "launch.json on a remote host is read-only in Trellis. Edit it on the host."; return }
+        guard catalog.hostID == nil else { errorMessage = L("launch.json on a remote host is read-only in Trellis. Edit it on the host."); return }
         let url = LaunchFile.url(projectRoot: catalog.root)
         if case .missing = catalog.file, !FileManager.default.fileExists(atPath: url.path), !isSymbolicLink(url) {
             let data = LaunchFileJSON.encode(LaunchFile())
@@ -365,13 +365,13 @@ extension AppWorkspaceModel {
     /// One trusted digest per folder. An unreadable list fails closed: nothing is trusted and it is never overwritten.
     func launchTrustList() throws -> ProjectTrustList {
         if let launchTrust { return launchTrust }
-        let list = try Self.readTrustList(launchTrustURL, failure: "Trusted launch.json files could not be read, so launch.json tasks can't run.")
+        let list = try Self.readTrustList(launchTrustURL, failure: L("Trusted launch.json files could not be read, so launch.json tasks can't run."))
         launchTrust = list
         return list
     }
 
     private func saveLaunchTrust(_ list: ProjectTrustList) throws {
-        try Self.writeTrustList(list, to: launchTrustURL, failure: "Trusted launch.json files could not be saved.")
+        try Self.writeTrustList(list, to: launchTrustURL, failure: L("Trusted launch.json files could not be saved."))
         launchTrust = list
     }
 }

@@ -56,32 +56,32 @@ struct PaneTreeView: View {
                     Button(model.paneTitle(id)) { Task { await model.selectPane(id) } }
                         .buttonStyle(.plain).lineLimit(1).fontWeight(focused ? .semibold : .regular)
                         .foregroundStyle(focusStyle.header == .focused ? model.themeColor(.foreground) : model.themeColor(.mutedForeground))
-                        .accessibilityLabel(descriptor?.label ?? "Terminal")
+                        .accessibilityLabel(descriptor?.label ?? L("Terminal"))
                         .accessibilityValue(descriptor?.value ?? "")
-                        .accessibilityHint("Focuses this pane")
+                        .accessibilityHint(L("Focuses this pane"))
                         .accessibilityAddTraits(focused ? [.isSelected] : [])
                     if let directory = context.directory {
                         Image(systemName: "folder").accessibilityHidden(true)
                         // The first thing to give way in a narrow pane: a title cut to "…" says nothing at all.
                         Text(directory).lineLimit(1).truncationMode(.middle).layoutPriority(-1)
-                            .help(context.machine == .ssh ? "\(directory) — reported by the remote shell, unverified" : directory)
-                            .accessibilityHint(context.machine == .ssh ? "Reported by the remote shell, unverified" : "")
+                            .help(context.machine == .ssh ? L("%@ — reported by the remote shell, unverified", directory) : directory)
+                            .accessibilityHint(context.machine == .ssh ? L("Reported by the remote shell, unverified") : "")
                     }
                     Spacer(minLength: 0)
                     if let code = model.failedCommandExit(paneID: id) {
                         // Visible text and a symbol, not color alone (FR-SI04).
-                        Label("Exit \(code)", systemImage: "exclamationmark.circle").lineLimit(1)
+                        Label(L("Exit %d", Int(code)), systemImage: "exclamationmark.circle").lineLimit(1)
                             .help(WorkspaceAccessibility.commandFailureText(code))
                             .accessibilityLabel(WorkspaceAccessibility.commandFailureText(code))
                     }
                     if let wait = model.inputWaits[id] {
-                        Label(wait == .password ? "Password" : "Needs input", systemImage: "keyboard").lineLimit(1)
+                        Label(wait == .password ? L("Password") : L("Needs input"), systemImage: "keyboard").lineLimit(1)
                             .help(wait.text).accessibilityLabel(wait.text)
                     }
                     if let progress = model.progress[id] {
                         // Text with the symbol, never the tab bar's color alone (FR-T09).
                         Label(progress.visibleText, systemImage: progress.state == .error ? "exclamationmark.triangle" : "chart.bar.fill").lineLimit(1)
-                            .monospacedDigit().help("Progress: \(progress.visibleText)").accessibilityLabel(progress.spokenText)
+                            .monospacedDigit().help(L("Progress: %@", progress.visibleText)).accessibilityLabel(progress.spokenText)
                     }
                     // FR-AG09/FR-AG10: an agent's icon and state are on its tab, not repeated here.
                     // FR-SB06: the scratchpad, tasks, agents and git changes live in the right sidebar, for the focused pane.
@@ -91,9 +91,9 @@ struct PaneTreeView: View {
                         Text(SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)).accessibilityHidden(true)
                     }
                     if terminal.sessionState == .exited || terminal.sessionState == .failed, let agent = model.agentDefinition(paneID: id), !agent.resumeArguments.isEmpty {
-                        Button("Resume") { Task { await model.restartAgent(paneID: id, resume: true) } }
-                            .help("Start \(agent.name) again, continuing its last conversation here")
-                            .accessibilityLabel("Resume \(agent.name)")
+                        Button(L("Resume")) { Task { await model.restartAgent(paneID: id, resume: true) } }
+                            .help(L("Start %@ again, continuing its last conversation here", agent.name))
+                            .accessibilityLabel(L("Resume %@", agent.name))
                     }
                     if terminal.sessionState == .exited || terminal.sessionState == .failed {
                         // Saved-host panes reconnect only when the user asks; there is no retry timer.
@@ -101,36 +101,36 @@ struct PaneTreeView: View {
                             model.snapshot.panes[id].flatMap { model.snapshot.sessions[$0.sessionID] }.map {
                                 if case .host = $0.launch { true } else { false }
                             } == true
-                        Button(isHost ? "Reconnect" : "Restart") {
+                        Button(isHost ? L("Reconnect") : L("Restart")) {
                             Task { if model.agentLaunch(paneID: id) != nil { await model.restartAgent(paneID: id, resume: false) } else { await model.restartPane(id) } }
                         }
-                        .help(isHost ? "Start a new ssh connection in this pane" : "Start a fresh session in this pane")
-                        .accessibilityLabel(isHost ? "Reconnect" : "Restart Session")
+                        .help(isHost ? L("Start a new ssh connection in this pane") : L("Start a fresh session in this pane"))
+                        .accessibilityLabel(isHost ? L("Reconnect") : L("Restart Session"))
                     }
                     Button {
                         Task { await model.toggleMaximize(id) }
                     } label: {
                         Image(systemName: model.maximizedPanes[tabID] == id ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                    }.help(model.maximizedPanes[tabID] == id ? "Restore Panes" : "Maximize Pane")
-                        .accessibilityLabel(model.maximizedPanes[tabID] == id ? "Restore Panes" : "Maximize Pane")
+                    }.help(model.maximizedPanes[tabID] == id ? L("Restore Panes") : L("Maximize Pane"))
+                        .accessibilityLabel(model.maximizedPanes[tabID] == id ? L("Restore Panes") : L("Maximize Pane"))
                     Button {
                         split(id, axis: .x, size: size)
                     } label: {
                         Image(systemName: "rectangle.split.2x1")
                     }
-                    .help("Split Left/Right").accessibilityLabel("Split Left/Right").disabled(model.maximizedPanes[tabID] != nil)
+                    .help(L("Split Left/Right")).accessibilityLabel(L("Split Left/Right")).disabled(model.maximizedPanes[tabID] != nil)
                     Button {
                         split(id, axis: .y, size: size)
                     } label: {
                         Image(systemName: "rectangle.split.1x2")
                     }
-                    .help("Split Top/Bottom").accessibilityLabel("Split Top/Bottom").disabled(model.maximizedPanes[tabID] != nil)
+                    .help(L("Split Top/Bottom")).accessibilityLabel(L("Split Top/Bottom")).disabled(model.maximizedPanes[tabID] != nil)
                     Button {
                         Task { await model.closePane(id) }
                     } label: {
                         Image(systemName: "xmark")
                     }
-                    .help("Close Pane").accessibilityLabel("Close Pane")
+                    .help(L("Close Pane")).accessibilityLabel(L("Close Pane"))
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
                     // The surface under it: the native tint is translucent, and the terminal canvas behind a pane tree is dark.
                     // Flattened before the chrome opacity, so the tint and its surface don't composite twice (FR-TH10).
@@ -155,15 +155,15 @@ struct PaneTreeView: View {
                         VStack(spacing: 8) {
                             if let agent = model.agentDefinition(paneID: id) {
                                 // FR-AG06: a restored agent pane starts fresh unless asked to continue; nothing is replayed.
-                                Button("Start \(agent.name)") { Task { await model.restartAgent(paneID: id, resume: false) } }.buttonStyle(.borderedProminent)
+                                Button(L("Start %@", agent.name)) { Task { await model.restartAgent(paneID: id, resume: false) } }.buttonStyle(.borderedProminent)
                                 if !agent.resumeArguments.isEmpty {
-                                    Button("Resume Last Conversation") { Task { await model.restartAgent(paneID: id, resume: true) } }
+                                    Button(L("Resume Last Conversation")) { Task { await model.restartAgent(paneID: id, resume: true) } }
                                 }
                             } else if model.unconfiguredPaneIDs.contains(id) {
-                                Text("Custom process needs fresh configuration.").font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
-                                Button("Start Shell Instead") { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
+                                Text(L("Custom process needs fresh configuration.")).font(.caption).foregroundStyle(Color(themeRGB: model.effectiveTheme.terminal.foreground))
+                                Button(L("Start Shell Instead")) { Task { await model.startRestoredShell(id) } }.buttonStyle(.borderedProminent)
                             } else {
-                                Button("Start Session") { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
+                                Button(L("Start Session")) { Task { await model.start(paneID: id) } }.buttonStyle(.borderedProminent)
                             }
                         }
                     }
@@ -198,8 +198,8 @@ struct PaneTreeView: View {
                     dragStartRatio = nil
                 }
             )
-            .accessibilityLabel(axis == .x ? "Left/right divider" : "Top/bottom divider")
-            .accessibilityValue("\(Int(ratio * 100)) percent")
+            .accessibilityLabel(axis == .x ? L("Left/right divider") : L("Top/bottom divider"))
+            .accessibilityValue(L("%d percent", Int(ratio * 100)))
             .accessibilityAdjustableAction { direction in
                 let delta = direction == .increment ? 0.05 : -0.05
                 Task { await model.resizeSplit(id, ratio: ratio + delta, tabID: tabID) }

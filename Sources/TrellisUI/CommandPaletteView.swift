@@ -38,14 +38,14 @@ struct CommandPaletteView: View {
                 .shadow(color: .black.opacity(0.28), radius: 32, y: 16)
                 .padding(.top, top)
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Command Palette")
+                .accessibilityLabel(L("Command Palette"))
                 .accessibilityAddTraits(.isModal)
             }
         }
         .onChange(of: count) { _, value in
             NSAccessibility.post(
                 element: NSApp as Any, notification: .announcementRequested,
-                userInfo: [.announcement: value == 1 ? "1 result" : "\(value) results", .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+                userInfo: [.announcement: value == 1 ? L("1 result") : L("%d results", value), .priority: NSAccessibilityPriorityLevel.medium.rawValue])
         }
     }
 
@@ -56,12 +56,12 @@ struct CommandPaletteView: View {
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(model.themeColor(.accent))
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(model.sidebarSelectionBackground, in: RoundedRectangle(cornerRadius: 6))
-                    .accessibilityLabel("Scope \(scope.chipTitle)")
+                    .accessibilityLabel(L("Scope %@", scope.chipTitle))
             } else {
                 Image(systemName: "magnifyingglass").font(.system(size: 16)).foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
             }
             CommandPaletteField(model: model)
-            Text(count == 1 ? "1 result" : "\(count) results")
+            Text(count == 1 ? L("1 result") : L("%d results", count))
                 .font(.system(size: 12)).foregroundStyle(model.themeColor(.mutedForeground)).monospacedDigit()
                 .opacity(model.commandPaletteQuery.isEmpty && model.commandPaletteScope == nil ? 0 : 1)
                 .accessibilityHidden(true)
@@ -97,7 +97,7 @@ struct CommandPaletteView: View {
             }
             .id("\(model.commandPaletteScope?.rawValue ?? "all"):\(model.commandPaletteQuery)")
             .frame(height: min(height, min(maxHeight, 9 * Self.rowHeight + 3 * Self.headerHeight + 12)))
-            .accessibilityLabel("Results")
+            .accessibilityLabel(L("Results"))
             .onChange(of: selected?.item.id) { _, id in
                 if let target = anchor(id) { withAnimation(nil) { proxy.scrollTo(target) } }
             }
@@ -106,7 +106,7 @@ struct CommandPaletteView: View {
 
     private func row(_ match: CommandPaletteMatch, selected: Bool) -> some View {
         let item = match.item
-        let subtitle = match.matchedAlias.map { alias in item.subtitle.isEmpty ? "also “\(alias)”" : "\(item.subtitle) · also “\(alias)”" } ?? item.subtitle
+        let subtitle = match.matchedAlias.map { alias in item.subtitle.isEmpty ? L("also “%@”", alias) : "\(item.subtitle) · " + L("also “%@”", alias) } ?? item.subtitle
         return Button {
             model.runCommandPaletteItem(item.id)
         } label: {
@@ -136,7 +136,7 @@ struct CommandPaletteView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             // A scope row reads "Go to Tab…, 3 tabs in 2 spaces", not "… spaces action".
-            [item.title, item.isScope ? subtitle : item.kind == .action ? "\(item.subtitle) action" : "\(item.kind.noun), \(subtitle)", item.shortcut?.description]
+            [item.title, item.isScope ? subtitle : item.kind == .action ? L("%@ action", item.subtitle) : "\(item.kind.noun), \(subtitle)", item.shortcut?.description]
                 .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         )
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
@@ -162,15 +162,15 @@ struct CommandPaletteView: View {
         let noDirectories = model.commandPaletteScope == .directories && model.commandPaletteQuery.isEmpty
         return VStack(spacing: 8) {
             Image(systemName: noDirectories ? "folder" : "magnifyingglass").font(.system(size: 26)).foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
-            Text(noDirectories ? "No directories yet" : "No matches for “\(model.commandPaletteQuery)”").font(.system(size: 15, weight: .semibold))
+            Text(noDirectories ? L("No directories yet") : L("No matches for “%@”", model.commandPaletteQuery)).font(.system(size: 15, weight: .semibold))
             Text(
                 noDirectories
                     ? (model.directoryHistoryEnabled
-                        ? "Directories your shells visit appear here. This needs shell integration."
-                        : "Remember directories is turned off in Settings.")
+                        ? L("Directories your shells visit appear here. This needs shell integration.")
+                        : L("Remember directories is turned off in Settings."))
                     : model.commandPaletteScope == nil
-                        ? "Search covers actions, spaces, tabs, panes, saved hosts, tasks, themes and directories. Try fewer letters."
-                        : "Press ⌫ in the empty field to search everything."
+                        ? L("Search covers actions, spaces, tabs, panes, saved hosts, tasks, themes and directories. Try fewer letters.")
+                        : L("Press ⌫ in the empty field to search everything.")
             )
             .font(.system(size: 13)).foregroundStyle(model.themeColor(.mutedForeground)).multilineTextAlignment(.center).frame(maxWidth: 380)
         }
@@ -179,19 +179,19 @@ struct CommandPaletteView: View {
     }
 
     private func footer(_ selected: CommandPaletteMatch?) -> some View {
-        var hints = ["↑↓ Navigate"]
+        var hints = [L("↑↓ Navigate")]
         if let selected {
             switch selected.item.target {
-            case .scope: hints.append("↩ Open")
-            case .host: hints += ["↩ Connect", "⌘↩ New Space", "⌥↩ Split"]
-            case .remoteWorkspace: hints.append("↩ Open")
-            case .project: hints.append("↩ Launch")
-            case .directory: hints += ["↩ Jump", "⌘↩ New Tab", "⌥↩ Split"]
-            default: hints.append("↩ Run")
+            case .scope: hints.append(L("↩ Open"))
+            case .host: hints += [L("↩ Connect"), L("⌘↩ New Space"), L("⌥↩ Split")]
+            case .remoteWorkspace: hints.append(L("↩ Open"))
+            case .project: hints.append(L("↩ Launch"))
+            case .directory: hints += [L("↩ Jump"), L("⌘↩ New Tab"), L("⌥↩ Split")]
+            default: hints.append(L("↩ Run"))
             }
         }
-        if model.commandPaletteScope != nil { hints.append("⌫ Back") }
-        hints.append("esc Close")
+        if model.commandPaletteScope != nil { hints.append(L("⌫ Back")) }
+        hints.append(L("esc Close"))
         return HStack(spacing: 16) {
             Text(selected.map { Self.verb($0.item) } ?? "Trellis").font(.system(size: 11.5, weight: .semibold))
             Spacer()
@@ -207,16 +207,16 @@ struct CommandPaletteView: View {
         switch item.target {
         case .action, .settings, .welcomeTour: item.title
         case .scope(let scope): scope.title
-        case .space: "Go to Space"
-        case .tab: "Go to Tab"
-        case .pane: "Go to Pane"
-        case .host: "Connect"
-        case .remoteWorkspace: "Open Remote Workspace"
-        case .project: "Launch Project"
-        case .task: "Run Task"
-        case .theme: "Use Theme"
-        case .agent: "Launch Agent"
-        case .directory: "Jump to Directory"
+        case .space: L("Go to Space")
+        case .tab: L("Go to Tab")
+        case .pane: L("Go to Pane")
+        case .host: L("Connect")
+        case .remoteWorkspace: L("Open Remote Workspace")
+        case .project: L("Launch Project")
+        case .task: L("Run Task")
+        case .theme: L("Use Theme")
+        case .agent: L("Launch Agent")
+        case .directory: L("Jump to Directory")
         }
     }
 
@@ -278,8 +278,8 @@ private struct CommandPaletteField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> Field {
         let field = Field()
-        field.placeholderString = "Search actions, spaces, tabs, hosts…"
-        field.setAccessibilityLabel("Search commands")
+        field.placeholderString = L("Search actions, spaces, tabs, hosts…")
+        field.setAccessibilityLabel(L("Search commands"))
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
@@ -294,7 +294,7 @@ private struct CommandPaletteField: NSViewRepresentable {
 
     func updateNSView(_ field: Field, context: Context) {
         if field.stringValue != model.commandPaletteQuery { field.stringValue = model.commandPaletteQuery }
-        field.placeholderString = model.commandPaletteScope.map { "Search \($0.chipTitle.lowercased())…" } ?? "Search actions, spaces, tabs, hosts…"
+        field.placeholderString = model.commandPaletteScope.map { L("Search %@…", $0.chipTitle.lowercased()) } ?? L("Search actions, spaces, tabs, hosts…")
         field.requestFocus(model.commandPaletteFocusRequest)
     }
 

@@ -20,9 +20,9 @@ struct ScratchpadEditor: NSViewRepresentable {
     let issueLines: Set<Int>
     let focusRequest: Int
     let commands: ScratchpadEditorCommands
-    var accessibilityName = "Script editor"
+    var accessibilityName = L("Script editor")
     /// Read after the language name, as in "sh script".
-    var contentNoun = "script"
+    var contentNoun = L("script")
     var maximumBytes = ScratchpadDocument.maximumBytes
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -96,7 +96,7 @@ struct ScratchpadEditor: NSViewRepresentable {
         func apply(_ editor: ScratchpadEditor, force: Bool) {
             guard let textView else { return }
             textView.commands = editor.commands
-            textView.setAccessibilityValueDescription("\(editor.language.displayName) \(editor.contentNoun)")
+            textView.setAccessibilityValueDescription(L("%1$@ %2$@", editor.language.displayName, editor.contentNoun))
             var restyle = force
             if textView.string != editor.text {
                 let selection = textView.selectedRanges

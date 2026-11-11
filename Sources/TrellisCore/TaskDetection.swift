@@ -54,7 +54,7 @@ public enum TaskDetector {
             guard let word = plainWord(name) else { return nil }
             return DetectedTask(
                 source: .npm, task: LaunchTask(name: "\(manager): \(name)", command: "\(manager) run \(word)", group: group(forScript: name)),
-                detail: "script “\(name)” in package.json")
+                detail: L("script “%@” in package.json", name))
         }
         return Array(tasks.prefix(maximumPerSource))
     }
@@ -95,7 +95,7 @@ public enum TaskDetector {
             targets.append(target)
             if targets.count == maximumPerSource { break }
         }
-        return targets.map { DetectedTask(source: .make, task: LaunchTask(name: "make: \($0)", command: "make \($0)", group: group(forTarget: $0)), detail: "target in \(file)") }
+        return targets.map { DetectedTask(source: .make, task: LaunchTask(name: "make: \($0)", command: "make \($0)", group: group(forTarget: $0)), detail: L("target in %@", file)) }
     }
 
     /// The first target of a rule line. Recipes (indented), comments, special targets (`.PHONY`), pattern rules (`%`),
@@ -129,7 +129,7 @@ public enum TaskDetector {
         ]
         let text = read("CMakeLists.txt", maximumBuildFileBytes).map { String(decoding: $0, as: UTF8.self) } ?? ""
         if text.contains("enable_testing") || text.contains("add_test") {
-            tasks.append(DetectedTask(source: .cmake, task: LaunchTask(name: "cmake: test", command: "ctest --test-dir build", group: .test), detail: "tests in CMakeLists.txt"))
+            tasks.append(DetectedTask(source: .cmake, task: LaunchTask(name: "cmake: test", command: "ctest --test-dir build", group: .test), detail: L("tests in CMakeLists.txt")))
         }
         return tasks
     }
@@ -168,7 +168,7 @@ public enum TaskDetector {
         ]
         let manifest = read("Cargo.toml", maximumBuildFileBytes).map { String(decoding: $0, as: UTF8.self) } ?? ""
         if exists("src/main.rs") || manifest.contains("[[bin]]") {
-            tasks.append(DetectedTask(source: .cargo, task: LaunchTask(name: "cargo: run", command: "cargo run", group: .run), detail: "binary in Cargo.toml"))
+            tasks.append(DetectedTask(source: .cargo, task: LaunchTask(name: "cargo: run", command: "cargo run", group: .run), detail: L("binary in Cargo.toml")))
         }
         return tasks
     }

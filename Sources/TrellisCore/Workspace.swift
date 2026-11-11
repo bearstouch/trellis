@@ -67,7 +67,17 @@ public struct Space: Identifiable, Equatable, Codable, Sendable {
 public enum TabColor: String, Codable, CaseIterable, Sendable {
     case red, orange, yellow, green, blue, purple, gray
 
-    public var displayName: String { rawValue.capitalized }
+    public var displayName: String {
+        switch self {
+        case .red: L("Red")
+        case .orange: L("Orange")
+        case .yellow: L("Yellow")
+        case .green: L("Green")
+        case .blue: L("Blue")
+        case .purple: L("Purple")
+        case .gray: L("Gray")
+        }
+    }
 }
 
 public struct WorkspaceTab: Identifiable, Equatable, Codable, Sendable {

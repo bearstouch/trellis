@@ -298,9 +298,9 @@ final class AccessibleTerminalView: TerminalView {
 
     var copyAllTitle: String {
         let terminal = getTerminal()
-        if terminal.isCurrentBufferAlternate { return "Copy All Current Screen (No Scrollback)" }
+        if terminal.isCurrentBufferAlternate { return L("Copy All Current Screen (No Scrollback)") }
         return scrollback.historyEvicted || terminal.buffer.totalLinesTrimmed > 0
-            ? "Copy All Retained Text (Older Lines Evicted)" : "Copy All Retained Text"
+            ? L("Copy All Retained Text (Older Lines Evicted)") : L("Copy All Retained Text")
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
@@ -328,7 +328,7 @@ final class AccessibleTerminalView: TerminalView {
         if let described = selectionLinkClick(at: position).flatMap({ describeLink?($0) }) ?? describeLink?(click) {
             contextLink = (described.click, described.copyText)
             var actions = [(described.openTitle, #selector(openContextLink(_:)))]
-            if described.canReveal { actions.append(("Show in Finder", #selector(revealContextLink(_:)))) }
+            if described.canReveal { actions.append((L("Show in Finder"), #selector(revealContextLink(_:)))) }
             actions.append((described.copyTitle, #selector(copyContextLink(_:))))
             for (title, action) in actions {
                 let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -338,13 +338,13 @@ final class AccessibleTerminalView: TerminalView {
             menu.addItem(.separator())
         }
         for (title, action) in [
-            ("Copy", #selector(copy(_:))),
+            (L("Copy"), #selector(copy(_:))),
             (copyAllTitle, #selector(copyAllRetainedText(_:))),
-            ("Select All", #selector(selectAllTerminalText(_:))),
-            ("Paste", #selector(paste(_:))),
-            ("Paste Escaped Path", #selector(pasteEscapedPath(_:))),
-            ("Find…", #selector(showPaneSearch(_:))),
-            ("Clear", #selector(clearTerminal(_:)))
+            (L("Select All"), #selector(selectAllTerminalText(_:))),
+            (L("Paste"), #selector(paste(_:))),
+            (L("Paste Escaped Path"), #selector(pasteEscapedPath(_:))),
+            (L("Find…"), #selector(showPaneSearch(_:))),
+            (L("Clear"), #selector(clearTerminal(_:)))
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self

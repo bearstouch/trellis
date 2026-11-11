@@ -21,18 +21,18 @@ public struct TerminalProgress: Equatable, Sendable {
     public var visibleText: String {
         switch state {
         case .normal: "\(percent ?? 0)%"
-        case .paused: percent.map { "Paused \($0)%" } ?? "Paused"
-        case .error: "Error"
-        case .indeterminate: "Working"
+        case .paused: percent.map { L("Paused %d%%", $0) } ?? L("Paused")
+        case .error: L("Error")
+        case .indeterminate: L("Working")
         }
     }
 
     public var spokenText: String {
         switch state {
-        case .normal: "progress \(percent ?? 0) percent"
-        case .paused: percent.map { "progress paused at \($0) percent" } ?? "progress paused"
-        case .error: percent.map { "progress error at \($0) percent" } ?? "progress error"
-        case .indeterminate: "progress, amount unknown"
+        case .normal: L("progress %d percent", percent ?? 0)
+        case .paused: percent.map { L("progress paused at %d percent", $0) } ?? L("progress paused")
+        case .error: percent.map { L("progress error at %d percent", $0) } ?? L("progress error")
+        case .indeterminate: L("progress, amount unknown")
         }
     }
 

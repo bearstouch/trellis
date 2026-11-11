@@ -68,16 +68,16 @@ public struct DiagnosticsPreviewView: View {
     public init(text: String, save: @escaping () -> Void, cancel: @escaping () -> Void) { self.text = text; self.save = save; self.cancel = cancel }
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Export Diagnostics").font(.headline)
-            Text("This is exactly what will be saved. Nothing is sent anywhere.").font(.caption).foregroundStyle(.secondary)
+            Text(L("Export Diagnostics")).font(.headline)
+            Text(L("This is exactly what will be saved. Nothing is sent anywhere.")).font(.caption).foregroundStyle(.secondary)
             ScrollView {
                 Text(text).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 220).accessibilityLabel("Diagnostics report")
+            .frame(height: 220).accessibilityLabel(L("Diagnostics report"))
             HStack {
                 Spacer()
-                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
-                Button("Save…", action: save).keyboardShortcut(.defaultAction)
+                Button(L("Cancel"), action: cancel).keyboardShortcut(.cancelAction)
+                Button(L("Save…"), action: save).keyboardShortcut(.defaultAction)
             }
         }
         .padding(20).frame(width: 520)

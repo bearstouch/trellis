@@ -45,28 +45,28 @@ struct UpdateSettingsView: View {
         Form {
             // Not LabeledContent: a Form puts its label in a column of its own, left of the toggles below.
             HStack(spacing: 8) {
-                Text("Current version")
+                Text(L("Current version"))
                 Text(updates.version)
             }
             .accessibilityElement(children: .combine).accessibilityIdentifier("settings.updates.version")
-            Toggle("Automatically check for updates", isOn: Binding(get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
+            Toggle(L("Automatically check for updates"), isOn: Binding(get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
                 .accessibilityIdentifier("settings.updates.automatic")
-            caption("Checks once a day. Trellis only downloads the update list; it sends no usage data.")
-            Toggle("Include beta versions", isOn: Binding(get: { updates.includeBetas }, set: { updates.setIncludeBetas($0) }))
+            caption(L("Checks once a day. Trellis only downloads the update list; it sends no usage data."))
+            Toggle(L("Include beta versions"), isOn: Binding(get: { updates.includeBetas }, set: { updates.setIncludeBetas($0) }))
                 .accessibilityIdentifier("settings.updates.betas")
-            caption("Offers pre-release builds as well as stable ones.")
+            caption(L("Offers pre-release builds as well as stable ones."))
             HStack {
                 Text(lastCheckText).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("settings.updates.lastCheck")
                 Spacer()
-                Button("Check Now") { updates.checkNow() }.disabled(!updates.canCheck).accessibilityIdentifier("settings.updates.checkNow")
+                Button(L("Check Now")) { updates.checkNow() }.disabled(!updates.canCheck).accessibilityIdentifier("settings.updates.checkNow")
             }
         }
         .padding(16)
         .onAppear { updates.refresh() }
     }
     private var lastCheckText: String {
-        guard let date = updates.lastCheck else { return "Never checked" }
-        return "Last checked \(date.formatted(date: .abbreviated, time: .shortened))"
+        guard let date = updates.lastCheck else { return L("Never checked") }
+        return L("Last checked %@", date.formatted(date: .abbreviated, time: .shortened))
     }
     private func caption(_ text: String) -> some View { Text(text).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption() }
 }

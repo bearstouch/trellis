@@ -335,7 +335,12 @@ extension AppWorkspaceModel {
         let client = gitChangesClient, root = list.root, hasCommits = list.hasCommits
         let succeeded = await Task.detached(priority: .userInitiated) { client.stage(root, file, stage, hasCommits) }.value
         gitChanges.staging.remove(path)
-        showGitChangesStatus(succeeded ? "\(stage ? "Staged" : "Unstaged") \(file.name)" : "Couldn't \(stage ? "stage" : "unstage") \(file.name); git reported an error.")
+        let name = file.name
+        if succeeded {
+            showGitChangesStatus(stage ? L("Staged %@", name) : L("Unstaged %@", name))
+        } else {
+            showGitChangesStatus(stage ? L("Couldn't stage %@; git reported an error.", name) : L("Couldn't unstage %@; git reported an error.", name))
+        }
         if let paneID = presentation.activePane?.id { await refreshGitChanges(paneID: paneID) }
     }
 
@@ -354,7 +359,7 @@ extension AppWorkspaceModel {
     public func openGitChange(_ root: String, _ file: GitChangedFile) async {
         let path = root + "/" + file.path
         guard FileManager.default.fileExists(atPath: path) else {
-            showGitChangesStatus("\(file.name) was deleted; there's nothing to open.")
+            showGitChangesStatus(L("%@ was deleted; there's nothing to open.", file.name))
             return
         }
         await openFile(FileEntry(path: path, isDirectory: false))
@@ -363,6 +368,6 @@ extension AppWorkspaceModel {
     public func copyGitChangePath(_ root: String, _ file: GitChangedFile, relative: Bool = false) {
         let text = relative ? file.path : root + "/" + file.path
         copyToPasteboard(text)
-        showGitChangesStatus("Copied \(relative ? text : Self.abbreviatingHome(text))")
+        showGitChangesStatus(L("Copied %@", relative ? text : Self.abbreviatingHome(text)))
     }
 }

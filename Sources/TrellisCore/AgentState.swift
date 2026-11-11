@@ -13,22 +13,22 @@ public enum AgentState: String, Equatable, Sendable {
 
     public var label: String {
         switch self {
-        case .ready: "Ready"
-        case .working: "Working"
-        case .needsInput: "Needs you"
-        case .done: "Done"
-        case .error: "Error"
+        case .ready: L("Ready")
+        case .working: L("Working")
+        case .needsInput: L("Needs you")
+        case .done: L("Done")
+        case .error: L("Error")
         }
     }
 
     /// The words VoiceOver reads after the agent's name.
     public var spokenText: String {
         switch self {
-        case .ready: "ready"
-        case .working: "working"
-        case .needsInput: "needs your input"
-        case .done: "finished"
-        case .error: "stopped with an error"
+        case .ready: L("ready")
+        case .working: L("working")
+        case .needsInput: L("needs your input")
+        case .done: L("finished")
+        case .error: L("stopped with an error")
         }
     }
 }

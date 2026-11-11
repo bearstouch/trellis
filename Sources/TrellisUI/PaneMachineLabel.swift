@@ -11,7 +11,8 @@ struct PaneMachine: Equatable {
     let symbol: String
     let tone: Tone
 
-    static let local = PaneMachine(name: "Local", linkText: "", symbol: "laptopcomputer", tone: .local)
+    // Computed: a stored constant would keep the language it was first read in.
+    static var local: PaneMachine { PaneMachine(name: L("Local"), linkText: "", symbol: "laptopcomputer", tone: .local) }
     /// An ssh session Trellis only knows from its command or the shell's own report (FR-SI09).
     static let ssh = PaneMachine(name: "SSH", linkText: "", symbol: "network", tone: .remote)
     static func host(_ name: String, link: RemoteLinkDisplay) -> PaneMachine {

@@ -21,19 +21,19 @@ struct ChangesSidebarView: View {
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right").rotationEffect(.degrees(90))
                 }
-                .help("Collapse all folders").accessibilityLabel("Collapse All Folders")
+                .help(L("Collapse all folders")).accessibilityLabel(L("Collapse All Folders"))
                 Button {
                     Task { await model.refreshGitChanges(paneID: paneID) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Read git status again").accessibilityLabel("Reload Changes")
+                .help(L("Read git status again")).accessibilityLabel(L("Reload Changes"))
             }
             Divider().overlay(model.separatorOverlay)
             content
         }
         .background(model.chromeFill(.surface))
-        .accessibilityElement(children: .contain).accessibilityLabel("Changes")
+        .accessibilityElement(children: .contain).accessibilityLabel(L("Changes"))
         .animation(.easeOut(duration: 0.15), value: model.gitChanges.status)
         .task(id: refreshKey) { await model.refreshGitChanges(paneID: paneID) }
         .onChange(of: model.gitChangesFocusRequest, initial: true) { DispatchQueue.main.async { filterFocused = true } }
@@ -58,15 +58,15 @@ struct ChangesSidebarView: View {
                     .padding(.horizontal, 12).padding(.bottom, 6).transition(.opacity)
             }
             Divider().overlay(model.separatorOverlay)
-            Text("↩ Review · ⌥↩ Open in \(model.files.editor.name) · ⇧⌘C Copy Path")
+            Text(L("↩ Review · ⌥↩ Open in %@ · ⇧⌘C Copy Path", model.files.editor.name))
                 .font(.caption).foregroundStyle(muted).lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 8)
         case .noRepository(let folder):
-            message("No repository", "\(AppWorkspaceModel.abbreviatingHome(folder)) isn't inside a git repository. Changes follows the focused pane.")
+            message(L("No repository"), L("%@ isn't inside a git repository. Changes follows the focused pane.", AppWorkspaceModel.abbreviatingHome(folder)))
         case .failed:
-            message("Couldn't read git status", "Git isn't installed, or it took too long. Reload to try again.")
+            message(L("Couldn't read git status"), L("Git isn't installed, or it took too long. Reload to try again."))
         case .idle:
-            message("No folder", "The focused pane has no folder on this Mac yet. Its shell reports one after its first prompt.")
+            message(L("No folder"), L("The focused pane has no folder on this Mac yet. Its shell reports one after its first prompt."))
         case .loading:
             ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -84,34 +84,34 @@ struct ChangesSidebarView: View {
     private func summary(_ list: GitChangeList) -> some View {
         let muted = model.themeColor(.mutedForeground)
         let count = list.files.count
-        let files = list.truncated ? "first \(count.formatted()) files" : count == 1 ? "1 file" : "\(count.formatted()) files"
+        let files = list.truncated ? L("first %@ files", count.formatted()) : count == 1 ? L("1 file") : L("%@ files", count.formatted())
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch").foregroundStyle(muted).accessibilityHidden(true)
-                Text(list.branch ?? list.commit.map { "(\($0))" } ?? "(no commit)").font(.system(size: 12, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                Text(list.branch ?? list.commit.map { "(\($0))" } ?? L("(no commit)")).font(.system(size: 12, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
                 if list.ahead > 0 || list.behind > 0 {
                     Text("↑\(list.ahead) ↓\(list.behind)").font(.system(size: 11, design: .monospaced)).foregroundStyle(muted)
-                        .help("\(list.ahead) ahead of and \(list.behind) behind the upstream")
+                        .help(L("%1$d ahead of and %2$d behind the upstream", list.ahead, list.behind))
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(list.branch.map { "Branch \($0)" } ?? list.commit.map { "Detached at \($0)" } ?? "No commits yet")
-            .accessibilityValue(list.ahead > 0 || list.behind > 0 ? "\(list.ahead) ahead, \(list.behind) behind" : "")
+            .accessibilityLabel(list.branch.map { L("Branch %@", $0) } ?? list.commit.map { L("Detached at %@", $0) } ?? L("No commits yet"))
+            .accessibilityValue(list.ahead > 0 || list.behind > 0 ? L("%1$d ahead, %2$d behind", list.ahead, list.behind) : "")
             HStack(spacing: 6) {
-                Text("Uncommitted").font(.system(size: 12, weight: .medium))
+                Text(L("Uncommitted")).font(.system(size: 12, weight: .medium))
                 LineCounts(model: model, added: list.added, removed: list.removed)
                 Spacer(minLength: 4)
                 Text(files).font(.caption).foregroundStyle(muted)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Uncommitted, \(files), \(list.added) lines added, \(list.removed) removed")
+            .accessibilityLabel(L("Uncommitted, %1$@, %2$d lines added, %3$d removed", files, list.added, list.removed))
         }.padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
     }
 
     private var filterField: some View {
-        TextField("Filter changed files", text: Binding(get: { model.gitChanges.filter }, set: { model.setGitChangesFilter($0) }))
-            .textFieldStyle(.roundedBorder).focused($filterFocused).accessibilityLabel("Filter changed files")
+        TextField(L("Filter changed files"), text: Binding(get: { model.gitChanges.filter }, set: { model.setGitChangesFilter($0) }))
+            .textFieldStyle(.roundedBorder).focused($filterFocused).accessibilityLabel(L("Filter changed files"))
             .onKeyPress(phases: .down) { handleKey($0) }
             .padding(.horizontal, 12).padding(.bottom, 8)
     }
@@ -124,10 +124,10 @@ struct ChangesSidebarView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if list.files.isEmpty {
-                        Text("Nothing to commit. The working tree matches \(list.hasCommits ? "HEAD" : "an empty repository").")
+                        Text(list.hasCommits ? L("Nothing to commit. The working tree matches HEAD.") : L("Nothing to commit. The working tree matches an empty repository."))
                             .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).padding(8).fixedSize(horizontal: false, vertical: true)
                     } else if rows.isEmpty {
-                        Text("No changed file matches “\(model.gitChanges.filter)”.").font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).padding(8)
+                        Text(L("No changed file matches “%@”.", model.gitChanges.filter)).font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).padding(8)
                     }
                     ForEach(rows) { row in ChangeRow(model: model, root: list.root, row: row) }
                 }.padding(.horizontal, 6).padding(.vertical, 4)
@@ -135,7 +135,7 @@ struct ChangesSidebarView: View {
             .focusable().focused($listFocused).focusEffectDisabled()
             .onKeyPress(phases: .down) { handleKey($0) }
             .onChange(of: model.gitChanges.selection) { _, path in if let path { proxy.scrollTo("f:" + path) } }
-            .accessibilityLabel("Changed files")
+            .accessibilityLabel(L("Changed files"))
         }
     }
 
@@ -240,7 +240,7 @@ private struct ChangeRow: View {
         .onTapGesture { model.toggleGitChangesFolder(row.path) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.name)
-        .accessibilityValue("folder, \(row.isExpanded ? "expanded" : "collapsed"), \(row.added) lines added, \(row.removed) removed")
+        .accessibilityValue(row.isExpanded ? L("folder, expanded, %1$d lines added, %2$d removed", row.added, row.removed) : L("folder, collapsed, %1$d lines added, %2$d removed", row.added, row.removed))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { model.toggleGitChangesFolder(row.path) }
     }
@@ -259,14 +259,14 @@ private struct ChangeRow: View {
                 Button {
                     Task { await model.toggleGitChangeStaged(file.path) }
                 } label: {
-                    if busy { ProgressView().controlSize(.mini) } else { Text(file.staging == .full ? "Unstage" : "Stage").font(.system(size: 10.5, weight: .medium)) }
+                    if busy { ProgressView().controlSize(.mini) } else { Text(file.staging == .full ? L("Unstage") : L("Stage")).font(.system(size: 10.5, weight: .medium)) }
                 }
                 .buttonStyle(.bordered).controlSize(.mini).disabled(busy)
-                .help(file.staging == .full ? "Unstage \(file.name)" : "Stage all of \(file.name)")
-                .accessibilityLabel(file.staging == .full ? "Unstage \(file.name)" : "Stage \(file.name)")
+                .help(file.staging == .full ? L("Unstage %@", file.name) : L("Stage all of %@", file.name))
+                .accessibilityLabel(file.staging == .full ? L("Unstage %@", file.name) : L("Stage %@", file.name))
             }
             if file.binary {
-                Text("binary").font(.system(size: 10.5)).foregroundStyle(muted).accessibilityHidden(true)
+                Text(L("binary")).font(.system(size: 10.5)).foregroundStyle(muted).accessibilityHidden(true)
             } else {
                 LineCounts(model: model, added: file.added ?? 0, removed: file.removed ?? 0)
             }
@@ -290,27 +290,27 @@ private struct ChangeRow: View {
         .accessibilityValue(spoken(file))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { Task { await model.reviewGitChange(file.path) } }
-        .accessibilityAction(named: file.staging == .full ? "Unstage" : "Stage") { Task { await model.toggleGitChangeStaged(file.path) } }
-        .accessibilityAction(named: "Copy Path") { model.copyGitChangePath(root, file) }
+        .accessibilityAction(named: file.staging == .full ? L("Unstage") : L("Stage")) { Task { await model.toggleGitChangeStaged(file.path) } }
+        .accessibilityAction(named: L("Copy Path")) { model.copyGitChangePath(root, file) }
     }
 
     private func spoken(_ file: GitChangedFile) -> String {
         var parts = [file.kind.word]
         if let staged = file.staging.word { parts.append(staged) }
-        parts.append(file.binary ? "binary" : "\(file.added ?? 0) lines added, \(file.removed ?? 0) removed")
+        parts.append(file.binary ? L("binary") : L("%1$d lines added, %2$d removed", file.added ?? 0, file.removed ?? 0))
         let folder = (file.path as NSString).deletingLastPathComponent
-        if !folder.isEmpty { parts.append("in \(folder)") }
+        if !folder.isEmpty { parts.append(L("in %@", folder)) }
         return parts.joined(separator: ", ")
     }
 
     @ViewBuilder private func menu(_ file: GitChangedFile) -> some View {
-        Button("Review Changes") { Task { await model.reviewGitChange(file.path) } }
-        Button(file.staging == .full ? "Unstage" : "Stage") { Task { await model.toggleGitChangeStaged(file.path) } }
+        Button(L("Review Changes")) { Task { await model.reviewGitChange(file.path) } }
+        Button(file.staging == .full ? L("Unstage") : L("Stage")) { Task { await model.toggleGitChangeStaged(file.path) } }
         Divider()
-        Button("Open in \(model.files.editor.name)") { Task { await model.openGitChange(root, file) } }
-        Button("Reveal in Finder") { model.revealFiles([URL(fileURLWithPath: root + "/" + file.path)]) }.disabled(file.kind == .deleted)
+        Button(L("Open in %@", model.files.editor.name)) { Task { await model.openGitChange(root, file) } }
+        Button(L("Reveal in Finder")) { model.revealFiles([URL(fileURLWithPath: root + "/" + file.path)]) }.disabled(file.kind == .deleted)
         Divider()
-        Button("Copy Path") { model.copyGitChangePath(root, file) }
-        Button("Copy Relative Path") { model.copyGitChangePath(root, file, relative: true) }
+        Button(L("Copy Path")) { model.copyGitChangePath(root, file) }
+        Button(L("Copy Relative Path")) { model.copyGitChangePath(root, file, relative: true) }
     }
 }

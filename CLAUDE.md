@@ -136,4 +136,8 @@ are recorded as **pending**, never as passed. Document blockers instead of fakin
 - `trellis-broker` also runs on remote Linux/macOS hosts (remote workspaces, FR-RW): keep `TrellisPOSIX` and
   `TrellisBroker` portable (`#if canImport(Darwin)`/`Glibc`/`Musl`, FoundationEssentials, no NSString paths) and check
   with `scripts/test-linux.sh`. Protocol changes must stay readable by a running older broker (version ranges in `hello`).
+- UI text is localized (FR-LN, `docs/features/localization.md`): wrap anything shown on screen in `L("English text")` /
+  `L("Open %d tabs", n)` with one plain literal as the key, and add the key to every table in
+  `Sources/TrellisCore/Resources/Localizations/` (`scripts/localization-keys.py --check` lists what is missing). API, CLI, MCP,
+  persisted and terminal-written text stays English; `Localization.$sourceTextOnly` forces English for shared code paths.
 - Settings/theme preview state is never persisted; cancelling must restore exact prior state.

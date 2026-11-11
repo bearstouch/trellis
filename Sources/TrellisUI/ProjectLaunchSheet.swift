@@ -8,34 +8,34 @@ struct ProjectLaunchSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Launch “\(session.project.name)”").font(.headline)
+            Text(L("Launch “%@”", session.project.name)).font(.headline)
             if showsChoice {
-                Picker("Target", selection: Binding(get: { session.target }, set: { model.setProjectLaunchTarget(session, $0) })) {
-                    Label("This Mac", systemImage: "desktopcomputer").tag(ProjectTarget.local)
+                Picker(L("Target"), selection: Binding(get: { session.target }, set: { model.setProjectLaunchTarget(session, $0) })) {
+                    Label(L("This Mac"), systemImage: "desktopcomputer").tag(ProjectTarget.local)
                     ForEach(model.commandPaletteHosts()) { host in Label(host.name, systemImage: "server.rack").tag(ProjectTarget.host(host.id)) }
                 }
-                .frame(width: 360).accessibilityLabel("Target")
+                .frame(width: 360).accessibilityLabel(L("Target"))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(folderTitle).font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
                     HStack {
                         TextField(folderTitle, text: $session.folder).textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
                             .accessibilityLabel(folderTitle).onSubmit(check)
-                        Button("Check", action: check)
+                        Button(L("Check"), action: check)
                     }
                 }
             }
             stageView
             HStack {
                 Spacer()
-                Button("Cancel") { model.cancelProjectLaunch(session) }.keyboardShortcut(.cancelAction)
+                Button(L("Cancel")) { model.cancelProjectLaunch(session) }.keyboardShortcut(.cancelAction)
                 switch session.stage {
                 case .ready(let launch):
                     // A folder edited after the check runs nothing until it is checked again.
-                    Button(launch.needsSetup ? "Set Up & Open" : "Open") { proceed(launch) }.keyboardShortcut(.defaultAction).disabled(!session.isCurrent)
-                        .help(session.isCurrent ? "" : "Check the new folder first")
+                    Button(launch.needsSetup ? L("Set Up & Open") : L("Open")) { proceed(launch) }.keyboardShortcut(.defaultAction).disabled(!session.isCurrent)
+                        .help(session.isCurrent ? "" : L("Check the new folder first"))
                 case .failed(let launch, _):
-                    Button("Open Anyway") { Task { await model.openProjectLaunch(session, launch) } }
-                    Button("Retry") { Task { await model.runProjectSetup(session) } }.keyboardShortcut(.defaultAction)
+                    Button(L("Open Anyway")) { Task { await model.openProjectLaunch(session, launch) } }
+                    Button(L("Retry")) { Task { await model.runProjectSetup(session) } }.keyboardShortcut(.defaultAction)
                 default: EmptyView()
                 }
             }
@@ -50,11 +50,12 @@ struct ProjectLaunchSheet: View {
         }
     }
 
-    private var folderTitle: String { session.target == .local ? "Folder on this Mac" : "Folder in your home folder on \(targetName)" }
+    private var folderTitle: String { hostName.map { L("Folder in your home folder on %@", $0) } ?? L("Folder on this Mac") }
 
-    private var targetName: String {
+    /// The saved host the project runs on; nil on this Mac, which each sentence names itself.
+    private var hostName: String? {
         switch session.target {
-        case .local: "this Mac"
+        case .local: nil
         case .host(let id): model.remoteHostName(id)
         }
     }
@@ -63,19 +64,21 @@ struct ProjectLaunchSheet: View {
         switch session.stage {
         case .checking:
             HStack {
-                ProgressView().controlSize(.small); Text("Checking \(targetName)…")
+                ProgressView().controlSize(.small); Text(hostName.map { L("Checking %@…", $0) } ?? L("Checking this Mac…"))
             }.accessibilityElement(children: .combine)
         case .invalid(let message):
             Label(message, systemImage: "xmark.octagon").fixedSize(horizontal: false, vertical: true)
         case .ready(let launch):
             plan(launch)
         case .settingUp:
-            setupTerminal(status: "Setting up on \(targetName). Answer git's questions in the terminal; Trellis never answers them for you.")
+            setupTerminal(
+                status: hostName.map { L("Setting up on %@. Answer git's questions in the terminal; Trellis never answers them for you.", $0) }
+                    ?? L("Setting up on this Mac. Answer git's questions in the terminal; Trellis never answers them for you."))
         case .failed(_, let message):
             if session.terminal != nil { setupTerminal(status: message) } else { Label(message, systemImage: "xmark.octagon").fixedSize(horizontal: false, vertical: true) }
         case .opening:
             HStack {
-                ProgressView().controlSize(.small); Text("Opening the workspace…")
+                ProgressView().controlSize(.small); Text(L("Opening the workspace…"))
             }.accessibilityElement(children: .combine)
         }
     }
@@ -86,38 +89,40 @@ struct ProjectLaunchSheet: View {
             if let terminal = session.terminal {
                 // The same inset and background as a pane's terminal.
                 NativeTerminalSurface(terminal: terminal).padding(.horizontal, 8).padding(.top, 8).background(model.terminalBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 6)).frame(width: 650, height: 280).accessibilityLabel("Setup terminal on \(targetName)")
+                    .clipShape(RoundedRectangle(cornerRadius: 6)).frame(width: 650, height: 280).accessibilityLabel(hostName.map { L("Setup terminal on %@", $0) } ?? L("Setup terminal on this Mac"))
             }
         }
     }
 
     private func plan(_ launch: ProjectLaunch) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("On \(targetName)").font(.subheadline.weight(.semibold))
+            Text(hostName.map { L("On %@", $0) } ?? L("On this Mac")).font(.subheadline.weight(.semibold))
             step(
                 launch.rootExists ? "checkmark.circle" : "folder.badge.plus",
-                launch.rootExists ? "\(display(launch)) exists" : "Create \(display(launch))")
+                launch.rootExists ? L("%@ exists", display(launch)) : L("Create %@", display(launch)))
             ForEach(Array(launch.checkouts.enumerated()), id: \.offset) { _, checkout in
                 let name = GitRepository.shortName(checkout.repository.url) + (checkout.repository.branch.map { " (\($0))" } ?? "")
-                let folder = checkout.folder.isEmpty ? "the project folder" : checkout.folder
+                let folder = checkout.folder
                 switch checkout.state {
-                case .present: step("checkmark.circle", "\(folder) is already a checkout, left as it is")
-                case .clone: step("arrow.down.circle", checkout.folder.isEmpty ? "Set up the project folder from \(name)" : "Clone \(name) → \(folder)")
-                case .blocked: step("exclamationmark.triangle", "\(folder) exists but isn't a checkout, so it isn't touched")
+                case .present: step("checkmark.circle", folder.isEmpty ? L("the project folder is already a checkout, left as it is") : L("%@ is already a checkout, left as it is", folder))
+                case .clone: step("arrow.down.circle", folder.isEmpty ? L("Set up the project folder from %@", name) : L("Clone %1$@ → %2$@", name, folder))
+                case .blocked:
+                    step("exclamationmark.triangle", folder.isEmpty ? L("the project folder exists but isn't a checkout, so it isn't touched") : L("%@ exists but isn't a checkout, so it isn't touched", folder))
                 }
             }
-            let project = launch.project
-            step(
-                "rectangle.on.rectangle",
-                "Open \(project.tabs.count) tab\(project.tabs.count == 1 ? "" : "s"), \(project.paneCount) pane\(project.paneCount == 1 ? "" : "s")"
-                    + (project.commandCount == 0 ? "" : ", run \(project.commandCount) command\(project.commandCount == 1 ? "" : "s")"))
+            let tabs = launch.project.tabs.count, panes = launch.project.paneCount, commands = launch.project.commandCount
+            let parts: [String?] = [
+                tabs == 1 ? L("Open 1 tab") : L("Open %d tabs", tabs), panes == 1 ? L("1 pane") : L("%d panes", panes),
+                commands == 0 ? nil : commands == 1 ? L("run 1 command") : L("run %d commands", commands)
+            ]
+            step("rectangle.on.rectangle", parts.compactMap { $0 }.joined(separator: ", "))
             if launch.needsSetup {
-                Text("Setup uses \(targetName)'s own git and credentials.").font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
+                Text(hostName.map { L("Setup uses %@'s own git and credentials.", $0) } ?? L("Setup uses this Mac's own git and credentials.")).font(.caption).foregroundStyle(model.themeColor(.mutedForeground))
             }
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(model.themeColor(.sidebarBackground), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityElement(children: .contain).accessibilityLabel("What will happen")
+        .accessibilityElement(children: .contain).accessibilityLabel(L("What will happen"))
     }
 
     private func step(_ symbol: String, _ text: String) -> some View {
