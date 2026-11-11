@@ -43,7 +43,7 @@ struct RemoteControlSettingsView: View {
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }
-            Section(L("Listen on")) {
+            Section {
                 Picker(L("Interface"), selection: $draft.bindAddress) {
                     ForEach(addressOptions, id: \.address) { Text($0.label).tag($0.address) }
                 }
@@ -66,9 +66,11 @@ struct RemoteControlSettingsView: View {
                     )
                     .font(.caption)
                 }
+            } header: {
+                sectionHeader(L("Listen on"))
             }
             tailscaleSection
-            Section(L("Status")) {
+            Section {
                 statusRow
                 if let text = shareStatusText { shareStatusRow(text) }
                 HStack {
@@ -87,8 +89,10 @@ struct RemoteControlSettingsView: View {
                     Text(L("Agents need a grant token.")).font(.caption).foregroundStyle(.secondary)
                     if let showAutomation { Button(L("Create a grant in Automation…"), action: showAutomation).buttonStyle(.link).font(.caption) }
                 }
+            } header: {
+                sectionHeader(L("Status"))
             }
-            if let message { Text(message).font(.caption) }
+            if let message { Text(message).font(.caption).padding(.top, 8) }
             HStack {
                 Spacer()
                 Button(L("Apply")) {
@@ -104,6 +108,7 @@ struct RemoteControlSettingsView: View {
                 }
                 .disabled(!portValid || !devicesValid || !candidate.isValid || (candidate == model.remoteControl && !retryable))
             }
+            .padding(.top, 12)
         }
         .padding(16)
         .alert(L("Allow connections from the network?"), isPresented: $confirmingNetwork) {
@@ -139,7 +144,7 @@ struct RemoteControlSettingsView: View {
     private var canShare: Bool { draft.tailscaleShare || (draft.mcpEnabled && draft.isLoopback && connectedStatus?.httpsEnabled == true) }
 
     @ViewBuilder private var tailscaleSection: some View {
-        Section(L("Tailscale")) {
+        Section {
             HStack {
                 tailscaleStatusRow
                 Spacer()
@@ -166,10 +171,18 @@ struct RemoteControlSettingsView: View {
                         Text(L("Only these devices")).tag(true)
                     }
                     .pickerStyle(.radioGroup)
+                    .padding(.top, 6)
                     if restrictDevices { deviceList }
                 }
             }
+        } header: {
+            sectionHeader(L("Tailscale"))
         }
+    }
+
+    /// A plain macOS Form puts no space above a section title, so each group gets its own.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title).font(.headline).padding(.top, 14).padding(.bottom, 2).accessibilityAddTraits(.isHeader)
     }
 
     private var tailscaleStatusRow: some View {
