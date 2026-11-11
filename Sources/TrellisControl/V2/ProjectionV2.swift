@@ -59,9 +59,11 @@ public struct SpaceRuntimeV2: Sendable, Equatable {
     public init() {}
 }
 
-/// A remote workspace host's link (FR-RW07). Reasons are UI text in the app's language, so they aren't reported.
+/// A remote workspace host's link (FR-RW07), with reason codes rather than the words the app shows.
 public enum RemoteLinkV2: Sendable, Equatable {
-    case connecting, connected, offline, needsInput, disconnected
+    case connecting, connected, offline
+    case needsInput(reason: RemoteLinkReason)
+    case disconnected(reason: RemoteLinkReason)
     case reconnecting(attempt: Int, at: Date)
 }
 
@@ -314,15 +316,18 @@ public struct ProjectionV2: Sendable {
         if let policy = host.savedPassword { password.set("requiresUserPresence", policy.requiresUserPresence) }
         object.set("password", password.json)
         // Present once the host has been used as a remote workspace: a helper check or a link.
-        if let remote, remote.helper != nil || remote.link != nil {
-            var state = ResultObjectV2()
-            state.set("helper", remote.helper?.state.rawValue)
-            state.set("checkedAt", remote.helper?.checkedAt)
-            state.set("autoInstall", remote.autoInstall)
-            if let link = remote.link { state.set("link", Self.link(link)) }
-            object.set("remote", state.json)
-        }
+        if let remote, remote.helper != nil || remote.link != nil { object.set("remote", Self.remote(remote)) }
         return object.json
+    }
+
+    /// A host's helper and link (resources.md#host): `remote.*` results always carry it, `helper` `unknown` before any check.
+    public static func remote(_ remote: HostRuntimeV2) -> JSONValue {
+        var state = ResultObjectV2()
+        state.set("helper", remote.helper?.state.rawValue ?? "unknown")
+        state.set("checkedAt", remote.helper?.checkedAt)
+        state.set("autoInstall", remote.autoInstall)
+        if let link = remote.link { state.set("link", Self.link(link)) }
+        return state.json
     }
 
     static func link(_ link: RemoteLinkV2) -> JSONValue {
@@ -330,8 +335,8 @@ public struct ProjectionV2: Sendable {
         case .connecting: .object(["state": .string("connecting")])
         case .connected: .object(["state": .string("connected")])
         case .offline: .object(["state": .string("offline")])
-        case .needsInput: .object(["state": .string("needsInput")])
-        case .disconnected: .object(["state": .string("disconnected")])
+        case .needsInput(let reason): .object(["state": .string("needsInput"), "reason": .string(reason.rawValue)])
+        case .disconnected(let reason): .object(["state": .string("disconnected"), "reason": .string(reason.rawValue)])
         case .reconnecting(let attempt, let at):
             .object(["state": .string("reconnecting"), "attempt": .number(Double(attempt)), "nextAttemptAt": .string(ConventionsV2.timestamp(at))])
         }

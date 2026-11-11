@@ -113,7 +113,7 @@ extension AppWorkspaceModel {
         case .host(let hostID):
             guard let connection = await projectHostConnection(hostID) else {
                 var reason = L("Check the host, then try again.")
-                if case .disconnected(let message?)? = remoteLinks[hostID] { reason = message }
+                if case .disconnected(let message?, _)? = remoteLinks[hostID] { reason = message }
                 return .failure(ProjectSupportFailure(L("Couldn't connect to %1$@. %2$@", remoteHostName(hostID), reason)))
             }
             guard let home = connection.hostInfo?.home, let resolved = ProjectLaunch.resolve(project, target: target, folder: folder, home: home) else {
@@ -143,7 +143,7 @@ extension AppWorkspaceModel {
             remoteLinks[hostID] = .connected
             return link.connection
         case .failure(let failure):
-            remoteLinks[hostID] = .disconnected(RemoteHostsModel.message(for: failure))
+            remoteLinks[hostID] = .disconnected(RemoteHostsModel.message(for: failure), reason: failure.reason)
             return nil
         }
     }

@@ -26,8 +26,9 @@ public enum APIErrorCode: String, CaseIterable, Codable, Sendable {
     /// still starting is retryable; one for an exited session is not).
     public var retryability: Retryability {
         switch self {
-        case .closePending, .limitExceeded, .remoteDisconnected: .yes
-        case .invalidState: .sometimes
+        case .closePending, .limitExceeded: .yes
+        // A link that is down or a host that refused a connection is retryable; one that needs the person isn't.
+        case .invalidState, .remoteDisconnected: .sometimes
         default: .no
         }
     }

@@ -140,8 +140,8 @@ extension AppWorkspaceModel {
                 case .connected?: return .remoteLink(host: host, state: "connected")
                 case .reconnecting(let attempt, let at)?: return .remoteLink(host: host, state: "reconnecting", attempt: attempt, nextAttemptAt: at)
                 case .offline?: return .remoteLink(host: host, state: "offline")
-                case .needsInput?: return .remoteLink(host: host, state: "needsInput")
-                case .disconnected?: return .remoteLink(host: host, state: "disconnected")
+                case .needsInput(_, let reason)?: return .remoteLink(host: host, state: "needsInput", reason: reason)
+                case .disconnected(_, let reason)?: return .remoteLink(host: host, state: "disconnected", reason: reason ?? .unknown)
                 case nil: return nil
                 }
             })

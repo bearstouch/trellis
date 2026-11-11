@@ -28,13 +28,15 @@ public final class RemoteReconnector {
         schedule(host)
     }
 
-    /// One attempt now. `interactive` (Reconnect…) lets ssh ask in the console; automatic ones never do.
-    public func attempt(_ host: UUID, interactive: Bool) async {
-        guard let model, !model.shuttingDown, !running.contains(host) else { return }
-        guard model.hasRemoteWorkspace(host) else { forget(host); return }
+    /// One attempt now. `interactive` (Reconnect…) lets ssh ask in the console; automatic ones never do. Returns why it
+    /// failed, `.cancelled` when no attempt was made; `install` overrides the host's helper policy (protocol 2).
+    @discardableResult
+    public func attempt(_ host: UUID, interactive: Bool, install: RemoteHostLink.InstallPolicy? = nil) async -> RemoteHostLink.Failure? {
+        guard let model, !model.shuttingDown, !running.contains(host) else { return .cancelled }
+        guard model.hasRemoteWorkspace(host) else { forget(host); return .cancelled }
         waits.removeValue(forKey: host)?.cancel()
         running.insert(host)
-        let failure = await model.connectRemote(hostID: host, interactive: interactive)
+        let failure = await model.connectRemote(hostID: host, interactive: interactive, install: install)
         running.remove(host)
         guard let failure else {
             // A pane whose attach failed has no other way back: the link reads as connected, so neither Retry Now nor
@@ -44,20 +46,21 @@ public final class RemoteReconnector {
             if stranded { model.remoteHosts?.closeWorkspaceLink(host) }
             // The new link can also drop while panes re-attach; that loss was left to this attempt (`lost`).
             if model.hasRemoteWorkspace(host), stranded || model.remoteHosts?.workspaceLinkState(host) != .connected { schedule(host) } else { forget(host) }
-            return
+            return nil
         }
         handle(host, failure)
+        return failure
     }
 
     private func handle(_ host: UUID, _ failure: RemoteHostLink.Failure) {
         guard let model, !model.shuttingDown else { return }
         switch failure {
-        case .needsInput(let reason): waits.removeValue(forKey: host)?.cancel(); model.remoteLinks[host] = .needsInput(reason)
+        case .needsInput(let text, let reason): waits.removeValue(forKey: host)?.cancel(); model.remoteLinks[host] = .needsInput(text, reason: reason)
         case .unreachable, .lost, .exited, .spawn: schedule(host)
         case .cancelled: break
         // Nothing a retry can change: a missing helper, an unsupported host, a refused install.
         case .declined, .unsupported, .noChecksumTool, .artifactUnavailable, .remote, .incompatible:
-            model.remoteLinks[host] = .disconnected(RemoteHostsModel.message(for: failure))
+            model.remoteLinks[host] = .disconnected(RemoteHostsModel.message(for: failure), reason: failure.reason)
         }
     }
 

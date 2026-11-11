@@ -2120,7 +2120,7 @@ public final class AppWorkspaceModel: ObservableObject {
             remoteReconnector.cancelAll()
             remoteHosts?.closeWorkspaceLinks()
             // Closed without a state callback: the sidebar must not keep saying Connected, and Reconnect must stay possible.
-            for host in remoteLinks.keys { remoteLinks[host] = .disconnected(nil) }
+            for host in remoteLinks.keys { remoteLinks[host] = .disconnected(nil, reason: .closed) }
         }
         return closed
     }

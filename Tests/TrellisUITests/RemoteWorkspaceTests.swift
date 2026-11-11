@@ -480,8 +480,8 @@ final class RemoteWorkspaceTests: XCTestCase {
         try await until("the pane knows the link is down") { terminal.remoteTransport?.linkLost == true }
         try await Task.sleep(for: .seconds(1.5))
         let hostID = host.id
-        async let first: Void = model.reconnectRemote(hostID: hostID)
-        async let second: Void = model.reconnectRemote(hostID: hostID)
+        async let first = model.reconnectRemote(hostID: hostID)
+        async let second = model.reconnectRemote(hostID: hostID)
         _ = await (first, second)
         try await until("the missed output arrives") { terminal.screenText.contains("twice-12") }
         try await Task.sleep(for: .milliseconds(300))

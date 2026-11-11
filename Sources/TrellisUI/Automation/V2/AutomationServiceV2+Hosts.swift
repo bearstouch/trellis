@@ -44,7 +44,7 @@ extension AutomationServiceV2 {
     }
 
     /// The helper and link of a host used as a remote workspace (FR-RW07, FR-RW17).
-    @MainActor private func remote(_ id: UUID) -> HostRuntimeV2 {
+    @MainActor func remote(_ id: UUID) -> HostRuntimeV2 {
         let preferences = model.remoteHosts?.preferences[id]
         let link: RemoteLinkV2? =
             switch model.remoteLinks[id] {
@@ -52,8 +52,8 @@ extension AutomationServiceV2 {
             case .connected?: .connected
             case .reconnecting(let attempt, let at)?: .reconnecting(attempt: attempt, at: at)
             case .offline?: .offline
-            case .needsInput?: .needsInput
-            case .disconnected?: .disconnected
+            case .needsInput(_, let reason)?: .needsInput(reason: reason)
+            case .disconnected(_, let reason)?: .disconnected(reason: reason ?? .unknown)
             case nil: nil
             }
         return HostRuntimeV2(helper: preferences?.helper, autoInstall: preferences?.autoInstall ?? false, link: link)

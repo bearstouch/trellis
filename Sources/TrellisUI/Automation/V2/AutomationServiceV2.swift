@@ -36,6 +36,7 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
             case "session": return .success(try await performSessions(call))
             case "agent": return .success(try await performAgents(call))
             case "host": return .success(try await performHosts(call))
+            case "remote": return .success(try await performRemote(call))
             default: return .failure(.methodNotFound)
             }
         } catch let error as ControlError {

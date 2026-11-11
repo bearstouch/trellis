@@ -62,11 +62,11 @@ JSON-RPC codes are as in v1 (`-32700`, `-32600`, `-32601`, `-32602` with `data.f
 | `NOT_FOUND` | The resource doesn't exist **or** is outside the grant's scope | no | 3 |
 | `CONFLICT` | Revision mismatch, idempotency key reused, layout or name conflict | no | 5 |
 | `INVALID_STATE` | Not valid in the current state (a running pane for `session.start`, an agent that isn't waiting for `agent.respond`). `details.state` holds the current state. | sometimes | 5 |
-| `CONFIRMATION_REQUIRED` | Closing running sessions without `allowRunning`, or an action the user must confirm in the app (`details.reason`) | no | 5 |
+| `CONFIRMATION_REQUIRED` | Closing running sessions without `allowRunning`, or an action the user must confirm (`details.reason`: `runningSessions`, or `helperInstall` when a host has no remote helper and the grant may not install it) | no | 5 |
 | `CLOSE_PENDING` | Graceful termination still under way; retry with `force: true` after 2 s | yes | 5 |
 | `LIMIT_EXCEEDED` | Frame, response, input, rate, subscription or idempotency limits | yes | 8 |
 | `LAUNCH_FAILED` | A process, agent or task couldn't start. `details.session` holds the failed session. | no | 6 |
-| `REMOTE_DISCONNECTED` | The remote workspace's link is down for an action that needs it | yes | 7 |
+| `REMOTE_DISCONNECTED` | The remote workspace's link is down for an action that needs it, or connecting the host failed; `details.reason` is a [reason code](resources.md#remote-link-reasons) | sometimes | 7 |
 | `AGENT_UNAVAILABLE` | The agent is known to be missing on the pane's machine, or `agent.install` has no installer it can run there. `details.install` says whether `agent.install` can fix it. | no | 6 |
 | `TASK_UNTRUSTED` | A task from `.trellis/launch.json` hasn't been trusted in the app; trust is only given in the UI | no | 4 |
 | `SETUP_REQUIRED` | A project launch needs setup (clone, folders) and `setup: true` wasn't passed | no | 5 |

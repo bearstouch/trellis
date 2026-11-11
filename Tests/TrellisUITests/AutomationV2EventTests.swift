@@ -178,6 +178,15 @@ final class AutomationV2EventTests: XCTestCase {
         XCTAssertEqual(data(link)["state"] as? String, "reconnecting")
         XCTAssertEqual(data(link)["attempt"] as? Int, 2)
         XCTAssertEqual(data(link)["nextAttemptAt"] as? String, "2030-03-17T17:46:40.250Z")
+        XCTAssertNil(data(link)["reason"])
+        // Phase 6: why a link stopped or needs the person, as a code; the app's words never leave it.
+        let asks = try await check("remote.link") { h.model.remoteLinks[host] = .needsInput("ssh: SECRET-WORDS Permission denied (publickey).", reason: .authFailed) }
+        XCTAssertEqual(data(asks)["state"] as? String, "needsInput")
+        XCTAssertEqual(data(asks)["reason"] as? String, "authFailed")
+        let down = try await check("remote.link") { h.model.remoteLinks[host] = .disconnected("SECRET-WORDS changed key", reason: .hostKeyChanged) }
+        XCTAssertEqual(data(down)["reason"] as? String, "hostKeyChanged")
+        let closed = try await check("remote.link") { h.model.remoteLinks[host] = .disconnected(nil) }
+        XCTAssertEqual(data(closed)["reason"] as? String, "unknown", "A disconnected link always says why, unknown when nothing was recorded")
 
         // Maximizing changes the pane.
         let maximized = try await check("pane.updated") { h.model.maximizedPanes[t.a] = t.paneA }
@@ -186,7 +195,7 @@ final class AutomationV2EventTests: XCTestCase {
         // Nothing serialized carries the command line, its output or environment values.
         let everything = try await h.poll(grant, Set(EventTopicV2.allCases).subtracting([.output]), after: 0)
         let text = String(decoding: try JSONSerialization.data(withJSONObject: everything), as: UTF8.self)
-        for secret in ["SECRET-CMD", "deploy", "swift build", "claude\""] { XCTAssertFalse(text.contains(secret), secret) }
+        for secret in ["SECRET-CMD", "deploy", "swift build", "claude\"", "SECRET-WORDS"] { XCTAssertFalse(text.contains(secret), secret) }
     }
 
     /// API2-07d: a restart replaces the session; reconfiguring a stopped pane changes its launch.

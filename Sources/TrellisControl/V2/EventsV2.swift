@@ -239,11 +239,12 @@ extension EventDraftV2 {
         return event
     }
 
-    /// A remote workspace host's link (FR-RW07). Reasons stay UI text until phase 6, so none is reported.
-    public static func remoteLink(host: EventHostV2, state: String, attempt: Int? = nil, nextAttemptAt: Date? = nil) -> Self {
+    /// A remote workspace host's link (FR-RW07). `reason` is the stable code, never the words the app shows.
+    public static func remoteLink(host: EventHostV2, state: String, attempt: Int? = nil, nextAttemptAt: Date? = nil, reason: RemoteLinkReason? = nil) -> Self {
         var event = Self("remote.link", kind: "host", id: host.id, data: ["state": .string(state)])
         if let attempt { event.data["attempt"] = .number(Double(attempt)) }
         if let nextAttemptAt { event.data["nextAttemptAt"] = .string(ConventionsV2.timestamp(nextAttemptAt)) }
+        if let reason { event.data["reason"] = .string(reason.rawValue) }
         event.host = host
         return event
     }

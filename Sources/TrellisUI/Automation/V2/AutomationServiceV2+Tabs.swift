@@ -18,7 +18,7 @@ extension AutomationServiceV2 {
         case "tab.create":
             let spaceID = try p.uuid("spaceId")
             let title = try Self.name(p, "title"), color = try p.optionalString("color").flatMap(TabColor.init(rawValue:))
-            if try p.optionalBool("start") == true { try requireStartable(space: spaceID, call) }
+            if try p.optionalBool("start") == true { try await requireStartable(space: spaceID, call) }
             // Create and title in one store transaction, so a failure leaves no tab; the color, already validated, follows.
             let result = try await run(
                 .createTab(spaceID: spaceID), expecting: p.expectedRevision.map { .space(spaceID, revision: $0) },
@@ -49,9 +49,9 @@ extension AutomationServiceV2 {
             let id = try p.uuid("id")
             // The copies run what the source panes run: an agent or a saved host needs what starting it directly needs.
             if try p.optionalBool("start") == true, let source = model.snapshot.tabs[id] {
-                for pane in source.root.paneIDs.compactMap({ model.snapshot.panes[$0] }) {
-                    if let launch = model.snapshot.sessions[pane.sessionID]?.launch { try requireLaunchAccess(launch, call) }
-                }
+                let launches = source.root.paneIDs.compactMap { model.snapshot.panes[$0].flatMap { model.snapshot.sessions[$0.sessionID]?.launch } }
+                for launch in launches { try requireLaunchAccess(launch, call) }
+                for launch in launches { try await readyRemoteLink(for: launch, call) }
             }
             let result = try await run(.duplicateTab(id: id), expecting: p.expectedRevision.map { .tab(id, revision: $0) })
             guard let tabID = result.createdTabID, let tab = result.snapshot.tabs[tabID] else { throw ControlError.internalError }
@@ -140,7 +140,7 @@ extension AutomationServiceV2 {
         guard let size = model.automationTerminalSize(paneID), let tabID = model.snapshot.panes[paneID]?.tabID else { throw Self.notFound }
         // Same rule as the UI: a new pane must not open hidden behind a maximized one.
         guard model.maximizedPanes[tabID] == nil else { throw Self.invalidState("Restore the maximized pane (pane.maximize false) before splitting this tab.", state: "maximized") }
-        if try p.optionalBool("start") == true, let spaceID = model.snapshot.tabs[tabID]?.spaceID { try requireStartable(space: spaceID, call) }
+        if try p.optionalBool("start") == true, let spaceID = model.snapshot.tabs[tabID]?.spaceID { try await requireStartable(space: spaceID, call) }
         let canvas = model.automationCanvas(tabID)
         // Split and apply the ratio in one store transaction, so a ratio that breaks the size rules leaves no split behind.
         let result = try await run(
@@ -161,10 +161,12 @@ extension AutomationServiceV2 {
 }
 
 extension AutomationServiceV2 {
-    /// A new pane runs its space's default launch: in a remote workspace that connects to the space's host.
-    @MainActor func requireStartable(space id: UUID, _ call: CallV2) throws {
+    /// A new pane runs its space's default launch: in a remote workspace that connects to the space's host, so its link
+    /// is made ready (and the helperInstall rule applied) before anything is created.
+    @MainActor func requireStartable(space id: UUID, _ call: CallV2) async throws {
         guard let space = model.snapshot.spaces.first(where: { $0.id == id }) else { throw Self.notFound }
         try requireLaunchAccess(space.defaultLaunch, call)
+        try await readyRemoteLink(for: space.defaultLaunch, call)
     }
 }
 

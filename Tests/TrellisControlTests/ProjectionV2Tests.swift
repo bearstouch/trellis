@@ -272,7 +272,14 @@ final class ProjectionV2Tests: XCTestCase {
         XCTAssertNil(unused["remote"], "Only once used as a remote workspace")
         XCTAssertNil(unused["user"])
         XCTAssertNil(unused["port"])
-        XCTAssertEqual(object(full.host(other, remote: HostRuntimeV2(link: .needsInput)))["remote"], .object(["autoInstall": .bool(false), "link": .object(["state": .string("needsInput")])]))
+        XCTAssertEqual(
+            object(full.host(other, remote: HostRuntimeV2(link: .needsInput(reason: .needsPassword))))["remote"],
+            .object([
+                "helper": .string("unknown"), "autoInstall": .bool(false), "link": .object(["state": .string("needsInput"), "reason": .string("needsPassword")])
+            ]), "Never checked: unknown; the reason is a code, never the app's words")
+        XCTAssertEqual(
+            ProjectionV2.link(.disconnected(reason: .hostKeyChanged)), .object(["state": .string("disconnected"), "reason": .string("hostKeyChanged")]))
+        XCTAssertEqual(ProjectionV2.remote(HostRuntimeV2()), .object(["helper": .string("unknown"), "autoInstall": .bool(false)]), "remote.* results always carry it")
     }
 
     // MARK: Agents (resources.md#agent-definition, #agent-run)

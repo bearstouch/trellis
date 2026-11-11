@@ -390,14 +390,17 @@ final class AutomationV2AgentTests: XCTestCase {
         let hidden = object(try await v.ok("agent.get", ["id": "echo"], as: "noHosts"), "agent")
         XCTAssertEqual((hidden["availability"] as? [Any])?.count, 1, "Only this Mac without the host in scope")
 
-        // An install whose launch fails before its command is built (no link here) leaves no installer mark behind, so a
-        // later start of that pane, perhaps by a grant without agent.install, never runs the installer.
+        // An install on a host that can't be connected (remote workspaces are unavailable here) is refused before anything
+        // is created (phase 6 connects first), so no tab and no installer mark are left behind.
         v.model.agentCatalog = AgentCatalogSnapshot(
             definitions: v.model.agentCatalog.definitions + [
                 AgentDefinition(id: "linux-only", name: "Linux only", executable: "linux-only", install: ["linux": AgentInstallRecipe(command: "true")])
             ])
+        let tabsBefore = v.model.snapshot.tabs.count
         let failed = try await v.call("agent.install", ["agentId": "linux-only", "placement": ["kind": "tab", "spaceId": space.id.uuidString]])
-        XCTAssertEqual(errorCode(failed), "LAUNCH_FAILED")
+        XCTAssertEqual(errorCode(failed), "INVALID_STATE")
+        XCTAssertEqual(details(failed)?["state"] as? String, "unavailable")
+        XCTAssertEqual(v.model.snapshot.tabs.count, tabsBefore, "Nothing was created")
         XCTAssertTrue(v.model.agentInstallPanes.isEmpty, "No stale installer mark")
 
         // An agent pane running on the host while its link is down: the answer is refused, never queued.

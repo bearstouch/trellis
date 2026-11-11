@@ -65,8 +65,8 @@ final class PermissionsV2Tests: XCTestCase {
 
     // MARK: - Composition (API2-06a, second table)
 
-    /// The agent methods from the real catalog (phase 5), then declarations of the later phases' methods as permissions.md
-    /// composes them; phases 6 and 7 declare the real ones.
+    /// The agent and remote methods from the real catalog (phases 5 and 6), then declarations of phase 7's methods as
+    /// permissions.md composes them; phase 7 declares the real ones.
     static let composed: [MethodSpecV2] = [
         MethodCatalogV2.spec("agent.start")!, MethodCatalogV2.spec("agent.respond")!, MethodCatalogV2.spec("agent.install")!, MethodCatalogV2.spec("agent.runs")!,
         MethodSpecV2(
@@ -83,10 +83,7 @@ final class PermissionsV2Tests: XCTestCase {
             params: [ParamV2("id", .uuid, required: true, "Project."), ParamV2("name", .string(maxBytes: 200), "Name."), ParamV2("commands", .stringList(), "Pane commands.")],
             capabilities: [.projectWrite], conditional: [ConditionalCapabilityV2(.sessionExecute, if: .provided("commands"))], rules: [.atLeastOne(["name", "commands"])],
             resources: [ResourceRuleV2(.project, "id")], effect: .mutating(revision: .exempt(reason: "Sample."))),
-        MethodSpecV2(
-            "remote.open", "Open a remote workspace.", params: [ParamV2("hostId", .uuid, required: true, "Host."), ParamV2("installHelper", .boolean, "Install the helper.")],
-            capabilities: [.remoteConnect, .workspaceWrite], conditional: [ConditionalCapabilityV2(.remoteManage, if: .present("installHelper"))],
-            resources: [ResourceRuleV2(.host, "hostId")], createsSpace: true, effect: .mutating(revision: .container("workspace"))),
+        MethodCatalogV2.spec("remote.open")!, MethodCatalogV2.spec("remote.helper.install")!, MethodCatalogV2.spec("remote.helper.remove")!,
         MethodSpecV2(
             "pane.close", "Close a pane.", params: [ParamV2("id", .uuid, required: true, "Pane."), ParamV2("allowRunning", .boolean, "Stop sessions.")],
             capabilities: [.workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionClose, if: .present("allowRunning"))], resources: [ResourceRuleV2(.pane, "id")],
@@ -131,9 +128,16 @@ final class PermissionsV2Tests: XCTestCase {
             ),
             ("rename a project", "project.update", ["id": project, "name": .string("X")], [.projectWrite], [.projectRead], ["project.write"]),
             ("open a remote workspace", "remote.open", ["hostId": .string(host.id.uuidString)], [.remoteConnect, .workspaceWrite], [.remoteConnect], ["workspace.write"]),
+            // Installing a missing helper on the way needs remote.manage too; that is decided once the host is probed, so the
+            // real model covers it (AutomationV2RemoteTests: CONFIRMATION_REQUIRED with reason helperInstall).
             (
-                "…installing the helper", "remote.open", ["hostId": .string(host.id.uuidString), "installHelper": .bool(true)], [.remoteConnect, .workspaceWrite, .remoteManage],
-                [.remoteConnect, .workspaceWrite], ["remote.manage"]
+                "…starting its shell", "remote.open", ["hostId": .string(host.id.uuidString), "start": .bool(true)], [.remoteConnect, .workspaceWrite, .sessionStart],
+                [.remoteConnect, .workspaceWrite], ["session.start"]
+            ),
+            ("install the helper", "remote.helper.install", ["hostId": .string(host.id.uuidString)], [.remoteManage], [.remoteConnect], ["remote.manage"]),
+            (
+                "remove it, stopping sessions", "remote.helper.remove", ["hostId": .string(host.id.uuidString), "stopSessions": .bool(true)], [.remoteManage, .sessionClose],
+                [.remoteManage], ["session.close"]
             ),
             ("close running sessions", "pane.close", ["id": pane, "allowRunning": .bool(true)], [.workspaceWrite, .sessionClose], [.workspaceWrite], ["session.close"])
         ]
@@ -169,7 +173,7 @@ final class PermissionsV2Tests: XCTestCase {
             MethodCatalogV2.problems(in: [bad]), ["agent.respond: an anyOf group overlaps the required capabilities", "agent.respond: an anyOf group needs two or more different capabilities"])
         let agentAsUUID = MethodSpecV2("agent.get", "Bad.", params: [ParamV2("agentId", .uuid, required: true, "Agent.")], resources: [ResourceRuleV2(.agent, "agentId")])
         XCTAssertEqual(MethodCatalogV2.problems(in: [agentAsUUID]), ["agent.get: agent parameter agentId must be declared as a string"])
-        XCTAssertEqual(Self.composed[7].requirementSummary, "remote.connect + workspace.write (+remote.manage if installHelper), all or created spaces")
+        XCTAssertEqual(Self.composed[7].requirementSummary, "remote.connect + workspace.write (+session.start if start), all or created spaces")
     }
 
     // MARK: - Created scope (API2-06b)

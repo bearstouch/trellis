@@ -113,7 +113,7 @@ extension MethodCatalogV2 {
                 ParamV2("spaceId", .uuid, required: true, "The space."), ParamV2("title", .string(maxBytes: 800), "1–200 characters; default automatic."),
                 ParamV2("color", .string(values: colors), "Color label."), start
             ], capabilities: [.workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionStart, if: .present("start"))],
-            resources: [ResourceRuleV2(.space, "spaceId")], effect: .mutating(revision: .container("space", param: "spaceId")), errors: [.invalidState, .launchFailed]),
+            resources: [ResourceRuleV2(.space, "spaceId")], effect: .mutating(revision: .container("space", param: "spaceId")), errors: [.invalidState, .launchFailed, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
             "tab.update", "Rename a tab or set its color; a null title returns to the automatic title, a null color clears it.",
             params: [
@@ -124,7 +124,7 @@ extension MethodCatalogV2 {
         MethodSpecV2(
             "tab.duplicate", "Copy a tab's layout and pane launches into a new tab after it, optionally starting it.", params: [id("tab"), start],
             capabilities: [.workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionStart, if: .present("start"))], resources: [ResourceRuleV2(.tab, "id")],
-            effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .launchFailed]),
+            effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .launchFailed, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
             "tab.reorder", "Reorder a space's tabs; ids lists each of its tabs once.",
             params: [ParamV2("spaceId", .uuid, required: true, "The space."), ParamV2("ids", .uuidList(), required: true, "Every tab ID of the space in the new order.")],
@@ -152,7 +152,7 @@ extension MethodCatalogV2 {
                 id("pane"), ParamV2("axis", .string(values: ["x", "y"]), required: true, "x splits left/right, y top/bottom."),
                 ParamV2("ratio", .number(minimum: 0.1, maximum: 0.9), "The existing pane's share, 0.1–0.9; default 0.5."), start
             ], capabilities: [.workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionStart, if: .present("start"))], resources: [ResourceRuleV2(.pane, "id")],
-            effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .launchFailed]),
+            effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .launchFailed, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
             "pane.resize", "Move a split's divider; expectedRevision is the tab's.",
             params: [ParamV2("branchId", .uuid, required: true, "The split (a layout branch ID)."), ParamV2("ratio", .number(minimum: 0.1, maximum: 0.9), required: true, "The first child's share.")],
@@ -178,15 +178,15 @@ extension MethodCatalogV2 {
         MethodSpecV2(
             "session.start", "Start a stopped pane with its saved launch or the one given.", params: [ParamV2("paneId", .uuid, required: true, "The pane."), launch],
             capabilities: [.sessionStart], conditional: [choosesWhatRuns], resources: [ResourceRuleV2(.pane, "paneId"), launchRule],
-            effect: .mutating(revision: .resource(param: "paneId")), errors: [.invalidState, .launchFailed, .remoteDisconnected]),
+            effect: .mutating(revision: .resource(param: "paneId")), errors: [.invalidState, .launchFailed, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
             "session.restart", "Replace a pane's session with a new one (a new session ID), stopping a running one first if allowed.",
             params: [ParamV2("paneId", .uuid, required: true, "The pane."), launch, allowRunning, force], capabilities: [.sessionStart],
             conditional: [choosesWhatRuns, stopsSessions], resources: [ResourceRuleV2(.pane, "paneId"), launchRule],
-            effect: .mutating(revision: .resource(param: "paneId")), errors: closeErrors.union([.launchFailed, .remoteDisconnected])),
+            effect: .mutating(revision: .resource(param: "paneId")), errors: closeErrors.union([.launchFailed, .remoteDisconnected, .confirmationRequired])),
         MethodSpecV2(
             "session.stop", "Stop a running session gracefully; force after CLOSE_PENDING ends it.", params: [id("session"), force], capabilities: [.sessionClose],
-            resources: [ResourceRuleV2(.session, "id")], effect: .mutating(revision: .resource(param: "id"), destructive: true), errors: [.invalidState, .closePending]),
+            resources: [ResourceRuleV2(.session, "id")], effect: .mutating(revision: .resource(param: "id"), destructive: true), errors: [.invalidState, .closePending, .remoteDisconnected]),
         MethodSpecV2(
             "session.sendInput", "Send bytes to a running session, literally or as a bracketed paste.",
             params: [

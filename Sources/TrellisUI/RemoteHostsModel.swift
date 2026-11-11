@@ -10,6 +10,22 @@ import TrellisTerminal
 public final class RemoteHostsModel: ObservableObject {
     public enum Activity: Equatable, Sendable { case checking, installing, removing }
 
+    /// How a host-library action ended, for protocol 2; the host library shows `messages`.
+    public enum ActionResult: Equatable, Sendable {
+        case done
+        /// Another action on this host is running.
+        case busy
+        /// No client ID, so no action can run.
+        case unavailable
+        /// Remove wasn't confirmed; nothing ran.
+        case declined
+        case failed(RemoteHostLink.Failure)
+        /// Remove kept the helper: this many sessions run there and weren't to be stopped.
+        case sessionsRunning(Int)
+        /// Remove kept the helper: its running sessions couldn't be counted (and why, when a connection failed).
+        case sessionsUnknown(RemoteHostLink.Failure?)
+    }
+
     /// A host's ssh terminal, shown in a sheet so prompts are answered where ssh asks them.
     public struct Console: Identifiable {
         public let id: UUID
@@ -80,19 +96,25 @@ public final class RemoteHostsModel: ObservableObject {
         preferences[host.id] = await settings.update(host.id) { $0.autoInstall = enabled }
     }
 
-    public func check(_ host: SavedHost) async {
+    @discardableResult
+    public func check(_ host: SavedHost) async -> ActionResult {
         await perform(host, .checking) { await self.connect(host, .check, install: .never) }
     }
 
-    /// Installs this build's helper, or updates an older one, after confirmation (FR-RW02).
-    public func install(_ host: SavedHost) async {
-        await perform(host, .installing) { await self.connect(host, .install, install: .ask) }
+    /// Installs this build's helper, or updates an older one, after confirmation (FR-RW02). `confirmed`: protocol 2 with
+    /// remote.manage, the consent the user gave the grant, so nothing is asked here.
+    @discardableResult
+    public func install(_ host: SavedHost, confirmed: Bool = false) async -> ActionResult {
+        await perform(host, .installing) { await self.connect(host, .install, install: confirmed ? .always : .ask) }
     }
 
     /// Refused while this Mac's sessions run there, unless the user stops them first, and whenever they can't be counted.
-    public func remove(_ host: SavedHost) async {
-        guard confirmRemove(host) else { return }
-        await perform(host, .removing) {
+    /// `stopSessions` non-nil: protocol 2 (remote.manage) decided, so neither confirmation is shown and running sessions are
+    /// stopped only when it is true.
+    @discardableResult
+    public func remove(_ host: SavedHost, stopSessions: Bool? = nil) async -> ActionResult {
+        guard stopSessions != nil || confirmRemove(host) else { return .declined }
+        return await perform(host, .removing) {
             // The shared workspace link lists them: a bridge of its own would take the broker's client slot from it.
             var link: RemoteHostLink?
             var connection = self.workspaceConnection(host.id)
@@ -100,53 +122,73 @@ public final class RemoteHostsModel: ObservableObject {
                 let bridge = self.makeLink(host)
                 switch await self.run(bridge, host, .bridge, install: .never) {
                 case .success: link = bridge; connection = bridge.connection
-                case .failure(.cancelled): return Self.message(for: .cancelled)
+                case .failure(.cancelled): return .failed(.cancelled)
                 // No helper at all, so no broker of this Mac's runs there.
                 case .failure where bridge.probe?.installed.isEmpty == true: break
-                case .failure(let failure): return L("The helper was kept: its running sessions couldn’t be checked. %@", Self.message(for: failure))
+                case .failure(let failure): return .sessionsUnknown(failure)
                 }
             }
             if let connection {
                 let running: Int? =
                     if case .sessions(let records)? = try? await connection.request(.list) { records.filter(\.running).count } else { nil }
                 // Cancelled while listing: cancelling never changes the host.
-                if link?.state == .closed || self.cancelled.contains(host.id) { link?.close(); return Self.message(for: .cancelled) }
-                guard let running else { link?.close(); return L("The helper was kept: its running sessions couldn’t be checked.") }
+                if link?.state == .closed || self.cancelled.contains(host.id) { link?.close(); return .failed(.cancelled) }
+                guard let running else { link?.close(); return .sessionsUnknown(nil) }
                 if running > 0 {
-                    guard self.confirmStopSessions(host, running) else { link?.close(); return L("The helper was kept, with its %d running session(s).", running) }
+                    guard stopSessions ?? self.confirmStopSessions(host, running) else { link?.close(); return .sessionsRunning(running) }
                     connection.sendStopAll()
                     try? await Task.sleep(for: .milliseconds(600))
                 }
             }
             link?.close()
-            if self.cancelled.contains(host.id) { return Self.message(for: .cancelled) }
+            if self.cancelled.contains(host.id) { return .failed(.cancelled) }
             return await self.connect(host, .remove, install: .never)
         }
     }
 
-    private func perform(_ host: SavedHost, _ kind: Activity, _ work: @escaping () async -> String?) async {
-        guard activity[host.id] == nil, isAvailable else { return }
+    private func perform(_ host: SavedHost, _ kind: Activity, _ work: @escaping () async -> ActionResult) async -> ActionResult {
+        guard isAvailable else { return .unavailable }
+        guard activity[host.id] == nil else { return .busy }
         activity[host.id] = kind
         messages[host.id] = nil
         cancelled.remove(host.id)
-        let message = await work()
+        let result = await work()
         activity[host.id] = nil
         actionLinks[host.id] = nil
         cancelled.remove(host.id)
-        messages[host.id] = message
+        messages[host.id] = Self.message(for: result, kind)
+        return result
+    }
+
+    /// What the host library shows after an action (nil on a plain check).
+    static func message(for result: ActionResult, _ kind: Activity) -> String? {
+        switch result {
+        case .done:
+            switch kind {
+            case .installing: L("The helper is installed.")
+            case .removing: L("The helper was removed.")
+            case .checking: nil
+            }
+        case .failed(let failure): message(for: failure)
+        case .sessionsUnknown(let failure?): L("The helper was kept: its running sessions couldn’t be checked. %@", message(for: failure))
+        case .sessionsUnknown(nil): L("The helper was kept: its running sessions couldn’t be checked.")
+        case .sessionsRunning(let count): L("The helper was kept, with its %d running session(s).", count)
+        case .busy, .unavailable, .declined: nil
+        }
     }
 
     /// Runs one link for `purpose`, records what its probe saw, and returns the message to show (nil on plain success).
     /// The link remote workspace sessions on `host` share: reused while connected, otherwise opened, once at a time.
     /// `interactive` lets ssh ask in the console; an automatic attempt never prompts (`BatchMode`). The helper is
     /// installed without asking only when the host's auto-install is on; otherwise interactively after confirmation.
-    public func workspaceLink(_ host: SavedHost, interactive: Bool) async -> Result<RemoteHostLink, RemoteHostLink.Failure> {
+    /// `install` overrides that policy (protocol 2's helperInstall rule); an attempt already under way is shared as it is.
+    public func workspaceLink(_ host: SavedHost, interactive: Bool, install: RemoteHostLink.InstallPolicy? = nil) async -> Result<RemoteHostLink, RemoteHostLink.Failure> {
         if let link = workspaceLinks[host.id], link.state == .connected { return .success(link) }
         if let pending = connecting[host.id] { return await pending.value }
         guard isAvailable else { return .failure(.cancelled) }
         let task = Task { [self] () -> Result<RemoteHostLink, RemoteHostLink.Failure> in
             let link = self.makeLink(host, batch: !interactive)
-            let policy: RemoteHostLink.InstallPolicy = self.preferences(host).autoInstall ? .always : (interactive ? .ask : .never)
+            let policy: RemoteHostLink.InstallPolicy = install ?? (self.preferences(host).autoInstall ? .always : (interactive ? .ask : .never))
             let result = await self.run(link, host, .bridge, install: policy, workspace: true)
             guard case .success = result else {
                 await self.record(host, link, .bridge, result)
@@ -206,18 +248,13 @@ public final class RemoteHostsModel: ObservableObject {
         preferences[host.id] = await settings.update(host.id) { $0.helper = observed }
     }
 
-    private func connect(_ host: SavedHost, _ purpose: RemoteHostLink.Purpose, install: RemoteHostLink.InstallPolicy) async -> String? {
+    private func connect(_ host: SavedHost, _ purpose: RemoteHostLink.Purpose, install: RemoteHostLink.InstallPolicy) async -> ActionResult {
         let link = makeLink(host)
         let result = await run(link, host, purpose, install: install)
         await record(host, link, purpose, result)
         switch result {
-        case .success:
-            return switch purpose {
-            case .install: L("The helper is installed.")
-            case .remove: L("The helper was removed.")
-            default: nil
-            }
-        case .failure(let failure): return Self.message(for: failure)
+        case .success: return .done
+        case .failure(let failure): return .failed(failure)
         }
     }
 
@@ -283,7 +320,7 @@ public final class RemoteHostsModel: ObservableObject {
         case .cancelled: L("Cancelled.")
         case .lost: L("The connection was lost.")
         case .unreachable(let reason): reason.isEmpty ? L("The host can’t be reached.") : L("The host can’t be reached (%@).", reason)
-        case .needsInput(let reason): L("Reconnecting needs you: %@", reason)
+        case .needsInput(let reason, _): L("Reconnecting needs you: %@", reason)
         }
     }
 

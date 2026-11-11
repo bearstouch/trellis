@@ -138,6 +138,8 @@ extension AutomationServiceV2 {
             directory = model.inheritedDirectory(from: source, remote: hostID != nil)
         }
         let launch = SessionLaunch.agent(AgentLaunch(agentID: definition.id, directory: directory, hostID: hostID, resume: try p.optionalBool("resume") == true))
+        // A remote workspace's link, and a helper that can run agents, before anything is created.
+        if let hostID { try await readyAgentHost(hostID, call) }
 
         let paneID: UUID
         var tabID: UUID?
@@ -246,6 +248,7 @@ extension AutomationServiceV2 {
         }
         try requireLaunchAccess(.agent(launch), call)
         try requireAgentAvailable(definition, hostID: launch.hostID, installing: false, call)
+        if let hostID = launch.hostID { try await readyAgentHost(hostID, call) }
         try await clearForAgent(pane.id)
         launch.resume = try p.optionalBool("resume") == true
         try await startAgentPane(pane.id, launch: .agent(launch), agentID: definition.id, hostID: launch.hostID, install: false)

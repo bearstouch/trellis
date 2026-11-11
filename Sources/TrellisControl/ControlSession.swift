@@ -187,11 +187,17 @@ public actor ControlSession {
         await handler.disconnected(connectionID: connectionID)
     }
 
-    /// A poll that may wait runs beside later frames. JSON-RPC replies carry their request's id, so order doesn't matter.
+    /// A poll that may wait, and a method that may wait on a remote host or the person (`MethodSpecV2.waits`), run beside
+    /// later frames. JSON-RPC replies carry their request's id, so order doesn't matter. At most `maximumWaiting` do at
+    /// once per connection; more are answered in order, which only delays the connection, never refuses a call.
     private func waitsOutOfOrder(_ request: ControlRequest) -> Bool {
-        guard reply != nil, wireVersion == 2, identity != nil, request.method == "events.poll", case .number(let timeout)? = request.params?["timeoutMs"] else { return false }
+        guard reply != nil, wireVersion == 2, identity != nil, waiting.count < Self.maximumWaiting else { return false }
+        if MethodCatalogV2.spec(request.method)?.waits == true { return true }
+        guard request.method == "events.poll", case .number(let timeout)? = request.params?["timeoutMs"] else { return false }
         return timeout > 0
     }
+
+    static let maximumWaiting = 16
 
     private func answerLater(_ request: ControlRequest, id: ControlRequestID, identity: ControlIdentity) {
         let key = UUID()

@@ -52,12 +52,12 @@ extension MethodCatalogV2 {
                 ParamV2("resume", .boolean, "Continue the agent's last conversation in that folder.")
             ], capabilities: [.agentControl, .workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionExecute, if: .present("directory"))],
             resources: [ResourceRuleV2(.agent, "agentId")] + placementRules, effect: .mutating(revision: placementRevision),
-            errors: [.invalidState, .launchFailed, .agentUnavailable]),
+            errors: [.invalidState, .launchFailed, .agentUnavailable, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
             "agent.restart", "Start an agent pane again with a new session, after its agent exited; resume continues its last conversation.",
             params: [sessionID, ParamV2("resume", .boolean, "Continue the agent's last conversation.")], capabilities: [.agentControl],
             resources: [ResourceRuleV2(.session, "sessionId")], effect: .mutating(revision: .resource(param: "sessionId")),
-            errors: [.invalidState, .launchFailed, .agentUnavailable]),
+            errors: [.invalidState, .launchFailed, .agentUnavailable, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
             "agent.respond", "Answer an agent that needs input: approve (1 and Return), reject (Escape) or reply (text and Return).",
             params: [
@@ -70,6 +70,6 @@ extension MethodCatalogV2 {
             "agent.install", "Run an agent's installer in a pane on that space's machine, then the agent, as the app's Install and Launch does.",
             params: [agentID, agentPlacement], capabilities: [.agentInstall, .sessionExecute, .agentControl, .workspaceWrite],
             resources: [ResourceRuleV2(.agent, "agentId")] + placementRules, effect: .mutating(revision: placementRevision),
-            errors: [.invalidState, .launchFailed, .agentUnavailable])
+            errors: [.invalidState, .launchFailed, .agentUnavailable, .remoteDisconnected, .confirmationRequired])
     ]
 }

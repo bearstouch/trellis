@@ -176,7 +176,37 @@ An agent running in a pane, whether started as an agent pane or typed in a shell
 | Field | Notes |
 | --- | --- |
 | `password` | Whether a password is saved for askpass (FR-H09). The password never leaves the Keychain. |
-| `remote` | Present once the host has been used as a remote workspace. `helper`: `current`, `outdated`, `missing`, `unsupported`. `link.state`: `connecting`, `connected`, `reconnecting` (with `attempt`, `nextAttemptAt`), `offline`, `needsInput` (with `reason`), `disconnected` (with `reason`). The link isn't a session state: sessions stay `running` while it is down (FR-RW). |
+| `remote` | Present once the host has been used as a remote workspace (a helper check or a link); `remote.*` results always carry it. `helper`: `current`, `outdated`, `missing`, `unsupported`, or `unknown` before any check; `checkedAt` is when it was last probed (it is never inferred, FR-RW17). `link` (omitted until this app run connected or tried to): `state` is `connecting`, `connected`, `reconnecting` (with `attempt`, `nextAttemptAt`), `offline`, `needsInput` (with `reason`), `disconnected` (with `reason`). The link isn't a session state: sessions stay `running` while it is down (FR-RW). |
+
+### Remote link reasons
+
+`reason` is a stable code, never the words the app shows (those are in the user's language). It appears in `Host.remote.link`, `remote.link` events and the `details.reason` of `REMOTE_DISCONNECTED`, `INVALID_STATE` and `CONFIRMATION_REQUIRED` from remote methods. Clients must accept codes added later. **Retried on its own** says whether automatic reconnects (FR-RW07) keep trying a workspace link that failed this way; a `needsInput` reason waits for `remote.reconnect` with `interactive: true` or **Reconnect…** in the app.
+
+| `reason` | Link state | Meaning | Retried on its own |
+| --- | --- | --- | --- |
+| `hostUnreachable` | `disconnected` | Refused, timed out, no route, name not resolved | yes (`reconnecting`) |
+| `lost` | `disconnected` | An established link went quiet or closed | yes |
+| `sshExited` | `disconnected` | ssh ended before the helper answered; the app's connection console shows why | yes |
+| `sshUnavailable` | `disconnected` | ssh couldn't be started on this Mac | yes |
+| `authFailed` | `needsInput` | The host refused the keys offered (or too many were tried) | no |
+| `needsPassword` | `needsInput` | ssh needs a password or keyboard-interactive answer | no |
+| `needsPassphrase` | `needsInput` | ssh needs a key's passphrase | no |
+| `hostKeyChanged` | `needsInput` | The host's key differs from known_hosts | no |
+| `hostKeyUnverified` | `needsInput` | The host's key isn't known or couldn't be verified | no |
+| `needsInput` | `needsInput` | ssh needs the person for something else | no |
+| `helperMissing` | `disconnected` | No helper on the host, and installing it wasn't allowed (the helperInstall rule) or was declined | no |
+| `helperUnsupported` | `disconnected` | No helper exists for the host's system or architecture | no |
+| `helperUnavailable` | `disconnected` | This build doesn't include the helper for that platform | no |
+| `noChecksumTool` | `disconnected` | The host has no sha256sum, shasum or openssl to verify an upload | no |
+| `helperIncompatible` | `disconnected` | The helper there speaks a protocol this build can't use | no |
+| `installFailed` | `disconnected` | Installing failed on the host (digest mismatch, no gzip, `~/.trellis` not writable); nothing was installed | no |
+| `hostRefused` | `disconnected` | The host's bootstrap refused the request | no |
+| `cancelled` | `disconnected` | The attempt was cancelled in the app | no |
+| `closed` | `disconnected` | Trellis closed the link (quit, Close All Workspaces) | no |
+| `hostMissing` | `disconnected` | The saved host was deleted | no |
+| `unavailable` | — | Remote workspaces aren't available in this app instance (error details only) | no |
+| `helperTooOldForAgents` | — | The connected helper predates agents in remote workspaces (error details only); update it | no |
+| `unknown` | `disconnected` | Nothing was recorded | no |
 
 ## Project
 

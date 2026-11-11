@@ -20,6 +20,7 @@ extension AutomationServiceV2 {
             let launch = try launchDescriptor(p, paneID: paneID, call)
             if launch == nil { try requireStoredLaunchAccess(paneID, call) }
             try requireStopped(paneID)
+            try await readyRemoteLink(for: launch?.launch ?? storedLaunch(paneID), call)
             do { try await model.automationStartSession(paneID, launch: launch?.launch, environment: launch?.environment ?? [:]) } catch { throw Self.map(error) }
             return try await launchResult(call, paneID)
         case "session.restart":
@@ -27,6 +28,9 @@ extension AutomationServiceV2 {
             let launch = try launchDescriptor(p, paneID: paneID, call)
             if launch == nil { try requireStoredLaunchAccess(paneID, call) }
             let allowRunning = try p.optionalBool("allowRunning") == true, force = try p.optionalBool("force") == true
+            // A running remote session can only be stopped through its host's link; the new one needs it too.
+            if let session = model.snapshot.panes[paneID]?.sessionID, model.terminals[paneID]?.isRunning == true { try requireLinkUp(session) }
+            try await readyRemoteLink(for: launch?.launch ?? storedLaunch(paneID), call)
             let outcome: AutomationCloseResult
             do { outcome = try await model.automationRestart(paneID, allowRunning: allowRunning, force: force) } catch { throw Self.map(error) }
             if let failure = Self.closeFailure(outcome) { throw failure }
@@ -34,8 +38,10 @@ extension AutomationServiceV2 {
             return try await launchResult(call, paneID)
         case "session.stop":
             let id = try p.uuid("id")
+            try requireRemoteHostAccess(id, call)
             guard let pane = model.snapshot.panes.values.first(where: { $0.sessionID == id }), let terminal = model.terminals[pane.id] else { throw Self.notFound }
             guard terminal.sessionID == id, terminal.isRunning else { throw Self.invalidState("The session is not running.", state: terminal.sessionID == id ? terminal.sessionState.rawValue : "exited") }
+            try requireLinkUp(id)
             guard await model.endRunningSession(terminal, paneID: pane.id, force: try p.optionalBool("force") == true) else {
                 throw ControlError.api(.closePending, "The session is still closing. Retry, or repeat with force: true after two seconds.", details: .object(["sessionIds": .array([ConventionsV2.idJSON(id)])]))
             }
@@ -185,17 +191,25 @@ extension AutomationServiceV2 {
         return .object(["acceptedBytes": ConventionsV2.number(data.count), "mode": .string(paste ? "paste" : "literal")])
     }
 
-    /// FR-RW15: typing into a remote workspace session needs access to its host, as connecting to it does.
+    /// FR-RW15: acting on a remote workspace session (input, execute, stop, restart, reading its output) needs access to
+    /// its host, as connecting to it does. Its record (session.get, pane.get, workspace.get) stays readable by space
+    /// scope, with the host's ID shown only to grants that can read the host.
     @MainActor func requireRemoteHostAccess(_ sessionID: UUID, _ call: CallV2) throws {
         guard let hostID = model.snapshot.sessions[sessionID]?.launch.remoteHostID else { return }
         try requireHost(hostID, call, "This session runs on a saved host this grant cannot use.")
     }
 
+    /// A running remote workspace session is reached only through its host's link; while it is down nothing is queued.
+    @MainActor func requireLinkUp(_ sessionID: UUID) throws {
+        guard let session = model.snapshot.sessions[sessionID], session.state == .running, let host = session.launch.remoteHostID, model.remoteLinks[host] != .connected else { return }
+        throw ControlError.api(.remoteDisconnected, "The session's host is not connected. The session keeps running there; retry after it reconnects.", retryable: true, details: linkDetails(host))
+    }
+
+    @MainActor func storedLaunch(_ paneID: UUID) -> SessionLaunch? { model.snapshot.panes[paneID].flatMap { model.snapshot.sessions[$0.sessionID]?.launch } }
+
     @MainActor func send(_ sessionID: UUID, _ data: Data, paste: Bool) throws {
         // FR-RW15: input is never queued for a host that isn't connected; the session keeps running there.
-        if let session = model.snapshot.sessions[sessionID], session.state == .running, let host = session.launch.remoteHostID, model.remoteLinks[host] != .connected {
-            throw ControlError.api(.remoteDisconnected, "The session's host is not connected. The session keeps running there; retry after it reconnects.")
-        }
+        try requireLinkUp(sessionID)
         do {
             try model.automationSendInput(sessionID: sessionID, data: data, paste: paste)
         } catch .notFound {
@@ -217,6 +231,7 @@ extension AutomationServiceV2 {
         let p = call.params
         let sessionID = try p.uuid("id")
         guard let terminal = model.terminals.values.first(where: { $0.sessionID == sessionID }) else { throw Self.notFound }
+        try requireRemoteHostAccess(sessionID, call)
         let maxBytes = try p.optionalInteger("maxBytes").map(Int.init) ?? Self.defaultReadBytes
         let captured = JSONValue.string(ConventionsV2.timestamp(Date()))
         let view = try p.string("view")

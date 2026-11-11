@@ -30,7 +30,30 @@ final class FakeDomainV2: ControlDomainV2, @unchecked Sendable {
         default: return nil
         }
     }
+    private var _held: Set<String> = []
+    private var _waiters: [CheckedContinuation<Void, Never>] = []
+    /// Calls to these methods wait in `perform` until `release()`, like a remote call waiting on its host.
+    func hold(_ names: Set<String>) { lock.withLock { _held = names } }
+    func release() {
+        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            _held = []
+            defer { _waiters = [] }
+            return _waiters
+        }
+        waiters.forEach { $0.resume() }
+    }
+
     func perform(_ call: CallV2) async -> Result<JSONValue, ControlError> {
+        if lock.withLock({ _held.contains(call.spec.name) }) {
+            await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+                let now = lock.withLock { () -> Bool in
+                    guard _held.contains(call.spec.name) else { return true }
+                    _waiters.append(waiter)
+                    return false
+                }
+                if now { waiter.resume() }
+            }
+        }
         let count = lock.withLock { () -> Int in
             _performed.append(call.spec.name)
             _params.append(.object(call.params.values))
@@ -205,7 +228,7 @@ final class ProtocolV2Tests: XCTestCase {
         let (_, token) = try await grant()
         let session = ControlSession(peerUID: geteuid(), handler: handler(v2: true))
         _ = try await authenticate(session, token, version: 2)
-        for method in ["window.list", "window.get", "events.event", "auth.whoami", "remote.open", "layout.apply"] {
+        for method in ["window.list", "window.get", "events.event", "auth.whoami", "project.launch", "layout.apply"] {
             let r11 = try await call(session, method)
             XCTAssertEqual(error(r11)?["code"] as? Int, -32601, method)
         }

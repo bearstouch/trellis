@@ -11,10 +11,11 @@ public enum RemoteLinkDisplay: Equatable, Sendable {
     case reconnecting(attempt: Int, at: Date)
     /// Automatic attempts wait for the network.
     case offline
-    /// Automatic attempts stopped: ssh needs a password, a passphrase or a host-key decision.
-    case needsInput(String)
-    /// With why, when known; nothing is retried on its own.
-    case disconnected(String?)
+    /// Automatic attempts stopped: ssh needs a password, a passphrase or a host-key decision. The words are shown; the
+    /// reason code is what protocol 2 reports.
+    case needsInput(String, reason: RemoteLinkReason = .needsInput)
+    /// With why, when known; nothing is retried on its own. nil reason: nothing recorded yet.
+    case disconnected(String?, reason: RemoteLinkReason? = nil)
 
     public var label: String {
         switch self {
@@ -38,13 +39,22 @@ public enum RemoteLinkDisplay: Equatable, Sendable {
     /// Why, for the help text and VoiceOver.
     public var detail: String? {
         switch self {
-        case .needsInput(let reason): reason
-        case .disconnected(let reason): reason
+        case .needsInput(let reason, _): reason
+        case .disconnected(let reason, _): reason
         case .reconnecting(_, let at): L("Next attempt %@.", at.formatted(.relative(presentation: .named)))
         default: nil
         }
     }
     var isUp: Bool { self == .connected || self == .connecting }
+
+    /// A failed connection as the sidebar shows it: an automatic attempt that needs the person stops at **Reconnect…**.
+    @MainActor init(_ failure: RemoteHostLink.Failure) {
+        if case .needsInput(let text, let reason) = failure {
+            self = .needsInput(text, reason: reason)
+        } else {
+            self = .disconnected(RemoteHostsModel.message(for: failure), reason: failure.reason)
+        }
+    }
 }
 
 /// Remote workspaces (FR-RW01–FR-RW09): spaces bound to a saved host whose sessions the host's helper owns.
@@ -97,19 +107,12 @@ extension AppWorkspaceModel {
         guard let host = await resolveHost?(hostID) else {
             return await refuse("This saved host was deleted or the host library could not be read. Close this workspace or open the host again.")
         }
-        let wasConnected = remoteLinks[hostID] == .connected
-        if !wasConnected { remoteLinks[hostID] = .connecting }
-        let linked = await remoteHosts.workspaceLink(host, interactive: true)
-        guard case .success(let link) = linked, let connection = link.connection else {
-            let message = linked.failure.map(RemoteHostsModel.message(for:)) ?? L("The connection failed.")
-            remoteLinks[hostID] = .disconnected(message)
+        let (connected, failure) = await remoteConnection(host, remoteHosts: remoteHosts, interactive: true)
+        guard let connection = connected else {
             // The failure message is saved and returned by the API, so it stays English whatever the app shows.
-            let english = Localization.$sourceTextOnly.withValue(true) { linked.failure.map(RemoteHostsModel.message(for:)) ?? "The connection failed." }
+            let english = Localization.$sourceTextOnly.withValue(true) { failure.map(RemoteHostsModel.message(for:)) ?? "The connection failed." }
             return await refuse("Could not connect to \(host.name). \(english)")
         }
-        remoteLinks[hostID] = .connected
-        // FR-RW09: the host is reachable again, so its other panes resume or re-attach now rather than waiting for Reconnect.
-        if !wasConnected { Task { await reconnectRemote(hostID: hostID, interactive: false) } }
         guard terminals[paneID] === terminal, !isClosing(paneID: paneID), !shuttingDown, !Task.isCancelled else {
             return await refuse("Session launch was cancelled.")
         }
@@ -146,6 +149,27 @@ extension AppWorkspaceModel {
         await terminal.start(remote: transport, request: login, nonce: nonce)
     }
 
+    /// The host's shared link for starting sessions there, connected when needed: the sidebar shows the attempt and, on
+    /// failure, why (words, and a reason code for protocol 2). `install` overrides the host's helper policy (protocol 2
+    /// applies its helperInstall rule); nil installs as the app does, asking unless the host's auto-install is on.
+    func remoteConnection(_ host: SavedHost, remoteHosts: RemoteHostsModel, interactive: Bool, install: RemoteHostLink.InstallPolicy? = nil) async -> (
+        connection: BrokerConnection?, failure: RemoteHostLink.Failure?
+    ) {
+        let hostID = host.id
+        let wasConnected = remoteLinks[hostID] == .connected
+        if !wasConnected { remoteLinks[hostID] = .connecting }
+        let linked = await remoteHosts.workspaceLink(host, interactive: interactive, install: install)
+        guard case .success(let link) = linked, let connection = link.connection else {
+            remoteLinks[hostID] = linked.failure.map(RemoteLinkDisplay.init) ?? .disconnected(L("The connection failed."), reason: .unknown)
+            return (nil, linked.failure)
+        }
+        remoteLinks[hostID] = .connected
+        // FR-RW09: the host is reachable again, so its other panes resume or re-attach now rather than waiting for Reconnect.
+        // None to resume before the first space on the host exists (protocol 2 connects before creating it).
+        if !wasConnected, hasRemoteWorkspace(hostID) { Task { await reconnectRemote(hostID: hostID, interactive: false) } }
+        return (connection, nil)
+    }
+
     func wire(_ transport: RemoteSessionTransport) {
         let hostID = transport.hostID, sessionID = transport.sessionID
         transport.onSignalWhileDisconnected = { [weak self] _ in self?.pendingRemoteHangups[hostID, default: []].insert(sessionID) }
@@ -159,8 +183,8 @@ extension AppWorkspaceModel {
         case .connecting, .installing: remoteLinks[host] = .connecting
         // A link that was up and went quiet or closed is retried on its own (FR-RW07).
         case .failed(.lost): remoteReconnector.lost(host)
-        case .failed(let failure): remoteLinks[host] = .disconnected(RemoteHostsModel.message(for: failure))
-        case .closed, .idle: if remoteLinks[host] == .connected { remoteLinks[host] = .disconnected(nil) }
+        case .failed(let failure): remoteLinks[host] = .disconnected(RemoteHostsModel.message(for: failure), reason: failure.reason)
+        case .closed, .idle: if remoteLinks[host] == .connected { remoteLinks[host] = .disconnected(nil, reason: .closed) }
         }
     }
 
@@ -206,28 +230,30 @@ extension AppWorkspaceModel {
     }
 
     /// **Reconnect…** (`interactive`: ssh may ask in the console) or **Retry Now**, through the reconnector, which
-    /// schedules the next automatic attempt if this one fails for a reason a retry can fix (FR-RW07).
-    public func reconnectRemote(hostID: UUID, interactive: Bool = true) async {
-        await remoteReconnector.attempt(hostID, interactive: interactive)
+    /// schedules the next automatic attempt if this one fails for a reason a retry can fix (FR-RW07). Returns why this
+    /// attempt failed (`.cancelled` when none was made); `install` as in `remoteConnection`.
+    @discardableResult
+    public func reconnectRemote(hostID: UUID, interactive: Bool = true, install: RemoteHostLink.InstallPolicy? = nil) async -> RemoteHostLink.Failure? {
+        await remoteReconnector.attempt(hostID, interactive: interactive, install: install)
     }
 
     /// Connects to `hostID` again: live panes resume where they stopped, restored panes adopt their sessions, and
     /// sessions closed while it was unreachable are hung up. Returns why it failed, or nil.
-    func connectRemote(hostID: UUID, interactive: Bool) async -> RemoteHostLink.Failure? {
+    func connectRemote(hostID: UUID, interactive: Bool, install: RemoteHostLink.InstallPolicy? = nil) async -> RemoteHostLink.Failure? {
         // One at a time per host: two passes would attach the same sessions twice.
         guard let remoteHosts, !shuttingDown, remoteReconnecting.insert(hostID).inserted else { return .cancelled }
         defer { remoteReconnecting.remove(hostID) }
         guard let host = await resolveHost?(hostID) else {
-            remoteLinks[hostID] = .disconnected(L("This saved host no longer exists."))
+            remoteLinks[hostID] = .disconnected(L("This saved host no longer exists."), reason: .hostMissing)
             return .cancelled
         }
         // Quit while the host was being resolved: no link is opened after the others were closed.
         guard !shuttingDown else { return .cancelled }
         remoteLinks[hostID] = .connecting
-        let linked = await remoteHosts.workspaceLink(host, interactive: interactive)
+        let linked = await remoteHosts.workspaceLink(host, interactive: interactive, install: install)
         guard case .success(let link) = linked, let connection = link.connection else {
             let failure = linked.failure ?? .lost
-            remoteLinks[hostID] = .disconnected(RemoteHostsModel.message(for: failure))
+            remoteLinks[hostID] = .disconnected(RemoteHostsModel.message(for: failure), reason: failure.reason)
             return failure
         }
         remoteLinks[hostID] = .connected
