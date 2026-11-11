@@ -10,7 +10,8 @@ Protocol 2 is a clean break for users, but `develop` must stay releasable betwee
 - **v2 grows next to v1.** `ControlSession` dispatches by the negotiated version. Until the switch, `protocolVersion: 2` is accepted only when the app runs with `--automation-v2` (development builds and tests); release builds keep answering `UNSUPPORTED_VERSION` for 2. v1 code isn't touched except to share helpers.
 - **One method catalog drives everything.** Each v2 method is declared once (name, parameter schema, result type, capabilities and conditional rules, scope rule, mutating/destructive flags, error codes). Authorization, MCP tool schemas and annotations, CLI help and the contract tests are generated from it, which is what prevents v1's schema drift.
 - **The domain adapter is split by area.** `AutomationService.swift` (1,135 lines) becomes `Automation/V2/` files per area (`Workspace`, `Panes`, `Sessions`, `Agents`, `Remote`, `Projects`, `Tasks`, `Projection`), each calling the existing `AppWorkspaceModel` actions so the UI and API stay one path.
-- **Each phase is one PR** following the [change workflow](../../development/workflow.md): contract updated if the phase finds a gap, tests (observable behavior and failure safety), format, lint, build, test, independent review, `status.md`.
+- **One branch, one PR, one commit per phase** (`feat/api-v2`), each commit following the [change workflow](../../development/workflow.md): contract updated if the phase finds a gap, tests (observable behavior and failure safety), format, lint, build, test, independent review, `status.md`. Every commit builds and passes the full suite on its own.
+- **Open points use the draft's defaults** (fixed agent response keys, `created`/`all` scope for new spaces, layout v3 refusing `windows`, migrated grants gain nothing) and are revisited in review.
 - **The switch (phase 8)** removes v1, makes v2 the only protocol, and ships the CLI, MCP and migration together.
 
 ## Phases
@@ -26,7 +27,7 @@ Protocol 2 is a clean break for users, but `develop` must stay releasable betwee
 | 7 | Projects and tasks | Project CRUD and `capture`; `project.check`/`launch` through a sheet-free launch path; `task.list/get/run/stop`; `TASK_UNTRUSTED`, `SETUP_REQUIRED`; `session.execute {wait}` on the command-finished mark | `Automation/V2/Projects`, `Tasks`, `AppWorkspaceModel+ProjectLaunch.swift`, `+Tasks.swift`, `ProjectLibrary` | 2–4 (agents in launches need 5, host targets need 6) |
 | 8 | Layout v3, CLI, MCP and the switch | Layout documents v3; CLI v2 nouns and server-side name resolution; MCP tools generated from the catalog, `events_poll`, new instructions and untrusted markers; remove v1 dispatch, aliases and `--automation-v2`; move `docs/api/v2/` up to `docs/api/`; README, CHANGELOG (breaking change), public docs, `status.md` | `LayoutJSON.swift`, `TrellisCLI`, `TrellisMCP/MCPTools.swift`, `MCPEndpoint.swift`, docs | 1–7 |
 
-Phases 5, 6 and 7 are independent of each other once 4 lands and can be built in parallel; 7's agent and host targets light up when 5 and 6 are in.
+Phases 5, 6 and 7 are independent of each other once 4 lands; they are still committed in order so each commit stands alone.
 
 ## Risks and how each phase handles them
 
