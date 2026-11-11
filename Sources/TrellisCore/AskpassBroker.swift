@@ -27,6 +27,9 @@ public final class AskpassBroker: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [String: Entry] = [:]
     private var listenFD: Int32 = -1
+    /// Write end of the accept loop's wake pipe; the loop owns and closes the listening socket.
+    private var wakeFD: Int32 = -1
+    private var acceptExited: DispatchSemaphore?
     private var directory: String?
     /// Test seam: the peer's executable and parent pid.
     var peerProcess: @Sendable (pid_t) -> (path: String, parent: pid_t)? = AskpassBroker.process
@@ -49,12 +52,19 @@ public final class AskpassBroker: @unchecked Sendable {
 
     var registeredCount: Int { lock.withLock { entries.count } }
 
+    /// Wakes the accept loop through its pipe instead of closing the socket under a blocked accept(),
+    /// which on Darwin can leave close() and accept() waiting on each other forever.
     public func stop() {
-        let (fd, folder) = lock.withLock { () -> (Int32, String?) in
-            defer { listenFD = -1; directory = nil; entries = [:] }
-            return (listenFD, directory)
+        let (wake, exited, folder) = lock.withLock { () -> (Int32, DispatchSemaphore?, String?) in
+            defer { listenFD = -1; wakeFD = -1; acceptExited = nil; directory = nil; entries = [:] }
+            return (wakeFD, acceptExited, directory)
         }
-        if fd >= 0 { shutdown(fd, SHUT_RDWR); close(fd) }
+        if wake >= 0 {
+            var byte: UInt8 = 1
+            _ = Darwin.write(wake, &byte, 1)
+            close(wake)
+            exited?.wait()
+        }
         if let folder { unlink(folder + "/s"); rmdir(folder) }
     }
 
@@ -84,20 +94,41 @@ public final class AskpassBroker: @unchecked Sendable {
             close(fd); unlink(path); rmdir(folder)
             return nil
         }
-        listenFD = fd; directory = folder
-        let thread = Thread { [weak self] in self?.acceptLoop(fd) }
+        var wake: [Int32] = [-1, -1]
+        guard pipe(&wake) == 0 else {
+            close(fd); unlink(path); rmdir(folder)
+            return nil
+        }
+        for end in wake { _ = fcntl(end, F_SETFD, FD_CLOEXEC) }
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        let exited = DispatchSemaphore(value: 0), wakeRead = wake[0]
+        listenFD = fd; wakeFD = wake[1]; acceptExited = exited; directory = folder
+        let thread = Thread { [weak self] in
+            self?.acceptLoop(fd, wake: wakeRead)
+            close(fd); close(wakeRead)
+            exited.signal()
+        }
         thread.name = "Trellis askpass accept"
         thread.start()
         return path
     }
 
-    private func acceptLoop(_ fd: Int32) {
+    /// Polls the socket and the wake pipe, so stop() never races a blocked accept.
+    private func acceptLoop(_ fd: Int32, wake: Int32) {
         while true {
-            let client = accept(fd, nil, nil)
-            if client < 0 {
-                if errno == EINTR || errno == ECONNABORTED { continue }
+            var fds = [pollfd(fd: fd, events: Int16(POLLIN), revents: 0), pollfd(fd: wake, events: Int16(POLLIN), revents: 0)]
+            if poll(&fds, 2, -1) < 0 {
+                if errno == EINTR { continue }
                 return
             }
+            if fds[1].revents != 0 { return }
+            let client = accept(fd, nil, nil)
+            if client < 0 {
+                if errno == EINTR || errno == ECONNABORTED || errno == EAGAIN || errno == EWOULDBLOCK { continue }
+                return
+            }
+            // Accepted sockets inherit O_NONBLOCK on Darwin; connection threads use blocking reads with a timeout.
+            _ = fcntl(client, F_SETFL, fcntl(client, F_GETFL) & ~O_NONBLOCK)
             _ = fcntl(client, F_SETFD, FD_CLOEXEC)
             let thread = Thread { [weak self] in
                 self?.serve(client)
