@@ -21,6 +21,9 @@ final class HarnessV2 {
             v2Domain: AutomationServiceV2(model: base.model, hosts: base.hosts))
     }
 
+    /// Clients of a harness whose handler is already set up (an `EventsHarness`'s, with its event hub).
+    init(base: Harness) { self.base = base }
+
     func grant(_ name: String, _ capabilities: Set<Capability> = Set(Capability.allCases), scope: SpaceScope = .all, hosts: HostScope = .all) async throws {
         tokens[name] = try await base.grants.create(name: name, capabilities: capabilities, spaceScope: scope, hostScope: hosts, lifetime: 3600).token
         sessions[name] = nil

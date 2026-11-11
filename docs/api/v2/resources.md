@@ -125,13 +125,22 @@ Panes are first-class in v2.
 
 ```json
 {
-  "id": "trellis-claude-code", "name": "Claude Code", "builtIn": true, "revision": 1,
-  "integration": "claude-hooks", "executable": "claude",
+  "id": "trellis-claude-code", "name": "Claude Code", "builtIn": true, "revision": 0,
+  "integration": "claude-hooks", "resumable": true, "executable": "claude",
+  "install": {"darwin": {"command": "curl -fsSL https://claude.ai/install.sh | bash", "requires": ["curl", "bash"]}, "linux": {"command": "…", "requires": ["curl", "bash"]}},
   "availability": [{"machine": {"kind": "local"}, "status": "installed"}, {"machine": {"kind": "remote", "hostId": "…"}, "status": "missing", "installable": true}]
 }
 ```
 
-`integration` is `claude-hooks`, `codex-notify`, `pi-extension` or `none` (FR-AG). `availability` lists the local machine and every remote host in scope: `checking`, `installed`, `missing` or `unsupported`. `executable` and install commands need **session.execute**.
+| Field | Notes |
+| --- | --- |
+| `revision` | Moves when a reload of the agent catalog changes the definition (FR-AG02); a definition unchanged since launch is at 0. Runtime only, like pane revisions. |
+| `integration` | `claude-hooks`, `codex-notify`, `pi-extension` or `none` (FR-AG). |
+| `resumable` | The definition has resume arguments, so `resume` continues the last conversation (FR-AG06). |
+| `executable`, `install` **(session.execute)** | What runs: the program, and the installer per platform (`darwin`, `linux`) with the programs it `requires`. |
+| `availability` | This Mac, then each remote workspace host the grant can read (host.read and the host in scope) that has an open space, a helper check or an agent found missing. `status`: `checking`, `installed` or `missing` from this Mac's login PATH check, `unknown` before any check; on a host only `missing` (a launch there exited 127) or `unknown`, since Trellis doesn't check a host ahead (FR-AG12), and `unsupported` when the host has no helper for its system. `installable` (omitted when installed): the definition has an installer for the machine's platform (a host's as its helper reported it, else Linux) whose requirements this Mac's PATH has, so `agent.install` can run it. |
+
+Definitions are readable whatever the grant's agent scope; that scope limits starting, restarting and installing.
 
 ## Agent run
 
@@ -139,17 +148,19 @@ An agent running in a pane, whether started as an agent pane or typed in a shell
 
 ```json
 {
-  "sessionId": "…", "paneId": "…", "agentId": "trellis-claude-code",
-  "origin": "managed", "state": "needsInput", "since": "…", "unseen": true,
-  "settings": {"model": "Opus 5.5", "effort": "high"}
+  "sessionId": "…", "paneId": "…", "spaceId": "…", "agentId": "trellis-claude-code",
+  "origin": "managed", "state": "needsInput", "since": "…", "unseen": false,
+  "settings": {"model": "claude-opus-5-5", "effort": "high"}
 }
 ```
 
 | Field | Notes |
 | --- | --- |
-| `origin` | `managed` (an agent pane) or `detected` (typed in a shell). Only managed runs can be restarted or resumed through the API. |
-| `state` | `ready`, `working`, `needsInput`, `done`, `error` (FR-AG). Agents without a hook integration only reach `ready`, `working` (from output) and `done`. |
-| `settings` | Model and reasoning effort as the agent reported them (FR-AG19). Untrusted text. |
+| `origin` | `managed` (an agent pane) or `detected` (typed in a shell). Only managed runs can be restarted or resumed through the API. A typed agent is a run once its own hooks have spoken (FR-AG18), as in the app's Running list. |
+| `state` | `ready`, `working`, `needsInput`, `done`, `error` (FR-AG). Agents without a hook integration only reach `ready`, `working` (from output) and `done`. A run lasts while its session runs: an agent that ended has none. |
+| `since` | When the run entered its current state. |
+| `unseen` | A `done` the user hasn't looked at (the tab's Done badge, FR-AG10). |
+| `settings` | Model ID and reasoning effort as the agent reported them (FR-AG19), as in `agent.settings` events; omitted until reported. Untrusted text. |
 
 ## Host
 

@@ -63,7 +63,11 @@ extension MethodCatalogV2 {
     static let workspace: [MethodSpecV2] = [
         MethodSpecV2(
             "workspace.get", "Everything in scope in one call: the workspace revision, the active space, spaces and the included collections.",
-            params: [ParamV2("include", .stringList(values: ["tabs", "panes", "sessions", "layout"], maxCount: 4), "Collections to add; layout adds each tab's split tree.")],
+            params: [
+                ParamV2(
+                    "include", .stringList(values: ["tabs", "panes", "sessions", "agents", "layout"], maxCount: 5),
+                    "Collections to add; agents adds agentRuns, layout adds each tab's split tree.")
+            ],
             capabilities: [.workspaceRead]),
         MethodSpecV2(
             "workspace.save", "Save the workspace to disk now instead of waiting for the next automatic save.", capabilities: [.workspaceWrite],

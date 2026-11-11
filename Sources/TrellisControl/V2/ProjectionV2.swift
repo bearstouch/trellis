@@ -4,10 +4,21 @@ import TrellisCore
 // Live state the app shows but the store doesn't hold, captured on the main actor in one pass so a projection is built
 // from one consistent moment (docs/api/v2/resources.md). Plain values: projection tests build them by hand.
 
+/// The agent a pane runs (resources.md#agent-run); its pane's `agent` field is the summary of this.
 public struct AgentSummaryV2: Sendable, Equatable {
     public var agentID: String
     public var state: AgentState
-    public init(agentID: String, state: AgentState) { self.agentID = agentID; self.state = state }
+    /// Started as an agent pane; otherwise typed in a shell and recognised (FR-AG15).
+    public var managed: Bool
+    /// When the run entered its current state.
+    public var since: Date?
+    /// A Done the user hasn't seen (FR-AG10).
+    public var unseen: Bool
+    /// As the agent reported them (FR-AG19): untrusted text.
+    public var settings: AgentSettings
+    public init(agentID: String, state: AgentState, managed: Bool = true, since: Date? = nil, unseen: Bool = false, settings: AgentSettings = AgentSettings()) {
+        self.agentID = agentID; self.state = state; self.managed = managed; self.since = since; self.unseen = unseen; self.settings = settings
+    }
 }
 
 public struct PaneRuntimeV2: Sendable, Equatable {

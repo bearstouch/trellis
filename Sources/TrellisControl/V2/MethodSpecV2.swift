@@ -162,6 +162,9 @@ public enum RevisionTargetV2: Sendable, Equatable {
     case resource(param: String)
     /// The container for create and reorder methods: `workspace`, or a resource named by `param` (`space` + `spaceId`).
     case container(String, param: String? = nil)
+    /// The resource named by whichever of these parameters is sent, dotted paths included: `agent.start`'s placement
+    /// names the space that gets a tab or the pane that is split or used.
+    case anyResource([String])
     /// No revision applies; the reason is shown by the contract test so exemptions stay deliberate.
     case exempt(reason: String)
 }

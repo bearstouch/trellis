@@ -65,22 +65,10 @@ final class PermissionsV2Tests: XCTestCase {
 
     // MARK: - Composition (API2-06a, second table)
 
-    /// Declarations of the later phases' methods as permissions.md composes them; phases 5–7 declare the real ones.
+    /// The agent methods from the real catalog (phase 5), then declarations of the later phases' methods as permissions.md
+    /// composes them; phases 6 and 7 declare the real ones.
     static let composed: [MethodSpecV2] = [
-        MethodSpecV2(
-            "agent.start", "Start an agent in a pane.",
-            params: [ParamV2("paneId", .uuid, required: true, "Pane."), ParamV2("agentId", .string(maxBytes: 128), required: true, "Agent."), ParamV2("directory", .string(), "Folder.")],
-            capabilities: [.agentControl, .workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionExecute, if: .present("directory"))],
-            resources: [ResourceRuleV2(.pane, "paneId"), ResourceRuleV2(.agent, "agentId")], effect: .mutating(revision: .resource(param: "paneId"))),
-        MethodSpecV2(
-            "agent.respond", "Answer an agent.", params: [ParamV2("paneId", .uuid, required: true, "Pane."), ParamV2("response", .string(values: ["approve", "reject"]), required: true, "Answer.")],
-            anyOf: [[.agentRespond, .sessionInput]], resources: [ResourceRuleV2(.pane, "paneId")], effect: .mutating(revision: .resource(param: "paneId"), destructive: true)),
-        MethodSpecV2(
-            "agent.install", "Install an agent.", params: [ParamV2("agentId", .string(maxBytes: 128), required: true, "Agent.")], capabilities: [.agentInstall, .sessionExecute],
-            resources: [ResourceRuleV2(.agent, "agentId")], effect: .mutating(revision: .exempt(reason: "Installs change no resource."))),
-        MethodSpecV2(
-            "agent.runs", "Runs of an agent.", params: [ParamV2("agentId", .string(maxBytes: 128), required: true, "Agent; runs of agents outside scope stay readable.")],
-            capabilities: [.workspaceRead]),
+        MethodCatalogV2.spec("agent.start")!, MethodCatalogV2.spec("agent.respond")!, MethodCatalogV2.spec("agent.install")!, MethodCatalogV2.spec("agent.runs")!,
         MethodSpecV2(
             "task.run", "Run a trusted task.", params: [ParamV2("name", .string(maxBytes: 200), required: true, "Task.")], capabilities: [.taskRun],
             effect: .mutating(revision: .exempt(reason: "Runs change no resource."))),
@@ -111,7 +99,8 @@ final class PermissionsV2Tests: XCTestCase {
         domain.setHost(host)
         let dispatcher = dispatcher(Self.composed)
         let project = JSONValue.string(UUID().uuidString)
-        let agent = ["paneId": pane, "agentId": .string("trellis-codex")]
+        let agent: [String: JSONValue] = ["agentId": .string("trellis-codex"), "placement": .object(["kind": .string("pane"), "paneId": pane])]
+        let answer: [String: JSONValue] = ["sessionId": .string(domain.sessionA.uuidString), "action": .string("approve")]
         // (row, method, params, enough, one short, what the short grant misses)
         let rows: [(String, String, [String: JSONValue], Set<CapabilityV2>, Set<CapabilityV2>, [String])] = [
             ("agent in the pane's folder", "agent.start", agent, [.agentControl, .workspaceWrite], [.agentControl], ["workspace.write"]),
@@ -119,9 +108,13 @@ final class PermissionsV2Tests: XCTestCase {
                 "agent in a chosen directory", "agent.start", agent.merging(["directory": .string("/tmp")]) { $1 }, [.agentControl, .workspaceWrite, .sessionExecute],
                 [.agentControl, .workspaceWrite], ["session.execute"]
             ),
-            ("answer with agent.respond", "agent.respond", ["paneId": pane, "response": .string("approve")], [.agentRespond], [.workspaceRead], ["agent.respond"]),
-            ("answer with session.input", "agent.respond", ["paneId": pane, "response": .string("approve")], [.sessionInput], [.sessionExecute], ["agent.respond"]),
-            ("install an agent", "agent.install", ["agentId": .string("trellis-codex")], [.agentInstall, .sessionExecute], [.agentInstall], ["session.execute"]),
+            ("answer with agent.respond", "agent.respond", answer, [.agentRespond], [.workspaceRead], ["agent.respond"]),
+            ("answer with session.input", "agent.respond", answer, [.sessionInput], [.sessionExecute], ["agent.respond"]),
+            // The installer then starts the agent in a pane, as Install and Launch does, so it also needs what agent.start needs.
+            (
+                "install an agent", "agent.install", agent, [.agentInstall, .sessionExecute, .agentControl, .workspaceWrite], [.agentInstall, .agentControl, .workspaceWrite],
+                ["session.execute"]
+            ),
             ("run a trusted task", "task.run", ["name": .string("build")], [.taskRun], [.taskRead], ["task.run"]),
             ("launch a project", "project.launch", ["id": project], [.projectLaunch, .sessionStart, .sessionExecute], [.projectLaunch, .sessionStart], ["session.execute"]),
             (
@@ -271,11 +264,12 @@ final class PermissionsV2Tests: XCTestCase {
     func testAgentAndProjectScopes() async throws {
         let dispatcher = dispatcher(Self.composed)
         let (codexOnly, _) = try await grant([.agentControl, .workspaceWrite, .workspaceRead, .projectLaunch, .sessionStart, .sessionExecute], GrantScope(agents: .agents(["trellis-codex"])))
-        let claude = await call(dispatcher, "agent.start", ["paneId": pane, "agentId": .string("trellis-claude-code")], codexOnly)
+        let placement = JSONValue.object(["kind": .string("pane"), "paneId": pane])
+        let claude = await call(dispatcher, "agent.start", ["placement": placement, "agentId": .string("trellis-claude-code")], codexOnly)
         XCTAssertEqual(outcome(claude), "NOT_FOUND", "An agent outside scope looks missing")
-        let codex = await call(dispatcher, "agent.start", ["paneId": pane, "agentId": .string("trellis-codex")], codexOnly)
+        let codex = await call(dispatcher, "agent.start", ["placement": placement, "agentId": .string("trellis-codex")], codexOnly)
         XCTAssertEqual(outcome(codex), "OK")
-        let runs = await call(dispatcher, "agent.runs", ["agentId": .string("trellis-claude-code")], codexOnly)
+        let runs = await call(dispatcher, "agent.runs", [:], codexOnly)
         XCTAssertEqual(outcome(runs), "OK", "Runs of other agents stay readable")
 
         let inScope = UUID(), outside = UUID()

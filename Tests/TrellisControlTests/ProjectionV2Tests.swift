@@ -275,6 +275,71 @@ final class ProjectionV2Tests: XCTestCase {
         XCTAssertEqual(object(full.host(other, remote: HostRuntimeV2(link: .needsInput)))["remote"], .object(["autoInstall": .bool(false), "link": .object(["state": .string("needsInput")])]))
     }
 
+    // MARK: Agents (resources.md#agent-definition, #agent-run)
+
+    func testAgentDefinitionsRedactWhatRunsAndHostsOutsideScope() {
+        let definition = AgentDefinition(
+            id: "trellis-codex", name: "Codex", executable: "codex", resumeArguments: ["resume", "--last"], integration: .codexNotify,
+            install: ["darwin": AgentInstallRecipe(command: "npm i -g @openai/codex", requires: ["npm"])])
+        let availability = [
+            AgentAvailabilityV2(status: .installed, installable: true), AgentAvailabilityV2(hostID: host.id, status: .missing, installable: true),
+            AgentAvailabilityV2(hostID: other.id, status: .unknown, installable: false)
+        ]
+        let full = object(projection(everything, hosts: .approved([HostApproval(hostID: host.id, connectionRevision: 2)])).agent(definition, revision: 3, availability: availability))
+        XCTAssertEqual(full["id"], .string("trellis-codex"))
+        XCTAssertEqual(full["builtIn"], .bool(true))
+        XCTAssertEqual(full["revision"], .number(3))
+        XCTAssertEqual(full["integration"], .string("codex-notify"))
+        XCTAssertEqual(full["resumable"], .bool(true))
+        XCTAssertEqual(full["executable"], .string("codex"))
+        XCTAssertEqual(full["install"], .object(["darwin": .object(["command": .string("npm i -g @openai/codex"), "requires": .array([.string("npm")])])]))
+        XCTAssertEqual(
+            full["availability"],
+            .array([
+                .object(["machine": .object(["kind": .string("local")]), "status": .string("installed")]),
+                .object(["machine": .object(["kind": .string("remote"), "hostId": .string(host.id.uuidString.lowercased())]), "status": .string("missing"), "installable": .bool(true)])
+            ]), "A host outside scope isn't listed; installed needs no installable flag")
+        // Without session.execute nothing says what runs; without host.read no host is listed.
+        let plain = object(projection([.metadataRead]).agent(definition, revision: 3, availability: availability))
+        XCTAssertNil(plain["executable"])
+        XCTAssertNil(plain["install"])
+        XCTAssertEqual(plain["availability"], .array([.object(["machine": .object(["kind": .string("local")]), "status": .string("installed")])]))
+    }
+
+    func testAgentRunsFollowSpaceScopeWithUntrustedSettings() {
+        var live = runtime()
+        let since = started.addingTimeInterval(3)
+        live.panes[agent] = {
+            var state = PaneRuntimeV2()
+            state.agent = AgentSummaryV2(
+                agentID: "trellis-claude-code", state: .needsInput, managed: true, since: since, unseen: false, settings: AgentSettings(model: "claude-opus-5-5", effort: "high"))
+            return state
+        }()
+        live.panes[shell]?.agent = AgentSummaryV2(agentID: "trellis-codex", state: .working, managed: false)
+        let grant = AutomationGrant(
+            id: UUID(), name: "Test", tokenHash: "", capabilities: everything, spaceScope: .all, hostScope: .all, createdAt: started, expiresAt: started.addingTimeInterval(60))
+        let full = ProjectionV2(snapshot: snapshot(), runtime: live, hosts: [host.id: host], grant: grant)
+        let runs = full.agentRuns().map(object)
+        XCTAssertEqual(runs.map { $0["paneId"] }, [.string(shell.uuidString.lowercased()), .string(agent.uuidString.lowercased())], "Sidebar order")
+        let run = runs[1]
+        XCTAssertEqual(run["sessionId"], .string(full.snapshot.panes[agent]!.sessionID.uuidString.lowercased()))
+        XCTAssertEqual(run["spaceId"], .string(local.uuidString.lowercased()))
+        XCTAssertEqual(run["origin"], .string("managed"))
+        XCTAssertEqual(run["state"], .string("needsInput"))
+        XCTAssertEqual(run["since"], .string(ConventionsV2.timestamp(since)))
+        XCTAssertEqual(run["unseen"], .bool(false))
+        XCTAssertEqual(run["settings"], .object(["model": .string("claude-opus-5-5"), "effort": .string("high")]))
+        XCTAssertEqual(runs[0]["origin"], .string("detected"))
+        XCTAssertNil(runs[0]["settings"], "Nothing reported, nothing shown")
+        XCTAssertEqual(full.agentRuns(state: .working).count, 1)
+        XCTAssertEqual(full.agentRuns(space: remote).count, 0)
+        let scoped = AutomationGrant(
+            id: UUID(), name: "Test", tokenHash: "", capabilities: everything, spaceScope: .spaces([remote]), hostScope: .all, createdAt: started,
+            expiresAt: started.addingTimeInterval(60))
+        XCTAssertEqual(ProjectionV2(snapshot: snapshot(), runtime: live, hosts: [:], grant: scoped).agentRuns(), [], "Runs outside the space scope don't appear")
+        XCTAssertNil(full.agentRun(paneID: process), "A pane without an agent has no run")
+    }
+
     func testEveryIDIsLowercase() throws {
         let full = projection(everything)
         var values = full.visibleSpaces().map(full.space)

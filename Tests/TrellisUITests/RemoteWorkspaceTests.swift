@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import TrellisBroker
+import TrellisControl
 import TrellisCore
 import TrellisTerminal
 import XCTest
@@ -169,6 +170,54 @@ final class RemoteWorkspaceTests: XCTestCase {
         let splitPane = try XCTUnwrap(newSplit)
         guard case .remoteShell(host.id, project)? = launch(ofPane: splitPane, in: model) else { return XCTFail("The split isn't on the host in the project folder") }
         try await until("the split's shell reports the folder") { model.remoteWorkingDirectory(paneID: splitPane) == project }
+    }
+
+    /// API v2 `agent.start` in a remote workspace runs the agent on the host through its helper, in the folder asked for,
+    /// exactly as the app's Agents view does there (FR-AG12, methods.md#agents).
+    func testAgentStartThroughTheAPIRunsTheAgentOnTheHost() async throws {
+        let hosts = HostListModel(library: HostLibrary(storage: MemoryHosts()))
+        guard case .success(let saved) = await hosts.save(HostDraft(name: "build-box", destination: "build-box"), editing: nil) else { return XCTFail("No host") }
+        host = saved
+        let project = home + "/code/agent"
+        try FileManager.default.createDirectory(atPath: project, withIntermediateDirectories: true)
+        let agent = home + "/fake-agent"
+        try "#!/bin/sh\nprintf 'REMOTE-AGENT-UP %s %s\\n' \"$PWD\" \"$*\"\nexec /bin/sleep 30\n".write(toFile: agent, atomically: true, encoding: .utf8)
+        chmod(agent, 0o755)
+        let model = try makeModel()
+        _ = await model.loadWorkspace()
+        let opened = await model.openRemoteWorkspace(host: host)
+        let spaceID = try XCTUnwrap(opened)
+        try await until("the host is connected") { model.remoteLinks[host.id] == .connected }
+        model.agentCatalog = AgentCatalogSnapshot(definitions: [AgentDefinition(id: "fake", name: "Fake", executable: agent, resumeArguments: ["--continue"])])
+
+        let grants = GrantStore(url: nil, secrets: NoSecrets(), now: Date.init)
+        let handler = AuthorizingControlHandler(
+            grants: grants, domain: AutomationService(model: model, hosts: hosts), idempotency: IdempotencyCache(now: Date.init),
+            v2Domain: AutomationServiceV2(model: model, hosts: hosts))
+        let token = try await grants.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases)), lifetime: 3600).token
+        let session = ControlSession(peerUID: geteuid(), handler: handler)
+        var id = 0
+        func call(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
+            id += 1
+            var data = try JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "id": id, "method": method, "params": params])
+            data.append(0x0A)
+            let output = await session.receive(data).output
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: output.prefix { $0 != 0x0A }) as? [String: Any])
+        }
+        _ = try await call("auth.authenticate", ["protocolVersion": 2, "token": token])
+        let response = try await call("agent.start", ["agentId": "fake", "placement": ["kind": "tab", "spaceId": spaceID.uuidString], "directory": project, "resume": true])
+        let started = try XCTUnwrap(response["result"] as? [String: Any], "\(response)")
+        let run = try XCTUnwrap(started["run"] as? [String: Any])
+        XCTAssertEqual(run["origin"] as? String, "managed")
+        let launch = try XCTUnwrap((started["session"] as? [String: Any])?["launch"] as? [String: Any])
+        XCTAssertEqual(launch["machine"] as? [String: String], ["kind": "remote", "hostId": host.id.uuidString.lowercased()])
+        let pane = try XCTUnwrap(UUID(uuidString: try XCTUnwrap((started["pane"] as? [String: Any])?["id"] as? String)))
+        guard case .agent(let saved)? = self.launch(ofPane: pane, in: model), saved.hostID == host.id, saved.directory == project else { return XCTFail("Not an agent on the host") }
+        let terminal = try XCTUnwrap(model.terminals[pane])
+        try await until("the agent runs on the host, in the folder, resumed") {
+            terminal.screenText.contains("REMOTE-AGENT-UP \(project) --continue")
+        }
+        XCTAssertNotNil(terminal.remoteTransport, "Through the host's helper")
     }
 
     /// FR-RW04: a shell with no marks yet gives the folder it started in; one that started nowhere in particular leaves home to the helper.

@@ -34,6 +34,7 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
             case "tab": return .success(try await performTabs(call))
             case "pane": return .success(try await performPanes(call))
             case "session": return .success(try await performSessions(call))
+            case "agent": return .success(try await performAgents(call))
             case "host": return .success(try await performHosts(call))
             default: return .failure(.methodNotFound)
             }
@@ -112,8 +113,10 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
             state.kept = terminal.survivesQuit && terminal.isRunning
             state.shell = model.shellStates[pane.id]
             state.progress = model.progress[pane.id]
-            if let agent = model.agentStates[pane.id]?.state, let definition = model.paneAgent(paneID: pane.id) {
-                state.agent = AgentSummaryV2(agentID: definition.id, state: agent)
+            if let agent = model.agentStates[pane.id], let definition = model.paneAgent(paneID: pane.id) {
+                state.agent = AgentSummaryV2(
+                    agentID: definition.id, state: agent.state, managed: model.agentLaunch(paneID: pane.id) != nil, since: model.agentStateSince[pane.id],
+                    unseen: agent.unseen, settings: agent.settings)
             }
         }
         state.folder = model.currentDirectory(paneID: pane.id) ?? model.remoteWorkingDirectory(paneID: pane.id)

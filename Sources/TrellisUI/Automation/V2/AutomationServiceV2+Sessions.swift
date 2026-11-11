@@ -111,7 +111,7 @@ extension AutomationServiceV2 {
         try requireHost(hostID, call, "This pane connects to a saved host this grant cannot use.")
     }
 
-    @MainActor private func requireHost(_ hostID: UUID, _ call: CallV2, _ message: String) throws {
+    @MainActor func requireHost(_ hostID: UUID, _ call: CallV2, _ message: String) throws {
         switch call.access.hostAccess(hosts.hosts.first { $0.id == hostID }) {
         case .allowed: return
         case .hidden: throw ControlError.api(.permissionDenied, message)
@@ -186,12 +186,12 @@ extension AutomationServiceV2 {
     }
 
     /// FR-RW15: typing into a remote workspace session needs access to its host, as connecting to it does.
-    @MainActor private func requireRemoteHostAccess(_ sessionID: UUID, _ call: CallV2) throws {
+    @MainActor func requireRemoteHostAccess(_ sessionID: UUID, _ call: CallV2) throws {
         guard let hostID = model.snapshot.sessions[sessionID]?.launch.remoteHostID else { return }
         try requireHost(hostID, call, "This session runs on a saved host this grant cannot use.")
     }
 
-    @MainActor private func send(_ sessionID: UUID, _ data: Data, paste: Bool) throws {
+    @MainActor func send(_ sessionID: UUID, _ data: Data, paste: Bool) throws {
         // FR-RW15: input is never queued for a host that isn't connected; the session keeps running there.
         if let session = model.snapshot.sessions[sessionID], session.state == .running, let host = session.launch.remoteHostID, model.remoteLinks[host] != .connected {
             throw ControlError.api(.remoteDisconnected, "The session's host is not connected. The session keeps running there; retry after it reconnects.")

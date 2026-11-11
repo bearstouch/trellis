@@ -14,7 +14,7 @@ Every method follows the [conventions](index.md#conventions-api2-02). In the tab
 | `workspace.get` | `include?: ["tabs","panes","sessions","agents","layout"]` | Everything in scope in one call: `revision`, `activeSpaceId`, `spaces`, and the included collections | workspace.read |
 | `workspace.save` | — | `savedAt` | workspace.write |
 
-`workspace.get` is the starting point for agents: one call instead of `space.list` + N × `tab.get`. `include: ["layout"]` adds each tab's split tree (and implies `tabs`). It is bounded by the 1 MiB frame; `LIMIT_EXCEEDED` tells the client to page with the list methods. `workspace.save` takes no `expectedRevision`: it writes the current state and changes no resource.
+`workspace.get` is the starting point for agents: one call instead of `space.list` + N × `tab.get`. `include: ["layout"]` adds each tab's split tree (and implies `tabs`); `include: ["agents"]` adds `agentRuns`, the [agent runs](resources.md#agent-run) in scope as `agent.runs` returns them (definitions come from `agent.list`). It is bounded by the 1 MiB frame; `LIMIT_EXCEEDED` tells the client to page with the list methods. `workspace.save` takes no `expectedRevision`: it writes the current state and changes no resource.
 
 ## Spaces
 
@@ -82,17 +82,22 @@ A new pane inherits the source pane's machine and folder, as in the UI: a split 
 
 | Method | Params | Result | Caps |
 | --- | --- | --- | --- |
-| `agent.list` | `machine?` | `agents` (definitions with availability) | workspace.read |
+| `agent.list` | `machine?`, `limit?`, `cursor?` | `agents` (definitions with availability) | workspace.read (+host.read if `machine.hostId`) |
 | `agent.get` | `id` | `agent` | workspace.read |
-| `agent.runs` | `spaceId?`, `state?` | `runs` (agent runs in scope) | workspace.read |
-| `agent.start` | `agentId`, `placement`, `directory?`, `resume?` | `run`, `pane`, `tab?` | agent.control + workspace.write (+session.execute if `directory`) |
-| `agent.restart` | `sessionId`, `resume?` | `run` (new session) | agent.control |
-| `agent.respond` | `sessionId`, `action` `approve`/`reject`/`reply`, `text?`, `expectedState?` | `run` | agent.respond (or session.input) |
-| `agent.install` | `agentId`, `hostId?` | `availability` | agent.install + session.execute |
+| `agent.runs` | `spaceId?`, `state?` | `runs` (agent runs in scope, in sidebar order) | workspace.read |
+| `agent.start` | `agentId`, `placement`, `directory?`, `resume?` | `run`, `session`, `pane`, `tab?` | agent.control + workspace.write (+session.execute if `directory`) |
+| `agent.restart` | `sessionId`, `resume?` | `run`, `session`, `pane` (a new session) | agent.control |
+| `agent.respond` | `sessionId`, `action` `approve`/`reject`/`reply`, `text?`, `expectedState?` | `run`, `acceptedBytes` | agent.respond (or session.input) |
+| `agent.install` | `agentId`, `placement` | `run`, `session`, `pane`, `tab?` | agent.install + session.execute + agent.control + workspace.write |
 
-- `placement` is `{"kind": "tab", "spaceId"}`, `{"kind": "split", "paneId", "axis"}` or `{"kind": "pane", "paneId"}` (a stopped pane). The machine is the space's or pane's machine; an agent missing there is `AGENT_UNAVAILABLE`.
-- `agent.respond` sends fixed bytes: `approve` is `1` + Return, `reject` is Escape, `reply` is the text + Return. It is refused with `INVALID_STATE` unless the run's state is `needsInput` (or `expectedState` if given), so a stale answer never reaches a prompt that moved on. It is a narrower permission than **session.input**.
-- `agent.install` runs the definition's install command on the machine, exactly as the app's install offer does (FR-AG).
+- `placement` is `{"kind": "tab", "spaceId"}`, `{"kind": "split", "paneId", "axis"}` or `{"kind": "pane", "paneId"}`. A `pane` placement takes a pane whose session isn't running: a stopped pane, or a finished one (exited or failed), which first gets a fresh stopped session, as the app's **This Tab** does; a running pane is `INVALID_STATE` (`details.state`), never ended for the agent. A split behind a maximized pane is `INVALID_STATE` (`maximized`), as in the app. `expectedRevision` is the space's for `tab` (compared atomically with the new tab) and the pane's for `split` and `pane`. A new tab or split and its agent launch are created in one store transaction, so a refusal leaves nothing behind.
+- The machine is the space's or pane's: a remote workspace runs the agent on its host (FR-AG12), which needs the host in scope like any other launch there (`PERMISSION_DENIED` otherwise). Without `directory` the agent starts in the folder of the pane it replaces or opens beside (the space's focused pane for a new tab), as the Agents view does; a `directory` on this Mac must be an existing folder (`-32602`), a host's isn't checked.
+- `AGENT_UNAVAILABLE` (`details`: `agentId`, `machine`, `install`, and, with session.execute, `requires` when the installer's own requirements are missing on this Mac) answers `agent.start` and `agent.restart` when the agent is **known** to be missing on that machine: from this Mac's login PATH check, or from an earlier launch that exited 127 there. `details.install` is true when the definition has an installer for the machine's platform that `agent.install` can run. An agent whose availability is unknown is started; if it then isn't found, its run ends (`agent.ended`), `agent.availability` reports `missing`, and the app shows its install offer, exactly as for a launch from the app.
+- `agent.start` and `agent.install` return once the session is launched (or `LAUNCH_FAILED` with `details.session`), not when the agent or its installer finishes. `run` is omitted if the agent already ended by then; `session` says how (for example exit code 127). A slow installer never holds the main actor or the connection: follow it with `agent.*` events.
+- `agent.restart` restarts a **managed** run (an agent pane) whose agent has ended, or a restored stopped agent pane: a new session in the same pane, with `resume` continuing the agent's last conversation (FR-AG06). A running agent is `INVALID_STATE` (`details.state`: `running`; stop it with `session.stop` first); an agent typed in a shell is `INVALID_STATE` with `details.state: "detected"`, and a session without an agent `noAgent`. `sessionId` must be the pane's current session.
+- `agent.respond` sends fixed bytes: `approve` is `1` + Return, `reject` is Escape, `reply` is the text + Return. `text` is required for `reply` and refused otherwise; it is one line without control characters (no Return, Escape or other C0/C1 bytes), at most 16 KiB. It is refused with `INVALID_STATE` (`details.state` holding the run's state) unless the run's state is `needsInput` (or `expectedState` if given), so a stale answer never reaches a prompt that moved on; a session without a run is `noAgent`. Approve and reply count as the user's Return for the run's state (FR-AG11). The bytes go through the same input path as `session.sendInput`: a remote workspace session needs its host in scope and a connected link (`REMOTE_DISCONNECTED`, never queued). The reply text is never logged. It is a narrower permission than **session.input**, and works for detected runs too.
+- `agent.install` runs the definition's installer for the machine's platform in the placement's pane, in the login shell, and then the agent, exactly as the app's **Install and Launch** does (FR-AG12): it is `agent.start` with the installer first, so it needs what `agent.start` needs as well. A machine without an installer for the agent, or an installer whose required programs this Mac's login PATH lacks, is `AGENT_UNAVAILABLE` with `details.install: false`. The missing mark for that machine is cleared, as in the app; whether the agent is there afterwards shows in the run (it starts, or ends with exit 127 and `agent.availability` `missing` again).
+- `agent.list` and `agent.get` read every definition, whatever the grant's agent scope (which limits only starting, restarting and installing). `machine` (`{"kind": "local"}` or `{"kind": "remote", "hostId"}`) limits `availability` to that machine.
 
 ## Hosts
 

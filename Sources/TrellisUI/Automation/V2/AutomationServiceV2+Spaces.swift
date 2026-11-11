@@ -97,6 +97,8 @@ extension AutomationServiceV2 {
         if include.contains("sessions") {
             object["sessions"] = .array(panes.compactMap { pane in snapshot.sessions[pane.sessionID].map { projection.session($0, paneID: pane.id) } })
         }
+        // Agent runs, as agent.runs returns them; definitions come from agent.list.
+        if include.contains("agents") { object["agentRuns"] = .array(projection.agentRuns()) }
         let result = JSONValue.object(object)
         guard (try? JSONEncoder().encode(result).count).map({ $0 <= Self.workspaceResultLimit }) ?? false else {
             throw ControlError.api(.limitExceeded, "The workspace is too large for one reply. Page through space.list, tab.list and pane.list instead.")

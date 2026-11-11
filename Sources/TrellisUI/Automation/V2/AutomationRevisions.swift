@@ -9,6 +9,8 @@ import TrellisCore
 struct AutomationRevisions: Equatable {
     private(set) var panes: [UUID: UInt64] = [:]
     private(set) var sessions: [UUID: UInt64] = [:]
+    /// Agent definitions changed by a catalog reload (FR-AG02); one never changed since launch is at 0.
+    private(set) var agents: [String: UInt64] = [:]
     private var counter: UInt64 = 0
 
     private mutating func next() -> UInt64 {
@@ -26,6 +28,11 @@ struct AutomationRevisions: Equatable {
         for (id, session) in next.sessions where sessions[id] == nil || previous.sessions[id] != session { sessions[id] = self.next() }
         if panes.count != next.panes.count { panes = panes.filter { next.panes[$0.key] != nil } }
         if sessions.count != next.sessions.count { sessions = sessions.filter { next.sessions[$0.key] != nil } }
+    }
+
+    mutating func recordAgents(from old: [AgentDefinition], to new: [AgentDefinition]) {
+        let before = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for definition in new where before[definition.id] != definition { agents[definition.id] = next() }
     }
 
     /// Panes that were or became maximized changed; panes already gone are left out.

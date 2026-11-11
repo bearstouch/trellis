@@ -376,9 +376,19 @@ public final class AppWorkspaceModel: ObservableObject {
     public var workspaceIsVisible: () -> Bool = { true }
     var notificationLimiter = NotificationRateLimiter()
     /// FR-AG01: the agents this Trellis can launch, bundled and from the Agents folder.
-    @Published public internal(set) var agentCatalog = AgentCatalogSnapshot(definitions: AgentCatalog.bundled())
+    @Published public internal(set) var agentCatalog = AgentCatalogSnapshot(definitions: AgentCatalog.bundled()) {
+        didSet { if agentCatalog.definitions != oldValue.definitions { automationRevisions.recordAgents(from: oldValue.definitions, to: agentCatalog.definitions) } }
+    }
     /// FR-AG10: each agent pane's state, by pane; runtime only, never persisted.
-    @Published public internal(set) var agentStates: [UUID: AgentStateReducer] = [:] { didSet { if onLiveEvents != nil, agentStates != oldValue { liveAgentsChanged(from: oldValue) } } }
+    @Published public internal(set) var agentStates: [UUID: AgentStateReducer] = [:] {
+        didSet {
+            guard agentStates != oldValue else { return }
+            noteAgentStateTimes(from: oldValue)
+            if onLiveEvents != nil { liveAgentsChanged(from: oldValue) }
+        }
+    }
+    /// When each pane's agent entered its current state (an agent run's `since`); runtime only.
+    var agentStateSince: [UUID: Date] = [:]
     /// FR-AG07: whether each agent is on this Mac's login PATH, by agent ID; only ever from a check.
     @Published public internal(set) var agentAvailability: [String: AgentAvailability] = [:] {
         didSet { if onLiveEvents != nil, agentAvailability != oldValue { liveAvailabilityChanged(from: oldValue) } }

@@ -39,7 +39,7 @@ Intent-level capabilities never widen what a grant can execute: anything that de
 | Start an agent in a pane's folder | agent.control + workspace.write |
 | …in a chosen `directory` | + session.execute |
 | Answer an agent | agent.respond (session.input also suffices: the method declares the pair as "any of", and `details.missing` names agent.respond) |
-| Install an agent | agent.install + session.execute |
+| Install an agent | agent.install + session.execute (+ agent.control + workspace.write: the installer then starts the agent in a pane, as the app's Install and Launch does) |
 | Run a trusted task | task.run (the task's command is fixed by the trusted file or detection) |
 | Launch a project that runs setup, pane commands or agents | project.launch + session.start + session.execute (+agent.control for agents, +remote.connect for a host target) |
 | Create or edit a project's commands, agents or repository | project.write + session.execute |
@@ -60,7 +60,7 @@ Intent-level capabilities never widen what a grant can execute: anything that de
 - **How `created` is recorded.** A space created through protocol 2 is recorded for the creating grant inside the same workspace transaction that creates it, so no later call, result or event sees the space before the grant does. Spaces created in the app (the sidebar, menus, palette, project and remote launches started by the user) never join. The record is kept with the grant whatever its scope, so narrowing a grant from `all` to `created` keeps the spaces it made; a closed space leaves it once its `space.deleted` event has been delivered. The recorded IDs are stored in `grants.json`.
 - **Protocol 1** has no `created` scope: until the switch it treats such a grant as the set of spaces it has created so far (`spaceScope` in its `auth.authenticate` result lists them), and since protocol 1 never records, it can't create spaces with it.
 - A project space is visible if the space is in scope; its `project` field is shown only if the project is in project scope too. Launching needs both the project and (for a host target) the host in scope.
-- Agent scope limits what a grant can start: `agent.start`, `agent.restart`, `agent.install`, and starting a pane whose saved launch is an agent (`session.start`, `start: true`), which also needs **agent.control**.
+- Agent scope limits what a grant can start: `agent.start`, `agent.restart`, `agent.install`, and starting a pane whose saved launch is an agent (`session.start`, `start: true`), which also needs **agent.control**. To the agent methods an agent outside the scope is `NOT_FOUND`; definitions and runs of every agent stay readable, and `agent.respond` answers any run in space scope.
 - Out-of-scope resources are `NOT_FOUND`, exactly as if they didn't exist.
 
 ## Presets

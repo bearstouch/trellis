@@ -3,7 +3,7 @@ import TrellisCore
 
 /// The protocol 2 method catalog (docs/api/v2/methods.md). Each phase adds its area here; nothing else lists methods.
 public enum MethodCatalogV2 {
-    public static let methods: [MethodSpecV2] = system + workspace + spaces + tabs + panes + sessions + hosts + events
+    public static let methods: [MethodSpecV2] = system + workspace + spaces + tabs + panes + sessions + agents + hosts + events
 
     public static let byName: [String: MethodSpecV2] = Dictionary(methods.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
 
@@ -156,6 +156,12 @@ public enum MethodCatalogV2 {
                         problem("revision container \(container) needs a required \(container) ID parameter with a resource rule")
                     }
                 default: problem("revision container \(container.isEmpty ? "needs a name" : container + " needs the parameter naming it")")
+                }
+                if !params.contains(where: { $0.name == "expectedRevision" }) { problem("mutating methods take expectedRevision") }
+            case .anyResource(let targets)?:
+                if targets.isEmpty { problem("revision target needs at least one parameter") }
+                for target in targets where paths[target]?.type != .uuid || !spec.resources.contains(where: { $0.param == target && !$0.list }) {
+                    problem("revision target \(target) must be a UUID parameter with a resource rule")
                 }
                 if !params.contains(where: { $0.name == "expectedRevision" }) { problem("mutating methods take expectedRevision") }
             case .exempt(let reason)?:

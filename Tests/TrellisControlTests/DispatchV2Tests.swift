@@ -66,7 +66,8 @@ final class DispatchV2Tests: XCTestCase {
         domain.setHost(host)
         domainV2.setRevision(domain.paneA, 7)
         domainV2.setRevision(domain.sessionA, 9)
-        let grant = try await grant()
+        // Every v2 capability, the agent ones included (a grant made with v1 capabilities holds none of them).
+        let grant = try await store.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases)), lifetime: 3600).grant
         var checked: [String] = []
         for spec in MethodCatalogV2.methods where spec.isMutating {
             guard let subject = RevisionSubjectV2.of(spec, ParamsV2(validParams(spec))) else { continue }
@@ -84,6 +85,7 @@ final class DispatchV2Tests: XCTestCase {
         XCTAssertEqual(domainV2.performed, checked, "Stale calls never reach the domain; current ones do")
         XCTAssertEqual(checked.count, MethodCatalogV2.methods.filter(\.isMutating).count - 2, "Every mutating method but the two exempt ones")
         XCTAssertTrue(checked.contains("pane.resize") && checked.contains("session.sendInput") && checked.contains("host.connect"))
+        XCTAssertTrue(["agent.start", "agent.restart", "agent.respond", "agent.install"].allSatisfy(checked.contains))
     }
 
     /// API2-05 for every method: a grant without its capabilities gets PERMISSION_DENIED naming exactly what is missing,
@@ -96,7 +98,8 @@ final class DispatchV2Tests: XCTestCase {
         var denied = 0, hidden = 0
         for spec in MethodCatalogV2.methods {
             let params = validParams(spec)
-            let needed = spec.requiredCapabilities(for: params).map(\.rawValue).sorted()
+            // An anyOf group (agent.respond or session.input) is reported by its intent-level capability.
+            let needed = spec.missingCapabilities(for: params, granted: [.themeRead]).map(\.rawValue).sorted()
             if !needed.isEmpty {
                 guard case .failure(let error) = await call(spec.name, params, themeOnly) else { XCTFail("\(spec.name) ran without its capabilities"); continue }
                 XCTAssertEqual(error.appCode, "PERMISSION_DENIED", spec.name)
@@ -114,6 +117,32 @@ final class DispatchV2Tests: XCTestCase {
         // events.* need the capabilities of the topics asked for (EventsV2Tests), and none for no topics.
         XCTAssertEqual(denied, MethodCatalogV2.methods.count - 5, "Every method but system.info, grant.get and events.* needs a capability")
         XCTAssertGreaterThanOrEqual(hidden, 30)
+    }
+
+    /// The catalog's first real anyOf: agent.respond needs agent.respond or session.input. With neither, PERMISSION_DENIED
+    /// names the intent-level capability; either one alone is enough. None of the refusals reaches the domain.
+    func testAgentRespondNeedsAgentRespondOrSessionInput() async throws {
+        let params: [String: JSONValue] = ["sessionId": .string(domain.sessionA.uuidString), "action": .string("approve")]
+        let neither = try await store.create(
+            GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases).subtracting([.agentRespond, .sessionInput])), lifetime: 3600
+        ).grant
+        guard case .failure(let error) = await call("agent.respond", params, neither) else { return XCTFail("agent.respond ran without either capability") }
+        XCTAssertEqual(error.appCode, "PERMISSION_DENIED")
+        XCTAssertEqual(error.details, .object(["missing": .array([.string("agent.respond")])]))
+        XCTAssertEqual(domainV2.performed, [])
+        for capability in [CapabilityV2.agentRespond, .sessionInput] {
+            let holder = try await store.create(GrantSettings(name: "Bot", capabilities: [capability]), lifetime: 3600).grant
+            guard case .success = await call("agent.respond", params, holder) else { return XCTFail("\(capability.rawValue) alone is enough") }
+        }
+        XCTAssertEqual(domainV2.performed, ["agent.respond", "agent.respond"])
+        // An agent outside the grant's agent scope looks missing to agent.start and agent.install, before anything else.
+        let codexOnly = try await store.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases), scope: GrantScope(agents: .agents(["trellis-codex"]))), lifetime: 3600).grant
+        let placement = JSONValue.object(["kind": .string("tab"), "spaceId": .string(domain.spaceA.uuidString)])
+        for method in ["agent.start", "agent.install"] {
+            guard case .failure(let hidden) = await call(method, ["agentId": .string("trellis-claude-code"), "placement": placement], codexOnly) else { return XCTFail(method) }
+            XCTAssertEqual(hidden.appCode, "NOT_FOUND", method)
+        }
+        XCTAssertEqual(domainV2.performed.count, 2)
     }
 
     func testARevisionOfAMissingResourceIsNotFound() async throws {

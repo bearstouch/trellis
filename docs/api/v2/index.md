@@ -67,7 +67,7 @@ JSON-RPC codes are as in v1 (`-32700`, `-32600`, `-32601`, `-32602` with `data.f
 | `LIMIT_EXCEEDED` | Frame, response, input, rate, subscription or idempotency limits | yes | 8 |
 | `LAUNCH_FAILED` | A process, agent or task couldn't start. `details.session` holds the failed session. | no | 6 |
 | `REMOTE_DISCONNECTED` | The remote workspace's link is down for an action that needs it | yes | 7 |
-| `AGENT_UNAVAILABLE` | The agent isn't installed on the pane's machine. `details.install` says whether `agent.install` can fix it. | no | 6 |
+| `AGENT_UNAVAILABLE` | The agent is known to be missing on the pane's machine, or `agent.install` has no installer it can run there. `details.install` says whether `agent.install` can fix it. | no | 6 |
 | `TASK_UNTRUSTED` | A task from `.trellis/launch.json` hasn't been trusted in the app; trust is only given in the UI | no | 4 |
 | `SETUP_REQUIRED` | A project launch needs setup (clone, folders) and `setup: true` wasn't passed | no | 5 |
 | `INVALID_CURSOR` | Output, event or list cursor from another session, list or instance, or ahead of now | no | 2 |

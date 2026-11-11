@@ -74,7 +74,13 @@ final class CatalogV2Tests: XCTestCase {
         XCTAssertNotNil(fields(list, [:]))
         XCTAssertNotNil(fields(list, ["tabId": id, "spaceId": id]))
         XCTAssertNil(fields(list, ["spaceId": id]))
-        XCTAssertNotNil(fields(try spec("workspace.get"), ["include": .array([.string("agents")])]), "agents arrive with phase 5")
+        XCTAssertNil(fields(try spec("workspace.get"), ["include": .array([.string("agents")])]), "agents arrived with phase 5")
+        let respond = try spec("agent.respond")
+        XCTAssertNil(fields(respond, ["sessionId": id, "action": .string("reply"), "text": .string("yes")]))
+        XCTAssertEqual(fields(respond, ["sessionId": id, "action": .string("accept")])?["action"], .string("one of approve, reject, reply"))
+        let start = try spec("agent.start")
+        XCTAssertNotNil(fields(start, ["agentId": .string("trellis-codex"), "placement": .object(["kind": .string("pane")])])?["placement.paneId"])
+        XCTAssertNotNil(fields(start, ["agentId": .string("trellis-codex"), "placement": .object(["kind": .string("tab"), "spaceId": id, "axis": .string("x")])]))
     }
 
     // MARK: Conditions
@@ -119,6 +125,8 @@ final class CatalogV2Tests: XCTestCase {
                 // Fill every UUID the declaration names so the subject can be resolved.
                 var params: [String: JSONValue] = [:]
                 for param in spec.params where param.type == .uuid { params[param.name] = pane }
+                // A placement names the space or pane its expectedRevision is compared with.
+                if spec.params.contains(where: { $0.name == "placement" }) { params["placement"] = .object(["kind": .string("pane"), "paneId": pane]) }
                 XCTAssertNotNil(RevisionSubjectV2.of(spec, ParamsV2(params)), spec.name)
                 continue
             }
@@ -130,6 +138,10 @@ final class CatalogV2Tests: XCTestCase {
         XCTAssertEqual(RevisionSubjectV2.of(try spec("tab.create"), ParamsV2(["spaceId": .string(id.uuidString)])), .resource(.space, id))
         XCTAssertEqual(RevisionSubjectV2.of(try spec("space.reorder"), ParamsV2([:])), .workspace)
         XCTAssertEqual(RevisionSubjectV2.of(try spec("host.connect"), ParamsV2(["hostId": .string(id.uuidString)])), .resource(.host, id))
+        let tab = JSONValue.object(["kind": .string("tab"), "spaceId": .string(id.uuidString)]), split = JSONValue.object(["kind": .string("split"), "paneId": .string(id.uuidString)])
+        XCTAssertEqual(RevisionSubjectV2.of(try spec("agent.start"), ParamsV2(["placement": tab])), .resource(.space, id), "A new tab compares its space")
+        XCTAssertEqual(RevisionSubjectV2.of(try spec("agent.install"), ParamsV2(["placement": split])), .resource(.pane, id), "A split compares the pane it splits")
+        XCTAssertEqual(RevisionSubjectV2.of(try spec("agent.respond"), ParamsV2(["sessionId": .string(id.uuidString)])), .resource(.session, id))
     }
 
     func testUUIDsAreNormalizedBeforeIdempotencyComparesThem() throws {

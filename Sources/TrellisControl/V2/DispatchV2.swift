@@ -49,13 +49,16 @@ public enum RevisionSubjectV2: Sendable, Equatable, Hashable {
     /// The subject a call's `expectedRevision` names, from the method's declared revision target.
     public static func of(_ spec: MethodSpecV2, _ params: ParamsV2) -> Self? {
         func resource(_ param: String) -> Self? {
-            guard let kind = spec.resources.first(where: { $0.param == param && !$0.list })?.kind, let id = try? params.optionalUUID(param) else { return nil }
+            guard let kind = spec.resources.first(where: { $0.param == param && !$0.list })?.kind,
+                case .string(let text)? = ConditionV2.value(at: param, in: params.values), let id = ConventionsV2.parseID(text)
+            else { return nil }
             return .resource(kind, id)
         }
         switch spec.revisionTarget {
         case .resource(let param)?: return resource(param)
         case .container("workspace", nil)?: return .workspace
         case .container(_, let param?)?: return resource(param)
+        case .anyResource(let params)?: return params.lazy.compactMap(resource).first
         default: return nil
         }
     }

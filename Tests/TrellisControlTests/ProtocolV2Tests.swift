@@ -205,7 +205,7 @@ final class ProtocolV2Tests: XCTestCase {
         let (_, token) = try await grant()
         let session = ControlSession(peerUID: geteuid(), handler: handler(v2: true))
         _ = try await authenticate(session, token, version: 2)
-        for method in ["window.list", "window.get", "events.event", "auth.whoami", "agent.list", "layout.apply"] {
+        for method in ["window.list", "window.get", "events.event", "auth.whoami", "remote.open", "layout.apply"] {
             let r11 = try await call(session, method)
             XCTAssertEqual(error(r11)?["code"] as? Int, -32601, method)
         }
