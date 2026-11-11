@@ -3,6 +3,17 @@ import Foundation
 import TrellisControl
 import TrellisCore
 
+/// Requests proxied by `tailscale serve` to a loopback bind (FR-RC08, FR-RC09): the
+/// MagicDNS name they arrive with, and the tailnet clients allowed (nil: any).
+public struct TailnetAccess: Equatable, Sendable {
+    public var hostName: String
+    public var port: UInt16
+    public var allowedClients: [IPAddressLiteral]?
+    public init(hostName: String, port: UInt16, allowedClients: [IPAddressLiteral]?) {
+        self.hostName = hostName.lowercased(); self.port = port; self.allowedClients = allowedClients
+    }
+}
+
 /// MCP Streamable HTTP at `/mcp` (INT-07, API-07). Every request carries the
 /// grant's bearer token; MCP sessions only bind it to an authorized control
 /// identity, so tools run through the same authorizer as the socket.
@@ -29,6 +40,7 @@ public actor MCPEndpoint {
     private let handler: AuthorizingControlHandler
     private let serverVersion: String
     private let loopbackOnly: Bool
+    private var tailnet: TailnetAccess?
     private let now: @Sendable () -> Date
     private var sessions: [String: Session] = [:]
     /// Set by closeAll (server stopped); an in-flight initialize must not open a session afterwards.
@@ -41,12 +53,16 @@ public actor MCPEndpoint {
 
     public var sessionCount: Int { sessions.count }
 
+    /// Changing who may come through Tailscale keeps existing sessions; a client
+    /// no longer allowed is refused on its next request.
+    public func setTailnetAccess(_ access: TailnetAccess?) { tailnet = loopbackOnly ? access : nil }
+
     public func handle(_ request: HTTPRequest) async -> HTTPResponse {
         // A browser page must never drive the API, whatever address it resolved.
         if let origin = request.header("origin"), !Self.isLoopbackOrigin(origin) { return Self.plain(403, "Forbidden origin.") }
         if loopbackOnly {
             guard let host = request.header("host") else { return Self.plain(400, "Missing Host header.") }
-            guard Self.isLoopbackHost(host) else { return Self.plain(403, "Forbidden host.") }
+            if let refusal = admitProxied(request, host: host) { return refusal }
         }
         guard request.path == Self.path else { return Self.plain(404, "Not found.") }
         await expireIdleSessions()
@@ -205,6 +221,22 @@ public actor MCPEndpoint {
         for session in removed { await handler.disconnected(connectionID: session.identity.connectionID) }
     }
 
+    /// On a loopback bind, a request is proxied when it names the tailnet host or carries
+    /// forwarding headers, whichever way the proxy set Host. A proxied request needs sharing
+    /// on and a tailnet client in the allowed list; anything else must name a loopback host.
+    /// Refused before authentication, so it never counts toward the auth limit.
+    private func admitProxied(_ request: HTTPRequest, host: String) -> HTTPResponse? {
+        let namesTailnet = tailnet.map { Self.hostMatches(host, name: $0.hostName, port: $0.port) } ?? false
+        let forwarded = request.header("x-forwarded-for") != nil || request.header("x-forwarded-host") != nil
+        guard namesTailnet || forwarded else { return Self.isLoopbackHost(host) ? nil : Self.plain(403, "Forbidden host.") }
+        guard let tailnet, namesTailnet || Self.isLoopbackHost(host) else { return Self.plain(403, "Forbidden host.") }
+        guard let client = request.header("x-forwarded-for").flatMap(Self.forwardedClient) else {
+            return tailnet.allowedClients == nil && !forwarded ? nil : Self.plain(403, "Forbidden client.")
+        }
+        guard client.isTailnet, tailnet.allowedClients?.contains(client) ?? true else { return Self.plain(403, "Forbidden client.") }
+        return nil
+    }
+
     // MARK: - Helpers
 
     static let instructions = """
@@ -254,6 +286,19 @@ public actor MCPEndpoint {
         if name == "localhost" { return true }
         guard name.allSatisfy({ $0.isHexDigit || $0 == "." || $0 == ":" }) else { return false }
         return IPAddressLiteral(name)?.isLoopback ?? false
+    }
+
+    /// `name:port`, or a bare `name` on the default HTTPS port, case-insensitively.
+    static func hostMatches(_ host: String, name: String, port: UInt16) -> Bool {
+        let value = host.lowercased()
+        return value == "\(name):\(port)" || port == 443 && value == name
+    }
+
+    /// The client the nearest proxy recorded: the last `X-Forwarded-For` entry.
+    static func forwardedClient(_ value: String) -> IPAddressLiteral? {
+        guard let last = value.split(separator: ",").last?.trimmingCharacters(in: .whitespaces), !last.isEmpty else { return nil }
+        let bare = last.hasPrefix("[") && last.hasSuffix("]") ? String(last.dropFirst().dropLast()) : last
+        return IPAddressLiteral(bare)
     }
 
     static func isLoopbackOrigin(_ origin: String) -> Bool {

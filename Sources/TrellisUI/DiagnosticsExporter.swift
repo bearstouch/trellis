@@ -32,7 +32,12 @@ public final class DiagnosticsExporter {
         report.controlSocketRunning = controlRunning()
         switch model.remoteControlStatus {
         case .stopped: report.mcpServer = "off"
-        case .running: report.mcpServer = model.remoteControl.isLoopback ? "loopback" : "network"
+        case .running:
+            if case .shared = model.tailscaleShareState {
+                report.mcpServer = "tailscale"
+            } else {
+                report.mcpServer = model.remoteControl.isLoopback ? "loopback" : "network"
+            }
         case .failed: report.mcpServer = "failed"
         }
         report.recentErrorCodes = model.diagnosticCodes

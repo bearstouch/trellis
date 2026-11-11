@@ -60,7 +60,7 @@ Tokens never go on a command line. The CLI reads the token from standard input (
 
 ## Network clients (MCP)
 
-The [MCP server](mcp.md) uses the same grants. A network client has no peer user ID, so its bearer token is its whole credential. Capabilities, scope, expiry and revocation apply exactly as on the socket. Network authentication failures have their own rate limit, so they can't lock out the local socket.
+The [MCP server](mcp.md) uses the same grants. A network client has no peer user ID, so its bearer token is its whole credential. Capabilities, scope, expiry and revocation apply exactly as on the socket. Network authentication failures have their own rate limit, so they can't lock out the local socket. Clients that connect over a tailnet through **Share over Tailscale** use grants the same way. Give each client its own grant; the allowed-devices list only decides which tailnet devices can reach the endpoint at all ([FR-RC09](mcp.md#requirements)).
 
 ## Untrusted output
 

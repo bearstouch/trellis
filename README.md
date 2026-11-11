@@ -22,7 +22,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Command palette:** ⇧⌘P opens one searchable list of every action, space, tab, pane, saved host, task and theme.
 - **Directory jump:** ⌘J lists the directories your shells have recently and frequently been in, on this Mac and in remote workspaces. Return goes there in the current pane, or in a new tab if it's busy.
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
-- **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents.
+- **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents, which can be shared to your tailnet over HTTPS with Tailscale.
 - **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.
 - **Updates:** **Trellis → Check for Updates…** installs signed updates in place. Automatic checks and beta versions are opt-in.
 - **Privacy:** no telemetry; terminal output and typed input are never logged. The only network request Trellis makes by itself is the update check you start or turn on.
@@ -90,7 +90,7 @@ Formatting uses the toolchain's `swift format` with the repo [`.swift-format`](.
 | `swift run Trellis` | Runs against your **real** workspace in Application Support |
 | `swift run Trellis --state-directory /abs/path` | Uses a separate workspace and theme library (recommended for development) |
 | `swift run Trellis --fixture` | Starts an isolated, fixed-shell demo window whose child exits with code 7. The window stays open for inspection |
-| `swift run Trellis --no-mcp` | Never starts the MCP server for this launch, whatever Settings → Remote Control says. `--fixture` implies it. |
+| `swift run Trellis --no-mcp` | Never starts the MCP server or touches Tailscale for this launch, whatever Settings → Remote Control says. `--fixture` implies it. |
 | `scripts/run-feasibility.sh` | Assembles `.build/Trellis.app`, ad-hoc signs and verifies it, then opens it. Use this when you need a real bundle (icon, Info.plist, resources) |
 | `scripts/run-feasibility.sh --build-only` | Same as above without opening a window |
 
