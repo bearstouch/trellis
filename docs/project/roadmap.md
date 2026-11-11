@@ -32,6 +32,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | --- | --- | --- |
 | P1 | Multiple native windows and moving tabs between them | `MAC-13`, [macOS support](../platform/macos.md#deferred-multiple-native-windows) |
 | P1 | Multiple profiles | [Product overview](../overview/product.md#scope) |
+| P1 | Automation API v2: a clean-break protocol 2 built around spaces, panes, agents, remote workspaces, projects and tasks, with presets, editable grants and live-state events (draft contract; it also covers the shell-integration events row below) | `API2-01`–`API2-08`, [API v2 (draft)](../api/v2/index.md) |
 | P1 | Shell-integration events for automation: command-completion events and `session.execute` waiting for the exit status | `INT-02`, [Shell integration](../features/shell-integration.md) |
 | P1 | Richer SSH host import | [SSH hosts](../features/ssh-hosts.md) |
 | P1 | Keychain-enforced Touch ID for saved host passwords (`SecAccessControl` with a keychain-access-group entitlement, Developer ID builds) | `FR-H07`, [Saved passwords](../features/ssh-hosts.md#saved-passwords) |

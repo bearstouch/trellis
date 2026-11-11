@@ -74,6 +74,13 @@ nav:
       - Layouts: api/layouts.md
       - CLI: api/cli.md
       - MCP server: api/mcp.md
+      - API v2 (draft):
+          - Overview: api/v2/index.md
+          - Resources: api/v2/resources.md
+          - Methods: api/v2/methods.md
+          - Permissions: api/v2/permissions.md
+          - Events: api/v2/events.md
+          - Migration: api/v2/migration.md
   - Platform:
       - Integrations: integrations.md
       - macOS support: platform/macos.md
