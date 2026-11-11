@@ -79,7 +79,7 @@ Panes are first-class in v2.
   "sessionId": "…", "focused": true, "maximized": false,
   "folder": "/srv/app",
   "shell": {"integration": "authenticated", "commandRunning": true, "commandStartedAt": "…", "lastExitCode": 0, "lastDurationMs": 5230},
-  "attention": {"needsInput": "password", "progress": {"state": "indeterminate"}, "bell": false},
+  "attention": {"needsInput": "password", "progress": {"state": "indeterminate"}},
   "agent": {"agentId": "trellis-claude-code", "state": "working"},
   "task": {"taskId": "file:build", "phase": "running"}
 }
@@ -87,11 +87,12 @@ Panes are first-class in v2.
 
 | Field | Notes |
 | --- | --- |
+| `revision` | Changes with the pane's record, its place or focus in the tab, and maximizing; not with `shell`, `attention` or `agent`. |
 | `title` | A pane title set by a layout or project; omitted otherwise. |
 | `machine` | From the session's launch: `local`, `ssh` (an SSH pane) or `remote`. |
 | `folder` **(session.execute)** | The current directory from shell integration, else the launch directory. |
 | `shell` | Shell-integration state (FR-SI01–SI09). `integration` is `authenticated`, `remote` (marks from a remote shell, display-only) or `none`. Command text is never exposed. |
-| `attention` | `needsInput` (`password` or `attention`), `progress` (OSC 9;4, cleared after 15 s), `bell`. |
+| `attention` | `needsInput` (`password`, or `attention`: the program rang the bell or posted a notification while the pane wasn't in view, FR-T06), `progress` (OSC 9;4, cleared after 15 s). |
 | `agent` | Present while the pane runs an agent: a summary of its [agent run](#agent-run). |
 | `task` | Present while a [task run](#task-run) is active or just finished in this pane. |
 
@@ -109,12 +110,12 @@ Panes are first-class in v2.
 | Field | Notes |
 | --- | --- |
 | `state` | `stopped → starting → running → exited\|failed`; `running → closing → exited`. Restart creates a new session ID in the same pane. |
-| `kept` | The session runs in the broker and survives quitting Trellis (FR-R03). `false` for sessions started outside it. |
+| `kept` | The session runs in the broker and survives quitting Trellis (FR-R03). `false` for sessions started outside it, and for sessions that aren't running. |
 | `launch` | One of the kinds below. Fields marked **(execute)** need **session.execute**; host IDs need **host.read**. A launch is never returned with environment values. |
 
 | `launch.kind` | Fields |
 | --- | --- |
-| `shell` | `directory` (execute) |
+| `shell` | `directory` (execute). A login shell resolved to its program is still reported as `shell`. |
 | `process` | `executable`, `arguments`, `directory` (execute) |
 | `ssh` | `hostId` |
 | `remoteShell` | `hostId`, `directory` (execute) |

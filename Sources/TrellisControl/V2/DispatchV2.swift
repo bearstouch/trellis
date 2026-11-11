@@ -9,11 +9,53 @@ public struct CallV2: Sendable {
     public let identity: ControlIdentity
 }
 
+/// What an `expectedRevision` is compared with.
+public enum RevisionSubjectV2: Sendable, Equatable, Hashable {
+    case workspace
+    /// A branch answers with its tab's revision.
+    case resource(ResourceKind, UUID)
+
+    /// What the snapshot alone can answer: the workspace, spaces, tabs and branches (`.some(nil)` when missing). Panes,
+    /// sessions and hosts aren't versioned in the snapshot, so they are `nil` here and the domain answers.
+    public func revision(in snapshot: WorkspaceSnapshot) -> UInt64?? {
+        switch self {
+        case .workspace: return .some(snapshot.revision)
+        case .resource(.space, let id): return .some(snapshot.spaces.first { $0.id == id }?.revision)
+        case .resource(.tab, let id): return .some(snapshot.tabs[id]?.revision)
+        case .resource(.branch, let id): return .some(snapshot.tabs.values.first { $0.root.contains(branch: id) }?.revision)
+        default: return nil
+        }
+    }
+
+    /// The subject a call's `expectedRevision` names, from the method's declared revision target.
+    public static func of(_ spec: MethodSpecV2, _ params: ParamsV2) -> Self? {
+        func resource(_ param: String) -> Self? {
+            guard let kind = spec.resources.first(where: { $0.param == param && !$0.list })?.kind, let id = try? params.optionalUUID(param) else { return nil }
+            return .resource(kind, id)
+        }
+        switch spec.revisionTarget {
+        case .resource(let param)?: return resource(param)
+        case .container("workspace", nil)?: return .workspace
+        case .container(_, let param?)?: return resource(param)
+        default: return nil
+        }
+    }
+}
+
+extension PaneLayout {
+    public func contains(branch id: UUID) -> Bool {
+        guard case .split(let branch, _, _, let children) = self else { return false }
+        return branch == id || children.contains { $0.contains(branch: id) }
+    }
+}
+
 /// The app side of protocol 2. The adapter implements it area by area (`Automation/V2/` in TrellisUI); it only sees
 /// calls that passed validation and authorization, and still filters and redacts what it returns by `access`.
 public protocol ControlDomainV2: Sendable {
     func snapshot() async -> WorkspaceSnapshot
     func host(_ id: UUID) async -> SavedHost?
+    /// The current revision of what an `expectedRevision` names; nil when it doesn't exist.
+    func revision(of subject: RevisionSubjectV2) async -> UInt64?
     func perform(_ call: CallV2) async -> Result<JSONValue, ControlError>
 }
 
@@ -100,6 +142,12 @@ struct DispatcherV2: Sendable {
     }
 
     private func run(_ call: CallV2) async -> Result<JSONValue, ControlError> {
+        // Every mutating method honours expectedRevision from its declaration, so none can forget it. Checked inside the
+        // idempotent execution: a replay returns the first result although that call moved the revision on.
+        if let expected = call.params.expectedRevision, let subject = RevisionSubjectV2.of(call.spec, call.params) {
+            guard let current = await domain.revision(of: subject) else { return .failure(.api(.notFound, "No such resource is available to this grant.")) }
+            do { try ConventionsV2.checkRevision(expected: expected, current: current) } catch { return .failure(error) }
+        }
         switch call.spec.name {
         case "grant.get":
             let hosts = await hosts(of: call.access.grant)
@@ -119,7 +167,7 @@ struct DispatcherV2: Sendable {
     private func authorize(_ spec: MethodSpecV2, _ params: ParamsV2, _ access: GrantAccess) async -> Result<Void, ControlError> {
         for rule in spec.resources {
             let ids: [UUID]
-            switch params[rule.param] {
+            switch ConditionV2.value(at: rule.param, in: params.values) {
             case nil, .null?: continue
             case .string(let text)?: ids = ConventionsV2.parseID(text).map { [$0] } ?? []
             case .array(let items)?: ids = items.compactMap { if case .string(let text) = $0 { ConventionsV2.parseID(text) } else { nil } }
@@ -139,7 +187,7 @@ struct DispatcherV2: Sendable {
                 }
             }
         }
-        if spec.requiresAllSpaces, access.grant.spaceScope != .all {
+        if spec.needsAllSpaces(for: params.values), access.grant.spaceScope != .all {
             return .failure(.api(.permissionDenied, "This operation needs access to all spaces."))
         }
         let missing = spec.requiredCapabilities(for: params.values).subtracting(CapabilityV2.granted(by: access.grant))

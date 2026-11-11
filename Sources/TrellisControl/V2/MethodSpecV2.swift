@@ -15,10 +15,31 @@ public enum ParamTypeV2: Sendable, Equatable {
     case boolean
     /// A JSON object the method validates itself (layout, project and theme documents).
     case object
+    /// An object with declared fields (a launch descriptor, a placement), validated and described like top-level params.
+    case structure(ObjectSchemaV2)
+    /// An object whose values are strings (an environment), at most `maxCount` entries.
+    case stringMap(maxCount: Int = 256)
     /// `idempotencyKey`: 1–128 printable ASCII characters.
     case idempotencyKey
     /// A list cursor from `nextCursor`; opaque to clients.
     case cursor
+}
+
+/// The fields of a `.structure` parameter. With `tag`, it is a tagged union: the tag field (a string with fixed values)
+/// picks a variant, and each variant names the other fields it allows and requires.
+public struct ObjectSchemaV2: Sendable, Equatable {
+    public struct Variant: Sendable, Equatable {
+        public let value: String
+        public let allowed: [String]
+        public let required: [String]
+        public init(_ value: String, allowed: [String] = [], required: [String] = []) { self.value = value; self.allowed = allowed; self.required = required }
+    }
+
+    public let fields: [ParamV2]
+    public let tag: String?
+    public let variants: [Variant]
+
+    public init(_ fields: [ParamV2], tag: String? = nil, variants: [Variant] = []) { self.fields = fields; self.tag = tag; self.variants = variants }
 }
 
 public struct ParamV2: Sendable, Equatable {
@@ -37,28 +58,68 @@ public struct ParamV2: Sendable, Equatable {
     }
 }
 
-/// When a conditional capability applies. `present` is the common case; `custom` keeps a description so help and
-/// docs can show the rule.
-public enum ConditionV2: Sendable {
+/// When a conditional capability or rule applies. Every case names its parameters (dotted paths reach into
+/// `.structure` params), so help, docs and the contract checker can read the rule.
+public enum ConditionV2: Sendable, Equatable {
     /// The parameter is present and not `false` or `null`.
     case present(String)
-    case custom(String, @Sendable ([String: JSONValue]) -> Bool)
+    /// The parameter is sent at all, `null` included: an update that clears a field counts.
+    case provided(String)
+    /// The parameter has exactly this value.
+    case equals(String, JSONValue)
+    /// The parameter is an array that contains this string.
+    case contains(String, String)
+    case anyOf([ConditionV2])
 
     public var summary: String {
         switch self {
-        case .present(let name): name
-        case .custom(let text, _): text
+        case .present(let path): path
+        case .provided(let path): "\(path) is sent"
+        case .equals(let path, let value): "\(path) is \(Self.text(value))"
+        case .contains(let path, let value): "\(path) has \(value)"
+        case .anyOf(let conditions): conditions.map(\.summary).joined(separator: " or ")
+        }
+    }
+
+    /// Every parameter path the condition reads.
+    public var paths: [String] {
+        switch self {
+        case .present(let path), .provided(let path), .equals(let path, _), .contains(let path, _): [path]
+        case .anyOf(let conditions): conditions.flatMap(\.paths)
         }
     }
 
     public func applies(to params: [String: JSONValue]) -> Bool {
         switch self {
-        case .present(let name):
-            switch params[name] {
+        case .present(let path):
+            switch Self.value(at: path, in: params) {
             case nil, .null?, .bool(false)?: false
             default: true
             }
-        case .custom(_, let rule): rule(params)
+        case .provided(let path): Self.value(at: path, in: params) != nil
+        case .equals(let path, let value): Self.value(at: path, in: params) == value
+        case .contains(let path, let value):
+            if case .array(let items)? = Self.value(at: path, in: params) { items.contains(.string(value)) } else { false }
+        case .anyOf(let conditions): conditions.contains { $0.applies(to: params) }
+        }
+    }
+
+    /// `launch.kind` → `params["launch"]["kind"]`.
+    public static func value(at path: String, in params: [String: JSONValue]) -> JSONValue? {
+        var current: JSONValue? = .object(params)
+        for part in path.split(separator: ".") {
+            guard case .object(let object)? = current else { return nil }
+            current = object[String(part)]
+        }
+        return current
+    }
+
+    private static func text(_ value: JSONValue) -> String {
+        switch value {
+        case .string(let text): text
+        case .bool(let flag): String(flag)
+        case .number(let number): number == number.rounded() ? String(Int64(number)) : String(number)
+        default: "a value"
         }
     }
 }
@@ -69,7 +130,22 @@ public struct ConditionalCapabilityV2: Sendable {
     public init(_ capability: CapabilityV2, if condition: ConditionV2) { self.capability = capability; self.condition = condition }
 }
 
-/// A parameter naming a resource that must be visible to the grant; out-of-scope IDs are `NOT_FOUND`.
+/// A rule across parameters that types alone can't express.
+public enum ParamRuleV2: Sendable, Equatable {
+    /// An update method changes something: at least one of these is sent (`null` counts, it clears).
+    case atLeastOne([String])
+    /// Exactly one of these is sent.
+    case exactlyOne([String])
+
+    public var names: [String] {
+        switch self {
+        case .atLeastOne(let names), .exactlyOne(let names): names
+        }
+    }
+}
+
+/// A parameter naming a resource that must be visible to the grant; out-of-scope IDs are `NOT_FOUND`. `param` may be a
+/// dotted path into a `.structure` param (`placement.spaceId`).
 public struct ResourceRuleV2: Sendable, Equatable {
     public let kind: ResourceKind
     public let param: String
@@ -78,12 +154,14 @@ public struct ResourceRuleV2: Sendable, Equatable {
     public init(_ kind: ResourceKind, _ param: String, list: Bool = false) { self.kind = kind; self.param = param; self.list = list }
 }
 
-/// What `expectedRevision` is compared with on a mutating method (API2-02 optimistic concurrency).
+/// What `expectedRevision` is compared with on a mutating method (API2-02 optimistic concurrency). The dispatcher
+/// enforces it from this declaration, so no method can forget it.
 public enum RevisionTargetV2: Sendable, Equatable {
-    /// The resource named by this ID parameter.
+    /// The resource named by this ID parameter (its kind comes from the parameter's resource rule; a branch answers
+    /// with its tab's revision).
     case resource(param: String)
-    /// The container (`workspace`, `space`, …) for create and reorder methods.
-    case container(String)
+    /// The container for create and reorder methods: `workspace`, or a resource named by `param` (`space` + `spaceId`).
+    case container(String, param: String? = nil)
     /// No revision applies; the reason is shown by the contract test so exemptions stay deliberate.
     case exempt(reason: String)
 }
@@ -105,9 +183,12 @@ public struct MethodSpecV2: Sendable {
     public let declaredParams: [ParamV2]
     public let capabilities: Set<CapabilityV2>
     public let conditional: [ConditionalCapabilityV2]
+    public let rules: [ParamRuleV2]
     public let resources: [ResourceRuleV2]
     /// Needs a grant whose space scope is `all`.
     public let requiresAllSpaces: Bool
+    /// Needs all-spaces scope only with these parameters (`host.connect` into a new space).
+    public let allSpacesIf: ConditionV2?
     public let effect: EffectV2
     /// Codes particular to the method; `errors` adds the ones every method of its kind can return.
     public let declaredErrors: Set<APIErrorCode>
@@ -116,10 +197,12 @@ public struct MethodSpecV2: Sendable {
 
     public init(
         _ name: String, _ summary: String, params: [ParamV2] = [], capabilities: Set<CapabilityV2> = [], conditional: [ConditionalCapabilityV2] = [],
-        resources: [ResourceRuleV2] = [], allSpaces: Bool = false, effect: EffectV2 = .read, errors: Set<APIErrorCode> = [], paginated: Bool = false
+        rules: [ParamRuleV2] = [], resources: [ResourceRuleV2] = [], allSpaces: Bool = false, allSpacesIf: ConditionV2? = nil, effect: EffectV2 = .read,
+        errors: Set<APIErrorCode> = [], paginated: Bool = false
     ) {
         self.name = name; self.summary = summary; declaredParams = params; self.capabilities = capabilities; self.conditional = conditional
-        self.resources = resources; requiresAllSpaces = allSpaces; self.effect = effect; declaredErrors = errors; self.paginated = paginated
+        self.rules = rules; self.resources = resources; requiresAllSpaces = allSpaces; self.allSpacesIf = allSpacesIf; self.effect = effect
+        declaredErrors = errors; self.paginated = paginated
     }
 
     /// `space` for `space.list`, `remote` for `remote.helper.install`.
@@ -152,7 +235,9 @@ public struct MethodSpecV2: Sendable {
     /// Every application error the method can return: its own plus those implied by its shape.
     public var errors: Set<APIErrorCode> {
         var codes = declaredErrors.union([.authRequired, .limitExceeded])
-        if !capabilities.isEmpty || !conditional.isEmpty || requiresAllSpaces || resources.contains(where: { $0.kind == .host }) { codes.insert(.permissionDenied) }
+        if !capabilities.isEmpty || !conditional.isEmpty || requiresAllSpaces || allSpacesIf != nil || resources.contains(where: { $0.kind == .host }) {
+            codes.insert(.permissionDenied)
+        }
         if !resources.isEmpty { codes.insert(.notFound) }
         if isMutating { codes.insert(.conflict) }
         if paginated { codes.insert(.invalidCursor) }
@@ -163,4 +248,7 @@ public struct MethodSpecV2: Sendable {
     public func requiredCapabilities(for params: [String: JSONValue]) -> Set<CapabilityV2> {
         capabilities.union(conditional.filter { $0.condition.applies(to: params) }.map(\.capability))
     }
+
+    /// Whether this call needs a grant whose space scope is `all`.
+    public func needsAllSpaces(for params: [String: JSONValue]) -> Bool { requiresAllSpaces || allSpacesIf?.applies(to: params) == true }
 }

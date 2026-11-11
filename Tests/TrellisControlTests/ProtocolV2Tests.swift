@@ -13,11 +13,27 @@ final class FakeDomainV2: ControlDomainV2, @unchecked Sendable {
 
     init(base: FakeDomain) { self.base = base }
 
+    private var _revisions: [UUID: UInt64] = [:]
+    private var _params: [JSONValue] = []
+    /// Pane and session revisions the fake reports (the store versions only spaces and tabs).
+    func setRevision(_ id: UUID, _ revision: UInt64) { lock.withLock { _revisions[id] = revision } }
+    /// The params of each call that reached the domain, as the dispatcher passed them.
+    var performedParams: [JSONValue] { lock.withLock { _params } }
+
     func snapshot() async -> WorkspaceSnapshot { await base.snapshot() }
     func host(_ id: UUID) async -> SavedHost? { await base.host(id) }
+    func revision(of subject: RevisionSubjectV2) async -> UInt64? {
+        if let answer = subject.revision(in: await base.snapshot()) { return answer }
+        switch subject {
+        case .resource(.host, let id): return await base.host(id)?.revision
+        case .resource(.pane, let id), .resource(.session, let id): return lock.withLock { _revisions[id] }
+        default: return nil
+        }
+    }
     func perform(_ call: CallV2) async -> Result<JSONValue, ControlError> {
         let count = lock.withLock { () -> Int in
             _performed.append(call.spec.name)
+            _params.append(.object(call.params.values))
             return _performed.count
         }
         switch call.spec.name {
@@ -186,7 +202,7 @@ final class ProtocolV2Tests: XCTestCase {
         let (_, token) = try await grant()
         let session = ControlSession(peerUID: geteuid(), handler: handler(v2: true))
         _ = try await authenticate(session, token, version: 2)
-        for method in ["window.list", "space.list", "window.get", "events.subscribe", "auth.whoami"] {
+        for method in ["window.list", "window.get", "events.subscribe", "auth.whoami", "agent.list", "layout.apply"] {
             let r11 = try await call(session, method)
             XCTAssertEqual(error(r11)?["code"] as? Int, -32601, method)
         }

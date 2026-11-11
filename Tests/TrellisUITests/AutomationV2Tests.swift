@@ -42,8 +42,10 @@ final class AutomationV2Tests: XCTestCase {
         let grant = try XCTUnwrap(view["grant"] as? [String: Any])
         XCTAssertEqual(grant["capabilities"] as? [String], ["workspace.read"])
         XCTAssertEqual((grant["scope"] as? [String: Any])?["spaces"] as? String, "all")
-        let refused = try await send(session, "space.create", ["name": "Nope"])
+        let refused = try await send(session, "layout.apply", ["document": [:]])
         XCTAssertEqual((refused["error"] as? [String: Any])?["code"] as? Int, -32601, "v1 methods are not on a v2 connection until their phase")
+        let readOnly = try await send(session, "space.create", ["name": "Nope"])
+        XCTAssertEqual(((readOnly["error"] as? [String: Any])?["data"] as? [String: Any])?["code"] as? String, "PERMISSION_DENIED")
         XCTAssertEqual(h.model.snapshot.spaces.filter { $0.name == "Nope" }.count, 0)
     }
 }

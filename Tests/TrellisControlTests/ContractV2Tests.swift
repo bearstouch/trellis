@@ -37,7 +37,14 @@ final class ContractV2Tests: XCTestCase {
     func testCatalogFollowsTheConventions() {
         XCTAssertEqual(MethodCatalogV2.problems(in: MethodCatalogV2.methods), [])
         XCTAssertEqual(MethodCatalogV2.problems(in: Self.samples), [], "The sample shapes are valid declarations")
-        XCTAssertEqual(MethodCatalogV2.methods.map(\.name), ["system.info", "grant.get"], "Phase 1 exercises the path with two methods")
+        XCTAssertEqual(
+            MethodCatalogV2.methods.map(\.name),
+            [
+                "system.info", "grant.get", "workspace.get", "workspace.save", "space.list", "space.get", "space.create", "space.update", "space.reorder", "space.focus",
+                "space.close", "tab.list", "tab.get", "tab.create", "tab.update", "tab.duplicate", "tab.reorder", "tab.focus", "tab.close", "pane.list", "pane.get",
+                "pane.split", "pane.resize", "pane.focus", "pane.maximize", "pane.close", "session.get", "session.start", "session.restart", "session.stop",
+                "session.sendInput", "session.execute", "session.readOutput", "host.list", "host.get", "host.create", "host.update", "host.delete", "host.connect"
+            ], "Phases 1 and 2")
     }
 
     func testEveryMethodHasAPolicyADescriptionAndAContractRow() throws {
@@ -51,7 +58,7 @@ final class ContractV2Tests: XCTestCase {
             XCTAssertTrue(spec.errors.isSuperset(of: [.authRequired, .limitExceeded]), spec.name)
         }
         XCTAssertNil(MethodCatalogV2.spec("window.list"))
-        XCTAssertNil(MethodCatalogV2.spec("space.list"), "v1 methods are not in the v2 catalog until their phase lands")
+        XCTAssertNil(MethodCatalogV2.spec("layout.apply"), "v1 methods are not in the v2 catalog until their phase lands")
         XCTAssertFalse(MethodCatalogV2.isMutating("system.info"))
         XCTAssertTrue(MethodCatalogV2.isMutating("no.suchMethod"), "Unknown names are treated as mutating")
     }

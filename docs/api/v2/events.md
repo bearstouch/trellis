@@ -22,7 +22,7 @@ v1 events only described stored-snapshot differences. v2 also reports the live s
 | `workspace` | `space.created/updated/deleted/reordered`, `tab.created/updated/deleted/reordered/layoutChanged`, `pane.created/updated/deleted` | `revision`; `changed: [field names]` on updates | workspace.read |
 | `selection` | `selection.space/tab/pane` | ids | workspace.read |
 | `session` | `session.state`, `session.exited` (`exitCode`), `session.replaced` (restart: `previousId`), `session.launchChanged` (`launch.kind`) | state, ids | workspace.read |
-| `attention` | `pane.needsInput` (`reason` or cleared), `pane.progress`, `pane.bell`, `tab.busy` | reason, progress | workspace.read |
+| `attention` | `pane.needsInput` (`reason` or cleared; a bell is `attention`, FR-T06), `pane.progress`, `tab.busy` | reason, progress | workspace.read |
 | `shell` | `command.started`, `command.finished` (`exitCode`, `durationMs`), `folder.changed` (path needs session.execute) | — | workspace.read |
 | `agent` | `agent.state` (`state`, `previous`), `agent.settings` (`model`, `effort`), `agent.started`, `agent.ended`, `agent.availability` | — | workspace.read |
 | `remote` | `remote.link` (`state`, `attempt?`, `reason?`), `remote.helper` (`status`) | — | host.read, host in scope |

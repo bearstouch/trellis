@@ -23,6 +23,8 @@ extension ParamTypeV2 {
         case .number: "number"
         case .boolean: "boolean"
         case .object: "object"
+        case .structure(let schema): schema.tag.map { "object with \($0) " + schema.variants.map(\.value).joined(separator: ", ") } ?? "object"
+        case .stringMap(let maxCount): "object of at most \(maxCount) string values"
         case .idempotencyKey: "1–128 printable ASCII characters"
         case .cursor: "nextCursor from the previous page"
         }
@@ -39,7 +41,7 @@ extension ParamTypeV2 {
         case .integer: "integer"
         case .number: "number"
         case .boolean: "true|false"
-        case .object: "json"
+        case .object, .structure, .stringMap: "json"
         case .idempotencyKey: "key"
         case .cursor: "cursor"
         }
@@ -60,6 +62,12 @@ extension ParamTypeV2 {
         case (.number(let minimum, let maximum), .number(let number)):
             return number.isFinite && minimum.map { number >= $0 } ?? true && maximum.map { number <= $0 } ?? true
         case (.boolean, .bool), (.object, .object): return true
+        case (.structure(let schema), .object(let object)):
+            var fields: [String: String] = [:]
+            MethodSpecV2.check(object, params: schema.fields, schema: schema, prefix: "", into: &fields)
+            return fields.isEmpty
+        case (.stringMap(let maxCount), .object(let object)):
+            return object.count <= maxCount && object.values.allSatisfy { if case .string = $0 { true } else { false } }
         case (.idempotencyKey, .string(let key)): return ConventionsV2.isValidIdempotencyKey(key)
         case (.cursor, .string(let text)): return (1...1_024).contains(text.utf8.count)
         default: return false
@@ -90,6 +98,16 @@ extension ParamTypeV2 {
             return schema
         case .boolean: return ["type": .string("boolean")]
         case .object: return ["type": .string("object")]
+        case .structure(let schema):
+            var object: [String: JSONValue] = [
+                "type": .string("object"), "properties": .object(Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.name, $0.jsonSchema(in: schema)) })),
+                "additionalProperties": .bool(false)
+            ]
+            let required = schema.tag.map { [$0] } ?? schema.fields.filter(\.required).map(\.name)
+            if !required.isEmpty { object["required"] = .array(required.map(JSONValue.string)) }
+            return object
+        case .stringMap(let maxCount):
+            return ["type": .string("object"), "additionalProperties": .object(["type": .string("string")]), "maxProperties": .number(Double(maxCount))]
         case .idempotencyKey:
             return ["type": .string("string"), "minLength": .number(1), "maxLength": .number(128), "pattern": .string("^[\\x20-\\x7E]+$")]
         case .cursor: return ["type": .string("string"), "minLength": .number(1), "maxLength": .number(1_024)]
@@ -100,13 +118,26 @@ extension ParamTypeV2 {
 }
 
 extension ParamV2 {
-    public var jsonSchema: JSONValue {
+    public var jsonSchema: JSONValue { jsonSchema(in: nil) }
+
+    /// Inside a tagged union, the tag's description lists which fields each variant takes, so clients can see what the
+    /// flat schema can't say.
+    func jsonSchema(in parent: ObjectSchemaV2?) -> JSONValue {
         var schema = type.jsonSchema
         if nullable, case .string(let base)? = schema["type"] {
             schema["type"] = .array([.string(base), .string("null")])
             if case .array(let values)? = schema["enum"] { schema["enum"] = .array(values + [.null]) }
         }
-        schema["description"] = .string(summary)
+        var description = summary
+        if let parent, parent.tag == name {
+            description +=
+                " "
+                + parent.variants.map { variant in
+                    let fields = variant.allowed.map { variant.required.contains($0) ? $0 : $0 + "?" }
+                    return variant.value + (fields.isEmpty ? "" : " (" + fields.joined(separator: ", ") + ")")
+                }.joined(separator: "; ") + "."
+        }
+        schema["description"] = .string(description)
         return .object(schema)
     }
 }
@@ -125,28 +156,78 @@ extension MethodSpecV2 {
         case .object(let value)?: object = value
         default: return .failure(.invalidParams("params must be an object.", fields: ["params": "object"]))
         }
-        let accepted = self.params
-        let known = Set(accepted.map(\.name))
         var fields: [String: String] = [:]
-        for key in object.keys.sorted() where !known.contains(key) {
-            // Only short identifier-like names are echoed back; anything else is reported in aggregate.
-            let echo = key.utf8.count <= 64 && key.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
-            fields[echo ? key : "params"] = echo ? "unknown parameter" : "unknown parameters"
-        }
-        for param in accepted {
-            switch object[param.name] {
-            case nil where param.required: fields[param.name] = "required: " + param.type.expectation
-            case nil: break
-            case .null? where param.nullable: break
-            case .null?: fields[param.name] = param.type.expectation + (param.required ? "" : "; omit it instead of null")
-            case let value?: if !param.type.accepts(value) { fields[param.name] = param.type.expectation }
+        Self.check(object, params: self.params, schema: nil, prefix: "", into: &fields)
+        for rule in rules {
+            let sent = rule.names.filter { name in
+                switch rule {
+                case .atLeastOne: object[name] != nil
+                case .exactlyOne: object[name].map { $0 != .null } ?? false
+                }
+            }
+            switch rule {
+            case .atLeastOne(let names) where sent.isEmpty:
+                for name in names { fields[name] = fields[name] ?? "send at least one of " + names.joined(separator: ", ") }
+            case .exactlyOne(let names) where sent.count != 1:
+                for name in names { fields[name] = fields[name] ?? "send exactly one of " + names.joined(separator: ", ") }
+            default: break
             }
         }
         guard fields.isEmpty else {
             let bounded = Dictionary(uniqueKeysWithValues: fields.sorted { $0.key < $1.key }.prefix(Self.maximumFieldErrors).map { ($0.key, $0.value) })
             return .failure(.invalidParams("Invalid params.", fields: bounded))
         }
-        return .success(ParamsV2(object))
+        return .success(ParamsV2(Self.normalized(object, params: self.params)))
+    }
+
+    /// Field checks shared by top-level params and `.structure` fields (reported as `launch.kind`).
+    static func check(_ object: [String: JSONValue], params accepted: [ParamV2], schema: ObjectSchemaV2?, prefix: String, into fields: inout [String: String]) {
+        var allowed = Set(accepted.map(\.name))
+        var required = Set(accepted.filter(\.required).map(\.name))
+        if let schema, let tag = schema.tag {
+            required.insert(tag)
+            if case .string(let value)? = object[tag], let variant = schema.variants.first(where: { $0.value == value }) {
+                allowed = Set(variant.allowed + [tag]); required = Set(variant.required + [tag])
+            }
+        }
+        for key in object.keys.sorted() where !allowed.contains(key) {
+            // Only short identifier-like names are echoed back; anything else is reported in aggregate.
+            let echo = key.utf8.count <= 64 && key.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
+            let known = accepted.contains { $0.name == key }
+            fields[echo ? prefix + key : prefix + "params"] = known ? "not used with this \(schema?.tag ?? "kind")" : echo ? "unknown parameter" : "unknown parameters"
+        }
+        for param in accepted where allowed.contains(param.name) {
+            let key = prefix + param.name
+            switch object[param.name] {
+            case nil where required.contains(param.name): fields[key] = "required: " + param.type.expectation
+            case nil: break
+            case .null? where param.nullable: break
+            case .null?: fields[key] = param.type.expectation + (required.contains(param.name) ? "" : "; omit it instead of null")
+            case .object(let nested)?:
+                if case .structure(let inner) = param.type {
+                    check(nested, params: inner.fields, schema: inner, prefix: key + ".", into: &fields)
+                } else if !param.type.accepts(.object(nested)) {
+                    fields[key] = param.type.expectation
+                }
+            case let value?: if !param.type.accepts(value) { fields[key] = param.type.expectation }
+            }
+        }
+    }
+
+    /// UUIDs are compared lowercase, so a retried call that spells an ID in another case replays instead of conflicting
+    /// with its own idempotency key.
+    static func normalized(_ object: [String: JSONValue], params accepted: [ParamV2]) -> [String: JSONValue] {
+        var result = object
+        for param in accepted {
+            guard let value = object[param.name] else { continue }
+            switch (param.type, value) {
+            case (.uuid, .string(let text)): result[param.name] = .string(text.lowercased())
+            case (.uuidList, .array(let items)): result[param.name] = .array(items.map { if case .string(let text) = $0 { .string(text.lowercased()) } else { $0 } })
+            case (.structure(let schema), .object(let nested)): result[param.name] = .object(normalized(nested, params: schema.fields))
+            default: break
+            }
+        }
+        return result
     }
 
     /// The MCP `inputSchema`: a closed object with the generated properties and required names.
@@ -183,6 +264,7 @@ extension MethodSpecV2 {
         let extras = conditional.map { "+\($0.capability.rawValue) if \($0.condition.summary)" }
         if !extras.isEmpty { parts += (parts.isEmpty ? "" : " ") + "(" + extras.joined(separator: ", ") + ")" }
         if requiresAllSpaces { parts += (parts.isEmpty ? "" : ", ") + "all spaces" }
+        if let allSpacesIf { parts += (parts.isEmpty ? "" : ", ") + "all spaces if " + allSpacesIf.summary }
         return parts.isEmpty ? "none" : parts
     }
 

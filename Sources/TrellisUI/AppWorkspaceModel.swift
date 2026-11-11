@@ -436,7 +436,9 @@ public final class AppWorkspaceModel: ObservableObject {
     var closingSpaceIDs = Set<UUID>()
     var closingTabIDs = Set<UUID>()
     var closingPaneIDs = Set<UUID>()
-    @Published public internal(set) var maximizedPanes: [UUID: UUID] = [:]
+    @Published public internal(set) var maximizedPanes: [UUID: UUID] = [:] {
+        didSet { if maximizedPanes != oldValue { automationRevisions.maximizedChanged(from: oldValue, to: maximizedPanes) } }
+    }
     private var pendingDividerResize: (splitID: UUID, ratio: Double, tabID: UUID)?
     private var dividerResizeTask: Task<Void, Never>?
     var canvasSizes: [UUID: CanvasDimensions] = [:]
@@ -459,6 +461,8 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var unconfiguredPaneIDs = Set<UUID>()
     /// Sessions that received API input: their late write failures never raise an alert.
     var automationInputSessionIDs = Set<UUID>()
+    /// Pane and session revisions for automation v2, which the store doesn't version (runtime only).
+    var automationRevisions = AutomationRevisions()
     public private(set) var restoredWindowFrame: String?
     public var onRestoreWindowFrame: ((String) -> Void)?
     let persistence: WorkspacePersistence?
@@ -909,6 +913,7 @@ public final class AppWorkspaceModel: ObservableObject {
         guard next.revision >= snapshot.revision else { return }
         let previous = snapshot
         snapshot = next
+        automationRevisions.record(previous, next)
         // Replaced or closed sessions drop their output; their cursors become invalid.
         for id in previous.sessions.keys where next.sessions[id] == nil { outputJournal.remove(session: id) }
         // A closed pane or space, or a restart, discards the saved text of the session it replaced (FR-R04).
@@ -1441,7 +1446,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// New panes start in the source pane's reported directory when it is still accessible.
-    private func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
+    func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
         // A remote workspace pane starts where the source pane's shell is on the host, or where that pane started; the
         // helper falls back to home when the directory is gone, so nothing is checked here (FR-RW04).
         if let pane = snapshot.panes[paneID], case .remoteShell(let host, nil)? = snapshot.sessions[pane.sessionID]?.launch {

@@ -41,16 +41,20 @@ public enum ConventionsV2 {
         return .object(object)
     }
 
-    /// `{"<plural>": [...], "revision", "nextCursor"?}`; `revision` is the container's.
-    public static func list(_ plural: String, _ items: [JSONValue], revision: UInt64, nextCursor: String? = nil) -> JSONValue {
-        var object: [String: JSONValue] = [plural: .array(items), "revision": number(revision)]
+    /// `{"<plural>": [...], "revision", "nextCursor"?}`; `revision` is the container's (the host library has none).
+    public static func list(_ plural: String, _ items: [JSONValue], revision: UInt64?, nextCursor: String? = nil) -> JSONValue {
+        var object: [String: JSONValue] = [plural: .array(items)]
+        if let revision { object["revision"] = number(revision) }
         if let nextCursor { object["nextCursor"] = .string(nextCursor) }
         return .object(object)
     }
 
-    /// `{"deleted": {"kind", "id"}, "workspaceRevision"}` for close and delete methods.
-    public static func deleted(kind: String, id: UUID, workspaceRevision: UInt64) -> JSONValue {
-        .object(["deleted": .object(["kind": .string(kind), "id": idJSON(id)]), "workspaceRevision": number(workspaceRevision)])
+    /// `{"deleted": {"kind", "id"}, "workspaceRevision"}` for close and delete methods; deleting a host leaves the
+    /// workspace unchanged, so it has no `workspaceRevision`.
+    public static func deleted(kind: String, id: UUID, workspaceRevision: UInt64?) -> JSONValue {
+        var object: [String: JSONValue] = ["deleted": .object(["kind": .string(kind), "id": idJSON(id)])]
+        if let workspaceRevision { object["workspaceRevision"] = number(workspaceRevision) }
+        return .object(object)
     }
 
     // MARK: Concurrency
@@ -130,6 +134,51 @@ public struct ParamsV2: Sendable, Equatable {
         default: throw invalid(key, "integer")
         }
     }
+
+    public func bool(_ key: String) throws(ControlError) -> Bool {
+        guard let value = try optionalBool(key) else { throw invalid(key, "boolean") }
+        return value
+    }
+    public func optionalDouble(_ key: String) throws(ControlError) -> Double? {
+        switch values[key] {
+        case nil, .null?: return nil
+        case .number(let number)? where number.isFinite: return number
+        default: throw invalid(key, "number")
+        }
+    }
+    public func uuids(_ key: String) throws(ControlError) -> [UUID] {
+        guard case .array(let items)? = values[key] else { throw invalid(key, "array of UUIDs") }
+        var ids: [UUID] = []
+        for item in items {
+            guard case .string(let text) = item, let id = ConventionsV2.parseID(text) else { throw invalid(key, "array of UUIDs") }
+            ids.append(id)
+        }
+        return ids
+    }
+    /// nil when absent or null.
+    public func optionalStrings(_ key: String) throws(ControlError) -> [String]? {
+        switch values[key] {
+        case nil, .null?: return nil
+        case .array(let items)?:
+            var strings: [String] = []
+            for item in items {
+                guard case .string(let text) = item else { throw invalid(key, "array of strings") }
+                strings.append(text)
+            }
+            return strings
+        default: throw invalid(key, "array of strings")
+        }
+    }
+    /// A `.structure` param's fields; nil when absent or null.
+    public func optionalObject(_ key: String) throws(ControlError) -> ParamsV2? {
+        switch values[key] {
+        case nil, .null?: return nil
+        case .object(let object)?: return ParamsV2(object)
+        default: throw invalid(key, "object")
+        }
+    }
+    /// Sent at all, `null` included (update parameters that clear).
+    public func sent(_ key: String) -> Bool { values[key] != nil }
 
     public var expectedRevision: UInt64? { (try? optionalInteger("expectedRevision")).flatMap { $0.flatMap { $0 >= 0 ? UInt64($0) : nil } } }
     public var idempotencyKey: String? { (try? optionalString("idempotencyKey")) ?? nil }
