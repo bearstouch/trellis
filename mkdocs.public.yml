@@ -61,6 +61,7 @@ nav:
       - Terminal: features/terminal.md
       - Command palette: features/command-palette.md
       - Keyboard and accessibility: features/keyboard-accessibility.md
+      - Languages: features/localization.md
       - Themes: features/themes.md
   - Projects and agents:
       - Project library: features/project-library.md

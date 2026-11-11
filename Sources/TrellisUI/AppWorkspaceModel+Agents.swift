@@ -215,14 +215,14 @@ extension AppWorkspaceModel {
         case .split:
             // A split hidden behind a maximized pane would hide the agent's first questions.
             guard maximizedPanes[tab.id] == nil else {
-                errorMessage = "Restore panes before opening an agent in a split."
+                errorMessage = L("Restore panes before opening an agent in a split.")
                 return
             }
             paneID = await splitPane(sourcePaneID, axis: .x, startSession: false)
         case .tab:
             paneID = await createTab(spaceID: space.id, startSessions: false).flatMap { snapshot.tabs[$0]?.activePaneID }
         case .currentTab:
-            paneID = await clearPaneForAgent(sourcePaneID, agentName: agentCatalog.definition(agentID)?.name ?? "the agent") ? sourcePaneID : nil
+            paneID = await clearPaneForAgent(sourcePaneID, agentName: agentCatalog.definition(agentID)?.name ?? L("the agent")) ? sourcePaneID : nil
         }
         guard let paneID, !isClosing(paneID: paneID) else { return }
         await configureAgent(paneID: paneID, launch: launch)
@@ -241,7 +241,7 @@ extension AppWorkspaceModel {
     /// don't report background or stopped jobs. Nothing is forced.
     private func clearPaneForAgent(_ paneID: UUID, agentName: String) async -> Bool {
         guard let pane = snapshot.panes[paneID], let terminal = terminals[paneID], !agentRunning(inTab: pane.tabID) else {
-            errorMessage = "An agent is already running in this tab. Open the agent in a new tab or a split."
+            errorMessage = L("An agent is already running in this tab. Open the agent in a new tab or a split.")
             return false
         }
         switch terminal.sessionState {
@@ -255,21 +255,21 @@ extension AppWorkspaceModel {
                 return state.origin == .authenticated && !state.commandRunning && !terminal.isReplaying && taskRuns[paneID]?.isActive != true
             }
             guard idle() else {
-                errorMessage = "This pane isn't at its shell prompt. Finish its command first, or open the agent in a new tab."
+                errorMessage = L("This pane isn't at its shell prompt. Finish its command first, or open the agent in a new tab.")
                 return false
             }
             guard confirmReplaceShell(agentName) else { return false }
             // Marks keep arriving while the alert is up; a command started meanwhile is never cut off.
             guard idle() else {
-                errorMessage = "This pane's shell started a command, so the agent wasn't opened there."
+                errorMessage = L("This pane's shell started a command, so the agent wasn't opened there.")
                 return false
             }
             guard await endRunningSession(terminal, paneID: paneID, force: false), [.exited, .failed].contains(terminal.sessionState) else {
-                errorMessage = "The shell in this pane didn't exit, so the agent wasn't opened there."
+                errorMessage = L("The shell in this pane didn't exit, so the agent wasn't opened there.")
                 return false
             }
         default:
-            errorMessage = "This pane's session is still starting or closing. Try again in a moment."
+            errorMessage = L("This pane's session is still starting or closing. Try again in a moment.")
             return false
         }
         await restartPane(paneID, startSession: false)
@@ -289,7 +289,7 @@ extension AppWorkspaceModel {
         do {
             publish(try await service.execute(.configureStoppedSession(paneID: paneID, launch: .agent(launch))).snapshot)
         } catch {
-            errorMessage = "The agent pane could not be prepared."
+            errorMessage = L("The agent pane could not be prepared.")
             return
         }
         await start(paneID: paneID)
@@ -323,7 +323,7 @@ extension AppWorkspaceModel {
             if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
                 terminal.useTransport(transport)
             } else if !quietly {
-                errorMessage = "The session broker could not start, so this session will end when Trellis quits."
+                errorMessage = L("The session broker could not start, so this session will end when Trellis quits.")
             }
         }
         await terminal.start(configuration: configuration)
@@ -468,8 +468,8 @@ extension AppWorkspaceModel {
             snapshot.panes[paneID] != nil, !agentPaneVisible(paneID), notificationLimiter.allow(paneID, at: activityNow())
         else { return }
         let needsYou = state == .needsInput
-        let title = needsYou ? "\(agent.name) needs you" : "\(agent.name) finished"
-        let body = needsYou ? "Waiting for your input" : "Finished its turn"
+        let title = needsYou ? L("%@ needs you", agent.name) : L("%@ finished", agent.name)
+        let body = needsYou ? L("Waiting for your input") : L("Finished its turn")
         desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, subtitle: notificationContext(paneID: paneID), body: body))
     }
 
@@ -496,7 +496,7 @@ extension AppWorkspaceModel {
             if let path = agentLoginPath { missing = agent.install[platform]?.requires.filter { AgentPathProbe.resolve($0, path: path) == nil } ?? [] }
         }
         agentInstallOffer = AgentInstallOffer(
-            id: UUID(), paneID: paneID, agent: agent, hostID: launch.hostID, hostName: launch.hostID.map(remoteHostName) ?? "this Mac",
+            id: UUID(), paneID: paneID, agent: agent, hostID: launch.hostID, hostName: launch.hostID.map(remoteHostName) ?? L("this Mac"),
             recipe: agent.install[platform], missingRequirements: missing, afterInstall: installed)
     }
 

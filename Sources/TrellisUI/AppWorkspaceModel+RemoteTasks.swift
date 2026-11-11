@@ -31,7 +31,7 @@ extension AppWorkspaceModel {
         var data: Data?
         switch await facts.read(LaunchFile.url(projectRoot: root).path, limit: LaunchFile.maximumBytes) {
         case .failure(.missing): state = .missing
-        case .failure: state = .invalid("launch.json must be a regular file you own, at most 64 KB, and not a symbolic link.")
+        case .failure: state = .invalid(L("launch.json must be a regular file you own, at most 64 KB, and not a symbolic link."))
         case .success(let read):
             data = read
             switch LaunchFileJSON.parse(read) {

@@ -44,17 +44,16 @@ struct ScratchpadPanel: View {
         }
         .background(model.chromeFill(.surface))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Command scratchpad")
+        .accessibilityLabel(L("Command scratchpad"))
         .sheet(item: $saveDraft) { draft in saveSheet(draft) }
         .alert(discardTitle, isPresented: Binding(get: { pendingDiscard != nil }, set: { if !$0 { pendingDiscard = nil } }), presenting: pendingDiscard) {
             discard in
-            Button(discard == .clear ? "Clear" : "Open", role: .destructive) { perform(discard) }
-            Button("Cancel", role: .cancel) {}
+            Button(discard == .clear ? L("Clear") : L("Open"), role: .destructive) { perform(discard) }
+            Button(L("Cancel"), role: .cancel) {}
         } message: { _ in
             Text(
-                model.scratchpadSaved == nil
-                    ? "This script hasn't been saved as a task. Its text will be lost."
-                    : "Changes since you saved \(model.scratchpadSaved?.fileName ?? "the script") will be lost. The saved script and its task stay.")
+                model.scratchpadSaved.map { L("Changes since you saved %@ will be lost. The saved script and its task stay.", $0.fileName) }
+                    ?? L("This script hasn't been saved as a task. Its text will be lost."))
         }
         // The list follows the pane Run types into.
         .task(id: model.scratchpadPaneID) { await model.refreshScratchpadFiles() }
@@ -62,8 +61,8 @@ struct ScratchpadPanel: View {
 
     private var discardTitle: String {
         switch pendingDiscard {
-        case .open(let file)?: "Open \(file)?"
-        default: "Clear the scratchpad?"
+        case .open(let file)?: L("Open %@?", file)
+        default: L("Clear the scratchpad?")
         }
     }
 
@@ -86,7 +85,7 @@ struct ScratchpadPanel: View {
 
     private var canValidate: Bool { model.scratchpad.language.isRunnable && !model.scratchpad.isEmpty && !model.scratchpadChecking }
     private var validateBlocker: String {
-        model.scratchpad.language.isRunnable ? "Write a command or script first." : "\(model.scratchpad.language.displayName) has no syntax check."
+        model.scratchpad.language.isRunnable ? L("Write a command or script first.") : L("%@ has no syntax check.", model.scratchpad.language.displayName)
     }
     private var canSave: Bool { !model.scratchpad.isEmpty }
     private var canClear: Bool { !model.scratchpad.isEmpty || model.scratchpadSaved != nil }
@@ -100,7 +99,7 @@ struct ScratchpadPanel: View {
             Image(systemName: "chevron.left.forwardslash.chevron.right").foregroundStyle(model.themeColor(.mutedForeground)).accessibilityHidden(true)
             fileMenu
             if model.scratchpadSaved != nil, model.scratchpadHasUnsavedChanges {
-                Text("Edited").font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).accessibilityLabel("Unsaved changes")
+                Text(L("Edited")).font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).accessibilityLabel(L("Unsaved changes"))
             }
             Spacer(minLength: 4)
             languageMenu
@@ -110,7 +109,7 @@ struct ScratchpadPanel: View {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.plain).foregroundStyle(model.themeColor(.mutedForeground))
-            .help(shortcutHelp("Close Scratchpad", .toggleScratchpad)).accessibilityLabel("Close Scratchpad")
+            .help(shortcutHelp(L("Close Scratchpad"), .toggleScratchpad)).accessibilityLabel(L("Close Scratchpad"))
         }
         .font(.system(size: 12)).padding(.leading, 12).padding(.trailing, 10).frame(height: 40)
     }
@@ -118,29 +117,29 @@ struct ScratchpadPanel: View {
     /// The open script's name, or Scratchpad before it is saved; its menu lists the project's saved scratchpads
     /// (FR-SP10).
     private var fileMenu: some View {
-        let title = model.scratchpadSaved?.fileName ?? "Scratchpad"
+        let title = model.scratchpadSaved?.fileName ?? L("Scratchpad")
         return Menu {
-            Button("New Scratchpad") { replaceBuffer(.clear) }
+            Button(L("New Scratchpad")) { replaceBuffer(.clear) }
             Divider()
             if let list = model.scratchpadFiles {
                 if list.files.isEmpty {
-                    Text("No saved scratchpads in \(list.projectName)")
+                    Text(L("No saved scratchpads in %@", list.projectName))
                 } else {
-                    Section("Saved in \(list.projectName)") {
+                    Section(L("Saved in %@", list.projectName)) {
                         ForEach(list.files, id: \.self) { file in
                             Toggle(isOn: Binding(get: { model.scratchpadSaved?.fileName == file }, set: { _ in replaceBuffer(.open(file)) })) { Text(file) }
                         }
                     }
                 }
             } else {
-                Text("Focus a local pane in a project to list its scratchpads")
+                Text(L("Focus a local pane in a project to list its scratchpads"))
             }
         } label: {
             Text(title).fontWeight(.semibold)
         }
         .menuStyle(.borderlessButton).fixedSize()
-        .help(model.scratchpadSaved.map { "\(ScratchpadDocument.projectDirectory)/\($0.fileName) — open another scratchpad" } ?? "Open a saved scratchpad")
-        .accessibilityLabel("Scratchpad file").accessibilityValue(title)
+        .help(model.scratchpadSaved.map { L("%@ — open another scratchpad", "\(ScratchpadDocument.projectDirectory)/\($0.fileName)") } ?? L("Open a saved scratchpad"))
+        .accessibilityLabel(L("Scratchpad file")).accessibilityValue(title)
     }
 
     /// One entry per registered language, with the program that checks and runs it (FR-SP03).
@@ -158,10 +157,10 @@ struct ScratchpadPanel: View {
         }
         .menuStyle(.button).fixedSize()
         .help(
-            model.scratchpad.language.checkDescription.map { "Language: \(model.scratchpad.language.displayName), checked with \($0)" }
-                ?? "Language: \(model.scratchpad.language.displayName), not checked or run"
+            model.scratchpad.language.checkDescription.map { L("Language: %1$@, checked with %2$@", model.scratchpad.language.displayName, $0) }
+                ?? L("Language: %@, not checked or run", model.scratchpad.language.displayName)
         )
-        .accessibilityLabel("Language").accessibilityValue(model.scratchpad.language.displayName)
+        .accessibilityLabel(L("Script language")).accessibilityValue(model.scratchpad.language.displayName)
     }
 
     // MARK: Check result (FR-SP04)
@@ -170,14 +169,15 @@ struct ScratchpadPanel: View {
         if model.scratchpadChecking {
             HStack(spacing: 7) {
                 ProgressView().controlSize(.small)
-                Text("Checking…")
+                Text(L("Checking…"))
             }
             .modifier(StatusStrip(color: model.themeColor(.mutedForeground)))
         } else if let check = model.scratchpadCheck {
             switch check.outcome {
             case .passed:
                 Label {
-                    Text("Syntax OK").fontWeight(.semibold) + Text(" · checked with \(check.checker ?? "") · \(lineCount) \(lineCount == 1 ? "line" : "lines")")
+                    Text(L("Syntax OK")).fontWeight(.semibold)
+                        + Text(" · " + (lineCount == 1 ? L("checked with %@ · 1 line", check.checker ?? "") : L("checked with %1$@ · %2$d lines", check.checker ?? "", lineCount)))
                 } icon: {
                     Image(systemName: "checkmark")
                 }
@@ -186,14 +186,14 @@ struct ScratchpadPanel: View {
                 let failed = check.outcome == .failed
                 VStack(alignment: .leading, spacing: 4) {
                     Label(
-                        failed ? "\(check.issues.count) \(check.issues.count == 1 ? "error" : "errors")" : "Not checked",
+                        failed ? (check.issues.count == 1 ? L("1 error") : L("%d errors", check.issues.count)) : L("Not checked"),
                         systemImage: failed ? "exclamationmark.triangle" : "questionmark.circle"
                     )
                     .fontWeight(.semibold)
                     ScrollView {
                         VStack(alignment: .leading, spacing: 3) {
                             ForEach(Array(check.issues.enumerated()), id: \.offset) { _, issue in
-                                Text(issue.line.map { "Line \($0): " + issue.message } ?? issue.message).textSelection(.enabled)
+                                Text(issue.line.map { L("Line %1$d: %2$@", $0, issue.message) } ?? issue.message).textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -222,16 +222,16 @@ struct ScratchpadPanel: View {
             Image(systemName: "terminal").accessibilityHidden(true)
             Text(targetText).lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 8)
-            iconButton("trash", "Clear Scratchpad", shortcut: "", enabled: canClear, reason: "The scratchpad is already empty.") {
+            iconButton("trash", L("Clear Scratchpad"), shortcut: "", enabled: canClear, reason: L("The scratchpad is already empty.")) {
                 replaceBuffer(.clear)
             }
-            iconButton("checkmark.circle", "Validate Syntax", shortcut: "⌥⌘V", enabled: canValidate, reason: validateBlocker) {
+            iconButton("checkmark.circle", L("Validate Syntax"), shortcut: "⌥⌘V", enabled: canValidate, reason: validateBlocker) {
                 Task { await model.validateScratchpad() }
             }
-            iconButton("square.and.arrow.down", model.scratchpad.language.isRunnable ? "Save as Task…" : "Save File…", shortcut: "⌥⌘S", enabled: canSave, reason: "Write a command or script first.") {
+            iconButton("square.and.arrow.down", model.scratchpad.language.isRunnable ? L("Save as Task…") : L("Save File…"), shortcut: "⌥⌘S", enabled: canSave, reason: L("Write a command or script first.")) {
                 beginSave()
             }
-            iconButton("play.fill", "Run in \(targetName)", shortcut: "⌘↩", enabled: canRun, reason: model.scratchpadRunBlocker, prominent: true) {
+            iconButton("play.fill", runTitle, shortcut: "⌘↩", enabled: canRun, reason: model.scratchpadRunBlocker, prominent: true) {
                 Task { await model.runScratchpad() }
             }
         }
@@ -239,27 +239,26 @@ struct ScratchpadPanel: View {
         .padding(.horizontal, 12).padding(.vertical, 9)
     }
 
-    private var targetName: String { model.scratchpadPaneID.map(model.paneTitle) ?? "the focused pane" }
+    private var runTitle: String { model.scratchpadPaneID.map { L("Run in %@", model.paneTitle($0)) } ?? L("Run in the focused pane") }
 
     /// Where Run types and whether it can: words, not color (FR-SP08).
     private var targetText: String {
-        guard let paneID = model.scratchpadPaneID else { return "No pane selected" }
-        let state: String
+        guard let paneID = model.scratchpadPaneID else { return L("No pane selected") }
+        let name = model.paneTitle(paneID)
         switch model.taskAvailability(paneID: paneID) {
-        case .ready: state = "at prompt"
-        case .busy: state = "busy"
-        case .taskActive: state = "task running"
-        case .notRunning: state = "not running"
-        case .remote: state = "remote shell"
-        case .noIntegration: state = "no shell integration"
+        case .ready: return L("Runs in %@ · at prompt", name)
+        case .busy: return L("Runs in %@ · busy", name)
+        case .taskActive: return L("Runs in %@ · task running", name)
+        case .notRunning: return L("Runs in %@ · not running", name)
+        case .remote: return L("Runs in %@ · remote shell", name)
+        case .noIntegration: return L("Runs in %@ · no shell integration", name)
         }
-        return "Runs in \(targetName) · \(state)"
     }
 
     private func iconButton(
         _ symbol: String, _ title: String, shortcut: String, enabled: Bool, reason: String?, prominent: Bool = false, action: @escaping () -> Void
     ) -> some View {
-        let help = enabled ? (shortcut.isEmpty ? title : "\(title) (\(shortcut))") : "\(title) — \(reason ?? "unavailable")"
+        let help = enabled ? (shortcut.isEmpty ? title : "\(title) (\(shortcut))") : "\(title) — \(reason ?? L("unavailable"))"
         return Button(action: action) {
             Image(systemName: symbol).font(.system(size: prominent ? 11 : 13)).frame(width: prominent ? 30 : 24, height: 22)
                 .foregroundStyle(prominent && enabled ? model.accentForeground : enabled ? model.themeColor(.foreground) : model.themeColor(.mutedForeground))
@@ -300,26 +299,26 @@ struct ScratchpadPanel: View {
         let problem = (asTask ? LaunchFile.taskNameProblem(current.name) : nil) ?? ScratchpadDocument.nameProblem(current.scriptName)
         let note =
             asTask
-            ? "The script is saved to \(ScratchpadDocument.projectDirectory)/\(document.fileName) and runs from the project folder. If launch.json was trusted, it stays trusted."
-            : "The file is saved to \(ScratchpadDocument.projectDirectory)/\(document.fileName). \(document.language.displayName) isn't run, so no task is added."
+            ? L("The script is saved to %@ and runs from the project folder. If launch.json was trusted, it stays trusted.", "\(ScratchpadDocument.projectDirectory)/\(document.fileName)")
+            : L("The file is saved to %1$@. %2$@ isn't run, so no task is added.", "\(ScratchpadDocument.projectDirectory)/\(document.fileName)", document.language.displayName)
         return VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(asTask ? "Save as Task" : "Save File").font(.headline)
-                Text(asTask ? "Adds a task to this project's launch.json." : "Saves the file in this project.").font(.caption).foregroundStyle(.secondary)
+                Text(asTask ? L("Save as Task") : L("Save File")).font(.headline)
+                Text(asTask ? L("Adds a task to this project's launch.json.") : L("Saves the file in this project.")).font(.caption).foregroundStyle(.secondary)
             }
             Form {
-                if asTask { TextField("Task name", text: taskName) }
+                if asTask { TextField(L("Task name"), text: taskName) }
                 HStack(spacing: 4) {
-                    TextField("File name", text: scriptName)
+                    TextField(L("File name"), text: scriptName)
                     Text("." + document.language.fileExtension).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
                 }
                 if asTask {
-                    SegmentedPicker("Group", selection: current.group, options: [(nil, "None")] + TaskGroup.allCases.map { (Optional($0), $0.rawValue) }) { saveDraft?.group = $0 }
+                    SegmentedPicker(L("Group"), selection: current.group, options: [(nil, L("None"))] + TaskGroup.allCases.map { (Optional($0), $0.rawValue) }) { saveDraft?.group = $0 }
                 }
             }
             VStack(alignment: .leading, spacing: 5) {
                 if let command = document.taskCommand {
-                    Text("Command").font(.caption).fontWeight(.semibold)
+                    Text(L("Command")).font(.caption).fontWeight(.semibold)
                     Text(command).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
                         .padding(7).frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
@@ -329,9 +328,9 @@ struct ScratchpadPanel: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { saveDraft = nil }.keyboardShortcut(.cancelAction)
-                Button("Save") { finishSave(run: false) }.keyboardShortcut(.defaultAction).disabled(problem != nil)
-                if asTask { Button("Save & Run") { finishSave(run: true) }.disabled(problem != nil) }
+                Button(L("Cancel"), role: .cancel) { saveDraft = nil }.keyboardShortcut(.cancelAction)
+                Button(L("Save")) { finishSave(run: false) }.keyboardShortcut(.defaultAction).disabled(problem != nil)
+                if asTask { Button(L("Save & Run")) { finishSave(run: true) }.disabled(problem != nil) }
             }
         }
         .padding(20).frame(width: 440)

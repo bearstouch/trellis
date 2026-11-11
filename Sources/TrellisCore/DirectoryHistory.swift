@@ -25,11 +25,11 @@ public struct DirectoryHistoryEntry: Codable, Equatable, Sendable {
     /// For the row's subtitle: "just now", "5m ago", "2h ago", "3d ago", "6w ago".
     public func lastVisitDescription(now: Date) -> String {
         let seconds = Int(now.timeIntervalSince(lastVisit))
-        if seconds < 60 { return "just now" }
-        if seconds < 3_600 { return "\(seconds / 60)m ago" }
-        if seconds < 86_400 { return "\(seconds / 3_600)h ago" }
-        if seconds < 604_800 { return "\(seconds / 86_400)d ago" }
-        return "\(seconds / 604_800)w ago"
+        if seconds < 60 { return L("just now") }
+        if seconds < 3_600 { return L("%dm ago", seconds / 60) }
+        if seconds < 86_400 { return L("%dh ago", seconds / 3_600) }
+        if seconds < 604_800 { return L("%dd ago", seconds / 86_400) }
+        return L("%dw ago", seconds / 604_800)
     }
 
     /// Best first; ties go to the most recent visit, then to the path so the order is stable.

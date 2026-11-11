@@ -29,50 +29,50 @@ struct RemoteControlSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Enable MCP server", isOn: $draft.mcpEnabled)
+                Toggle(L("Enable MCP server"), isOn: $draft.mcpEnabled)
                 Text(
-                    "Lets agents such as Claude Code control Trellis through the Model Context Protocol. Each agent signs in with an automation grant token, and the grant limits what it can do."
+                    L("Lets agents such as Claude Code control Trellis through the Model Context Protocol. Each agent signs in with an automation grant token, and the grant limits what it can do.")
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Listen on") {
-                Picker("Interface", selection: $draft.bindAddress) {
+            Section(L("Listen on")) {
+                Picker(L("Interface"), selection: $draft.bindAddress) {
                     ForEach(addressOptions, id: \.address) { Text($0.label).tag($0.address) }
                 }
-                .accessibilityHint("The network address the MCP server accepts connections on.")
-                TextField("Port (1024–65535)", value: $port, format: .number.grouping(.never))
-                    .accessibilityLabel("Port")
-                if !portValid { Label("Use a port from 1024 to 65535.", systemImage: "exclamationmark.circle").font(.caption) }
+                .accessibilityHint(L("The network address the MCP server accepts connections on."))
+                TextField(L("Port (1024–65535)"), value: $port, format: .number.grouping(.never))
+                    .accessibilityLabel(L("Port"))
+                if !portValid { Label(L("Use a port from 1024 to 65535."), systemImage: "exclamationmark.circle").font(.caption) }
                 if draft.isLoopback {
-                    Text("Only programs on this Mac can connect.").font(.caption).foregroundStyle(.secondary)
+                    Text(L("Only programs on this Mac can connect.")).font(.caption).foregroundStyle(.secondary)
                 } else {
                     Label(
-                        "Other devices on the network can reach this server. Requests use plain HTTP, so grant tokens are sent unencrypted.",
+                        L("Other devices on the network can reach this server. Requests use plain HTTP, so grant tokens are sent unencrypted."),
                         systemImage: "exclamationmark.triangle"
                     )
                     .font(.caption)
                 }
             }
-            Section("Status") {
+            Section(L("Status")) {
                 statusRow
                 HStack {
-                    Button("Copy Endpoint URL") { copy(clientURL(model.remoteControl)) }
+                    Button(L("Copy Endpoint URL")) { copy(clientURL(model.remoteControl)) }
                         .disabled(!model.remoteControl.mcpEnabled)
-                    Button("Copy Claude Code Command") {
+                    Button(L("Copy Claude Code Command")) {
                         copy("claude mcp add --transport http trellis \(clientURL(model.remoteControl)) --header \"Authorization: Bearer <TOKEN>\"")
                     }
                     .disabled(!model.remoteControl.mcpEnabled)
-                    .help("Replace <TOKEN> with a grant token. Tokens are shown only once, when the grant is created.")
+                    .help(L("Replace <TOKEN> with a grant token. Tokens are shown only once, when the grant is created."))
                 }
                 HStack(spacing: 4) {
-                    Text("Agents need a grant token.").font(.caption).foregroundStyle(.secondary)
-                    if let showAutomation { Button("Create a grant in Automation…", action: showAutomation).buttonStyle(.link).font(.caption) }
+                    Text(L("Agents need a grant token.")).font(.caption).foregroundStyle(.secondary)
+                    if let showAutomation { Button(L("Create a grant in Automation…"), action: showAutomation).buttonStyle(.link).font(.caption) }
                 }
             }
             if let message { Text(message).font(.caption) }
             HStack {
                 Spacer()
-                Button("Apply") {
+                Button(L("Apply")) {
                     let settings = candidate
                     let alreadyExposed = model.remoteControl.mcpEnabled && model.remoteControl.bindAddress == settings.bindAddress
                     if settings.mcpEnabled, !settings.isLoopback, !alreadyExposed { confirmingNetwork = true } else { commit(settings) }
@@ -81,12 +81,12 @@ struct RemoteControlSettingsView: View {
             }
         }
         .padding(16)
-        .alert("Allow connections from the network?", isPresented: $confirmingNetwork) {
-            Button("Cancel", role: .cancel) {}
-            Button("Allow Network Access", role: .destructive) { commit(candidate) }
+        .alert(L("Allow connections from the network?"), isPresented: $confirmingNetwork) {
+            Button(L("Cancel"), role: .cancel) {}
+            Button(L("Allow Network Access"), role: .destructive) { commit(candidate) }
         } message: {
             Text(
-                "Devices that can reach \(draft.bindAddress) will be able to connect. Anyone who obtains a grant token can then control terminals within that grant. Traffic is not encrypted."
+                L("Devices that can reach %@ will be able to connect. Anyone who obtains a grant token can then control terminals within that grant. Traffic is not encrypted.", draft.bindAddress)
             )
         }
         .onAppear {
@@ -99,23 +99,23 @@ struct RemoteControlSettingsView: View {
     private var statusRow: some View {
         let (symbol, text): (String, String) =
             switch model.remoteControlStatus {
-            case .stopped: ("stop.circle", "Stopped")
-            case .running(let url): ("checkmark.circle.fill", "Running at \(url)")
-            case .failed(let reason): ("exclamationmark.triangle.fill", "Not running: \(reason)")
+            case .stopped: ("stop.circle", L("Stopped"))
+            case .running(let url): ("checkmark.circle.fill", L("Running at %@", url))
+            case .failed(let reason): ("exclamationmark.triangle.fill", L("Not running: %@", reason))
             }
         return Label(text, systemImage: symbol)
             .textSelection(.enabled)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Server status: \(text)")
+            .accessibilityLabel(L("Server status: %@", text))
     }
 
     private var addressOptions: [(address: String, label: String)] {
         var options: [(address: String, label: String)] = [
-            ("127.0.0.1", "Loopback — 127.0.0.1 (this Mac only)"), ("::1", "Loopback IPv6 — ::1 (this Mac only)")
+            ("127.0.0.1", L("Loopback — 127.0.0.1 (this Mac only)")), ("::1", L("Loopback IPv6 — ::1 (this Mac only)"))
         ]
         options += interfaces.map { ($0.address, "\($0.interface) — \($0.address)") }
-        options += [("0.0.0.0", "All IPv4 interfaces — 0.0.0.0"), ("::", "All IPv6 interfaces — ::")]
-        if !options.contains(where: { $0.address == draft.bindAddress }) { options.append((draft.bindAddress, "\(draft.bindAddress) (unavailable)")) }
+        options += [("0.0.0.0", L("All IPv4 interfaces — 0.0.0.0")), ("::", L("All IPv6 interfaces — ::"))]
+        if !options.contains(where: { $0.address == draft.bindAddress }) { options.append((draft.bindAddress, L("%@ (unavailable)", draft.bindAddress))) }
         return options
     }
 
@@ -136,7 +136,7 @@ struct RemoteControlSettingsView: View {
     }
 
     private func commit(_ settings: RemoteControlSettings) {
-        message = model.applyRemoteControl(settings) ? "Remote control settings saved." : "Choose a valid interface and a port from 1024 to 65535."
+        message = model.applyRemoteControl(settings) ? L("Remote control settings saved.") : L("Choose a valid interface and a port from 1024 to 65535.")
     }
 
     private func copy(_ text: String) {

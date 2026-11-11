@@ -167,9 +167,19 @@ public struct FileSearchResult: Equatable, Sendable {
 /// whatever the Mac uses for that file; `newTab` opens a Trellis tab in the folder.
 public struct EditorApp: Equatable, Identifiable, Sendable {
     public let id: String
-    public let name: String
+    private let englishName: String
+    /// App names are proper names; only the two entries that aren't apps are translated.
+    public var name: String {
+        switch id {
+        case "default": L("Default App")
+        case "trellis-tab": L("New Tab Here")
+        default: englishName
+        }
+    }
     /// Tried in order; the first installed one is used.
     public let bundleIDs: [String]
+
+    public init(id: String, name: String, bundleIDs: [String]) { self.id = id; englishName = name; self.bundleIDs = bundleIDs }
 
     public static let finder = EditorApp(id: "finder", name: "Finder", bundleIDs: ["com.apple.finder"])
     public static let defaultApp = EditorApp(id: "default", name: "Default App", bundleIDs: [])

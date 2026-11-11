@@ -47,7 +47,22 @@ public final class AppWorkspaceModel: ObservableObject {
         didSet { if errorMessage != nil { diagnosticCodes = Array((diagnosticCodes + ["UI_ERROR"]).suffix(20)) } }
     }
     public private(set) var diagnosticCodes: [String] = []
-    @Published public private(set) var appearance = AppearanceSettings()
+    @Published public private(set) var appearance = AppearanceSettings() { didSet { refreshLanguage() } }
+    /// The Mac's preferred languages, read for the System choice (FR-LN01). Empty until the app sets it, so tests read English.
+    public var systemLanguages: () -> [String] = { [] } { didSet { refreshLanguage() } }
+    /// The `--language` launch choice; overrides the saved language without saving it.
+    public var languageOverride: AppLanguage? { didSet { refreshLanguage() } }
+    /// The language on screen; never `system`. Views that show translated text are rebuilt when it changes.
+    @Published public private(set) var language: AppLanguage = .english
+    /// Called after the language on screen changes; the app rebuilds its menus.
+    public var onLanguageChanged: (() -> Void)?
+    private func refreshLanguage() {
+        let next = (languageOverride ?? appearance.language).resolved(preferredLanguages: systemLanguages())
+        guard next != language else { return }
+        Localization.shared.setLanguage(next)
+        language = next
+        onLanguageChanged?()
+    }
     /// Narrow initials rail instead of the full space list; a per-user UI preference, not workspace data.
     @Published public private(set) var sidebarCollapsed = false
     /// Advances once per committed settings change; API `expectedRevision` uses it.
@@ -99,7 +114,7 @@ public final class AppWorkspaceModel: ObservableObject {
             let builtIn = ResolvedTheme.builtIn(slot)
             if (BundledThemes.theme(id)?.appearance ?? themeCatalog.documents[id]?.appearance) != slot {
                 if slot == .light { appearance.lightThemeID = builtIn.id } else { appearance.darkThemeID = builtIn.id }
-                notices.append("Theme '\(id)' is unavailable. Using \(builtIn.name).")
+                notices.append(L("Theme '%1$@' is unavailable. Using %2$@.", id, builtIn.name))
             }
         }
         notices += themeCatalog.issues.map { "\($0.filename): \($0.message)" }
@@ -144,7 +159,7 @@ public final class AppWorkspaceModel: ObservableObject {
             var settings = appearance
             if document.appearance == .light { settings.lightThemeID = document.id; settings.chromeMode = .light } else { settings.darkThemeID = document.id; settings.chromeMode = .dark }
             commitThemeChoice(settings)
-            themeNotice = "Saved \(document.name)."
+            themeNotice = L("Saved %@.", document.name)
             return true
         } catch {
             if case ThemeLibraryError.duplicateID(let id) = error { themeReplacementID = id }
@@ -174,7 +189,7 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let themeLibrary else { return }
         do {
             let directory = try await themeLibrary.ensureDirectory()
-            if !NSWorkspace.shared.open(directory) { themeNotice = "The Themes folder could not be opened." }
+            if !NSWorkspace.shared.open(directory) { themeNotice = L("The Themes folder could not be opened.") }
         } catch { themeNotice = error.localizedDescription }
     }
     private func commitThemeChoice(_ settings: AppearanceSettings) {
@@ -267,13 +282,13 @@ public final class AppWorkspaceModel: ObservableObject {
     private static func loadKeyboardSettings(_ preferences: UserDefaults) -> (KeyboardSettings, String?) {
         guard let data = preferences.data(forKey: keyboardKey) else { return (KeyboardSettings(), nil) }
         guard let saved = try? JSONDecoder().decode(KeyboardSettings.self, from: data) else {
-            return (KeyboardSettings(), "Saved keyboard shortcuts could not be read. Using the defaults.")
+            return (KeyboardSettings(), L("Saved keyboard shortcuts could not be read. Using the defaults."))
         }
         // A conflicting stored map could silently disable a command; never apply it.
         guard saved.shortcuts.issues().isEmpty else {
             var fallback = KeyboardSettings()
             fallback.optionAsMeta = saved.optionAsMeta
-            return (fallback, "Saved keyboard shortcuts conflict. Using the defaults.")
+            return (fallback, L("Saved keyboard shortcuts conflict. Using the defaults."))
         }
         return (saved, nil)
     }
@@ -672,20 +687,20 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Shell marks don't report jobs, so the alert names what ends with the shell.
     private static func showReplaceShellConfirmation(agent: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Replace this shell with \(agent)?"
-        alert.informativeText =
-            "The shell in this pane ends, along with any background or stopped jobs it started, such as a server run with & or a suspended editor. \(agent) starts in the same folder."
-        alert.addButton(withTitle: "Replace Shell")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Replace this shell with %@?", agent)
+        alert.informativeText = L(
+            "The shell in this pane ends, along with any background or stopped jobs it started, such as a server run with & or a suspended editor. %@ starts in the same folder.", agent)
+        alert.addButton(withTitle: L("Replace Shell"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
     private static func showStageConflictConfirmation(name: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Mark \(name) as resolved?"
-        alert.informativeText = "Staging a conflicted file tells git the conflict is resolved, with the file as it is now. Check that no conflict markers (<<<<<<<, =======, >>>>>>>) are left."
-        alert.addButton(withTitle: "Stage as Resolved")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Mark %@ as resolved?", name)
+        alert.informativeText = L("Staging a conflicted file tells git the conflict is resolved, with the file as it is now. Check that no conflict markers (<<<<<<<, =======, >>>>>>>) are left.")
+        alert.addButton(withTitle: L("Stage as Resolved"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -712,7 +727,7 @@ public final class AppWorkspaceModel: ObservableObject {
             return false
         case .loaded(let restored):
             do { try await applyRestored(restored) } catch {
-                recoveryMessage = "The saved workspace could not be restored."
+                recoveryMessage = L("The saved workspace could not be restored.")
                 _ = await reattachBrokerSessions()
                 return true
             }
@@ -725,9 +740,9 @@ public final class AppWorkspaceModel: ObservableObject {
         case .recovery(let reason, let backup):
             recoveryReason = reason; recoveryBackup = backup; backupAvailable = backup != nil
             if case .unsupportedVersion = reason {
-                recoveryMessage = "This workspace was saved by a newer application version. It will remain unchanged. Recovery opens a temporary workspace."
+                recoveryMessage = L("This workspace was saved by a newer application version. It will remain unchanged. Recovery opens a temporary workspace.")
             } else {
-                recoveryMessage = "The saved workspace could not be read. Recover the backup or start empty; the original file will be preserved."
+                recoveryMessage = L("The saved workspace could not be read. Recover the backup or start empty; the original file will be preserved.")
             }
             // No pane can claim a kept session here; the orphan alert still reports them, and Leave Running is safe.
             _ = await reattachBrokerSessions()
@@ -775,7 +790,7 @@ public final class AppWorkspaceModel: ObservableObject {
         do {
             if useBackup, let backup = recoveryBackup { try await applyRestored(backup) }
             recoveryMessage = nil; recoveryBackup = nil; backupAvailable = false
-        } catch { errorMessage = "The backup could not be restored." }
+        } catch { errorMessage = L("The backup could not be restored.") }
         isRestoring = false
         if !persistenceReadOnly, recoveryMessage == nil { _ = await flushWorkspaceSave() }
     }
@@ -793,7 +808,7 @@ public final class AppWorkspaceModel: ObservableObject {
             unconfiguredPaneIDs.remove(paneID)
             publish(result.snapshot)
             if !isClosing(paneID: paneID), !shuttingDown { await start(paneID: paneID) }
-        } catch { errorMessage = "A new shell could not be configured." }
+        } catch { errorMessage = L("A new shell could not be configured.") }
     }
 
     func scheduleWorkspaceSave() {
@@ -864,7 +879,7 @@ public final class AppWorkspaceModel: ObservableObject {
             if savesThrottled != throttled { savesThrottled = throttled }
             return true
         } catch {
-            errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
+            errorMessage = L("The workspace could not be saved. Your current terminals are still available."); return false
         }
     }
 
@@ -927,14 +942,14 @@ public final class AppWorkspaceModel: ObservableObject {
             publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
             return id
-        } catch { errorMessage = "The space could not be created."; return nil }
+        } catch { errorMessage = L("The space could not be created."); return nil }
     }
 
     public func selectSpace(_ id: UUID) async {
         if id != snapshot.activeSpaceID { cancelPaste(); notePasteFocus(nil) }
         do {
             publish(try await service.execute(.selectSpace(id: id)).snapshot)
-        } catch { errorMessage = "The space could not be selected." }
+        } catch { errorMessage = L("The space could not be selected.") }
     }
 
     /// `quietly` (automation) reports failure through session state, never an alert.
@@ -1047,7 +1062,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
                         terminal.useTransport(transport)
                     } else if !quietly {
-                        errorMessage = "The session broker could not start, so this session will end when Trellis quits."
+                        errorMessage = L("The session broker could not start, so this session will end when Trellis quits.")
                     }
                 }
                 // Synchronous and without new locals: Swift 6.3's task allocator aborts when this frame grows (see `startAgent`).
@@ -1057,7 +1072,7 @@ public final class AppWorkspaceModel: ObservableObject {
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }
-        } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
+        } catch { if !quietly { errorMessage = L("The terminal session could not be started.") } }
     }
 
     /// Feeds a session's state changes and exit back to the store. `attemptID` is nil for a session
@@ -1070,10 +1085,10 @@ public final class AppWorkspaceModel: ObservableObject {
                 // Never queued, so nothing is typed later by surprise (FR-RW07). Mouse and focus reports land here too, so
                 // the modal is raised once per outage or it would come back with every move; the tab shows the rest.
                 guard self.remoteInputNoticeShown.insert(remote.hostID).inserted else { return }
-                self.errorMessage = "Not sent: reconnecting to \(self.remoteHostName(remote.hostID)). Nothing you type is kept for later."
+                self.errorMessage = L("Not sent: reconnecting to %@. Nothing you type is kept for later.", self.remoteHostName(remote.hostID))
                 return
             }
-            self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
+            self.errorMessage = L("Terminal input could not be sent. Check the session or try a smaller paste.")
         }
         var launchCompleted = attemptID == nil
         terminal.onStateChanged = { [weak self, weak terminal] state in
@@ -1280,9 +1295,9 @@ public final class AppWorkspaceModel: ObservableObject {
         else { return }
         guard !workspaceIsFrontmost() || presentation.activePane?.id != paneID else { return }
         guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
-        let title = state.lastCommandFailed ? "Command failed (exit \(state.lastExitCode ?? 0))" : "Command finished"
+        let title = state.lastCommandFailed ? L("Command failed (exit %d)", Int(state.lastExitCode ?? 0)) : L("Command finished")
         // The program name is untrusted output, so it gets the same cleaning as OSC notification text.
-        guard let text = TerminalNotification(title: title, body: "\(state.lastCommandName ?? paneTitle(paneID)) ran for \(durationText)") else { return }
+        guard let text = TerminalNotification(title: title, body: L("%1$@ ran for %2$@", state.lastCommandName ?? paneTitle(paneID), durationText)) else { return }
         desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, subtitle: notificationContext(paneID: paneID), body: text.body))
     }
 
@@ -1474,14 +1489,14 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func renameSpace(_ id: UUID, name: String) async {
-        do { publish(try await service.execute(.renameSpace(id: id, name: name)).snapshot) } catch { errorMessage = "Use a space name between 1 and 200 characters." }
+        do { publish(try await service.execute(.renameSpace(id: id, name: name)).snapshot) } catch { errorMessage = L("Use a space name between 1 and 200 characters.") }
     }
 
     public func moveSpace(_ id: UUID, offset: Int) async {
         var order = snapshot.spaces.map(\.id)
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = "The space order could not be changed." }
+        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = L("The space order could not be changed.") }
     }
 
     /// Drag reordering (FR-W07): the space takes the target's place, so dragging down lands below it and up above it.
@@ -1489,7 +1504,7 @@ public final class AppWorkspaceModel: ObservableObject {
         var order = snapshot.spaces.map(\.id)
         guard id != targetID, order.contains(id), let destination = order.firstIndex(of: targetID) else { return }
         order.removeAll { $0 == id }; order.insert(id, at: destination)
-        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = "The space order could not be changed." }
+        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = L("The space order could not be changed.") }
     }
 
     func attachTerminal(_ pane: WorkspacePane) {
@@ -1617,7 +1632,9 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func resizeSplit(_ splitID: UUID, ratio: Double, tabID: UUID, quietly: Bool = false) async {
         guard !shuttingDown, maximizedPanes[tabID] == nil, let canvas = canvasSizes[tabID] else { return }
-        do { publish(try await service.execute(.resizeSplit(tabID: tabID, splitID: splitID, ratio: ratio, canvas: canvas)).snapshot) } catch { if !quietly { errorMessage = "This divider would make a pane too small." } }
+        do { publish(try await service.execute(.resizeSplit(tabID: tabID, splitID: splitID, ratio: ratio, canvas: canvas)).snapshot) } catch {
+            if !quietly { errorMessage = L("This divider would make a pane too small.") }
+        }
     }
 
     public func resizeFocusedPane(_ direction: PaneDirection) async {
@@ -1643,7 +1660,7 @@ public final class AppWorkspaceModel: ObservableObject {
             attachTerminal(pane)
             publish(result.snapshot)
             if startSession { await start(paneID: id) }
-        } catch { errorMessage = "The session could not be restarted." }
+        } catch { errorMessage = L("The session could not be restarted.") }
     }
 
     public func selectPane(_ id: UUID) async -> Bool {
@@ -1654,7 +1671,7 @@ public final class AppWorkspaceModel: ObservableObject {
             guard let pane = snapshot.panes[id], !isClosing(paneID: id) else { return false }
             return snapshot.tabs[pane.tabID]?.activePaneID == id
         } catch {
-            if snapshot.panes[id] != nil, !isClosing(paneID: id) { errorMessage = "The pane could not be selected." }
+            if snapshot.panes[id] != nil, !isClosing(paneID: id) { errorMessage = L("The pane could not be selected.") }
             return false
         }
     }
@@ -1665,7 +1682,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let canvas = availableCanvas {
             let minimum = CanvasDimensions.minimum(for: .split(id: UUID(), axis: axis, ratio: 0.5, children: [.pane(UUID()), .pane(UUID())]))
             guard canvas.width >= minimum.width, canvas.height >= minimum.height else {
-                errorMessage = "Enlarge this pane before splitting it."
+                errorMessage = L("Enlarge this pane before splitting it.")
                 return nil
             }
         }
@@ -1687,7 +1704,7 @@ public final class AppWorkspaceModel: ObservableObject {
             }
             return newID
         } catch {
-            errorMessage = "This pane cannot be split further. Check its size and the layout limits."
+            errorMessage = L("This pane cannot be split further. Check its size and the layout limits.")
             return nil
         }
     }
@@ -1716,7 +1733,7 @@ public final class AppWorkspaceModel: ObservableObject {
         case .split(let axis):
             // Match the pane split controls: a hidden split would hide ssh prompts.
             guard let tab = presentation.selectedTab, let focused = presentation.activePane?.id, maximizedPanes[tab.id] == nil else {
-                errorMessage = presentation.selectedTab == nil ? "Open a space before connecting in a split." : "Restore panes before connecting in a split."
+                errorMessage = presentation.selectedTab == nil ? L("Open a space before connecting in a split.") : L("Restore panes before connecting in a split.")
                 return nil
             }
             paneID = await splitPane(focused, axis: axis, startSession: false)
@@ -1725,7 +1742,7 @@ public final class AppWorkspaceModel: ObservableObject {
         do {
             publish(try await service.execute(.configureStoppedSession(paneID: paneID, launch: .host(host.id))).snapshot)
         } catch {
-            errorMessage = "The connection pane could not be prepared."
+            errorMessage = L("The connection pane could not be prepared.")
             return nil
         }
         await start(paneID: paneID)
@@ -1772,7 +1789,7 @@ public final class AppWorkspaceModel: ObservableObject {
             }
             return tabID
         } catch {
-            errorMessage = "The tab could not be created."
+            errorMessage = L("The tab could not be created.")
             return nil
         }
     }
@@ -1781,7 +1798,7 @@ public final class AppWorkspaceModel: ObservableObject {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
         if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID) }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
-        do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = "The tab could not be selected." }
+        do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = L("The tab could not be selected.") }
     }
 
     /// Native text editing of a tab title. Terminals stop receiving key input until
@@ -1808,11 +1825,11 @@ public final class AppWorkspaceModel: ObservableObject {
     public func renameTab(_ id: UUID, title: String) async {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) } catch { errorMessage = "Use a tab name between 1 and 200 characters." }
+        do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) } catch { errorMessage = L("Use a tab name between 1 and 200 characters.") }
     }
 
     public func setTabColor(_ id: UUID, color: TabColor?) async {
-        do { publish(try await service.execute(.setTabColor(id: id, color: color)).snapshot) } catch { errorMessage = "The tab color could not be changed." }
+        do { publish(try await service.execute(.setTabColor(id: id, color: color)).snapshot) } catch { errorMessage = L("The tab color could not be changed.") }
     }
 
     public func moveTab(_ id: UUID, offset: Int) async {
@@ -1820,7 +1837,7 @@ public final class AppWorkspaceModel: ObservableObject {
         var order = space.tabIDs
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = L("The tab order could not be changed.") }
     }
 
     /// Drag reordering (FR-T10): the tab takes the target's place, so dragging right lands after it and left before it.
@@ -1830,7 +1847,7 @@ public final class AppWorkspaceModel: ObservableObject {
         else { return }
         var order = space.tabIDs
         order.removeAll { $0 == id }; order.insert(id, at: destination)
-        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = L("The tab order could not be changed.") }
     }
 
     public func deleteSpace(_ id: UUID) async {
@@ -1867,21 +1884,21 @@ public final class AppWorkspaceModel: ObservableObject {
             guard terminals[id]?.isRunning == true, let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID],
                 let space = snapshot.spaces.first(where: { $0.id == tab.spaceID })
             else { return nil }
-            return "\(space.name) / \(tab.title) / \(pane.title ?? "Terminal")"
+            return "\(space.name) / \(tab.title) / \(pane.title ?? L("Terminal"))"
         }
     }
 
     private func showClosureConfirmation(count: Int, force: Bool) -> Bool {
         guard count > 0 else { return true }
         let alert = NSAlert()
-        alert.messageText = force ? "Force stop \(count) session(s)?" : "Close \(count) terminal session(s)?"
+        alert.messageText = force ? L("Force stop %d session(s)?", count) : L("Close %d terminal session(s)?", count)
         let summary = closeSummary.prefix(8).joined(separator: "\n")
-        let more = closeSummary.count > 8 ? "\n…and \(closeSummary.count - 8) more" : ""
+        let more = closeSummary.count > 8 ? "\n" + L("…and %d more", closeSummary.count - 8) : ""
         alert.informativeText =
-            (force ? "These sessions have not finished closing after two seconds.\n\n" : "Their owned local processes will stop.\n\n")
-            + summary + more + "\n\nDetached or remote processes may continue running."
-        alert.addButton(withTitle: force ? "Force Stop" : "Close Sessions")
-        alert.addButton(withTitle: force ? "Keep Waiting" : "Cancel")
+            (force ? L("These sessions have not finished closing after two seconds.") : L("Their owned local processes will stop.")) + "\n\n"
+            + summary + more + "\n\n" + L("Detached or remote processes may continue running.")
+        alert.addButton(withTitle: force ? L("Force Stop") : L("Close Sessions"))
+        alert.addButton(withTitle: force ? L("Keep Waiting") : L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -1913,13 +1930,13 @@ public final class AppWorkspaceModel: ObservableObject {
                 result = await closureCoordinator.close(affected, allowRunning: true, force: true)
             }
         }
-        guard result == .closed else { errorMessage = "Some sessions are still closing. Try Close again when they are ready."; return false }
+        guard result == .closed else { errorMessage = L("Some sessions are still closing. Try Close again when they are ready."); return false }
         // Pending store/start work must complete before deleting its hierarchy.
         let deadline = ProcessInfo.processInfo.systemUptime + 2
         while pendingOperations > 0, ProcessInfo.processInfo.systemUptime < deadline, !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(10))
         }
-        guard pendingOperations == 0 else { errorMessage = "A session launch is still finishing. Try Close again shortly."; return false }
+        guard pendingOperations == 0 else { errorMessage = L("A session launch is still finishing. Try Close again shortly."); return false }
         await waitForUpdates()
         return !Task.isCancelled
     }
@@ -1932,7 +1949,7 @@ public final class AppWorkspaceModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(10))
         }
         guard pendingOperations == 0, !Task.isCancelled else {
-            errorMessage = "A session launch is still finishing. Try Close again shortly."
+            errorMessage = L("A session launch is still finishing. Try Close again shortly.")
             return
         }
         await waitForUpdates()
@@ -1950,7 +1967,7 @@ public final class AppWorkspaceModel: ObservableObject {
         do {
             publish(try await service.execute(command).snapshot)
             terminals = terminals.filter { snapshot.panes[$0.key] != nil }
-        } catch { errorMessage = "The sessions could not be closed." }
+        } catch { errorMessage = L("The sessions could not be closed.") }
     }
 
     /// Preserve callback order across async store calls, including fast exits.
@@ -1959,7 +1976,7 @@ public final class AppWorkspaceModel: ObservableObject {
         updates = Task { @MainActor [weak self] in
             await previous?.value
             guard let self else { return }
-            do { self.publish(try await self.service.execute(command).snapshot) } catch { self.errorMessage = "The terminal state could not be updated." }
+            do { self.publish(try await self.service.execute(command).snapshot) } catch { self.errorMessage = L("The terminal state could not be updated.") }
         }
     }
 
@@ -2005,13 +2022,13 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         let plan = TerminalPastePlan(input: input, shell: shell)
         let paneNumber = (presentation.selectedTab?.root.paneIDs.firstIndex(of: paneID) ?? 0) + 1
-        let paneName = "Pane \(paneNumber) — \(presentation.activePane?.title ?? "Terminal")"
+        let paneName = L("Pane %1$d — %2$@", paneNumber, presentation.activePane?.title ?? L("Terminal"))
         let name = [presentation.selectedSpace?.name, presentation.selectedTab?.title, paneName]
             .compactMap { $0 }.joined(separator: " / ")
         defer { pendingPaste = pasteReview.pending }
         do {
             try pasteReview.request(plan, target: target, name: name) { try terminal.paste($0) }
-        } catch { errorMessage = "The paste could not be sent. The session may have stopped or the input may be too large." }
+        } catch { errorMessage = L("The paste could not be sent. The session may have stopped or the input may be too large.") }
     }
 
     public func confirmPaste(_ id: UUID) {
@@ -2022,7 +2039,7 @@ public final class AppWorkspaceModel: ObservableObject {
                 guard let target, let terminal = terminals[target.paneID] else { return }
                 try terminal.paste(plan)
             }
-        } catch { errorMessage = "The paste could not be sent. The session may have stopped or the input may be too large." }
+        } catch { errorMessage = L("The paste could not be sent. The session may have stopped or the input may be too large.") }
     }
 
     private func notePasteFocus(_ paneID: UUID?) {
@@ -2081,6 +2098,6 @@ public final class AppWorkspaceModel: ObservableObject {
             activity.removeAll()
             shuttingDown = false
             return await flushWorkspaceSave()
-        } catch { errorMessage = "The workspaces could not be closed."; shuttingDown = false; return false }
+        } catch { errorMessage = L("The workspaces could not be closed."); shuttingDown = false; return false }
     }
 }

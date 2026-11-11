@@ -15,38 +15,38 @@ struct KeyboardSettingsView: View {
     var body: some View {
         let issues = draft.shortcuts.issues()
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("Use Option as Meta key", isOn: $draft.optionAsMeta)
-            Text("When off, Option types accented and layout characters (such as Portuguese symbols and dead keys). When on, Option sends Esc-prefixed Meta keys.")
+            Toggle(L("Use Option as Meta key"), isOn: $draft.optionAsMeta)
+            Text(L("When off, Option types accented and layout characters (such as Portuguese symbols and dead keys). When on, Option sends Esc-prefixed Meta keys."))
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             List {
                 ForEach(ShortcutMenu.allCases, id: \.self) { menu in
-                    Section(menu.rawValue.capitalized) {
+                    Section(menu.title) {
                         ForEach(ShortcutAction.allCases.filter { $0.menu == menu }, id: \.self) { row($0, issues: issues) }
                     }
                 }
             }
             .frame(minHeight: 220)
-            .accessibilityLabel("Keyboard shortcuts")
+            .accessibilityLabel(L("Keyboard shortcuts"))
             if !issues.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
                         Label(issue.description, systemImage: "exclamationmark.triangle").font(.caption)
                     }
-                }.accessibilityElement(children: .combine).accessibilityLabel("Shortcut problems: \(issues.map(\.description).joined(separator: " "))")
+                }.accessibilityElement(children: .combine).accessibilityLabel(L("Shortcut problems: %@", issues.map(\.description).joined(separator: " ")))
             }
             if let notice = model.keyboardNotice { Text(notice).font(.caption) }
             if let message { Text(message).font(.caption).accessibilityIdentifier("keyboard.result") }
             HStack {
-                Button("Restore Defaults") {
+                Button(L("Restore Defaults")) {
                     let meta = draft.optionAsMeta
                     draft = KeyboardSettings()
                     draft.optionAsMeta = meta
                 }
                 Spacer()
-                Button("Revert") { draft = model.keyboard }.disabled(draft == model.keyboard)
-                Button("Save Shortcuts") {
+                Button(L("Revert")) { draft = model.keyboard }.disabled(draft == model.keyboard)
+                Button(L("Save Shortcuts")) {
                     let problems = model.saveKeyboardSettings(draft)
-                    message = problems.isEmpty ? "Keyboard settings saved." : "Not saved. \(problems.map(\.description).joined(separator: " "))"
+                    message = problems.isEmpty ? L("Keyboard settings saved.") : L("Not saved. %@", problems.map(\.description).joined(separator: " "))
                 }.disabled(!issues.isEmpty || draft == model.keyboard)
             }
         }
@@ -61,16 +61,16 @@ struct KeyboardSettingsView: View {
         return HStack {
             Text(action.title)
             Spacer()
-            if problem { Image(systemName: "exclamationmark.triangle").help("This shortcut has a problem").accessibilityHidden(true) }
-            Button(recording == action ? "Type shortcut…" : chord?.description ?? "None") {
+            if problem { Image(systemName: "exclamationmark.triangle").help(L("This shortcut has a problem")).accessibilityHidden(true) }
+            Button(recording == action ? L("Type shortcut…") : chord?.description ?? L("None")) {
                 recording == action ? stopRecording() : startRecording(action)
             }
             .font(.system(.body, design: .monospaced))
-            .accessibilityLabel("\(action.title) shortcut")
-            .accessibilityValue(recording == action ? "Recording. Press a shortcut with Command, or Escape to cancel." : chord?.description ?? "None")
-            .accessibilityHint("Records a new shortcut")
-            Button("Clear") { draft.shortcuts = draft.shortcuts.assigning(nil, to: action) }
-                .disabled(chord == nil).accessibilityLabel("Clear \(action.title) shortcut")
+            .accessibilityLabel(L("%@ shortcut", action.title))
+            .accessibilityValue(recording == action ? L("Recording. Press a shortcut with Command, or Escape to cancel.") : chord?.description ?? L("None"))
+            .accessibilityHint(L("Records a new shortcut"))
+            Button(L("Clear")) { draft.shortcuts = draft.shortcuts.assigning(nil, to: action) }
+                .disabled(chord == nil).accessibilityLabel(L("Clear %@ shortcut", action.title))
         }
         .accessibilityElement(children: .contain)
     }

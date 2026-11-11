@@ -77,8 +77,8 @@ struct BusyLabel: View {
             }
         }
         .frame(width: 11, height: 11).padding(1)
-        .help("Busy")
-        .accessibilityElement().accessibilityLabel("Busy")
+        .help(L("Busy"))
+        .accessibilityElement().accessibilityLabel(L("Busy"))
     }
 }
 
@@ -177,31 +177,31 @@ struct AgentInstallSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(offer.afterInstall ? "\(offer.agent.name) still isn’t found on \(offer.hostName)" : "Install \(offer.agent.name) on \(offer.hostName)?")
+            Text(offer.afterInstall ? L("%1$@ still isn’t found on %2$@", offer.agent.name, offer.hostName) : L("Install %1$@ on %2$@?", offer.agent.name, offer.hostName))
                 .font(.headline)
             Text(explanation).fixedSize(horizontal: false, vertical: true)
             if let recipe = offer.recipe {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Command that will run").font(.subheadline.weight(.semibold))
+                    Text(L("Command that will run")).font(.subheadline.weight(.semibold))
                     Text(recipe.command).font(.system(.body, design: .monospaced)).textSelection(.enabled)
                         .padding(8).frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
-                        .accessibilityLabel("Command: \(recipe.command)")
+                        .accessibilityLabel(L("Command: %@", recipe.command))
                     if !recipe.requires.isEmpty {
-                        Text("Needs \(recipe.requires.joined(separator: ", ")) on the PATH.").font(.callout).foregroundStyle(.secondary)
+                        Text(L("Needs %@ on the PATH.", recipe.requires.joined(separator: ", "))).font(.callout).foregroundStyle(.secondary)
                     }
                     if !offer.missingRequirements.isEmpty {
-                        Label("Not found on this Mac: \(offer.missingRequirements.joined(separator: ", ")). Install it first.", systemImage: "exclamationmark.triangle")
+                        Label(L("Not found on this Mac: %@. Install it first.", offer.missingRequirements.joined(separator: ", ")), systemImage: "exclamationmark.triangle")
                             .font(.callout)
                     }
                 }
             }
             HStack {
-                if let homepage = offer.agent.homepage, let url = URL(string: homepage) { Link("About \(offer.agent.name)", destination: url) }
+                if let homepage = offer.agent.homepage, let url = URL(string: homepage) { Link(L("About %@", offer.agent.name), destination: url) }
                 Spacer()
-                Button("Cancel", role: .cancel) { model.agentInstallOffer = nil }.keyboardShortcut(.cancelAction)
+                Button(L("Cancel"), role: .cancel) { model.agentInstallOffer = nil }.keyboardShortcut(.cancelAction)
                 if offer.recipe != nil {
-                    Button(offer.afterInstall ? "Run Installer Again" : "Install and Launch") { Task { await model.installAgent(offer) } }
+                    Button(offer.afterInstall ? L("Run Installer Again") : L("Install and Launch")) { Task { await model.installAgent(offer) } }
                         .keyboardShortcut(.defaultAction).disabled(!offer.missingRequirements.isEmpty)
                 }
             }
@@ -211,12 +211,12 @@ struct AgentInstallSheet: View {
 
     private var explanation: String {
         if offer.afterInstall {
-            return "The installer finished, but your login shell still can’t find \(offer.agent.executable). Check the installer’s output in the pane; you may need to add its folder to your PATH."
+            return L("The installer finished, but your login shell still can’t find %@. Check the installer’s output in the pane; you may need to add its folder to your PATH.", offer.agent.executable)
         }
         guard offer.recipe != nil else {
-            return "\(offer.agent.executable) isn’t on the PATH of your login shell there, and this agent has no installer for that system. Install it yourself, then choose Restart in the pane."
+            return L("%@ isn’t on the PATH of your login shell there, and this agent has no installer for that system. Install it yourself, then choose Restart in the pane.", offer.agent.executable)
         }
-        return "\(offer.agent.executable) isn’t on the PATH of your login shell there. Trellis can run the vendor’s installer in this pane, as you, without sudo; you’ll see its output and any sign-in prompt."
+        return L("%@ isn’t on the PATH of your login shell there. Trellis can run the vendor’s installer in this pane, as you, without sudo; you’ll see its output and any sign-in prompt.", offer.agent.executable)
     }
 }
 
@@ -228,8 +228,8 @@ struct AgentSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Button("Reveal Agents Folder") { model.revealAgentsFolder() }.disabled(model.agentsDirectory == nil)
-                Button("Reload") {
+                Button(L("Reveal Agents Folder")) { model.revealAgentsFolder() }.disabled(model.agentsDirectory == nil)
+                Button(L("Reload")) {
                     model.reloadAgentCatalog()
                     model.refreshAgentAvailability()
                 }
@@ -237,7 +237,7 @@ struct AgentSettingsView: View {
             }
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
                 GridRow {
-                    Text("Agent"); Text("Source"); Text("Live status"); Text("This Mac")
+                    Text(L("Agent")); Text(L("Source")); Text(L("Live status")); Text(L("This Mac"))
                 }.font(.caption.weight(.semibold)).foregroundStyle(model.themeColor(.mutedForeground))
                 ForEach(model.agentCatalog.definitions) { agent in
                     GridRow {
@@ -245,7 +245,7 @@ struct AgentSettingsView: View {
                             AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id], size: 12).accessibilityHidden(true)
                             Text(agent.name).fontWeight(.medium)
                         }
-                        Text(agent.isBuiltIn ? "Built-in" : "Agents folder")
+                        Text(agent.isBuiltIn ? L("Built-in") : L("Agents folder"))
                         Text(agent.integration.displayName)
                         Text(availability(agent))
                     }
@@ -254,20 +254,24 @@ struct AgentSettingsView: View {
             }
             if !model.agentCatalog.issues.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Files that couldn’t be used").font(.subheadline.weight(.semibold))
+                    Text(L("Files that couldn’t be used")).font(.subheadline.weight(.semibold))
                     ForEach(model.agentCatalog.issues, id: \.filename) { issue in
                         Label("\(issue.filename): \(issue.message)", systemImage: "exclamationmark.triangle").font(.callout).wrappingSettingsCaption()
                     }
                 }
             }
-            Toggle("Notify me when an agent needs me or finishes while its pane is out of view", isOn: $model.agentNotificationsEnabled)
-            Toggle("Connect agents typed in a shell", isOn: $model.typedAgentWiringEnabled)
+            Toggle(L("Notify me when an agent needs me or finishes while its pane is out of view"), isOn: $model.agentNotificationsEnabled)
+            Toggle(L("Connect agents typed in a shell"), isOn: $model.typedAgentWiringEnabled)
             Text(
-                "Typing an agent’s command in a zsh, bash or fish pane on this Mac runs it with the same hooks, so it shows its state and is listed under Running. Your own function or alias of the same name wins, and “command <agent>” runs it without hooks. Applies to shells started after the change."
+                L(
+                    "Typing an agent’s command in a zsh, bash or fish pane on this Mac runs it with the same hooks, so it shows its state and is listed under Running. Your own function or alias of the same name wins, and “command <agent>” runs it without hooks. Applies to shells started after the change."
+                )
             )
             .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
             Text(
-                "Trellis wires each agent’s own hooks at launch, without changing your agent settings. A hook can only set its own pane’s state; it gets no automation access, and nothing from the conversation reaches Trellis. Add an agent by dropping a <id>.agent.json file in the Agents folder."
+                L(
+                    "Trellis wires each agent’s own hooks at launch, without changing your agent settings. A hook can only set its own pane’s state; it gets no automation access, and nothing from the conversation reaches Trellis. Add an agent by dropping a <id>.agent.json file in the Agents folder."
+                )
             )
             .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
         }
@@ -278,10 +282,10 @@ struct AgentSettingsView: View {
 
     private func availability(_ agent: AgentDefinition) -> String {
         switch model.agentAvailability[agent.id] {
-        case .installed?: "Installed"
-        case .missing?: "Not found on PATH"
-        case .checking?: "Checking…"
-        case nil: "Unknown"
+        case .installed?: L("Installed")
+        case .missing?: L("Not found on PATH")
+        case .checking?: L("Checking…")
+        case nil: L("Unknown")
         }
     }
 }

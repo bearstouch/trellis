@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TrellisCore
 import TrellisTerminal
 
 struct TerminalSearchBar: View {
@@ -16,19 +17,19 @@ struct TerminalSearchBar: View {
                 } label: {
                     Image(systemName: "chevron.up")
                 }
-                .accessibilityLabel("Previous Match").help("Previous Match (⇧⌘G)")
+                .accessibilityLabel(L("Previous Match")).help(L("Previous Match (⇧⌘G)"))
                 Button {
                     terminal.onFocused?(); terminal.findInPane()
                 } label: {
                     Image(systemName: "chevron.down")
                 }
-                .accessibilityLabel("Next Match").help("Next Match (⌘G)")
+                .accessibilityLabel(L("Next Match")).help(L("Next Match (⌘G)"))
                 Button {
                     terminal.closeSearch()
                 } label: {
                     Image(systemName: "xmark")
                 }
-                .accessibilityLabel("Close Search").help("Close Search (Esc)")
+                .accessibilityLabel(L("Close Search")).help(L("Close Search (Esc)"))
             }
             Text(terminal.searchStatus).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
                 .frame(height: 24, alignment: .leading)
@@ -76,8 +77,8 @@ private struct PaneSearchField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(terminal) }
     func makeNSView(context: Context) -> SearchField {
         let field = SearchField()
-        field.placeholderString = "Find in this pane"
-        field.setAccessibilityLabel("Find in this pane")
+        field.placeholderString = L("Find in this pane")
+        field.setAccessibilityLabel(L("Find in this pane"))
         field.isBezeled = true
         field.bezelStyle = .roundedBezel
         field.font = .systemFont(ofSize: 13)

@@ -48,11 +48,11 @@ public struct TaskRun: Equatable, Sendable {
     /// The button's words, never color alone: "Running: test", "test: done", "test: exit 2", "test: stopped".
     public func statusText(now: Date) -> String {
         switch phase {
-        case .submitted: "Starting: \(name)"
-        case .running(let since): "Running: \(name) · \(ShellIntegrationState.durationText(now.timeIntervalSince(since)))"
-        case .finished(let code?, _) where code == 0: "\(name): done"
-        case .finished(let code?, _): "\(name): exit \(code)"
-        case .finished(nil, _): "\(name): ended"
+        case .submitted: L("Starting: %@", name)
+        case .running(let since): L("Running: %1$@ · %2$@", name, ShellIntegrationState.durationText(now.timeIntervalSince(since)))
+        case .finished(let code?, _) where code == 0: L("%@: done", name)
+        case .finished(let code?, _): L("%1$@: exit %2$d", name, Int(code))
+        case .finished(nil, _): L("%@: ended", name)
         }
     }
 

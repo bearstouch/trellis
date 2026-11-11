@@ -15,17 +15,17 @@ struct AliasDiscoveryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Discover SSH Aliases").font(.headline)
-            Text("Reads literal Host names from ~/.ssh/config without changing it. Each alias is saved as its destination, so ssh keeps applying your configuration.")
+            Text(L("Discover SSH Aliases")).font(.headline)
+            Text(L("Reads literal Host names from ~/.ssh/config without changing it. Each alias is saved as its destination, so ssh keeps applying your configuration."))
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             switch outcome {
-            case nil: ProgressView("Reading ~/.ssh/config…")
+            case nil: ProgressView(L("Reading ~/.ssh/config…"))
             case .failure(let failure):
                 Text(HostListModel.message(for: failure)).fixedSize(horizontal: false, vertical: true)
-                Button("Try Again") { Task { await load() } }
+                Button(L("Try Again")) { Task { await load() } }
             case .success(let result):
                 if result.aliases.isEmpty {
-                    Text("No literal aliases were found.").foregroundStyle(.secondary)
+                    Text(L("No literal aliases were found.")).foregroundStyle(.secondary)
                 } else {
                     List(result.aliases, id: \.name) { alias in
                         let exists = saved.contains(alias.name)
@@ -33,13 +33,13 @@ struct AliasDiscoveryView: View {
                             HStack {
                                 Text(alias.name)
                                 Spacer()
-                                Text(exists ? "Already saved" : "Line \(alias.line)").font(.caption).foregroundStyle(.secondary)
+                                Text(exists ? L("Already saved") : L("Line %@", String(alias.line))).font(.caption).foregroundStyle(.secondary)
                             }
                         }
                         .disabled(exists)
-                        .accessibilityValue(exists ? "Already saved" : selected.contains(alias.name) ? "Selected" : "Not selected")
+                        .accessibilityValue(exists ? L("Already saved") : selected.contains(alias.name) ? L("Selected") : L("Not selected"))
                     }
-                    .frame(minHeight: 160).accessibilityLabel("Discovered aliases")
+                    .frame(minHeight: 160).accessibilityLabel(L("Discovered aliases"))
                 }
                 if !result.warnings.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
@@ -53,8 +53,8 @@ struct AliasDiscoveryView: View {
             if let message { Text(message).font(.caption) }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Add \(selected.count) Selected") { add() }
+                Button(L("Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L("Add %d Selected", selected.count)) { add() }
                     .keyboardShortcut(.defaultAction).disabled(selected.isEmpty || adding)
             }
         }
@@ -81,7 +81,7 @@ struct AliasDiscoveryView: View {
         Task {
             if let failure = await model.importAliases(names) {
                 if case .invalid = failure {
-                    message = "A selected alias cannot be saved as a destination. Nothing was added; deselect it or add it manually."
+                    message = L("A selected alias cannot be saved as a destination. Nothing was added; deselect it or add it manually.")
                 } else {
                     message = HostListModel.message(for: failure)
                 }

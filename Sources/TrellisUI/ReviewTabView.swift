@@ -20,7 +20,7 @@ struct ReviewTabView: View {
             footer
         }
         .background(model.panesTranslucent ? .clear : model.terminalBackground)
-        .accessibilityElement(children: .contain).accessibilityLabel("Review \(review.file.name)")
+        .accessibilityElement(children: .contain).accessibilityLabel(L("Review %@", review.file.name))
         .onAppear { DispatchQueue.main.async { focused = true } }
         .onChange(of: review.file) { _, _ in changeIndex = nil }
         // Staging from here must say how it went with the sidebar hidden too; the Changes view announces it when shown.
@@ -51,10 +51,10 @@ struct ReviewTabView: View {
             .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ChangeStatusLetter.tint(file.kind, model).opacity(0.6), lineWidth: 1))
             .accessibilityElement(children: .combine)
             if file.binary {
-                Text("binary").font(.caption).foregroundStyle(muted)
+                Text(L("binary")).font(.caption).foregroundStyle(muted)
             } else {
                 LineCounts(model: model, added: file.added ?? 0, removed: file.removed ?? 0)
-                    .accessibilityElement().accessibilityLabel("\(file.added ?? 0) lines added, \(file.removed ?? 0) removed")
+                    .accessibilityElement().accessibilityLabel(L("%1$d lines added, %2$d removed", file.added ?? 0, file.removed ?? 0))
             }
             if let staged = file.staging.word { Text(staged).font(.caption).foregroundStyle(muted) }
             Spacer(minLength: 8)
@@ -65,31 +65,31 @@ struct ReviewTabView: View {
                     } label: {
                         Image(systemName: "chevron.up")
                     }
-                    .disabled(position.index <= 1).help("Previous file ([)").accessibilityLabel("Previous changed file")
-                    Text("\(position.index) of \(position.count)").font(.caption).monospacedDigit().foregroundStyle(muted).frame(minWidth: 50)
+                    .disabled(position.index <= 1).help(L("Previous file ([)")).accessibilityLabel(L("Previous changed file"))
+                    Text(L("%1$d of %2$d", position.index, position.count)).font(.caption).monospacedDigit().foregroundStyle(muted).frame(minWidth: 50)
                     Button {
                         Task { await model.reviewAdjacentFile(1) }
                     } label: {
                         Image(systemName: "chevron.down")
                     }
-                    .disabled(position.index >= position.count).help("Next file (])").accessibilityLabel("Next changed file")
+                    .disabled(position.index >= position.count).help(L("Next file (])")).accessibilityLabel(L("Next changed file"))
                 }.buttonStyle(.borderless)
             }
-            Button(file.staging == .full ? "Unstage" : "Stage") { Task { await model.toggleGitChangeStaged(file.path) } }
+            Button(file.staging == .full ? L("Unstage") : L("Stage")) { Task { await model.toggleGitChangeStaged(file.path) } }
                 .controlSize(.small).disabled(busy || model.gitChanges.list?.root != review.root)
-                .help(file.staging == .full ? "Unstage \(file.name)" : "Stage all of \(file.name)")
+                .help(file.staging == .full ? L("Unstage %@", file.name) : L("Stage all of %@", file.name))
             Button {
                 Task { await model.openGitChange(review.root, file) }
             } label: {
-                Label("Open in \(model.files.editor.name)", systemImage: "arrow.up.forward.app")
+                Label(L("Open in %@", model.files.editor.name), systemImage: "arrow.up.forward.app")
             }
-            .controlSize(.small).disabled(file.kind == .deleted).help("Open \(file.name) in \(model.files.editor.name) (Return)")
+            .controlSize(.small).disabled(file.kind == .deleted).help(L("Open %1$@ in %2$@ (Return)", file.name, model.files.editor.name))
             Button {
                 Task { await model.reloadReview() }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .buttonStyle(.borderless).help("Read the diff again").accessibilityLabel("Reload diff")
+            .buttonStyle(.borderless).help(L("Read the diff again")).accessibilityLabel(L("Reload diff"))
         }
         .padding(.horizontal, 14).padding(.vertical, 8).background(model.chromeFill(.surface))
     }
@@ -100,13 +100,13 @@ struct ReviewTabView: View {
         switch review.diff?.body {
         case nil:
             if review.failed {
-                notice("Couldn't read the diff", "Git failed or took too long. Reload to try again.")
+                notice(L("Couldn't read the diff"), L("Git failed or took too long. Reload to try again."))
             } else {
                 ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        case .binary?: notice("Binary file", "Binary file; no text diff.")
-        case .tooLarge?: notice("Diff too large", "This diff is over 2 MB or 20,000 lines. Open the file to see it.")
-        case .unchanged?: notice("No changes", "\(review.file.name) no longer differs from HEAD.")
+        case .binary?: notice(L("Binary file"), L("Binary file; no text diff."))
+        case .tooLarge?: notice(L("Diff too large"), L("This diff is over 2 MB or 20,000 lines. Open the file to see it."))
+        case .unchanged?: notice(L("No changes"), L("%@ no longer differs from HEAD.", review.file.name))
         case .lines(let lines)?: diff(lines)
         }
     }
@@ -129,16 +129,16 @@ struct ReviewTabView: View {
             }
             .focusable().focused($focused).focusEffectDisabled()
             .onKeyPress(phases: .down) { handleKey($0, proxy: proxy) }
-            .accessibilityLabel("Unified diff of \(review.file.name)")
+            .accessibilityLabel(L("Unified diff of %@", review.file.name))
         }
     }
 
     private var footer: some View {
         HStack(spacing: 16) {
-            hint("n / p", "next or previous change")
-            hint("] / [", "next or previous file")
-            hint("↩", "open in \(model.files.editor.name)")
-            hint("esc", "back to the terminal")
+            hint("n / p", L("next or previous change"))
+            hint("] / [", L("next or previous file"))
+            hint("↩", L("open in %@", model.files.editor.name))
+            hint("esc", L("back to the terminal"))
             Spacer(minLength: 0)
             if let status = model.gitChanges.status { Text(status).foregroundStyle(model.themeColor(.foreground)).truncationMode(.middle).layoutPriority(1) }
         }

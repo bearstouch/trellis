@@ -15,13 +15,13 @@ struct ThemePreviewView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ThemeLibraryControls(workspace: workspace, preview: model)
                 HStack {
-                    Button("Preview JSON…") { model.chooseFile() }.disabled(model.loading)
+                    Button(L("Preview JSON…")) { model.chooseFile() }.disabled(model.loading)
                     Spacer()
                     ForEach(ThemeExample.allCases, id: \.self) { example in
-                        Button(example.rawValue.capitalized) { model.example(example) }
+                        Button(example.title) { model.example(example) }
                     }
                 }
-                Text("The sample stays separate until you choose Preview in Workspace. Save & Use installs the theme.")
+                Text(L("The sample stays separate until you choose Preview in Workspace. Save & Use installs the theme."))
                     .font(.caption).foregroundStyle(.secondary)
                 if let error = model.validationMessage {
                     Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
@@ -29,9 +29,9 @@ struct ThemePreviewView: View {
                 Text(model.theme.name).font(.headline)
                 sample
                 if model.theme.contrastWarnings.isEmpty {
-                    Text("Text and essential boundary contrast checks pass.").font(.caption).foregroundStyle(.secondary)
+                    Text(L("Text and essential boundary contrast checks pass.")).font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Text("Contrast advice · Colors are valid and may still be used.").font(.caption.bold())
+                    Text(L("Contrast advice · Colors are valid and may still be used.")).font(.caption.bold())
                     ForEach(Array(model.theme.contrastWarnings.enumerated()), id: \.offset) { _, warning in
                         Text(warning.message).font(.caption).textSelection(.enabled)
                     }
@@ -44,16 +44,16 @@ struct ThemePreviewView: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("SPACES").font(.system(size: 9)).foregroundStyle(ui(.mutedForeground))
-                    Text("Workspace").font(.system(size: 11, weight: .semibold)).foregroundStyle(ui(.foreground))
-                    Text("Local").font(.system(size: 11)).foregroundStyle(ui(.accent))
+                    Text(L("SPACES")).font(.system(size: 9)).foregroundStyle(ui(.mutedForeground))
+                    Text(L("Workspace")).font(.system(size: 11, weight: .semibold)).foregroundStyle(ui(.foreground))
+                    Text(L("Local")).font(.system(size: 11)).foregroundStyle(ui(.accent))
                     Spacer()
                 }.padding(10).frame(width: 105).background(ui(.sidebarBackground))
                 Rectangle().fill(ui(.border)).frame(width: 1)
                 VStack(spacing: 0) {
                     HStack {
-                        Text("Terminal").padding(6).foregroundStyle(ui(.activeTabForeground)).background(ui(.activeTabBackground))
-                        Text("Logs").foregroundStyle(ui(.mutedForeground))
+                        Text(L("Terminal")).padding(6).foregroundStyle(ui(.activeTabForeground)).background(ui(.activeTabBackground))
+                        Text(L("Logs")).foregroundStyle(ui(.mutedForeground))
                         Spacer()
                     }.font(.system(size: 11)).padding(4).background(ui(.surface))
                     NativeTerminalSurface(terminal: model.terminal, isFocused: false)
@@ -61,9 +61,9 @@ struct ThemePreviewView: View {
                 }
             }
             HStack(spacing: 12) {
-                Text("✓ Ready").foregroundStyle(ui(.success))
-                Text("⚠ Warning").foregroundStyle(ui(.warning))
-                Text("! Error").foregroundStyle(ui(.error))
+                Text(L("✓ Ready")).foregroundStyle(ui(.success))
+                Text(L("⚠ Warning")).foregroundStyle(ui(.warning))
+                Text(L("! Error")).foregroundStyle(ui(.error))
                 Spacer()
             }.font(.system(size: 11)).padding(10).background(ui(.background))
             HStack(spacing: 3) {
@@ -73,21 +73,31 @@ struct ThemePreviewView: View {
                     Text(String(format: "%02d", index)).font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(luminance > 0.179 ? Color.black : Color.white)
                         .frame(maxWidth: .infinity).frame(height: 20).background(color(rgb))
-                        .accessibilityLabel("ANSI \(index): \(String(format: "#%06X", rgb))")
+                        .accessibilityLabel(L("ANSI %1$@: %2$@", String(index), String(format: "#%06X", rgb)))
                 }
             }.padding(8).background(ui(.surface))
             HStack {
-                Text("Selected text").foregroundStyle(color(model.theme.terminal.selectionForeground))
+                Text(L("Selected text")).foregroundStyle(color(model.theme.terminal.selectionForeground))
                     .padding(4).background(color(model.theme.terminal.selectionBackground))
                 Text("A").foregroundStyle(color(model.theme.terminal.cursorText))
                     .padding(4).background(color(model.theme.terminal.cursor))
-                Text("Cursor text").foregroundStyle(ui(.foreground))
+                Text(L("Cursor text")).foregroundStyle(ui(.foreground))
                 Spacer()
             }.font(.system(size: 11)).padding(8).background(ui(.background))
         }
         .overlay(Rectangle().stroke(ui(.border), lineWidth: 1))
         .environment(\.colorScheme, model.theme.appearance == .light ? .light : .dark)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Theme sample: application chrome, terminal indexes 0–15, selection, cursor, and status")
+        .accessibilityLabel(L("Theme sample: application chrome, terminal indexes 0–15, selection, cursor, and status"))
+    }
+}
+
+extension ThemeExample {
+    fileprivate var title: String {
+        switch self {
+        case .minimal: L("Minimal")
+        case .light: L("Light")
+        case .dark: L("Dark")
+        }
     }
 }

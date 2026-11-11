@@ -7,20 +7,20 @@ public enum WelcomeTourStep: Int, CaseIterable, Sendable {
     case welcome, workspace, sessions, projects, remote, agents, keyboard, setup
     public var title: String {
         switch self {
-        case .welcome: "Welcome to Trellis"
-        case .workspace: "Spaces, tabs and splits"
-        case .sessions: "Sessions keep running"
-        case .projects: "Start a project in one step"
-        case .remote: "Remote work that holds on"
-        case .agents: "Coding agents, built in"
-        case .keyboard: "Everything, from the keyboard"
-        case .setup: "Make it yours"
+        case .welcome: L("Welcome to Trellis")
+        case .workspace: L("Spaces, tabs and splits")
+        case .sessions: L("Sessions keep running")
+        case .projects: L("Start a project in one step")
+        case .remote: L("Remote work that holds on")
+        case .agents: L("Coding agents, built in")
+        case .keyboard: L("Everything, from the keyboard")
+        case .setup: L("Make it yours")
         }
     }
     var previous: Self? { Self(rawValue: rawValue - 1) }
     var next: Self? { Self(rawValue: rawValue + 1) }
     /// "1 of 8", as the dialog shows it.
-    var counter: String { "\(rawValue + 1) of \(Self.allCases.count)" }
+    var counter: String { L("%1$d of %2$d", rawValue + 1, Self.allCases.count) }
 }
 
 /// The MAC-15 offer as the tour's last step shows it (FR-ON07).
@@ -150,9 +150,8 @@ extension AppWorkspaceModel {
 
     /// The keyboard step's Files row names the other dock views' chords, or the dock itself when any of them is unbound.
     var welcomeTourSidebarDetail: String {
-        let lead = "Browse the focused pane’s project in the right sidebar."
         let chords = [SidebarView.scratchpad, .tasks, .agents].compactMap { welcomeTourChord($0.shortcut) }
-        guard chords.count == 3 else { return "\(lead) The dock on the window’s edge also opens the scratchpad, tasks and agents." }
-        return "\(lead) \(chords[0]), \(chords[1]) and \(chords[2]) open the scratchpad, tasks and agents."
+        guard chords.count == 3 else { return L("Browse the focused pane’s project in the right sidebar. The dock on the window’s edge also opens the scratchpad, tasks and agents.") }
+        return L("Browse the focused pane’s project in the right sidebar. %1$@, %2$@ and %3$@ open the scratchpad, tasks and agents.", chords[0], chords[1], chords[2])
     }
 }

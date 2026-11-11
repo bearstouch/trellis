@@ -23,11 +23,11 @@ public enum RemoteSSHDiagnosis: Equatable, Sendable {
         let line = output.split(whereSeparator: \.isNewline).last.map { String($0).trimmingCharacters(in: .whitespaces) } ?? ""
         // A person-only reason wins: "Connection closed by host" after a refused key still needs the person.
         if personMarkers.contains(where: text.contains) {
-            return .needsInput(line.isEmpty ? "The host needs your password or a decision about its key." : line)
+            return .needsInput(line.isEmpty ? L("The host needs your password or a decision about its key.") : line)
         }
         if networkMarkers.contains(where: text.contains) { return .unreachable(line) }
         // ssh's own failures exit 255; without a recognizable reason, ask rather than retry blindly.
-        return exitCode == 255 ? .needsInput(line.isEmpty ? "ssh couldn't connect without asking you something." : line) : .unreachable(line)
+        return exitCode == 255 ? .needsInput(line.isEmpty ? L("ssh couldn't connect without asking you something.") : line) : .unreachable(line)
     }
 }
 

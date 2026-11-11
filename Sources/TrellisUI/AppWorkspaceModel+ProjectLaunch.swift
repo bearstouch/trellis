@@ -100,7 +100,8 @@ extension AppWorkspaceModel {
             let home = FileManager.default.homeDirectoryForCurrentUser.path
             guard var launch = ProjectLaunch.resolve(project, target: target, folder: folder, home: home) else {
                 return .failure(
-                    ProjectSupportFailure("Choose a folder such as ~/code/\(ProjectLaunch.suggestedFolder(project, target: .host(UUID()))), other than your home folder, without quotes, $, backticks, backslashes or !."))
+                    ProjectSupportFailure(
+                        L("Choose a folder such as ~/code/%@, other than your home folder, without quotes, $, backticks, backslashes or !.", ProjectLaunch.suggestedFolder(project, target: .host(UUID())))))
             }
             let manager = FileManager.default
             launch.check(
@@ -111,14 +112,16 @@ extension AppWorkspaceModel {
             return .success(launch)
         case .host(let hostID):
             guard let connection = await projectHostConnection(hostID) else {
-                var reason = "Check the host, then try again."
+                var reason = L("Check the host, then try again.")
                 if case .disconnected(let message?)? = remoteLinks[hostID] { reason = message }
-                return .failure(ProjectSupportFailure("Couldn't connect to \(remoteHostName(hostID)). \(reason)"))
+                return .failure(ProjectSupportFailure(L("Couldn't connect to %1$@. %2$@", remoteHostName(hostID), reason)))
             }
             guard let home = connection.hostInfo?.home, let resolved = ProjectLaunch.resolve(project, target: target, folder: folder, home: home) else {
                 return .failure(
                     ProjectSupportFailure(
-                        "Choose a folder inside your home folder on \(remoteHostName(hostID)), such as code/\(ProjectLaunch.suggestedFolder(project, target: target)), without .., quotes, $, backticks, backslashes or !.")
+                        L(
+                            "Choose a folder inside your home folder on %1$@, such as code/%2$@, without .., quotes, $, backticks, backslashes or !.", remoteHostName(hostID),
+                            ProjectLaunch.suggestedFolder(project, target: target)))
                 )
             }
             let launch = await RemoteFacts(connection: connection).evaluate { lookup in
@@ -175,7 +178,7 @@ extension AppWorkspaceModel {
                     }
                 }
             } else {
-                session.stage = .failed(running, code.map { "Setup stopped with exit status \($0). Check the output, then retry." } ?? "Setup ended without an exit status.")
+                session.stage = .failed(running, code.map { L("Setup stopped with exit status %d. Check the output, then retry.", Int($0)) } ?? L("Setup ended without an exit status."))
             }
         }
         switch launch.target {
@@ -187,12 +190,12 @@ extension AppWorkspaceModel {
                     executable: shell, arguments: ["-l", "-c", launch.setupCommand], directory: FileManager.default.homeDirectoryForCurrentUser.path))
         case .host(let hostID):
             guard let connection = remoteHosts?.workspaceConnection(hostID) else {
-                session.stage = .failed(launch, "\(remoteHostName(hostID)) isn't connected. Reconnect, then retry.")
+                session.stage = .failed(launch, L("%@ isn't connected. Reconnect, then retry.", remoteHostName(hostID)))
                 return
             }
             // A v2 helper would ignore the command and start an interactive shell instead (FR-RW18).
             guard connection.protocolVersion >= 3 else {
-                session.stage = .failed(launch, "The Trellis helper on \(remoteHostName(hostID)) is older than this version. Update it in Hosts (Update Helper…), then retry.")
+                session.stage = .failed(launch, L("The Trellis helper on %@ is older than this version. Update it in Hosts (Update Helper…), then retry.", remoteHostName(hostID)))
                 return
             }
             let transport = RemoteSessionTransport(sessionID: UUID(), hostID: hostID, connection: connection)
@@ -215,12 +218,12 @@ extension AppWorkspaceModel {
         session.checkGeneration += 1
         session.stage = .opening
         guard !isRestoring, recoveryMessage == nil, !shuttingDown else {
-            session.stage = .failed(launch, "The workspace isn't available yet. Try again once it has loaded.")
+            session.stage = .failed(launch, L("The workspace isn't available yet. Try again once it has loaded."))
             return
         }
         let bindings: [String: LayoutBinding]
         do { bindings = try layoutBindings(launch.namespace) } catch {
-            session.stage = .failed(launch, "Saved layout bindings could not be read, so the project can't open.")
+            session.stage = .failed(launch, L("Saved layout bindings could not be read, so the project can't open."))
             return
         }
         let snapshot = snapshot
@@ -235,7 +238,7 @@ extension AppWorkspaceModel {
                 keepLiveLaunches: true, keepOmittedPanes: true, projectID: launch.project.id)
         case .host(let hostID):
             guard let connection = remoteHosts?.workspaceConnection(hostID), let home = connection.hostInfo?.home else {
-                session.stage = .failed(launch, "\(remoteHostName(hostID)) isn't connected. Reconnect, then try again.")
+                session.stage = .failed(launch, L("%@ isn't connected. Reconnect, then try again.", remoteHostName(hostID)))
                 return
             }
             plan = await RemoteFacts(connection: connection).evaluate { lookup in
@@ -245,11 +248,11 @@ extension AppWorkspaceModel {
             }
         }
         guard plan.canApply, projectLaunch === session else {
-            session.stage = .failed(launch, "The project can't open: " + (plan.errors + plan.conflicts).map(\.text).joined(separator: " "))
+            session.stage = .failed(launch, L("The project can't open: %@", (plan.errors + plan.conflicts).map(\.text).joined(separator: " ")))
             return
         }
         do { _ = try await automationApplyLayout(plan, namespace: launch.namespace) } catch {
-            session.stage = .failed(launch, "The workspace changed or is busy, so the project wasn't opened. Try again.")
+            session.stage = .failed(launch, L("The workspace changed or is busy, so the project wasn't opened. Try again."))
             return
         }
         // A cancel during the apply may have let another launch begin; its sheet stays.

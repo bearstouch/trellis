@@ -100,7 +100,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.optionAsMetaKey = false
         // Engine diagnostics can echo sequence contents; never print them, in any build.
         surface.getTerminal().silentLog = true
-        surface.setAccessibilityLabel("Terminal session")
+        surface.setAccessibilityLabel(L("Terminal session"))
         surface.terminalDelegate = self
         surface.onFocused = { [weak self] in self?.onFocused?() }
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
@@ -285,12 +285,17 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if terminalView.getTerminal().isCurrentBufferAlternate { return "Current screen only · No scrollback" }
         return terminalView.scrollback.historyEvicted ? "Earlier output was evicted" : "Retained output only"
     }
+    /// `historyNotice` is returned by the automation API and stays English; the search bar shows this one.
+    private var historyNoticeText: String {
+        if terminalView.getTerminal().isCurrentBufferAlternate { return L("Current screen only · No scrollback") }
+        return terminalView.scrollback.historyEvicted ? L("Earlier output was evicted") : L("Retained output only")
+    }
     /// Clears the pane's scrollback and the screen above the prompt (FR-C07); the session is untouched.
     public func clear() { terminalView.clearTerminal(nil) }
     public func showSearch() {
         searchVisible = true
         searchFocusRequest = UUID()
-        searchStatus = searchQuery.isEmpty ? historyNotice : "Search again · \(historyNotice)"
+        searchStatus = searchQuery.isEmpty ? historyNoticeText : L("Search again") + " · " + historyNoticeText
     }
     public func closeSearch() {
         searchVisible = false
@@ -304,18 +309,18 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if reset { terminalView.clearSearch(); paneSearch.reset() }
         guard !searchQuery.isEmpty, searchQuery.utf8.count <= 8192 else {
             terminalView.clearSearch(); paneSearch.reset(); hasSearchMatch = false
-            searchStatus = searchQuery.isEmpty ? historyNotice : "Search is limited to 8 KiB · \(historyNotice)"
+            searchStatus = searchQuery.isEmpty ? historyNoticeText : L("Search is limited to 8 KiB") + " · " + historyNoticeText
             return false
         }
         let found = paneSearch.find(searchQuery, forward: forward, in: terminalView)
         hasSearchMatch = found
-        searchStatus = "\(found ? "Match found" : "No match") · \(historyNotice)"
+        searchStatus = (found ? L("Match found") : L("No match")) + " · " + historyNoticeText
         return found
     }
     private func invalidateSearchForOutput() {
         if hasSearchMatch { terminalView.clearSearch(); paneSearch.reset(); hasSearchMatch = false }
         if searchVisible {
-            let next = searchQuery.isEmpty ? historyNotice : "Output changed — search again · \(historyNotice)"
+            let next = searchQuery.isEmpty ? historyNoticeText : L("Output changed — search again") + " · " + historyNoticeText
             if searchStatus != next { searchStatus = next }
         }
     }
@@ -612,9 +617,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard let resolved = resolve(click) else { return nil }
         let frozen = TerminalLinkClick(link: resolved.candidate, explicit: click.explicit, position: nil)
         switch resolved.link {
-        case .web(let url): return TerminalLinkMenu(openTitle: "Open Link", copyTitle: "Copy Link", copyText: url.absoluteString, click: frozen)
-        case .file(let path, .open): return TerminalLinkMenu(openTitle: "Open", copyTitle: "Copy Path", copyText: path, click: frozen, canReveal: true)
-        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Show in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
+        case .web(let url): return TerminalLinkMenu(openTitle: L("Open Link"), copyTitle: L("Copy Link"), copyText: url.absoluteString, click: frozen)
+        case .file(let path, .open): return TerminalLinkMenu(openTitle: L("Open"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canReveal: true)
+        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: L("Show in Finder"), copyTitle: L("Copy Path"), copyText: path, click: frozen)
         }
     }
     public func bell(source: TerminalView) { if !isReplaying { playBell() } }

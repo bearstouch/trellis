@@ -335,7 +335,7 @@ public actor HostLibrary {
         }
         guard let host = eligible() else { return nil }
         if host.savedPassword?.requiresUserPresence == true {
-            guard await gate.authorize(reason: "use the saved password for “\(host.name)”") else { return nil }
+            guard await gate.authorize(reason: L("use the saved password for “%@”", host.name)) else { return nil }
             // The host may have been edited or deleted while the prompt was up.
             guard eligible() != nil else { return nil }
         }

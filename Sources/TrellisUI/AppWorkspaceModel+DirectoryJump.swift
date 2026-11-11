@@ -27,15 +27,15 @@ extension AppWorkspaceModel {
         let cleared = await directoryHistory.clear()
         // Read back: a visit recorded just before the clear may have published its older list meanwhile.
         directoryEntries = await directoryHistory.all()
-        if !cleared { errorMessage = "The directory history file could not be deleted, so its entries will return at the next launch." }
+        if !cleared { errorMessage = L("The directory history file could not be deleted, so its entries will return at the next launch.") }
     }
 
     func showClearDirectoryHistoryConfirmation() -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Clear the directory history?"
-        alert.informativeText = "Trellis forgets every directory it remembers, on this Mac and on your hosts. This can't be undone."
-        alert.addButton(withTitle: "Clear History")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Clear the directory history?")
+        alert.informativeText = L("Trellis forgets every directory it remembers, on this Mac and on your hosts. This can't be undone.")
+        alert.addButton(withTitle: L("Clear History"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -89,12 +89,12 @@ extension AppWorkspaceModel {
         return ordered.enumerated()
             .map { index, entry in
                 let machine: String
-                if case .host(let id) = entry.target { machine = hosts[id] ?? "Missing host" } else { machine = "Local" }
+                if case .host(let id) = entry.target { machine = hosts[id] ?? L("Missing host") } else { machine = L("Local") }
                 let local = entry.target == .local
                 let title = local && (entry.path == home || entry.path.hasPrefix(home + "/")) ? "~" + entry.path.dropFirst(home.count) : entry.path
                 return CommandPaletteItem(
                     target: .directory(machine: entry.machine, path: entry.path), kind: .directory, title: title,
-                    subtitle: "\(machine) · \(entry.visits) visit\(entry.visits == 1 ? "" : "s") · \(entry.lastVisitDescription(now: now))",
+                    subtitle: "\(machine) · " + (entry.visits == 1 ? L("1 visit") : L("%d visits", entry.visits)) + " · \(entry.lastVisitDescription(now: now))",
                     keywords: [entry.path], groupID: entry.machine, groupTitle: machine, boost: max(0, 10 - index))
             }
     }
@@ -109,16 +109,16 @@ extension AppWorkspaceModel {
             switch await localDirectoryAnswer(path) {
             case true?: break
             case false?:
-                errorMessage = "“\(path)” is no longer available, so it was removed from the directory history."
+                errorMessage = L("“%@” is no longer available, so it was removed from the directory history.", path)
                 if let directoryHistory { directoryEntries = await directoryHistory.remove(path: path, on: .local) }
                 return
             case nil:
-                errorMessage = "“\(path)” isn't responding, so nothing was opened."
+                errorMessage = L("“%@” isn't responding, so nothing was opened.", path)
                 return
             }
         case .host(let id):
             guard remoteHosts != nil, commandPaletteHosts().contains(where: { $0.id == id }) else {
-                errorMessage = "That directory's host is no longer saved."
+                errorMessage = L("That directory's host is no longer saved.")
                 return
             }
         }
@@ -169,7 +169,7 @@ extension AppWorkspaceModel {
     private func splitForDirectory(_ path: String, target: ProjectTarget, beside focused: UUID) async {
         // Match the pane split controls: a hidden split would hide the new shell.
         guard let tab = presentation.selectedTab, maximizedPanes[tab.id] == nil else {
-            errorMessage = "Restore panes before opening a directory in a split."
+            errorMessage = L("Restore panes before opening a directory in a split.")
             return
         }
         guard let paneID = await splitPane(focused, axis: .x, startSession: false) else { return }
@@ -206,7 +206,7 @@ extension AppWorkspaceModel {
         do {
             publish(try await service.execute(.configureStoppedSession(paneID: paneID, launch: launch)).snapshot)
         } catch {
-            errorMessage = "The new pane could not be prepared."
+            errorMessage = L("The new pane could not be prepared.")
             return
         }
         await start(paneID: paneID)

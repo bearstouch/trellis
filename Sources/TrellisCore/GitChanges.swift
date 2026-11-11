@@ -17,11 +17,11 @@ public struct GitChangedFile: Identifiable, Equatable, Sendable {
 
         public var word: String {
             switch self {
-            case .modified: "Modified"
-            case .added: "Added"
-            case .deleted: "Deleted"
-            case .untracked: "Untracked"
-            case .conflicted: "Conflicted"
+            case .modified: L("Modified")
+            case .added: L("Added")
+            case .deleted: L("Deleted")
+            case .untracked: L("Untracked")
+            case .conflicted: L("Conflicted")
             }
         }
     }
@@ -33,8 +33,8 @@ public struct GitChangedFile: Identifiable, Equatable, Sendable {
         public var word: String? {
             switch self {
             case .none: nil
-            case .partial: "Partly staged"
-            case .full: "Staged"
+            case .partial: L("Partly staged")
+            case .full: L("Staged")
             }
         }
     }
@@ -96,10 +96,10 @@ public struct GitDiffLine: Identifiable, Equatable, Sendable {
     /// "Added line 12: …" for VoiceOver (FR-GC08).
     public var spoken: String {
         switch kind {
-        case .hunk: "Hunk \(text)"
-        case .added: "Added line \(new ?? 0): \(text)"
-        case .removed: "Removed line \(old ?? 0): \(text)"
-        case .context: "Line \(new ?? 0): \(text)"
+        case .hunk: L("Hunk %@", text)
+        case .added: L("Added line %1$d: %2$@", new ?? 0, text)
+        case .removed: L("Removed line %1$d: %2$@", old ?? 0, text)
+        case .context: L("Line %1$d: %2$@", new ?? 0, text)
         case .note: text
         }
     }
