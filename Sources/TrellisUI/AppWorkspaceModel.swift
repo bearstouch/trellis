@@ -584,18 +584,30 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Owns every session's PTY (FR-R07), so sessions survive quit and crashes; nil (tests, no helper) keeps every
     /// session a local PTY.
     public var sessionBroker: (any SessionBrokerClient)? {
-        didSet { sessionBroker?.observeAgentEvents { [weak self] sessionID, event in self?.receiveAgentEvent(sessionID: sessionID, event: event) } }
+        didSet {
+            sessionBroker?.observeAgentEvents { [weak self] sessionID, event in self?.receiveAgentEvent(sessionID: sessionID, event: event) }
+            sessionBroker?.setSessionIdleTimeout(seconds: brokerIdleTimeoutSeconds)
+        }
     }
     /// FR-R03: on by default; off means quitting and closing the window stop sessions. Saved per state directory.
     @Published public internal(set) var keepSessionsRunning = true
     /// This launch only (`--fixture`, never saved): quitting and closing the window end sessions whatever the setting, so
     /// scripted runs leave nothing behind. Sessions still run in the broker.
     public var endSessionsAtQuitForThisLaunch = false
+    /// FR-R08: hours a kept session may stay unwatched and silent before its broker ends it; 0 is never.
+    @Published public internal(set) var keptSessionIdleTimeoutHours = KeptSessionIdleTimeout.defaultHours
+    /// False until the saved setting was read (or there is none): a workspace in recovery tells the brokers nothing, so a
+    /// saved "No timeout" is never replaced by the default.
+    var keptSessionIdleTimeoutKnown = false
+    var brokerIdleTimeoutSeconds: Int? { keptSessionIdleTimeoutKnown ? KeptSessionIdleTimeout.seconds(hours: keptSessionIdleTimeoutHours) : nil }
     /// What quitting and closing the window do for this launch.
     public var keepsSessionsAtQuit: Bool { keepSessionsRunning && !endSessionsAtQuitForThisLaunch }
     /// Remote workspaces (FR-RW01): the helper and the shared link of each saved host; nil disables them.
     public var remoteHosts: RemoteHostsModel? {
-        didSet { remoteHosts?.onWorkspaceLinkChanged = { [weak self] host, state in self?.remoteLinkChanged(host, state) } }
+        didSet {
+            remoteHosts?.onWorkspaceLinkChanged = { [weak self] host, state in self?.remoteLinkChanged(host, state) }
+            remoteHosts?.sessionIdleTimeout = brokerIdleTimeoutSeconds
+        }
     }
     /// Each remote workspace host's link, for the sidebar and pane headers (FR-RW07, FR-RW16).
     @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:]
@@ -684,7 +696,7 @@ public final class AppWorkspaceModel: ObservableObject {
             reconcileThemeSelections()
             refreshEffectiveTheme()
         }
-        guard let persistence else { return false }
+        guard let persistence else { applyKeptSessionIdleTimeout(); return false }
         removeScratchpadRunFiles()
         isRestoring = true
         pendingOperations += 1
@@ -695,6 +707,7 @@ public final class AppWorkspaceModel: ObservableObject {
         // uninitialized empty snapshot.
         switch result {
         case .missing:
+            applyKeptSessionIdleTimeout()
             _ = await reattachBrokerSessions()
             return false
         case .loaded(let restored):
@@ -732,6 +745,8 @@ public final class AppWorkspaceModel: ObservableObject {
         restoreScrollback = restored.settings.restoreScrollback
         saveBudgetMegabytesPerHour = restored.settings.saveBudgetMegabytesPerHour
         writeBudget.megabytesPerHour = saveBudgetMegabytesPerHour
+        keptSessionIdleTimeoutHours = restored.settings.keptSessionIdleTimeoutHours
+        applyKeptSessionIdleTimeout()
         onRemoteControlSettingsChanged?(remoteControl)
         reconcileThemeSelections()
         refreshEffectiveTheme()
@@ -839,7 +854,8 @@ public final class AppWorkspaceModel: ObservableObject {
         var settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
             windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl,
-            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback, saveBudgetMegabytesPerHour: saveBudgetMegabytesPerHour)
+            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback, saveBudgetMegabytesPerHour: saveBudgetMegabytesPerHour,
+            keptSessionIdleTimeoutHours: keptSessionIdleTimeoutHours)
         settings.sessionDefaultNoticePending = sessionDefaultNoticePending
         do {
             let written = try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration)

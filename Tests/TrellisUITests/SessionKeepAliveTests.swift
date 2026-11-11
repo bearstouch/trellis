@@ -59,6 +59,9 @@ final class FakeSessionBroker: SessionBrokerClient {
     func hangUp(sessionIDs: [UUID]) { hungUp += sessionIDs }
     func stopIncompatibleBroker() async { stoppedIncompatible += 1 }
     func detach() async { detached += 1 }
+    /// FR-R08: every value the model told the broker, nil included.
+    var idleTimeouts: [Int?] = []
+    func setSessionIdleTimeout(seconds: Int?) { idleTimeouts.append(seconds) }
 }
 
 /// FR-R03: sessions kept by the broker across quit, driven through a fake broker.
@@ -89,6 +92,44 @@ final class SessionKeepAliveTests: XCTestCase {
     private func waitUntil(_ condition: () -> Bool) async {
         let deadline = Date().addingTimeInterval(3)
         while !condition(), Date() < deadline { try? await Task.sleep(for: .milliseconds(10)); await Task.yield() }
+    }
+
+    /// FR-R08: the broker learns the timeout once the saved setting is known, and again when it changes.
+    @MainActor
+    func testIdleTimeoutIsToldToTheBrokerOnceKnownAndPersists() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-idle-\(UUID())")
+        cleanup.append { try? FileManager.default.removeItem(at: directory) }
+        let broker = FakeSessionBroker()
+        let model = try makeModel(directory: directory, broker: broker)
+        XCTAssertEqual(model.keptSessionIdleTimeoutHours, 24)
+        XCTAssertEqual(broker.idleTimeouts, [nil], "Nothing is told before the saved setting was read")
+        _ = await model.loadWorkspace()
+        XCTAssertEqual(broker.idleTimeouts.last, 86_400, "No saved workspace: the default")
+        model.setKeptSessionIdleTimeout(hours: 3)
+        XCTAssertEqual(model.keptSessionIdleTimeoutHours, 24, "Not one of the choices")
+        model.setKeptSessionIdleTimeout(hours: 0)
+        XCTAssertEqual(broker.idleTimeouts.last, 0)
+        _ = await model.flushWorkspaceSave()
+
+        let again = FakeSessionBroker()
+        let restored = try makeModel(directory: directory, broker: again)
+        _ = await restored.loadWorkspace()
+        XCTAssertEqual(restored.keptSessionIdleTimeoutHours, 0)
+        XCTAssertEqual(again.idleTimeouts, [nil, 0], "The saved choice, never the default first")
+    }
+
+    /// A workspace that can't be read must not replace a saved "No timeout" in a running broker with the default.
+    @MainActor
+    func testAnUnreadableWorkspaceTellsTheBrokerNothing() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-idle-\(UUID())")
+        cleanup.append { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: directory.appendingPathComponent("workspace.json"))
+        let broker = FakeSessionBroker()
+        let model = try makeModel(directory: directory, broker: broker)
+        _ = await model.loadWorkspace()
+        XCTAssertNotNil(model.recoveryMessage)
+        XCTAssertEqual(broker.idleTimeouts, [nil])
     }
 
     @MainActor

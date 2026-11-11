@@ -250,6 +250,95 @@
             }
         }
 
+        private func record(_ connection: BrokerConnection, _ id: UUID) async throws -> BrokerSessionRecord? {
+            guard case .sessions(let records) = try await connection.request(.list) else { XCTFail("No listing"); return nil }
+            return records.first { $0.sessionID == id }
+        }
+
+        /// FR-R08: only a session nobody shows that prints nothing is ended; one that ignores the hangup is killed.
+        func testAnUnattachedSilentSessionIsEndedAfterTheConfiguredTime() async throws {
+            let launcher = try launcher()
+            let (socket, first) = try await start(launcher)
+            XCTAssertEqual(first.protocolVersion, 4)
+            XCTAssertTrue(first.configure(sessionIdleTimeout: 1))
+            let sink = Sink()
+            let quiet = try await spawn(first, "printf 'ready\\n'; exec sleep 600", sink: sink)
+            let chatty = try await spawn(first, "while :; do printf 'tick\\n'; sleep 0.2; done", sink: Sink())
+            let stubborn = try await spawn(first, "trap '' HUP; printf 'ready\\n'; while :; do sleep 600; done", sink: Sink())
+            try await waitFor { sink.text.contains("ready") }
+            try await Task.sleep(for: .milliseconds(2500))
+            for id in [quiet, chatty, stubborn] {
+                let shown = try await record(first, id)
+                XCTAssertEqual(shown?.running, true, "A session shown in a pane is never ended, however quiet")
+            }
+            first.close()
+
+            let second = try await connect(launcher, socket: socket)
+            var ended: [UUID: Int32] = [:]
+            let deadline = Date().addingTimeInterval(10)
+            while ended.count < 2, Date() < deadline {
+                for id in [quiet, stubborn] {
+                    if let found = try await record(second, id), !found.running { ended[id] = found.exitCode }
+                }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            XCTAssertEqual(ended[quiet], 128 + SIGHUP)
+            XCTAssertEqual(ended[stubborn], 128 + SIGKILL, "Ignoring the hangup doesn't keep it")
+            let printing = try await record(second, chatty)
+            XCTAssertEqual(printing?.running, true, "Output keeps a session")
+        }
+
+        /// A limit set on connecting must not end a session that was already silent for longer before its pane attaches.
+        func testAChangedTimeoutCountsFromTheChange() async throws {
+            let launcher = try launcher()
+            let (socket, first) = try await start(launcher)
+            let sink = Sink()
+            let id = try await spawn(first, "printf 'ready\\n'; exec sleep 600", sink: sink)
+            try await waitFor { sink.text.contains("ready") }
+            first.close()
+            try await Task.sleep(for: .milliseconds(2200))
+
+            let second = try await connect(launcher, socket: socket)
+            XCTAssertTrue(second.configure(sessionIdleTimeout: 2))
+            try await Task.sleep(for: .milliseconds(1300))
+            let kept = try await record(second, id)
+            XCTAssertEqual(kept?.running, true, "Silent for longer than the new limit, but the limit is younger than that")
+        }
+
+        func testNoTimeoutKeepsASilentSessionAndOlderClientsCannotConfigure() async throws {
+            let launcher = try launcher()
+            let (socket, first) = try await start(launcher)
+            first.configure(sessionIdleTimeout: 1)
+            let reply = try await first.request(.configure(sessionIdleTimeout: 0))
+            XCTAssertEqual(reply, .ok)
+            let sink = Sink()
+            let id = try await spawn(first, "printf 'ready\\n'; exec sleep 600", sink: sink)
+            try await waitFor { sink.text.contains("ready") }
+            first.close()
+            try await Task.sleep(for: .milliseconds(2500))
+
+            // An app from before v4: the broker answers its version and refuses a message that version doesn't have.
+            var connection: BrokerConnection?
+            let deadline = Date().addingTimeInterval(3)
+            while connection == nil, Date() < deadline {
+                if let candidate = try? BrokerConnection.connect(socketPath: socket, brokerExecutable: launcher.helperPath),
+                    case .welcome(3, _, _)? = try? await candidate.request(.hello(protocolVersion: 1, maximumVersion: 3))
+                {
+                    connection = candidate
+                } else {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+            }
+            let old = try XCTUnwrap(connection)
+            connections.append(old)
+            XCTAssertFalse(old.configure(sessionIdleTimeout: 1), "Never sent to a connection that didn't negotiate v4")
+            let refused = try await old.request(.configure(sessionIdleTimeout: 1))
+            XCTAssertEqual(refused, .failed(code: "UNSUPPORTED", errno: 0))
+            try await Task.sleep(for: .milliseconds(2500))
+            let kept = try await record(old, id)
+            XCTAssertEqual(kept?.running, true, "No timeout keeps it, and the refused request changed nothing")
+        }
+
         func testIdleBrokerExitsAndRemovesItsSocket() async throws {
             let launcher = try launcher(idleExit: 1)
             let (socket, connection) = try await start(launcher)

@@ -216,7 +216,7 @@ check "The exported file has the project and no launch history" sh -c "grep -q '
 bold "12 · Session broker status (Settings → Sessions)"
 note "Settings → Sessions → Session broker → Refresh."
 pause
-ask "It shows this Mac's broker (PID, protocol 3, sessions) and Verify Box's broker (Linux, PID, sessions)"
+ask "It shows this Mac's broker (PID, protocol 4, sessions) and Verify Box's broker (Linux, PID, sessions)"
 
 bold "13 · Remove the helper (FR-RW17)"
 note "Close the remote spaces (stopping their sessions), then Hosts → Verify Box → Remove Helper…"

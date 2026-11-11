@@ -1329,17 +1329,6 @@ public struct LaunchSettingsView: View {
                     .accessibilityIdentifier("settings.sessionDefaultNotice")
                     .onDisappear { model.dismissSessionDefaultNotice() }
             }
-            Picker(
-                "End idle kept sessions after",
-                selection: Binding(get: { model.keptSessionIdleTimeoutHours }, set: { model.setKeptSessionIdleTimeout(hours: $0) })
-            ) {
-                ForEach(KeptSessionIdleTimeout.choices, id: \.self) { Text(KeptSessionIdleTimeout.label(hours: $0)).tag($0) }
-            }.accessibilityIdentifier("settings.keptSessionIdleTimeout")
-            caption(
-                model.keptSessionIdleTimeoutHours == 0
-                    ? "Sessions left running with Trellis closed or disconnected are kept until they end by themselves."
-                    : "A session left running with Trellis closed or disconnected is ended once it has printed nothing for this long. Sessions shown in a pane are never ended."
-            ).accessibilityIdentifier("settings.keptSessionIdleTimeoutNote")
             Toggle(
                 "Restore scrollback after quit",
                 isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })

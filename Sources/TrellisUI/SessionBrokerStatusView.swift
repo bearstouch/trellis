@@ -1,7 +1,9 @@
 import SwiftUI
+import TrellisCore
 import TrellisTerminal
 
-/// Settings → Session Broker: which session brokers hold this Trellis's sessions, and who may connect to them (FR-R07).
+/// Settings → Session Broker: which session brokers hold this Trellis's sessions, and who may connect to them (FR-R07),
+/// and how long an idle kept session lasts (FR-R08).
 struct SessionBrokerStatusView: View {
     @ObservedObject var model: AppWorkspaceModel
     @State private var local: BrokerStatus?
@@ -10,6 +12,24 @@ struct SessionBrokerStatusView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text("Kept sessions").font(.headline).accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 6) {
+                // FR-R08: applies to this Mac's broker and to every connected host's.
+                Picker(
+                    "End idle kept sessions after",
+                    selection: Binding(get: { model.keptSessionIdleTimeoutHours }, set: { model.setKeptSessionIdleTimeout(hours: $0) })
+                ) {
+                    ForEach(KeptSessionIdleTimeout.choices, id: \.self) { Text(KeptSessionIdleTimeout.label(hours: $0)).tag($0) }
+                }
+                .fixedSize().accessibilityIdentifier("settings.keptSessionIdleTimeout")
+                caption(
+                    model.keptSessionIdleTimeoutHours == 0
+                        ? "Sessions left running with Trellis closed or disconnected are kept until they end by themselves."
+                        : "A session left running with Trellis closed or disconnected is ended once it has printed nothing for this long. Sessions shown in a pane are never ended."
+                ).accessibilityIdentifier("settings.keptSessionIdleTimeoutNote")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 10)
+            Rectangle().fill(model.themeColor(.border)).frame(height: 1).accessibilityHidden(true)
             Text("This Mac and connected hosts").font(.headline).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 6) {
                 switch local {

@@ -64,6 +64,19 @@ public struct BrokerCore: Sendable {
         guard let idleSince else { return false }
         return now.timeIntervalSince(idleSince) >= idleExit
     }
+
+    /// What the idle check does to one running session (FR-R08).
+    public enum IdleAction: Equatable, Sendable { case none, hangUp, force }
+    /// A session that outlives its hangup this long is killed, as the app's close policy would after its own wait.
+    public static let idleForceDelay: TimeInterval = 2
+
+    /// A session idles only while no client shows it: `lastActivity` is its last output or input, or the moment it was
+    /// detached if that came later. `timeout` 0 never ends one; an attached session is never touched.
+    public static func idleAction(timeout: TimeInterval, attached: Bool, lastActivity: Date, hungUpAt: Date?, now: Date) -> IdleAction {
+        guard timeout > 0, !attached else { return .none }
+        if let hungUpAt { return now.timeIntervalSince(hungUpAt) >= idleForceDelay ? .force : .none }
+        return now.timeIntervalSince(lastActivity) >= timeout ? .hangUp : .none
+    }
 }
 
 /// The process identity a signal is checked against, read through `trellis_read_process_identity`.

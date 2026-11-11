@@ -10,6 +10,21 @@ extension AppWorkspaceModel {
         scheduleWorkspaceSave()
     }
 
+    /// FR-R08: one of `KeptSessionIdleTimeout.choices`; anything else keeps the current one. Running brokers are told at once.
+    public func setKeptSessionIdleTimeout(hours: Int) {
+        guard KeptSessionIdleTimeout.choices.contains(hours), hours != keptSessionIdleTimeoutHours else { return }
+        keptSessionIdleTimeoutHours = hours
+        applyKeptSessionIdleTimeout()
+        scheduleWorkspaceSave()
+    }
+
+    /// The setting is known from here on: the local broker and every remote host's are told now and whenever they connect.
+    func applyKeptSessionIdleTimeout() {
+        keptSessionIdleTimeoutKnown = true
+        sessionBroker?.setSessionIdleTimeout(seconds: brokerIdleTimeoutSeconds)
+        remoteHosts?.sessionIdleTimeout = brokerIdleTimeoutSeconds
+    }
+
     /// Settings showed the note about the new default (FR-R07).
     public func dismissSessionDefaultNotice() {
         guard sessionDefaultNoticePending else { return }

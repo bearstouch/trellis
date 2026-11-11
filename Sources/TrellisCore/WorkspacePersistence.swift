@@ -16,20 +16,24 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
     public var restoreScrollback: Bool
     /// FR-R06: the hourly write budget of the workspace file and its backup, in MB (one of `WorkspaceWriteBudget.choices`).
     public var saveBudgetMegabytesPerHour: Int
+    /// FR-R08: hours a kept session may stay unwatched and silent (one of `KeptSessionIdleTimeout.choices`; 0 is never).
+    public var keptSessionIdleTimeoutHours: Int
     public init(
         shell: String = LocalLaunchConfiguration.loginShell().executable,
         directory: String = FileManager.default.homeDirectoryForCurrentUser.path, windowFrame: String? = nil,
         appearance: AppearanceSettings = .init(), remoteControl: RemoteControlSettings = .init(), keepSessionsRunning: Bool = true, restoreScrollback: Bool = false,
-        saveBudgetMegabytesPerHour: Int = WorkspaceWriteBudget.defaultMegabytesPerHour
+        saveBudgetMegabytesPerHour: Int = WorkspaceWriteBudget.defaultMegabytesPerHour, keptSessionIdleTimeoutHours: Int = KeptSessionIdleTimeout.defaultHours
     ) {
         self.shell = shell; self.directory = directory; self.windowFrame = windowFrame
         self.appearance = appearance; self.remoteControl = remoteControl
         self.keepSessionsRunning = keepSessionsRunning; self.restoreScrollback = restoreScrollback
         sessionDefaultNoticePending = false
         self.saveBudgetMegabytesPerHour = WorkspaceWriteBudget(megabytesPerHour: saveBudgetMegabytesPerHour).megabytesPerHour
+        self.keptSessionIdleTimeoutHours = KeptSessionIdleTimeout.normalized(keptSessionIdleTimeoutHours)
     }
     private enum CodingKeys: String, CodingKey {
         case shell, directory, windowFrame, appearance, remoteControl, stopSessionsOnQuit, sessionDefaultNoticePending, restoreScrollback, saveBudgetMegabytesPerHour
+        case keptSessionIdleTimeoutHours
     }
     private enum LegacyKeys: String, CodingKey { case keepSessionsRunning }
     public init(from decoder: Decoder) throws {
@@ -58,6 +62,9 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
         // An unknown budget falls back to the default instead of failing the workspace.
         let budget = (try? values.decodeIfPresent(Int.self, forKey: .saveBudgetMegabytesPerHour)) ?? nil
         saveBudgetMegabytesPerHour = WorkspaceWriteBudget(megabytesPerHour: budget ?? WorkspaceWriteBudget.defaultMegabytesPerHour).megabytesPerHour
+        // Missing (an older file) or unknown: the default.
+        let idle = (try? values.decodeIfPresent(Int.self, forKey: .keptSessionIdleTimeoutHours)) ?? nil
+        keptSessionIdleTimeoutHours = KeptSessionIdleTimeout.normalized(idle ?? KeptSessionIdleTimeout.defaultHours)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -71,6 +78,7 @@ public struct WorkspaceSettings: Codable, Equatable, Sendable {
         if sessionDefaultNoticePending { try values.encode(true, forKey: .sessionDefaultNoticePending) }
         try values.encode(restoreScrollback, forKey: .restoreScrollback)
         try values.encode(saveBudgetMegabytesPerHour, forKey: .saveBudgetMegabytesPerHour)
+        try values.encode(keptSessionIdleTimeoutHours, forKey: .keptSessionIdleTimeoutHours)
     }
 }
 

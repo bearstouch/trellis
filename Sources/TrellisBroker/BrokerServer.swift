@@ -67,8 +67,13 @@ public final class BrokerServer: @unchecked Sendable {
         var rejectingInput = false
         var promptActive = false
         var promptCheckScheduled = false
-        init(id: UUID, pid: Int32, identity: BrokerProcessIdentity?, descriptor: Int32, nonce: String?, agentNonce: String?) {
+        /// FR-R08: the last output or input, or the detach if later; and when the idle check hung the session up.
+        var lastActivity: Date
+        var idleHungUpAt: Date?
+        var idleForced = false
+        init(id: UUID, pid: Int32, identity: BrokerProcessIdentity?, descriptor: Int32, nonce: String?, agentNonce: String?, now: Date) {
             self.id = id; self.pid = pid; self.identity = identity; self.descriptor = descriptor; self.nonce = nonce; self.agentNonce = agentNonce
+            lastActivity = now
         }
         var record: BrokerSessionRecord { BrokerSessionRecord(sessionID: id, processID: pid, running: waitStatus == nil, waitStatus: waitStatus) }
     }
@@ -98,6 +103,8 @@ public final class BrokerServer: @unchecked Sendable {
     private var rings: [UUID: OutputRing] = [:]
     private var paused = false
     private var stopping = false
+    /// FR-R08, set by `configure` and kept while the broker lives; 0 ends nothing.
+    private var sessionIdleTimeout: TimeInterval = 0
     private var timers: [DispatchSourceTimer] = []
     private var signalSources: [DispatchSourceSignal] = []
     /// Remote mode only: the account and the environment login shells start from (control keys removed).
@@ -217,8 +224,14 @@ public final class BrokerServer: @unchecked Sendable {
         client = nil
         connection.io.close(flags: .stop)
         core.clientDisconnected()
-        for session in sessions.values { session.attached = false }
+        detachSessions()
         setPaused(false)
+    }
+
+    /// The idle clock (FR-R08) of a session that was being shown starts no earlier than here.
+    private func detachSessions() {
+        let now = now()
+        for session in sessions.values where session.attached { session.attached = false; session.lastActivity = now }
     }
 
     private func enqueue(_ frames: [BrokerFrame]) {
@@ -322,6 +335,7 @@ public final class BrokerServer: @unchecked Sendable {
             let (replay, resumed) = ring.replay(since: v2 ? since : nil)
             if !replay.isEmpty { enqueue(BrokerFrame.stream(.replay, sessionID: sessionID, bytes: replay)) }
             session.attached = true
+            session.idleHungUpAt = nil; session.idleForced = false
             reply(
                 id,
                 .attached(
@@ -349,7 +363,16 @@ public final class BrokerServer: @unchecked Sendable {
             rings.removeValue(forKey: sessionID)
             reply(id, .ok)
         case .detach:
-            for session in sessions.values { session.attached = false }
+            detachSessions()
+            reply(id, .ok)
+        case .configure(let timeout) where client?.version ?? 0 >= 4:
+            if let timeout {
+                let value = TimeInterval(min(max(timeout, 0), BrokerProtocol.sessionIdleTimeoutLimit))
+                // A changed limit counts from here: a session already silent past it is never ended before the client that
+                // just set it (on connecting, ahead of its attaches) can show it.
+                if value != sessionIdleTimeout { let now = now(); for session in sessions.values where session.idleHungUpAt == nil { session.lastActivity = now } }
+                sessionIdleTimeout = value
+            }
             reply(id, .ok)
         default:
             reply(id, .failed(code: "UNSUPPORTED", errno: 0))
@@ -392,7 +415,7 @@ public final class BrokerServer: @unchecked Sendable {
         let agentPrefix = BrokerProtocol.agentNonceVariable + "="
         let agentNonce = request.environment.first { $0.hasPrefix(agentPrefix) }.map { String($0.dropFirst(agentPrefix.count)) }.flatMap { AgentHook.isNonce($0) ? $0 : nil }
         let session = Session(
-            id: request.sessionID, pid: result.pid, identity: Self.identity(result.pid), descriptor: result.master_fd, nonce: nonce, agentNonce: agentNonce)
+            id: request.sessionID, pid: result.pid, identity: Self.identity(result.pid), descriptor: result.master_fd, nonce: nonce, agentNonce: agentNonce, now: now())
         let fd = result.master_fd
         let io = DispatchIO(type: .stream, fileDescriptor: fd, queue: queue) { _ in close(fd) }
         io.setLimit(lowWater: 1)
@@ -467,6 +490,7 @@ public final class BrokerServer: @unchecked Sendable {
     }
 
     private func output(_ data: Data, from session: Session) {
+        session.lastActivity = now()
         rings[session.id]?.append(data)
         OutputBudget.enforce(&rings)
         if session.attached, client?.greeted == true { enqueue(BrokerFrame.stream(.output, sessionID: session.id, bytes: data)) }
@@ -485,6 +509,7 @@ public final class BrokerServer: @unchecked Sendable {
             return
         }
         session.pendingInput += bytes.count
+        session.lastActivity = now()
         let payload = bytes.withUnsafeBytes { DispatchData(bytes: $0) }
         io.write(offset: 0, data: payload, queue: queue) { done, _, error in
             if done || error != 0 { session.pendingInput -= bytes.count }
@@ -556,10 +581,27 @@ public final class BrokerServer: @unchecked Sendable {
 
     private func checkIdle() {
         if isRemote, let connection = client, now().timeIntervalSince(connection.lastActivity) > configuration.clientTimeout { dropClient() }
+        endIdleSessions()
         // A remote session that ended while the Mac was away is kept until its exit is collected (FR-RW09), for at most a day.
         let retained = isRemote ? sessions.values.filter { $0.endedAt.map { now().timeIntervalSince($0) < Self.endedRetention } ?? false }.count : 0
         core.update(runningSessions: sessions.values.filter { $0.waitStatus == nil }.count + retained, now: now())
         if core.shouldExit(now: now()) { exitNow() }
+    }
+
+    /// FR-R08: a running session nobody shows that stayed silent past the configured time is hung up, then killed if it
+    /// ignores that. Never a reused PID: the same identity check as a requested signal.
+    private func endIdleSessions() {
+        guard sessionIdleTimeout > 0, !stopping else { return }
+        let now = now()
+        for session in sessions.values where session.waitStatus == nil && !session.idleForced {
+            let action = BrokerCore.idleAction(
+                timeout: sessionIdleTimeout, attached: session.attached, lastActivity: session.lastActivity, hungUpAt: session.idleHungUpAt, now: now)
+            guard action != .none else { continue }
+            reap(session)
+            guard session.waitStatus == nil, let identity = session.identity, identity.permitsSignal(current: Self.identity(session.pid), ownerPID: ownPID) else { continue }
+            if action == .hangUp { session.idleHungUpAt = now } else { session.idleForced = true }
+            kill(-session.pid, action == .hangUp ? SIGHUP : SIGKILL)
+        }
     }
 
     /// SIGTERM or a `stopAll` frame: hang up every session we still own, then exit.

@@ -44,6 +44,10 @@ public final class RemoteHostsModel: ObservableObject {
     /// The connected link each host's remote workspaces share (FR-RW03).
     private var workspaceLinks: [UUID: RemoteHostLink] = [:]
     private var connecting: [UUID: Task<Result<RemoteHostLink, RemoteHostLink.Failure>, Never>] = [:]
+    /// FR-R08: told to each host's broker when its workspace link connects, and to the connected ones when it changes.
+    public var sessionIdleTimeout: Int? {
+        didSet { if let sessionIdleTimeout, sessionIdleTimeout != oldValue { workspaceLinks.values.forEach { $0.connection?.configure(sessionIdleTimeout: sessionIdleTimeout) } } }
+    }
     /// A workspace link's state changed; the sidebar shows it (FR-RW07, FR-RW16).
     public var onWorkspaceLinkChanged: ((UUID, RemoteHostLink.State) -> Void)?
 
@@ -141,6 +145,7 @@ public final class RemoteHostsModel: ObservableObject {
             }
             // Watched before the status is saved: a drop while that waits is reported, never handed out as connected.
             self.workspaceLinks[host.id] = link
+            if let timeout = self.sessionIdleTimeout { link.connection?.configure(sessionIdleTimeout: timeout) }
             link.onStateChanged = { [weak self, weak link] state in
                 guard let self, let link, self.workspaceLinks[host.id] === link else { return }
                 if state != .connected { self.workspaceLinks[host.id] = nil }

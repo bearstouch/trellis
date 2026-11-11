@@ -105,6 +105,15 @@ public final class BrokerConnection {
         try? send(frame)
     }
 
+    /// FR-R08: how long the broker keeps a running session nobody shows and that prints nothing; 0 means for good.
+    /// False for a broker older than v4, which ends nothing by itself.
+    @discardableResult
+    public func configure(sessionIdleTimeout seconds: Int) -> Bool {
+        guard isOpen, protocolVersion >= 4 else { return false }
+        post(.configure(sessionIdleTimeout: seconds))
+        return true
+    }
+
     public func sendInput(_ data: Data, sessionID: UUID) throws {
         let frames = BrokerFrame.stream(.input, sessionID: sessionID, bytes: data)
         // All or nothing: a send that can't fit whole never delivers its first chunks.

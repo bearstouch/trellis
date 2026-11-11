@@ -137,6 +137,29 @@ final class BrokerCoreTests: XCTestCase {
         XCTAssertFalse(core.shouldExit(now: start + 500), "A connected app keeps the broker")
     }
 
+    func testIdleSessionsAreHungUpThenForcedOnlyWhileUnattached() {
+        let start = Date(timeIntervalSince1970: 1000)
+        func action(_ timeout: TimeInterval, attached: Bool = false, hungUpAt: Date? = nil, after: TimeInterval) -> BrokerCore.IdleAction {
+            BrokerCore.idleAction(timeout: timeout, attached: attached, lastActivity: start, hungUpAt: hungUpAt, now: start + after)
+        }
+        XCTAssertEqual(action(3600, after: 3599), .none)
+        XCTAssertEqual(action(3600, after: 3600), .hangUp)
+        XCTAssertEqual(action(0, after: 1_000_000), .none, "0 never ends a session")
+        XCTAssertEqual(action(3600, attached: true, after: 1_000_000), .none, "A session shown in a pane is never ended")
+        XCTAssertEqual(action(3600, hungUpAt: start + 3600, after: 3601), .none, "Time to exit after the hangup")
+        XCTAssertEqual(action(3600, hungUpAt: start + 3600, after: 3600 + BrokerCore.idleForceDelay), .force)
+        XCTAssertEqual(action(3600, attached: true, hungUpAt: start + 3600, after: 4000), .none)
+        XCTAssertEqual(action(0, hungUpAt: start + 3600, after: 4000), .none, "Turned off after the hangup")
+    }
+
+    func testConfigureIsAVersion4MessageWithAnOptionalTimeout() throws {
+        XCTAssertEqual(BrokerProtocol.version, 4)
+        let encoded = String(decoding: try JSONEncoder().encode(BrokerEnvelope(requestID: nil, message: .configure(sessionIdleTimeout: 3600))), as: UTF8.self)
+        XCTAssertEqual(encoded, #"{"message":{"configure":{"sessionIdleTimeout":3600}}}"#)
+        let empty = try JSONDecoder().decode(BrokerEnvelope.self, from: Data(#"{"message":{"configure":{"later":1}}}"#.utf8))
+        XCTAssertEqual(empty.message, .configure(sessionIdleTimeout: nil), "A key from a later version is ignored and nothing changes")
+    }
+
     func testVersionMismatchIsRefused() {
         XCTAssertEqual(BrokerCore.hello(BrokerProtocol.version, brokerPID: 42), .welcome(protocolVersion: BrokerProtocol.version, brokerPID: 42))
         XCTAssertEqual(BrokerCore.hello(BrokerProtocol.version + 1, brokerPID: 42), .refused(reason: "PROTOCOL_VERSION_MISMATCH"))

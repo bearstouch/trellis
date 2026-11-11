@@ -8,8 +8,8 @@
 /// where the length counts the kind byte and the payload.
 public enum BrokerProtocol {
     /// The highest version this build speaks; v2 adds remote workspaces (FR-RW01–FR-RW17), v3 a login request that runs a
-    /// project's setup command instead of an interactive shell (FR-RW18).
-    public static let version = 3
+    /// project's setup command instead of an interactive shell (FR-RW18), v4 `configure` (FR-R08).
+    public static let version = 4
     /// The lowest version this build still speaks, so an updated app keeps a running older broker's sessions.
     public static let minimumVersion = 1
     public static let helperName = "trellis-broker"
@@ -33,6 +33,8 @@ public enum BrokerProtocol {
     /// Remote brokers: a client silent this long is dropped (the app pings every 15 s), and a remote file read never exceeds this.
     public static let remoteClientTimeout: TimeInterval = 45
     public static let remoteFileLimit = 262_144
+    /// The longest idle timeout `configure` accepts, in seconds (FR-R08); the app offers at most 96 hours.
+    public static let sessionIdleTimeoutLimit = 30 * 86_400
     public static let statLimit = 256
     /// Printed by `bridge` before the first frame; anything a login script printed before it is discarded.
     public static let syncPrefix = "TRELLIS-SYNC-1 "
@@ -284,6 +286,11 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     /// An agent hook reported `event` for this session (FR-AG08). Sent only to a client that announced
     /// `agentEventsFeature`.
     case agentEvent(sessionID: UUID, event: String)
+    // v4.
+    /// `sessionIdleTimeout`: seconds a running session may stay unattached and silent before the broker ends it
+    /// (FR-R08); 0 means never, nil leaves it as it is. Kept after the client goes; answered by `ok`. A broker that was
+    /// never told (or is older than v4) ends nothing.
+    case configure(sessionIdleTimeout: Int? = nil)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {

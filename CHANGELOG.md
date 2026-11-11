@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Command Palette hint:** the status bar shows the Command Palette shortcut (⇧⌘P by default, or your custom binding) next to the version; clicking it opens the palette.
-- **Idle timeout for kept sessions:** a session left running with Trellis closed or disconnected is now ended once it has printed nothing for 24 hours. **Settings → Sessions → End idle kept sessions after** offers No timeout, 1, 2, 4, 12, 24, 48 and 96 hours. Sessions shown in a pane are never ended. Applies to remote workspace hosts too, once their helper is updated.
+- **Idle timeout for kept sessions:** a session left running with Trellis closed or disconnected is now ended once it has printed nothing for 24 hours. **Settings → Session Broker → End idle kept sessions after** offers No timeout, 1, 2, 4, 12, 24, 48 and 96 hours. Sessions shown in a pane are never ended. Applies to remote workspace hosts too, once their helper is updated.
 
 ### Changed
 
