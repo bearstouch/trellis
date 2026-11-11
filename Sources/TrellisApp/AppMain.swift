@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var projectsWindow: NSWindow?
     private let control: ControlServer
     private let mcp: MCPServer
+    /// FR-RC06: Trellis's own `tailscale serve` entry, created only after the listener is up.
+    private var sharing: TailscaleSharing?
+    /// Chains Applies so the coordinator sees them in order; separate Tasks may reach the actor out of order.
+    private var sharingUpdate: Task<Void, Never>?
     private let grants: GrantListModel
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
@@ -98,6 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.openSettings = { [weak self] in self?.showSettings() }
         // Restored or applied settings (re)start the MCP server; fixture and --no-mcp launches never listen.
         let mcpBlocked = CommandLine.arguments.contains("--no-mcp") || CommandLine.arguments.contains("--fixture")
+        // Fixture and --no-mcp launches never touch Tailscale either.
+        if !mcpBlocked {
+            let tailscale = TailscaleController(runner: TailscaleCLI())
+            model.tailscaleStatus = { await tailscale.status() }
+            sharing = TailscaleSharing(controller: tailscale, server: mcp) { [weak model] state in
+                Task { @MainActor in model?.tailscaleShareState = state }
+            }
+        }
         model.onRemoteControlSettingsChanged = { [weak self] settings in
             guard let self else { return }
             if mcpBlocked, settings.mcpEnabled {
@@ -105,6 +117,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 model.remoteControlStatus = .failed(reason: L("Turned off for this launch (--no-mcp or --fixture)."))
             } else {
                 model.remoteControlStatus = mcp.apply(settings)
+                // Never publish a port this app isn't listening on: another program could own it.
+                var shared = settings
+                if case .running = model.remoteControlStatus {} else { shared.tailscaleShare = false }
+                if let sharing {
+                    let previous = sharingUpdate
+                    sharingUpdate = Task {
+                        await previous?.value; await sharing.apply(shared)
+                    }
+                }
             }
         }
         model.openHosts = { [weak self] in self?.showHosts() }
@@ -198,7 +219,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles(); model.stopAgentHooks() }
+    func applicationWillTerminate(_ notification: Notification) {
+        control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles(); model.stopAgentHooks()
+        // While Trellis is closed another program could take the port, so the tailnet entry goes too.
+        if let sharing { Self.wait(seconds: 3) { await sharing.shutdown() } }
+    }
+
+    /// Runs `body` off the main thread and waits for it, at most `seconds`.
+    private static func wait(seconds: TimeInterval, _ body: @escaping @Sendable () async -> Void) {
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            await body()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + seconds)
+    }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
     static func helperPath(_ name: String) -> String? {

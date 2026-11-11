@@ -206,6 +206,21 @@ public final class AppWorkspaceModel: ObservableObject {
     public var onRemoteControlSettingsChanged: ((RemoteControlSettings) -> Void)?
     /// Injected so tests list fixed interfaces.
     public var networkInterfaces: () -> [NetworkInterfaceAddress] = NetworkInterfaceAddress.current
+    /// FR-RC06: sharing over Tailscale, reported by the app's coordinator.
+    @Published public var tailscaleShareState: TailscaleShareState = .off
+    /// FR-RC05: Tailscale's state and devices for Settings; the app injects the real CLI.
+    public var tailscaleStatus: () async -> Result<TailscaleStatus, TailscaleError> = { .success(TailscaleStatus(backend: .notInstalled)) }
+    /// The URL clients use: the tailnet one while shared, else the loopback one.
+    public var remoteControlClientURL: String {
+        if let url = tailscaleShareState.sharedURL, remoteControl.sharesOverTailscale { return url }
+        let address =
+            switch remoteControl.bindAddress {
+            case "0.0.0.0": "127.0.0.1"
+            case "::": "::1"
+            default: remoteControl.bindAddress
+            }
+        return RemoteControlSettings.endpointURL(address: address, port: remoteControl.port)
+    }
 
     /// Invalid settings keep the previous ones (and the running server) unchanged.
     @discardableResult

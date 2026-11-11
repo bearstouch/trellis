@@ -153,8 +153,9 @@ public struct HTTPRequestParser: Sendable {
             let value = line[line.index(after: colon)...].trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
             let key = name.lowercased()
             if key == "content-length", let existing = headers[key], existing != value { throw .malformed }
-            // RFC 9112 §3.2: more than one Host is a 400, so the Host check cannot be split.
-            if key == "host", headers[key] != nil { throw .malformed }
+            // RFC 9112 §3.2: more than one Host is a 400, so the Host check cannot be split. The same
+            // goes for X-Forwarded-For, which the tailnet allow-list reads (FR-RC09).
+            if key == "host" || key == "x-forwarded-for", headers[key] != nil { throw .malformed }
             if headers[key] == nil { headers[key] = value }
         }
         if headers["transfer-encoding"] != nil { throw .lengthRequired }

@@ -13,12 +13,23 @@ public final class MCPServer: @unchecked Sendable {
     private var listener: MCPListener?
     private var endpoint: MCPEndpoint?
     private var current: RemoteControlStatus = .stopped
+    private var tailnet: TailnetAccess?
 
     public init(handler: AuthorizingControlHandler, serverVersion: String, now: @escaping @Sendable () -> Date = { Date() }) {
         self.handler = handler; self.serverVersion = serverVersion; self.now = now
     }
 
     public var status: RemoteControlStatus { lock.withLock { current } }
+    public var tailnetAccess: TailnetAccess? { lock.withLock { tailnet } }
+
+    /// Who may come through `tailscale serve` (FR-RC08, FR-RC09); nil refuses every proxied request.
+    public func setTailnetAccess(_ access: TailnetAccess?) async {
+        let endpoint = lock.withLock { () -> MCPEndpoint? in
+            tailnet = access
+            return self.endpoint
+        }
+        await endpoint?.setTailnetAccess(access)
+    }
 
     /// Stops any running listener, then starts one when enabled. Returns the new status.
     @discardableResult
@@ -39,9 +50,10 @@ public final class MCPServer: @unchecked Sendable {
         }
     }
 
+    /// Also clears tailnet access: a new listener admits proxied requests only once sharing sets it again.
     public func stop() {
         let (listener, endpoint) = lock.withLock { () -> (MCPListener?, MCPEndpoint?) in
-            defer { self.listener = nil; self.endpoint = nil; current = .stopped }
+            defer { self.listener = nil; self.endpoint = nil; current = .stopped; tailnet = nil }
             return (self.listener, self.endpoint)
         }
         listener?.stop()
