@@ -76,8 +76,10 @@ public struct ControlIdentity: Equatable, Sendable {
     public let connectionID: UUID
     public let peerUID: uid_t
     public let grantID: UUID?
-    public init(connectionID: UUID, peerUID: uid_t, grantID: UUID? = nil) {
-        self.connectionID = connectionID; self.peerUID = peerUID; self.grantID = grantID
+    /// The protocol negotiated by `auth.authenticate`: 1, or 2 when the app runs with `--automation-v2`.
+    public let protocolVersion: Int
+    public init(connectionID: UUID, peerUID: uid_t, grantID: UUID? = nil, protocolVersion: Int = 1) {
+        self.connectionID = connectionID; self.peerUID = peerUID; self.grantID = grantID; self.protocolVersion = protocolVersion
     }
 }
 
@@ -88,10 +90,13 @@ public protocol ControlHandler: Sendable {
     func dispatch(_ method: String, params: JSONValue?, identity: ControlIdentity) async -> Result<JSONValue, ControlError>
     /// Called once when the connection ends (subscriptions, rate limits).
     func disconnected(connectionID: UUID) async
+    /// Protocol versions `auth.authenticate` accepts; 2 only with `--automation-v2` until the switch.
+    var supportedProtocolVersions: [Int] { get }
 }
 
 extension ControlHandler {
     public func disconnected(connectionID: UUID) async {}
+    public var supportedProtocolVersions: [Int] { [1] }
 }
 
 /// No grants exist yet, so every authentication attempt fails and no domain
@@ -138,6 +143,9 @@ public actor ControlSession {
     private let handler: any ControlHandler
     private var framer = ControlFramer()
     private var identity: ControlIdentity?
+    /// The protocol replies are shaped for: the last supported version a client asked for. Starts at 1, so a client
+    /// that never asks for 2 sees exactly the v1 wire format.
+    private var wireVersion = 1
     private var closed = false
 
     public init(peerUID: uid_t, expectedUID: uid_t = geteuid(), handler: any ControlHandler) {
@@ -150,7 +158,7 @@ public actor ControlSession {
         // Another user's process never reaches parsing or dispatch.
         guard peerUID == expectedUID else { return finish(Data()) }
         let frames: [Data]
-        do { frames = try framer.append(bytes) } catch { return finish(Self.encode(error: .frameTooLarge, id: nil)) }
+        do { frames = try framer.append(bytes) } catch { return finish(Self.encode(error: .frameTooLarge, id: nil, version: wireVersion)) }
         var output = Data()
         for frame in frames {
             guard String(data: frame, encoding: .utf8) != nil else {
@@ -182,10 +190,16 @@ public actor ControlSession {
         }
         guard let id = request.id else {
             // Notifications get no reply and are never dispatched; mutations are refused.
-            return ControlMethods.isMutating(request.method) ? Self.encode(error: .notificationMutation, id: nil) : nil
+            let mutating = wireVersion == 2 ? MethodCatalogV2.isMutating(request.method) : ControlMethods.isMutating(request.method)
+            return mutating ? Self.encode(error: .notificationMutation, id: nil, version: wireVersion) : nil
         }
         let result: Result<JSONValue, ControlError>
         if request.method == "auth.authenticate" {
+            if case .number(let requested)? = request.params?["protocolVersion"], let version = Int(exactly: requested),
+                handler.supportedProtocolVersions.contains(version)
+            {
+                wireVersion = version
+            }
             switch await handler.authenticate(request.params, connectionID: connectionID, peerUID: peerUID) {
             case .success(let (identity, payload)):
                 self.identity = identity
@@ -204,8 +218,8 @@ public actor ControlSession {
         switch result {
         case .success(let value):
             let encoded = Self.encode(result: value, id: id)
-            return encoded.count <= ControlFramer.maximumFrame ? encoded : Self.encode(error: .responseTooLarge, id: id)
-        case .failure(let error): return Self.encode(error: error, id: id)
+            return encoded.count <= ControlFramer.maximumFrame ? encoded : Self.encode(error: .responseTooLarge, id: id, version: wireVersion)
+        case .failure(let error): return Self.encode(error: error, id: id, version: wireVersion)
         }
     }
 
@@ -255,9 +269,17 @@ public actor ControlSession {
         line(.object(["jsonrpc": .string("2.0"), "id": id.json, "result": result]))
     }
 
-    static func encode(error: ControlError, id: ControlRequestID?) -> Data {
+    /// v1 merges details into `data`; v2 (API2-03) sends `data: {code, message, retryable, details?}` for application
+    /// errors. JSON-RPC errors carry their details (such as `fields`) directly in `data` in both.
+    static func encode(error: ControlError, id: ControlRequestID?, version: Int = 1) -> Data {
         var body: [String: JSONValue] = ["code": .number(Double(error.code)), "message": .string(error.message)]
         var data: [String: JSONValue] = [:]
+        if version == 2, let appCode = error.appCode {
+            data = ["code": .string(appCode), "message": .string(error.message), "retryable": .bool(error.retryable)]
+            if let details = error.details { data["details"] = details }
+            body["data"] = .object(data)
+            return line(.object(["jsonrpc": .string("2.0"), "id": id?.json ?? .null, "error": .object(body)]))
+        }
         if let appCode = error.appCode { data = ["code": .string(appCode), "retryable": .bool(error.retryable)] }
         if case .object(let details)? = error.details { data.merge(details) { current, _ in current } }
         if !data.isEmpty { body["data"] = .object(data) }

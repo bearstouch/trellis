@@ -838,8 +838,11 @@ struct TrellisMain {
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
             let events = EventHub(instanceID: instanceID, grants: grantStore)
+            // --automation-v2 accepts protocol 2 beside protocol 1 (development and tests) until v2 replaces v1.
+            let automationV2 = CommandLine.arguments.contains("--automation-v2")
             let handler = AuthorizingControlHandler(
-                grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
+                grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events,
+                v2Domain: automationV2 ? AutomationServiceV2(model: model, hosts: hosts, instanceID: instanceID) : nil)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
             let forwarder = EventForwarder(hub: events, instanceID: instanceID)

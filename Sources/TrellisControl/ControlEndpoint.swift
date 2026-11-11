@@ -7,6 +7,9 @@ public struct ControlDiscovery: Codable, Equatable, Sendable {
     public let protocolVersion: Int
     public let instanceID: UUID
     public let socketPath: String
+    /// Every version `auth.authenticate` accepts, written only when it is more than `protocolVersion` (protocol 2 with
+    /// `--automation-v2`), so the file stays byte-identical for v1-only builds.
+    public var protocolVersions: [Int]? = nil
 }
 
 public enum ControlEndpointError: Error, Equatable, Sendable {

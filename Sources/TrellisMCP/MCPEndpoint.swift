@@ -179,7 +179,7 @@ public actor MCPEndpoint {
         }
         let result = await handler.dispatch(tool.method, params: arguments, identity: session.identity)
         // A revoked or expired grant ends the MCP session as it ends a socket's authentication.
-        if case .failure(let error) = result, error.appCode == "AUTH_REQUIRED" { await drop([sessionID]) }
+        if case .failure(let error) = result, error.appCode.flatMap(APIErrorCode.init(rawValue:))?.mcpDisposition == .toolErrorEndingSession { await drop([sessionID]) }
         if case .failure(let error) = result, error.code == -32601 { return .failure(error) }
         let value = MCPTools.callResult(result, method: tool.method)
         guard MCPJSON.data(value).count <= Self.maximumResponse - 512 else { return .success(MCPTools.callResult(.failure(.responseTooLarge), method: tool.method)) }

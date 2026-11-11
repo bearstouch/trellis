@@ -1,7 +1,7 @@
 # Automation API v2 (draft)
 
-!!! warning "Draft contract — not implemented"
-    This is the proposed protocol 2. The running app still speaks [protocol 1](../index.md). When v2 ships it **replaces** v1 outright (a clean break, see [Migration](migration.md)), and these pages move up to `docs/api/`. Until then every requirement here is unimplemented and unchecked.
+!!! warning "Draft contract — not shipped"
+    This is the proposed protocol 2. The running app still speaks [protocol 1](../index.md). When v2 ships it **replaces** v1 outright (a clean break, see [Migration](migration.md)), and these pages move up to `docs/api/`. Until then it is built in phases that only an app run with `--automation-v2` accepts (see the [implementation plan](implementation.md#progress)), and every requirement here stays unchecked.
 
 Protocol 2 rebuilds the automation model around what Trellis is today: spaces that live on a machine and may belong to a project, temporary and project tabs, panes as real resources with a machine and live attention state, sessions kept by the broker, agents, remote workspaces, projects and tasks. The socket, the `trellis` CLI and the MCP server all speak it.
 
@@ -40,10 +40,11 @@ Unchanged from v1 except for the version: JSON-RPC 2.0 over the per-user Unix so
 | --- | --- |
 | IDs | Workspace resources, hosts, projects and grants use UUIDs, written **lowercase** and accepted in any case. Agent definitions (`trellis-claude-code`), themes and tasks use string IDs. |
 | Absent values | A field with no value is **omitted**, never `""` or `0`. `null` appears only in update parameters, where it clears a field. |
+| Parameters | `params` is an object (or omitted). Unknown names (v1 aliases such as `windowId` included), a missing required parameter, `null` outside update parameters and a value of the wrong type are all `-32602`, with `data.fields` naming each parameter and what it expects. |
 | Revisions | Every resource has an integer `revision` that increases on every change to it. A collection result carries the revision of its container (`space.list` → workspace, `tab.list` → space). |
 | Optimistic concurrency | Every mutating method accepts `expectedRevision` for **the resource named by its `id` parameter** (or the container for create and reorder methods). A mismatch is `CONFLICT` with `details.currentRevision`. No method ignores it. |
 | Results | A method that changes one resource returns it under its type name (`{"tab": {…}}`), plus `workspaceRevision` when the workspace changed. Lists return `{"<plural>": [...], "revision", "nextCursor"?}`. Closing and deleting return `{"deleted": {"kind", "id"}, "workspaceRevision"}`. |
-| Pagination | Every `list` takes `limit` (default 100, maximum 500) and `cursor`; `nextCursor` is present while more remain. |
+| Pagination | Every `list` takes `limit` (default 100, maximum 500) and `cursor`; `nextCursor` is present while more remain. Cursors are opaque and belong to one list method: a cursor from another list, or one the server didn't issue, is `INVALID_CURSOR`. Pages are positions in the list, so if `revision` changes between pages, start again. |
 | Time | RFC 3339 UTC strings with milliseconds. Durations are integer milliseconds (`durationMs`). |
 | Numbers | Numbers are JSON numbers everywhere, including inside event `data`. |
 | Idempotency | Every mutating method accepts `idempotencyKey` (1–128 printable ASCII). Keys are kept per grant for 10 minutes; a reused key with other parameters is `CONFLICT`. Focus and selection methods are mutating but are never destructive. |
@@ -52,7 +53,7 @@ Unchanged from v1 except for the version: JSON-RPC 2.0 over the per-user Unix so
 
 ## Errors (API2-03)
 
-JSON-RPC codes are as in v1 (`-32700`, `-32600`, `-32601`, `-32602` with `data.fields`, `-32603`). Application errors are `-32000` with `data: {code, message, retryable, details?}`. `Sources/TrellisCore/TerminalSecurity.swift` `knownErrorCodes`, this table, the CLI exit-code map and the MCP error mapping are generated from one list and checked by a test.
+JSON-RPC codes are as in v1 (`-32700`, `-32600`, `-32601`, `-32602` with `data.fields`, `-32603`). Application errors are `-32000` with `data: {code, message, retryable, details?}`. The one list is `APIErrorCode` (`Sources/TrellisCore/APIErrorCode.swift`): diagnostics' `knownErrorCodes` (which adds the app's own `UI_ERROR`), the CLI exit-code map and the MCP mapping derive from it, and a test compares it with this table and with the codes used in `Sources/`. In MCP every code is a tool error (`isError`, with the code in `structuredContent`); `AUTH_REQUIRED` also ends the MCP session. **Retryable** `sometimes` means the error's own `retryable` decides.
 
 | `code` | When | Retryable | CLI exit |
 | --- | --- | --- | --- |
@@ -69,7 +70,7 @@ JSON-RPC codes are as in v1 (`-32700`, `-32600`, `-32601`, `-32602` with `data.f
 | `AGENT_UNAVAILABLE` | The agent isn't installed on the pane's machine. `details.install` says whether `agent.install` can fix it. | no | 6 |
 | `TASK_UNTRUSTED` | A task from `.trellis/launch.json` hasn't been trusted in the app; trust is only given in the UI | no | 4 |
 | `SETUP_REQUIRED` | A project launch needs setup (clone, folders) and `setup: true` wasn't passed | no | 5 |
-| `INVALID_CURSOR` | Output cursor or event cursor from another session or instance, or ahead of now | no | 2 |
+| `INVALID_CURSOR` | Output, event or list cursor from another session, list or instance, or ahead of now | no | 2 |
 | `UNSUPPORTED_VERSION` | Protocol, layout, project or theme document version not supported | no | 2 |
 
 ## Requirements

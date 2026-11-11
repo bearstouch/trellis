@@ -9,7 +9,7 @@ Every method follows the [conventions](index.md#conventions-api2-02). In the tab
 
 | Method | Params | Result | Caps |
 | --- | --- | --- | --- |
-| `system.info` | — | `appVersion`, `protocolVersion`, `instanceId`, `limits` | none |
+| `system.info` | — | `appVersion`, `protocolVersion`, `instanceId`, `limits` (`maxFrameBytes`, `maxJsonDepth`, `maxConnections`, `maxPageSize`, `maxPanes`) | none |
 | `grant.get` | — | `grant` (the caller's own [grant view](permissions.md#grant-view)) | none |
 | `workspace.get` | `include?: ["tabs","panes","sessions","agents","layout"]` | Everything in scope in one call: `revision`, `activeSpaceId`, `spaces`, and the included collections | workspace.read |
 | `workspace.save` | — | `savedAt` | workspace.write |

@@ -29,6 +29,16 @@ Protocol 2 is a clean break for users, but `develop` must stay releasable betwee
 
 Phases 5, 6 and 7 are independent of each other once 4 lands; they are still committed in order so each commit stands alone.
 
+## Progress
+
+**Phase 1 — Foundations (landed on `feat/api-v2`).**
+
+- `--automation-v2` gives `AuthorizingControlHandler` a v2 domain (`AutomationServiceV2`); without it nothing changes, and `protocolVersion: 2` is `UNSUPPORTED_VERSION` exactly as before. With it, `auth.authenticate` accepts 1 or 2 per connection, other versions get `details.supported: [1, 2]`, and `control.json` keeps `protocolVersion: 1` (what the shipped CLI reads) and adds `protocolVersions: [1, 2]`.
+- A v2 connection resolves names only in the catalog (`MethodCatalogV2`, `Sources/TrellisControl/V2/`), never v1 names or aliases; a v1 connection never sees v2 methods. Error replies use the v2 `data` shape once a client has asked for protocol 2.
+- Each method is one `MethodSpecV2` value: parameters, capabilities and conditional rules, resource scope, all-spaces, mutating/destructive and revision target, error codes, summary. Validation (`-32602` with `data.fields`), authorization (`details.missing` on `PERMISSION_DENIED`), idempotency, MCP schemas and annotations (`MCPTools.v2`, served from phase 8) and CLI help (`synopsis`, `helpText`) are generated from it. The contract test refuses a declaration whose UUID parameter has no resource rule (unless marked `unscoped`), so a forgotten scope check can't fail open. List cursors are signed per app instance, so an edited, hand-built or previous-launch cursor is `INVALID_CURSOR`.
+- The catalog holds `system.info` and `grant.get`. Until grant schema 2 (phase 3) the grant view shows v1 capabilities under their v2 names and omits `preset`, `revision` and the `projects` and `agents` scopes.
+- The CLI keeps its v1 exit-code map until phase 8; `APIErrorCode.cliExitStatus` is the v2 map it will switch to (it differs for `UNSUPPORTED_VERSION`, `INVALID_CURSOR`, `INVALID_STATE` and `CLOSE_PENDING`).
+
 ## Risks and how each phase handles them
 
 | Risk | Where | Handling |

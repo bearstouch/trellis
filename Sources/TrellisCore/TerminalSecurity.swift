@@ -74,11 +74,8 @@ public struct DiagnosticsReport: Equatable, Sendable {
     public var mcpServer = "off"
     /// Stable error codes only (for example `LAUNCH_FAILED`), never messages.
     public var recentErrorCodes: [String] = []
-    /// The only codes a report may contain.
-    public static let knownErrorCodes: Set<String> = [
-        "UI_ERROR", "LAUNCH_FAILED", "AUTH_REQUIRED", "PERMISSION_DENIED", "NOT_FOUND", "CONFLICT", "INVALID_STATE", "LIMIT_EXCEEDED", "CLOSE_PENDING",
-        "CONFIRMATION_REQUIRED", "INVALID_CURSOR", "UNSUPPORTED_VERSION"
-    ]
+    /// The only codes a report may contain: the API error registry plus the app's own `UI_ERROR`.
+    public static let knownErrorCodes: Set<String> = Set(APIErrorCode.allCases.map(\.rawValue)).union(["UI_ERROR"])
 
     public init(appVersion: String, systemVersion: String, architecture: String) {
         self.appVersion = appVersion; self.systemVersion = systemVersion; self.architecture = architecture

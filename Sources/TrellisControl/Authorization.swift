@@ -260,14 +260,21 @@ public actor AuthorizingControlHandler: ControlHandler {
     private let networkLimiter: AuthenticationRateLimiter
     private let idempotency: IdempotencyCache
     private let events: EventHub?
+    /// Protocol 2, present only when the app runs with `--automation-v2` (until the switch removes v1).
+    private let v2: DispatcherV2?
+    public nonisolated let supportedProtocolVersions: [Int]
     private var connections: [UUID: UUID] = [:]
 
+    /// `v2Domain` turns on protocol 2 beside protocol 1; without it `protocolVersion: 2` is `UNSUPPORTED_VERSION`.
     public init(
         grants: GrantStore, domain: any ControlDomain, limiter: AuthenticationRateLimiter = AuthenticationRateLimiter(),
-        networkLimiter: AuthenticationRateLimiter = AuthenticationRateLimiter(), idempotency: IdempotencyCache = IdempotencyCache(), events: EventHub? = nil
+        networkLimiter: AuthenticationRateLimiter = AuthenticationRateLimiter(), idempotency: IdempotencyCache = IdempotencyCache(), events: EventHub? = nil,
+        v2Domain: (any ControlDomainV2)? = nil
     ) {
         self.grants = grants; self.domain = domain; self.limiter = limiter; self.networkLimiter = networkLimiter
         self.idempotency = idempotency; self.events = events
+        v2 = v2Domain.map { DispatcherV2(domain: $0, idempotency: idempotency) }
+        supportedProtocolVersions = v2Domain == nil ? [1] : [1, 2]
     }
 
     /// Connections currently authenticated with `grantID`, for revocation.
@@ -278,9 +285,13 @@ public actor AuthorizingControlHandler: ControlHandler {
         guard peerUID == geteuid() else { return .failure(.authenticationFailed) }
         await grants.ensureLoaded()
         guard !(await limiter.isLimited()) else { return .failure(.rateLimited) }
-        guard params?["protocolVersion"] == .number(1) else {
+        let version: Int
+        switch params?["protocolVersion"] {
+        case .number(1)?: version = 1
+        case .number(2)? where v2 != nil: version = 2
+        default:
             await limiter.recordFailure()
-            return .failure(.unsupportedVersion)
+            return .failure(v2 == nil ? .unsupportedVersion : .unsupportedVersionV2)
         }
         guard case .string(let token)? = params?["token"], (1...512).contains(token.utf8.count),
             let grant = await grants.activeGrant(token: token)
@@ -289,7 +300,8 @@ public actor AuthorizingControlHandler: ControlHandler {
             return .failure(.authenticationFailed)
         }
         connections[connectionID] = grant.id
-        let identity = ControlIdentity(connectionID: connectionID, peerUID: peerUID, grantID: grant.id)
+        let identity = ControlIdentity(connectionID: connectionID, peerUID: peerUID, grantID: grant.id, protocolVersion: version)
+        if version == 2, let v2 { return .success((identity, await v2.authenticationResult(grant: grant, connectionID: connectionID))) }
         let scope: JSONValue =
             switch grant.spaceScope {
             case .all: .string("all")
@@ -329,11 +341,16 @@ public actor AuthorizingControlHandler: ControlHandler {
     }
 
     public func dispatch(_ method: String, params: JSONValue?, identity: ControlIdentity) async -> Result<JSONValue, ControlError> {
-        let (method, params) = ControlMethods.canonical(method, params: params)
         guard let grantID = identity.grantID, let grant = await grants.activeGrant(id: grantID) else {
             connections.removeValue(forKey: identity.connectionID)
             return .failure(.application("AUTH_REQUIRED", "This grant expired or was revoked. Authenticate again with a valid grant."))
         }
+        // A v2 connection never sees v1 names or aliases, and a v1 connection never reaches the v2 catalog.
+        if identity.protocolVersion == 2 {
+            guard let v2 else { return .failure(.methodNotFound) }
+            return await v2.dispatch(method, params: params, grant: grant, identity: identity)
+        }
+        let (method, params) = ControlMethods.canonical(method, params: params)
         guard let requirement = AuthorizationPolicy.requirements[method] else { return .failure(.methodNotFound) }
         let access = GrantAccess(grant: grant, snapshot: await domain.snapshot())
         if case .failure(let error) = await authorize(requirement, params: params, access: access) { return .failure(error) }
