@@ -549,8 +549,13 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if forward { terminalView.scrollTo(row: .max) }
         return false
     }
-    // OSC 52 clipboard access is denied; native selection copy/paste remains in the view.
-    public func clipboardCopy(source: TerminalView, content: Data) {}
+    /// FR-C09: asked when an OSC 52 write arrives, so a settings change or `ssh` starting in the shell applies at once.
+    public var allowsClipboardWrite: () -> Bool = { false }
+    /// OSC 52 writes reach the clipboard only when allowed, never from replayed output; reads are always denied.
+    public func clipboardCopy(source: TerminalView, content: Data) {
+        guard !isReplaying, allowsClipboardWrite(), let text = ClipboardWritePolicy.text(content) else { return }
+        terminalView.writeClipboard(text)
+    }
     public func clipboardRead(source: TerminalView) -> Data? { nil }
     /// Opens a vetted URL; injected by tests.
     public var openURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }

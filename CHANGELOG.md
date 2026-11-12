@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Copy from programs over SSH:** Claude Code, tmux, Neovim and other programs on a remote host can now put text on your Mac's clipboard (OSC 52) if you allow it. **Settings → Sessions → Programs can copy to the clipboard** is **Off** by default and offers **From SSH sessions** (saved hosts, remote workspaces, and `ssh`/`mosh`, including one you type in a shell with integration) or **From any program**, which shows a risk warning. Programs can never read the clipboard. Holding ⇧ while dragging still selects text inside programs that capture the mouse.
 - **Languages:** Trellis is now available in Portuguese (Portugal), French and Spanish as well as English. It follows your Mac's language; **Settings → Appearance → Language** picks another one for Trellis alone, with no relaunch. Terminal output, names you chose, the `trellis` command and the automation API stay as they are. `--language en|pt-PT|fr|es` picks a language for one launch.
 - **Model and effort for Claude Code:** the Agents view's Running list shows the model a Claude Code session uses ("Ardaven · Opus 5.5") and its reasoning effort as a small label next to the tab name, once Claude Code reports them. Trellis reads only these two settings from Claude Code's hooks.
 - **Command Palette hint:** the status bar shows the Command Palette shortcut (⇧⌘P by default, or your custom binding) next to the version; clicking it opens the palette.

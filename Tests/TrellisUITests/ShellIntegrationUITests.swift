@@ -181,6 +181,43 @@ final class ShellIntegrationUITests: XCTestCase {
     }
 
     @MainActor
+    func testClipboardWritesFollowTheSettingAndOnlyTrustedSSHPanes() async throws {
+        let model = try await makeModel()
+        defer { cleanUp(model) }
+        let pane = try await makeShellPane(model)
+        func allowed() -> Bool { model.terminals[pane]?.allowsClipboardWrite() ?? false }
+        XCTAssertFalse(allowed(), "Off by default")
+        var settings = model.appearance; settings.clipboardWriteAccess = .ssh
+        XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertFalse(allowed(), "A local shell isn't an SSH pane")
+        try emit(model, pane, .commandStart(commandLine: "ssh -p 2222 me@box"))
+        XCTAssertTrue(allowed(), "The authenticated shell is running ssh")
+        try emit(model, pane, .commandFinished(exitCode: 0), .commandStart(commandLine: "vim ssh"))
+        XCTAssertFalse(allowed(), "Only the program name counts, and only while it runs")
+        for line in ["ssh -V; cat notes.txt", "ssh box && curl example.com", "ssh box | sh", "ssh box & cat log", "ssh $(cat host)", "ssh box\ncat log"] {
+            try emit(model, pane, .commandFinished(exitCode: 0), .commandStart(commandLine: line))
+            XCTAssertFalse(allowed(), "Local programs on the same line aren't trusted: \(line)")
+        }
+        try emit(model, pane, .commandFinished(exitCode: 0), .commandStart(commandLine: "env mosh box"))
+        XCTAssertTrue(allowed())
+        settings.clipboardWriteAccess = .off; XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertFalse(allowed(), "Turning it off applies to running panes at once")
+        try emit(model, pane, .commandFinished(exitCode: 0))
+        settings.clipboardWriteAccess = .everywhere; XCTAssertTrue(model.applyAppearance(settings))
+        XCTAssertTrue(allowed(), "Any pane when allowed everywhere")
+
+        settings.clipboardWriteAccess = .ssh; XCTAssertTrue(model.applyAppearance(settings))
+        for launch: SessionLaunch in [.host(UUID()), .process(executable: "/usr/bin/ssh", arguments: ["box"], directory: nil)] {
+            _ = try await model.service.execute(.splitPane(id: pane, axis: .x, availableSize: try TerminalSize(columns: 160, rows: 40)))
+            await model.refresh()
+            let other = try XCTUnwrap(model.snapshot.panes.keys.first { $0 != pane && !model.isSSHPane(paneID: $0) })
+            _ = try await model.service.execute(.configureStoppedSession(paneID: other, launch: launch))
+            await model.refresh()
+            XCTAssertTrue(model.clipboardWriteAllowed(paneID: other), "\(launch)")
+        }
+    }
+
+    @MainActor
     func testAutomaticTitlesRespectRenamedTabs() async throws {
         let model = try await makeModel()
         defer { cleanUp(model) }

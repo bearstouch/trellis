@@ -57,11 +57,13 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var backgroundBlur = true
     /// The language of the app's own text (FR-LN01); System follows the Mac's preferred languages.
     public var language: AppLanguage = .system
+    /// OSC 52 clipboard writes from programs (FR-C09); off unless the user allows them.
+    public var clipboardWriteAccess: ClipboardWriteAccess = .off
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
-        case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, language
+        case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, language, clipboardWriteAccess
     }
     /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
@@ -92,8 +94,11 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         backgroundBlur = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundBlur)) ?? true
         // Settings saved before FR-LN01, or naming a language this build doesn't have, follow the system.
         language = (try? c.decodeIfPresent(AppLanguage.self, forKey: .language)) ?? .system
+        // Settings saved before FR-C09, or naming a choice this build doesn't have, keep clipboard writes off.
+        clipboardWriteAccess = (try? c.decodeIfPresent(ClipboardWriteAccess.self, forKey: .clipboardWriteAccess)) ?? .off
     }
-    /// True when terminals must be updated: everything except chrome mode, theme selection, notifications and blur.
+    /// True when terminals must be updated: everything except chrome mode, theme selection, notifications, blur, language
+    /// and clipboard access (read by each pane when a write arrives).
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
@@ -101,6 +106,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         normalized.commandFinishedNotificationSeconds = other.commandFinishedNotificationSeconds
         normalized.backgroundBlur = other.backgroundBlur
         normalized.language = other.language
+        normalized.clipboardWriteAccess = other.clipboardWriteAccess
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {

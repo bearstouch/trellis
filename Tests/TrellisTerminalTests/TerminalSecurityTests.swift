@@ -32,6 +32,40 @@ final class TerminalSecurityTests: XCTestCase {
         XCTAssertEqual(responses, 1, "A status report does reach the reply path, so the zero above is meaningful")
     }
 
+    @MainActor
+    func testAllowedOsc52WritesTextButNeverReadsOrWritesFromReplay() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        defer { native.adapter.detach() }
+        let view = try XCTUnwrap(native.view as? AccessibleTerminalView)
+        var written: [String] = [], reads = 0, responses = 0, asked = 0
+        view.writeClipboard = { written.append($0) }
+        view.readClipboardText = {
+            reads += 1; return "clipboard secret"
+        }
+        native.onInputError = { _ in responses += 1 }
+        var allowed = true
+        native.allowsClipboardWrite = {
+            asked += 1; return allowed
+        }
+        let payload = Data("psql -h localhost".utf8).base64EncodedString()
+        native.adapter.receive(Data("\u{1b}]52;c;\(payload)\u{07}".utf8))
+        XCTAssertEqual(written, ["psql -h localhost"])
+        native.adapter.receive(Data("\u{1b}]52;c;?\u{07}\u{1b}]52;c;\u{07}".utf8))
+        XCTAssertEqual(written.count, 1, "Neither a read nor an empty write changes the clipboard")
+        XCTAssertEqual(reads, 0); XCTAssertEqual(responses, 0, "The clipboard is never sent back to the program")
+        let tooLarge = Data(repeating: 0x61, count: ClipboardWritePolicy.maximumBytes + 1).base64EncodedString()
+        native.adapter.receive(Data("\u{1b}]52;c;\(tooLarge)\u{07}".utf8))
+        XCTAssertEqual(written.count, 1, "Over 1 MiB is dropped")
+        allowed = false
+        native.adapter.receive(Data("\u{1b}]52;c;\(payload)\u{07}".utf8))
+        XCTAssertEqual(written.count, 1, "The permission is asked for each write, so turning it off applies at once")
+        allowed = true; let before = asked
+        native.showEndedSession(replay: Data("\u{1b}]52;c;\(payload)\u{07}".utf8), exitCode: 0)
+        XCTAssertEqual(written.count, 1, "Replayed output never writes the clipboard")
+        XCTAssertEqual(asked, before)
+    }
+
     func testKittyGraphicsCannotReadOrUnlinkLocalFiles() throws {
         final class Replies: TerminalDelegate {
             var text = ""
