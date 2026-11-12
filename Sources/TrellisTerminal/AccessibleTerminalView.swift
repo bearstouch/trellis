@@ -1,4 +1,5 @@
 import AppKit
+import MetalKit
 import SwiftTerm
 import TrellisCore
 
@@ -97,8 +98,11 @@ final class AccessibleTerminalView: TerminalView {
     }
 
     /// The overlay scroller covers the last columns; while it's faded out, clicks there belong to the terminal.
+    /// The Metal view covers the whole grid and won't take first responder, so a click on it would reach `mouseDown`
+    /// through the responder chain and leave the keyboard where it was (a sidebar field, say); the grid takes it instead.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
+        if let hit, hit is MTKView, hit.isDescendant(of: self) { return self }
         guard let scroller = terminalScroller, scroller.alphaValue == 0, let hit, hit === scroller || hit.isDescendant(of: scroller) else { return hit }
         return self
     }
@@ -387,6 +391,8 @@ final class AccessibleTerminalView: TerminalView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // A click that reached the grid through the responder chain (from a subview that won't take focus) still moves the keyboard here.
+        if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         onFocused?()
         super.mouseDown(with: event)
     }
