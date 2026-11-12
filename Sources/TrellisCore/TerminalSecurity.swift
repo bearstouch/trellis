@@ -34,6 +34,47 @@ public enum LinkPolicy {
     }
 }
 
+/// Which panes' programs may set the clipboard with OSC 52 (FR-C09). Reading the clipboard is never allowed.
+public enum ClipboardWriteAccess: String, Codable, CaseIterable, Sendable {
+    case off, ssh, everywhere
+    public var displayName: String {
+        switch self {
+        case .off: L("Off");
+        case .ssh: L("From SSH sessions");
+        case .everywhere: L("From any program")
+        }
+    }
+}
+
+/// Terminal output is untrusted: an OSC 52 write lands on the clipboard only when the setting allows it for the pane,
+/// and only as bounded, valid UTF-8 text. Paste review (FR-C04) still applies when it is pasted back.
+public enum ClipboardWritePolicy {
+    public static let maximumBytes = 1 << 20
+    /// Programs that make a pane an SSH pane while an authenticated shell runs them (FR-C09), as for launches (FR-SI09).
+    public static let sshPrograms: Set<String> = ["ssh", "mosh", "autossh"]
+
+    /// An authenticated shell running `ssh`/`mosh`/`autossh` as the line's only command. A list, background job, pipe or
+    /// substitution (`ssh -V; cat file`, `ssh box | sh`) also runs local programs whose output the user didn't mean to trust.
+    public static func runsSSH(_ state: ShellIntegrationState) -> Bool {
+        guard state.origin == .authenticated, let name = state.commandName, sshPrograms.contains(name), let line = state.commandLine else { return false }
+        return !line.contains(where: { ";&|`\n\r".contains($0) }) && !line.contains("$(") && !line.contains("<(") && !line.contains(">(")
+    }
+
+    public static func allows(_ access: ClipboardWriteAccess, sshPane: Bool) -> Bool {
+        switch access {
+        case .off: false;
+        case .ssh: sshPane;
+        case .everywhere: true
+        }
+    }
+
+    /// The text to copy, or nil to drop the request: empty (an xterm "clear"), over 1 MiB, or not UTF-8.
+    public static func text(_ content: Data) -> String? {
+        guard !content.isEmpty, content.count <= maximumBytes, let text = String(data: content, encoding: .utf8) else { return nil }
+        return text
+    }
+}
+
 extension Array {
     fileprivate var nilIfEmpty: Self? { isEmpty ? nil : self }
 }

@@ -63,7 +63,7 @@ See [SSH hosts](features/ssh-hosts.md).
 - Copy and paste use `NSPasteboard` and AppKit selection semantics, and only when the user triggers them.
 - The clipboard is read only on paste and is never polled. Copy strips terminal control sequences.
 - Pasting files as escaped paths and dropping files on a pane (FR-C08) are explicit actions, and show a preview when shell escaping is uncertain.
-- Clipboard requests from the terminal (OSC 52) are disabled, and agents get no clipboard access in v1.
+- Programs can never read the clipboard through the terminal. Clipboard writes (OSC 52) are off by default and can be allowed from SSH sessions or from any program (FR-C09). Agents get no clipboard access through the automation API.
 - Links open through the system URL handler, only after a user gesture, and only for `https`, `http`, `mailto` and existing local files. Files that could run code are revealed in Finder instead (FR-L03).
 
 ## Configuration import and export

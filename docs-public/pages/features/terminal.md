@@ -61,7 +61,17 @@ All four text-style options are on by default. Trellis draws bold, dim, italic, 
 
 Right-click a pane for **Copy**, **Copy All Retained Text**, **Select All**, **Paste**, **Paste Escaped Path**, **Find…** and **Clear**.
 
-While a program captures the mouse (for example `vim` with mouse support on), clicks and double-clicks go to the program.
+While a program captures the mouse (for example `vim` with mouse support on), clicks and double-clicks go to the program. Hold <kbd>⇧</kbd> while you drag to select the text yourself, then copy with <kbd>⌘</kbd><kbd>C</kbd>.
+
+### Copy from programs on a remote host
+
+Programs such as Claude Code, tmux and Neovim copy text by sending it through the terminal (OSC 52), because over SSH they can't reach your Mac's clipboard. Trellis ignores these requests unless you allow them in **Settings → Sessions → Programs can copy to the clipboard**:
+
+- **Off** (the default): only your own selections and <kbd>⌘</kbd><kbd>C</kbd> change the clipboard.
+- **From SSH sessions**: programs in a saved host's pane, a remote workspace, or an `ssh` or `mosh` session can set the clipboard. An `ssh` you type in a shell counts only when [shell integration](shell-integration.md) is on and it's the only command on the line: `ssh box && make` or `ssh box | tee log` don't count, because local programs run in the same pane.
+- **From any program**: anything printed in any pane can replace what you copied, including a file you `cat` or a page you `curl`. Settings shows a warning when you choose this. Check what you paste.
+
+Programs can never read your clipboard, whatever you choose. Text up to 1 MiB is copied; larger requests are ignored.
 
 ## Paste
 
@@ -145,7 +155,7 @@ Limits: an image can be at most 10,000 pixels on a side and 40 megapixels, and a
 
 Anything can print to your terminal: a build script, a file you `cat`, a web page you `curl`, a remote server. Trellis assumes that output could be hostile, so it can't take actions on your behalf:
 
-- Programs can't read or write your clipboard through the terminal.
+- Programs can't read your clipboard through the terminal, and they can only write to it if you allow it (see [Copy from programs on a remote host](#copy-from-programs-on-a-remote-host)).
 - Links only open when you <kbd>⌘</kbd>-click them or choose an action from the context menu, and only web, mail and local file links open. Files that could run code are only shown in Finder.
 - Copied text never carries hidden escape sequences.
 - Inline images never download or open files, and oversized data is dropped.
