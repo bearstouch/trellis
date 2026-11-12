@@ -192,7 +192,7 @@ struct AutomationSettingsView: View {
     }
 }
 
-/// New and Edit share this form: presets first, then capabilities grouped by area, scopes and expiry.
+/// New and Edit share this form: name, role, spaces and expiry; capabilities and the other scopes wait under Advanced.
 private struct GrantSheet: View {
     @ObservedObject var grants: GrantListModel
     @ObservedObject var workspace: AppWorkspaceModel
@@ -204,6 +204,7 @@ private struct GrantSheet: View {
     @State private var message: String?
     @State private var submitting = false
     @State private var confirmingWidening = false
+    @State private var showsAdvanced = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -223,7 +224,7 @@ private struct GrantSheet: View {
         // Width before padding: the form's ideal width is wider than the sheet, and padding outside a fixed frame
         // would let it run to the sheet's edges.
         .frame(width: 540, height: token == nil ? 600 : nil).padding(20)
-        .onAppear { if let editing { draft = GrantDraft(grant: editing) } }
+        .onAppear { if let editing { draft = GrantDraft(grant: editing); showsAdvanced = draft.needsAdvanced } }
         .alert(L("Give “%@” more access?", draft.name), isPresented: $confirmingWidening) {
             Button(L("Cancel"), role: .cancel) {}
             Button(L("Allow More Access"), role: .destructive) { submit(confirmed: true) }
@@ -257,23 +258,15 @@ private struct GrantSheet: View {
                 TextField(L("Name"), text: $draft.name, prompt: Text(L("Build agent"))).accessibilityLabel(L("Grant name"))
             }
             Section {
-                ForEach(GrantPreset.allCases, id: \.self) { preset in presetRow(preset) }
+                ForEach(GrantPreset.allCases.filter { $0 != .custom }, id: \.self) { preset in presetRow(preset) }
+                if draft.preset == .custom { customRow }
             } header: {
-                sectionHeader(L("Preset"))
+                sectionHeader(L("Role"))
             }
             Section {
-                caption(L("Changing any capability makes the grant Custom."))
-                ForEach(CapabilityV2.Area.allCases, id: \.self) { area in
-                    Text(area.localizedName).font(.subheadline.weight(.semibold)).padding(.top, 6).accessibilityAddTraits(.isHeader)
-                    ForEach(CapabilityV2.allCases.filter { $0.area == area }, id: \.self) { capability in capabilityToggle(capability) }
-                }
+                spaceScope
             } header: {
-                sectionHeader(L("Capabilities"))
-            }
-            Section {
-                scopes
-            } header: {
-                sectionHeader(L("Scope"))
+                sectionHeader(L("Spaces"))
             }
             Section {
                 Picker(L("Expires after"), selection: $draft.lifetime) {
@@ -292,7 +285,36 @@ private struct GrantSheet: View {
             } header: {
                 sectionHeader(L("Expiry"))
             }
+            Section {
+                DisclosureGroup(L("Show capabilities and other scopes"), isExpanded: $showsAdvanced) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L("Capabilities")).font(.headline).padding(.top, 8).accessibilityAddTraits(.isHeader)
+                        caption(L("Changing any capability makes the grant Custom."))
+                        ForEach(CapabilityV2.Area.allCases, id: \.self) { area in
+                            Text(area.localizedName).font(.subheadline.weight(.semibold)).padding(.top, 6).accessibilityAddTraits(.isHeader)
+                            ForEach(CapabilityV2.allCases.filter { $0.area == area }, id: \.self) { capability in capabilityToggle(capability) }
+                        }
+                        Text(L("Scope")).font(.headline).padding(.top, 14).accessibilityAddTraits(.isHeader)
+                        otherScopes
+                    }
+                }
+            } header: {
+                sectionHeader(L("Advanced"))
+            }
         }
+    }
+
+    /// Custom isn't picked: it appears once a capability in Advanced no longer matches a role.
+    private var customRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.accentColor).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(GrantPreset.custom.localizedName).fontWeight(.semibold)
+                caption(L("The capabilities were changed in Advanced and no longer match a role."))
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isSelected)
     }
 
     /// A plain macOS Form puts no space above a section title, so each group gets its own.
@@ -334,7 +356,7 @@ private struct GrantSheet: View {
         .accessibilityHint(L("Capability %@", capability.rawValue))
     }
 
-    @ViewBuilder private var scopes: some View {
+    @ViewBuilder private var spaceScope: some View {
         Picker(L("Spaces"), selection: $draft.spaceChoice) {
             Text(L("All spaces")).tag(GrantDraft.SpaceChoice.all)
             Text(L("Only spaces this grant creates")).tag(GrantDraft.SpaceChoice.created)
@@ -348,7 +370,9 @@ private struct GrantSheet: View {
         case .chosen:
             ForEach(workspace.snapshot.spaces) { space in choice(space.name, $draft.spaces, space.id) }
         }
-        Divider()
+    }
+
+    @ViewBuilder private var otherScopes: some View {
         Picker(L("Projects"), selection: $draft.allProjects) {
             Text(L("All projects")).tag(true)
             Text(L("Chosen projects")).tag(false)
@@ -407,7 +431,7 @@ private struct GrantSheet: View {
                         ? L("Applied for now, but not saved: %@ Edit the grant again before relaunching.", GrantListModel.message(for: error)) : GrantListModel.message(for: error)
                 }
             } else {
-                switch await grants.create(settings, lifetime: lifetime ?? 86_400) {
+                switch await grants.create(settings, lifetime: lifetime ?? GrantDraft.defaultLifetime) {
                 case .success(let created): token = created
                 case .failure(let error): message = GrantListModel.message(for: error)
                 }

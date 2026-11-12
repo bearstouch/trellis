@@ -19,7 +19,8 @@ struct GrantDraft: Equatable {
     var allAgents = true
     var agents = Set<String>()
     /// Seconds from now; nil keeps the current expiry (editing only).
-    var lifetime: TimeInterval? = 86_400
+    var lifetime: TimeInterval? = GrantDraft.defaultLifetime
+    static let defaultLifetime: TimeInterval = 7 * 86_400
 
     init(preset: GrantPreset = .observer) { choose(preset) }
 
@@ -51,6 +52,18 @@ struct GrantDraft: Equatable {
         allProjects = scope.projects == .all
         allHosts = scope.hosts == .all
         allAgents = scope.agents == .all
+    }
+
+    /// Whether the sheet opens Advanced by itself: a Custom grant, or projects, hosts or agents scoped differently from
+    /// its role's default, would otherwise hide part of what it can do.
+    var needsAdvanced: Bool {
+        guard preset != .custom else { return true }
+        // A role's default is "all" or "none chosen yet", so any chosen project, host or agent is a choice made in Advanced.
+        let scope = preset.defaultScope
+        let projectsChanged = allProjects != (scope.projects == .all) || (!allProjects && !projects.isEmpty)
+        let hostsChanged = allHosts != (scope.hosts == .all) || (!allHosts && !hosts.isEmpty)
+        let agentsChanged = allAgents != (scope.agents == .all) || (!allAgents && !agents.isEmpty)
+        return projectsChanged || hostsChanged || agentsChanged
     }
 
     /// Any capability change makes the grant Custom.

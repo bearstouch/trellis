@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Simpler grant sheet:** **Settings → Automation → New Grant** asks for a name, a role (Observer, Operator, Agent orchestrator or Full control), which spaces and an expiry. Individual capabilities and the projects, hosts and agents scopes move under **Advanced**, which opens by itself when you edit a grant that uses them. New grants last 7 days by default (was 1 day).
 - **Grants file format:** `grants.json` is converted to a new format the first time this version starts; the old file is kept as `grants.json.v1.bak`. Existing grants keep their tokens and can do exactly what they could before. An earlier version of Trellis can't read the new file; restore the backup there.
 - **Kept sessions no longer run forever by default:** before, a session kept after quit ran until it ended by itself. Pick **No timeout** to keep that behavior.
 

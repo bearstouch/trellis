@@ -9,7 +9,7 @@ Every automation client authenticates with a **grant**: a token plus what it may
 | Token format | `trl_` followed by 32 random bytes in base64url without padding |
 | Token storage | Keychain generic password: service `Trellis Automation`, account = grant UUID, accessibility *when unlocked, this device only* |
 | Grant metadata | `<state-dir>/grants.json`, mode `0600`, written atomically. Stores only `sha256:<hex>` of the token, which is compared in constant time. See [Storage](#storage). |
-| Lifetime | Between 60 seconds and 90 days. The sheet offers 1 hour, 1 day (default), 7, 30 and 90 days. |
+| Lifetime | Between 60 seconds and 90 days. The sheet offers 1 hour, 1 day, 7 days (default), 30 and 90 days. |
 | Revocation | Takes effect immediately: open connections, subscriptions, waiting polls and MCP sessions of the grant end. Revoked and expired grants stay in the file for the record. |
 | Editing | Name, capabilities, scopes and expiry can be changed; the token can't. See [Editing grants](#editing-grants). |
 
@@ -88,7 +88,7 @@ Intent-level capabilities never widen what a grant can execute: anything that de
 
 ## Presets
 
-The grant sheet leads with presets; **Custom** shows every capability, grouped by area with plain-language descriptions instead of raw names. A grant stores its capabilities (the enforcement unit) and the preset it came from (for display); editing capabilities turns it into Custom.
+The grant sheet asks for a name, a **role** (one of the four presets below), the spaces scope and an expiry. Everything else is under **Advanced**, collapsed by default: every capability, grouped by area with plain-language descriptions instead of raw names, and the projects, hosts and agents scopes. **Custom** is not a role to pick: the role reads Custom once a capability in Advanced no longer matches a preset. Editing a grant opens Advanced already expanded when the grant is Custom or its projects, hosts or agents scope differs from its preset's default, so nothing about it is hidden. A grant stores its capabilities (the enforcement unit) and the preset it came from (for display); editing capabilities turns it into Custom.
 
 | Preset | Capabilities | Default scope |
 | --- | --- | --- |
@@ -98,7 +98,7 @@ The grant sheet leads with presets; **Custom** shows every capability, grouped b
 | **Full control** | every capability | all |
 | **Custom** | chosen | chosen |
 
-Host access stays opt-in (approved hosts, none until chosen) for every preset that can start sessions except Full control. Choosing a preset sets exactly its capabilities and default scopes; changing any capability afterwards makes the grant Custom, while changing a scope keeps the preset. Default lifetime stays 1 day; the sheet keeps 1 hour to 90 days.
+Host access stays opt-in (approved hosts, none until chosen) for every preset that can start sessions except Full control. Choosing a preset sets exactly its capabilities and default scopes; changing any capability afterwards makes the grant Custom, while changing a scope keeps the preset. The default lifetime is 7 days, long enough for an agent's working week; the sheet keeps 1 hour to 90 days.
 
 ## Grant view
 
@@ -145,6 +145,6 @@ These controls protect against accidental and unauthorized access by *other clie
 | --- | --- | --- |
 | API2-06a | Capabilities and composition are enforced at the service boundary. | Each row of both tables has an allow and a deny test; a test fails if a method has no policy entry. |
 | API2-06b | `created` scope. | A grant with `created` scope that makes a space can read and change it, its tabs, panes and sessions, and nothing else; its events are delivered; another grant's spaces are `NOT_FOUND`. |
-| API2-06c | Presets and Custom. | Each preset produces exactly its capability set; changing one capability shows Custom; the sheet groups capabilities by area with descriptions and VoiceOver labels. |
+| API2-06c | Roles, Advanced and Custom. | Each preset produces exactly its capability set; changing one capability shows Custom; the sheet shows name, role, spaces and expiry with capabilities and the other scopes under a collapsed Advanced, which opens by itself for a Custom grant or non-default scopes; capabilities are grouped by area with descriptions and VoiceOver labels. |
 | API2-06d | Grants are editable; narrowing applies at once, widening asks first. | Removing `session.output.read` and `session.input` ends an output subscription (a metadata one stays), and the next `session.sendInput` is `AUTH_REQUIRED`, then `PERMISSION_DENIED` after re-authenticating; adding a capability shows a confirmation, and Cancel keeps the grant unchanged. |
 | API2-06e | Agent and project scopes. | An `agents: ["trellis-codex"]` grant can't start Claude Code (`NOT_FOUND`) but can read its runs; a project outside scope is `NOT_FOUND` for launch. |

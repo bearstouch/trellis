@@ -143,6 +143,29 @@ final class AutomationV2PermissionTests: XCTestCase {
         }
     }
 
+    func testAdvancedOpensByItselfOnlyWhenARoleWouldHideSomething() {
+        XCTAssertEqual(GrantDraft().lifetime, 7 * 86_400, "A new grant lasts 7 days unless another expiry is chosen")
+        for preset in GrantPreset.allCases where preset != .custom {
+            var draft = GrantDraft(preset: preset)
+            XCTAssertFalse(draft.needsAdvanced, "\(preset) with its default scopes stays collapsed")
+            draft.spaceChoice = .chosen
+            XCTAssertFalse(draft.needsAdvanced, "Spaces are on the main form")
+        }
+        var custom = GrantDraft(preset: .operator)
+        custom.set(.sessionInput, false)
+        XCTAssertTrue(custom.needsAdvanced, "A Custom grant shows its capabilities")
+        var projects = GrantDraft(preset: .observer)
+        projects.allProjects = false
+        XCTAssertTrue(projects.needsAdvanced, "Chosen projects differ from the role's all")
+        var hosts = GrantDraft(preset: .operator)
+        XCTAssertFalse(hosts.needsAdvanced, "Approved hosts, none chosen, is Operator's default")
+        hosts.hosts = [UUID()]
+        XCTAssertTrue(hosts.needsAdvanced, "An approved host was chosen in Advanced")
+        var agents = GrantDraft(preset: .fullControl)
+        agents.allAgents = false
+        XCTAssertTrue(agents.needsAdvanced)
+    }
+
     func testEditingDecidesWhenToConfirm() throws {
         let host = SavedHost(id: UUID(), draft: try HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 4)
         let now = Date(timeIntervalSince1970: 1_800_000_000)
