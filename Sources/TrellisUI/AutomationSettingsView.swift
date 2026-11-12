@@ -210,8 +210,8 @@ private struct GrantSheet: View {
             if let token {
                 created(token)
             } else {
-                Text(editing == nil ? L("New Automation Grant") : L("Edit “%@”", editing?.name ?? "")).font(.headline).accessibilityAddTraits(.isHeader)
-                ScrollView { form.padding(.trailing, 12) }
+                Text(editing == nil ? L("New Automation Grant") : L("Edit “%@”", editing?.name ?? "")).font(.headline).padding(.leading, 20).accessibilityAddTraits(.isHeader)
+                ScrollView { form.frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 12) }
                 if let message { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true) }
                 HStack {
                     Spacer()
@@ -220,7 +220,9 @@ private struct GrantSheet: View {
                 }
             }
         }
-        .padding(20).frame(width: 580, height: token == nil ? 640 : nil)
+        // Width before padding: the form's ideal width is wider than the sheet, and padding outside a fixed frame
+        // would let it run to the sheet's edges.
+        .frame(width: 540, height: token == nil ? 600 : nil).padding(20)
         .onAppear { if let editing { draft = GrantDraft(grant: editing) } }
         .alert(L("Give “%@” more access?", draft.name), isPresented: $confirmingWidening) {
             Button(L("Cancel"), role: .cancel) {}
