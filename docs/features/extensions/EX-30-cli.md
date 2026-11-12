@@ -11,8 +11,8 @@ Part of the [Extensions specification](SPEC.md#stories). **Epic:** 7, CLI and fi
 **In**
 
 - `trellis extension check <dir>`: offline, validates the manifest, loads `main.js` in a throwaway host, renders each declared view once with empty state, prints every issue, exits 0 when valid and non-zero otherwise.
-- `trellis extension list` through a new read-only `extension.list` method (`metadata.read`).
-- `trellis extension reload <name>` through `extension.reload` (all-spaces scope and `layout.write`), taking the same path as Reload in Settings (EX-11).
+- `trellis extension list` through a new read-only `extension.list` method (`workspace.read`).
+- `trellis extension reload <name>` through `extension.reload` (all-spaces scope and `workspace.write`), taking the same path as Reload in Settings (EX-11).
 - CLI help and `docs/api/cli.md`, `docs/api/methods.md` updates.
 
 **Out**
@@ -24,8 +24,8 @@ Part of the [Extensions specification](SPEC.md#stories). **Epic:** 7, CLI and fi
 - [ ] **Given** a valid extension folder, **when** I run `trellis extension check <dir>` with Trellis not running, **then** it prints no issues and exits 0.
 - [ ] **Given** an invalid manifest, **when** I run `check`, **then** it prints the same issues Settings shows and exits non-zero.
 - [ ] **Given** a view whose render throws, **when** I run `check`, **then** the render error is printed and it exits non-zero.
-- [ ] **Given** a grant with `metadata.read`, **when** I run `trellis extension list`, **then** it lists installed extensions and their states.
-- [ ] **Given** a grant without all-spaces scope or `layout.write`, **when** I run `trellis extension reload <name>`, **then** it is refused. **Given** both, **then** the extension reloads as from Settings.
+- [ ] **Given** a grant with `workspace.read`, **when** I run `trellis extension list`, **then** it lists installed extensions and their states.
+- [ ] **Given** a grant without all-spaces scope or `workspace.write`, **when** I run `trellis extension reload <name>`, **then** it is refused. **Given** both, **then** the extension reloads as from Settings.
 - [ ] **Given** the CLI, **when** I look for a way to enable, approve or install an extension, **then** there is none.
 
 ## Implementation notes

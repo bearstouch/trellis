@@ -144,9 +144,16 @@ extension AppWorkspaceModel {
             }
         }
         let login = BrokerLoginRequest(
-            sessionID: request.sessionID, shell: nil, directory: directory, environment: LocalLaunchValidator.terminalEnvironment, integration: integration,
-            columns: 80, rows: 24)
+            sessionID: request.sessionID, shell: nil, directory: Self.hostPath(directory, home: connection.hostInfo?.home), environment: LocalLaunchValidator.terminalEnvironment,
+            integration: integration, columns: 80, rows: 24)
         await terminal.start(remote: transport, request: login, nonce: nonce)
+    }
+
+    /// A layout's `~` or `~/…` on a remote machine is the host's home, which is known only once its link is up.
+    static func hostPath(_ path: String?, home: String?) -> String? {
+        guard let path, path == "~" || path.hasPrefix("~/") else { return path }
+        guard let home, home.hasPrefix("/") else { return nil }
+        return path == "~" ? home : home + path.dropFirst()
     }
 
     /// The host's shared link for starting sessions there, connected when needed: the sidebar shows the attempt and, on

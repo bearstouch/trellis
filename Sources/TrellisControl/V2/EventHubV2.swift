@@ -21,8 +21,7 @@ public struct EventFilterV2: Sendable, Equatable {
     }
 }
 
-/// Protocol 2's typed event stream (docs/api/v2/events.md): its own sequence and a replay ring of 2,000, separate from
-/// protocol 1's `EventHub`, so v1 subscribers see exactly what they did before. Subscriptions are pushed on the socket as
+/// The typed event stream (docs/api/events.md): one sequence and a replay ring of 2,000. Subscriptions are pushed on the socket as
 /// `events.event`; `events.poll` long-polls on any transport. Every delivery re-reads the grant and redacts per event, so
 /// a narrowing edit or a revocation applies to the next event. Live status is coalesced per resource and type.
 public actor EventHubV2 {

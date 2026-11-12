@@ -2,7 +2,7 @@ import Foundation
 import TrellisControl
 import TrellisCore
 
-/// Protocol 2 live-state events (docs/api/v2/events.md), built where the state the UI shows changes: input waits,
+/// Protocol 2 live-state events (docs/api/events.md), built where the state the UI shows changes: input waits,
 /// progress, busy tabs, agent states, shell marks, task runs, remote links and project launches. Each emitter runs only
 /// when the state actually changed and `onLiveEvents` is set, so nothing here runs per output chunk; the hub coalesces
 /// live status per resource. An event whose pane is already gone isn't built (pane.deleted covers it), so nothing is

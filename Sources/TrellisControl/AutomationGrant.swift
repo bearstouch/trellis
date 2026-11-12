@@ -3,7 +3,8 @@ import Darwin
 import Foundation
 import Security
 
-public enum Capability: String, Codable, CaseIterable, Sendable, Comparable {
+/// A protocol 1 capability name, read only when migrating a schema 1 `grants.json` (migration.md, Capabilities).
+enum CapabilityV1: String, Decodable, Sendable {
     case metadataRead = "metadata.read"
     case layoutWrite = "layout.write"
     case sessionStart = "session.start"
@@ -15,44 +16,6 @@ public enum Capability: String, Codable, CaseIterable, Sendable, Comparable {
     case themeWrite = "theme.write"
     case hostRead = "host.read"
     case hostWrite = "host.write"
-
-    public static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
-
-    /// The v1 name of a stored v2 capability (migration.md, Capabilities); nil for the areas v1 has no capability for, which
-    /// protocol 1 never sees.
-    public init?(_ v2: CapabilityV2) {
-        switch v2 {
-        case .workspaceRead: self = .metadataRead
-        case .workspaceWrite: self = .layoutWrite
-        case .sessionStart: self = .sessionStart
-        case .sessionInput: self = .sessionInput
-        case .sessionExecute: self = .sessionExecute
-        case .sessionOutputRead: self = .sessionOutputRead
-        case .sessionClose: self = .sessionClose
-        case .themeRead: self = .themeRead
-        case .themeWrite: self = .themeWrite
-        case .hostRead: self = .hostRead
-        case .hostWrite: self = .hostWrite
-        case .agentControl, .agentRespond, .agentInstall, .remoteConnect, .remoteManage, .projectRead, .projectWrite, .projectLaunch, .taskRead, .taskRun: return nil
-        }
-    }
-
-    /// Plain-language description shown when creating a grant.
-    public var summary: String {
-        switch self {
-        case .metadataRead: "List spaces, tabs, panes, and session states"
-        case .layoutWrite: "Create, rename, split, resize, and focus layout (new panes stay stopped)"
-        case .sessionStart: "Start stopped sessions with the default shell or an approved host"
-        case .sessionInput: "Type into terminals, including control keys (can run commands)"
-        case .sessionExecute: "Run arbitrary programs and shell commands"
-        case .sessionOutputRead: "Read terminal screens, scrollback, and output"
-        case .sessionClose: "Terminate running sessions"
-        case .themeRead: "Read themes and appearance (global)"
-        case .themeWrite: "Change themes and appearance for every space (global)"
-        case .hostRead: "Read saved hosts, aliases, and identity-file paths"
-        case .hostWrite: "Create, edit, and delete saved hosts"
-        }
-    }
 }
 
 /// The spaces a grant reaches (permissions.md#scopes), and with them their tabs, panes and sessions.
@@ -168,26 +131,10 @@ public struct AutomationGrant: Codable, Equatable, Identifiable, Sendable {
         agentScope = settings.scope.agents; self.createdSpaces = createdSpaces; self.createdAt = createdAt; self.expiresAt = expiresAt; self.revokedAt = revokedAt
     }
 
-    /// A grant as protocol 1 describes it: v1 capabilities mapped to v2, Custom, every project and agent (which the mapped
-    /// capabilities can't use).
-    public init(
-        id: UUID, name: String, tokenHash: String, capabilities: Set<Capability>, spaceScope: SpaceScope, hostScope: HostScope, createdAt: Date, expiresAt: Date,
-        revokedAt: Date? = nil
-    ) {
-        self.init(
-            id: id, tokenHash: tokenHash,
-            settings: GrantSettings(name: name, capabilities: Set(capabilities.map(CapabilityV2.init)), scope: GrantScope(spaces: spaceScope, hosts: hostScope)),
-            createdAt: createdAt, expiresAt: expiresAt, revokedAt: revokedAt)
-    }
-
-    /// Protocol 1's view: v2 capabilities under their v1 names; capabilities of new areas are invisible.
-    public var capabilities: Set<Capability> { Set(capabilitiesV2.compactMap(Capability.init)) }
-
     public var scope: GrantScope { GrantScope(spaces: spaceScope, projects: projectScope, hosts: hostScope, agents: agentScope) }
     public var settings: GrantSettings { GrantSettings(name: name, preset: preset, capabilities: capabilitiesV2, scope: scope) }
 
     public func isActive(at now: Date) -> Bool { revokedAt == nil && now < expiresAt }
-    public func allows(_ capability: Capability) -> Bool { capabilitiesV2.contains(CapabilityV2(capability)) }
     public func holds(_ capability: CapabilityV2) -> Bool { capabilitiesV2.contains(capability) }
 
     /// Whether the space scope includes this space ID (existence is the caller's check).
@@ -302,7 +249,7 @@ struct LegacyGrantV1: Decodable {
     let id: UUID
     let name: String
     let tokenHash: String
-    let capabilities: Set<Capability>
+    let capabilities: Set<CapabilityV1>
     let windowScope: SpaceScopeV1
     let hostScope: HostScopeV1
     let createdAt: Date
@@ -322,8 +269,9 @@ struct LegacyGrantV1: Decodable {
             case .approved(let approvals): .approved(approvals)
             }
         return AutomationGrant(
-            id: id, name: name, tokenHash: tokenHash, capabilities: capabilities, spaceScope: spaces, hostScope: hosts, createdAt: createdAt, expiresAt: expiresAt,
-            revokedAt: revokedAt)
+            id: id, tokenHash: tokenHash,
+            settings: GrantSettings(name: name, capabilities: Set(capabilities.map(CapabilityV2.init)), scope: GrantScope(spaces: spaces, hosts: hosts)),
+            createdAt: createdAt, expiresAt: expiresAt, revokedAt: revokedAt)
     }
 }
 

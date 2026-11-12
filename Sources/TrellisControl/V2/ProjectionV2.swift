@@ -2,7 +2,7 @@ import Foundation
 import TrellisCore
 
 // Live state the app shows but the store doesn't hold, captured on the main actor in one pass so a projection is built
-// from one consistent moment (docs/api/v2/resources.md). Plain values: projection tests build them by hand.
+// from one consistent moment (docs/api/resources.md). Plain values: projection tests build them by hand.
 
 /// The agent a pane runs (resources.md#agent-run); its pane's `agent` field is the summary of this.
 public struct AgentSummaryV2: Sendable, Equatable {

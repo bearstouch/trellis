@@ -626,10 +626,7 @@ public final class AppWorkspaceModel: ObservableObject {
     public var openHosts: (() -> Void)?
     /// Shows the project library (FR-PL01); set by the app.
     public var openProjects: (() -> Void)?
-    /// Metadata events derived from each published snapshot, in order.
-    public var onWorkspaceEvents: (([WorkspaceEvent]) -> Void)?
-    /// Protocol 2: each published transition, before `onWorkspaceEvents` (so a closed space leaves `created` scopes only
-    /// after both streams have it); the app diffs it off the main actor (`WorkspaceDiffV2`). Set only with `--automation-v2`.
+    /// Each published transition, in order; the app diffs it into workspace events off the main actor (`WorkspaceDiffV2`).
     public var onWorkspaceTransition: ((WorkspaceSnapshot, WorkspaceSnapshot) -> Void)?
     /// Protocol 2 live-state events (attention, shell marks, agents, remote links, task runs, project launches), emitted
     /// when the state changes, never per output chunk. Nil (the default) skips building them.
@@ -954,10 +951,6 @@ public final class AppWorkspaceModel: ObservableObject {
         let removed = previous.sessions.keys.filter { next.sessions[$0] == nil }
         if restoreScrollback, !removed.isEmpty, let scrollbackStore { Task { await scrollbackStore.delete(sessionIDs: removed) } }
         onWorkspaceTransition?(previous, next)
-        if let onWorkspaceEvents {
-            let events = WorkspaceEvents.diff(previous, next)
-            if !events.isEmpty { onWorkspaceEvents(events) }
-        }
         if let pendingPaste, pendingPaste.target != currentPasteTarget { cancelPaste() }
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }

@@ -255,7 +255,4 @@ extension ControlError {
     public static func api(_ code: APIErrorCode, _ message: String, retryable: Bool? = nil, details: JSONValue? = nil) -> Self {
         .application(code.rawValue, message, retryable: retryable ?? code.defaultRetryable, details: details)
     }
-
-    /// Only with `--automation-v2`: the versions on offer are named.
-    static let unsupportedVersionV2 = api(.unsupportedVersion, "Use protocolVersion 1 or 2.", details: .object(["supported": .array([.number(1), .number(2)])]))
 }

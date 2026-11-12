@@ -2,9 +2,9 @@ import Foundation
 import TrellisControl
 import TrellisCore
 
-/// The protocol 2 domain adapter (docs/api/v2/implementation.md). Calls arrive validated and authorized from the
-/// catalog; each area lives in its own file here and calls the same `AppWorkspaceModel` actions as the UI, so the UI and
-/// the API stay one path. Constructed only when the app runs with `--automation-v2`.
+/// The automation domain adapter (docs/api/methods.md). Calls arrive validated and authorized from the catalog; each
+/// area lives in its own file here and calls the same `AppWorkspaceModel` actions as the UI, so the UI and the API stay
+/// one path.
 public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
     let model: AppWorkspaceModel
     let hosts: HostListModel
@@ -17,7 +17,7 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
         self.model = model; self.hosts = hosts; self.projects = projects; self.instanceID = instanceID
     }
 
-    public func snapshot() async -> WorkspaceSnapshot { await model.snapshotForAutomation() }
+    public func snapshot() async -> WorkspaceSnapshot { await MainActor.run { model.snapshot } }
     public func host(_ id: UUID) async -> SavedHost? { await hosts.host(id) }
     public func revision(of subject: RevisionSubjectV2) async -> UInt64? { await currentRevision(subject) }
 
@@ -42,6 +42,8 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
             case "remote": return .success(try await performRemote(call))
             case "project": return .success(try await performProjects(call))
             case "task": return .success(try await performTasks(call))
+            case "layout": return .success(try await performLayouts(call))
+            case "theme", "appearance": return .success(try await performThemes(call))
             default: return .failure(.methodNotFound)
             }
         } catch let error as ControlError {
@@ -56,6 +58,7 @@ public final class AutomationServiceV2: ControlDomainV2, @unchecked Sendable {
     @MainActor func currentRevision(_ subject: RevisionSubjectV2) -> UInt64? {
         if let answer = subject.revision(in: model.snapshot) { return answer }
         switch subject {
+        case .appearance: return model.appearanceRevision
         case .resource(.pane, let id): return model.snapshot.panes[id] == nil ? nil : model.automationRevisions.panes[id] ?? 0
         case .resource(.session, let id): return model.snapshot.sessions[id] == nil ? nil : model.automationRevisions.sessions[id] ?? 0
         case .resource(.host, let id): return hosts.hosts.first { $0.id == id }?.revision

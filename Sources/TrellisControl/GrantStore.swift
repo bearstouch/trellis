@@ -110,15 +110,14 @@ public actor GrantStore {
     /// Called with the grant ID whenever a grant is revoked.
     public func onRevocation(_ observer: @escaping @Sendable (UUID) -> Void) { revocationObservers.append(observer) }
 
-    /// Called after every saved edit (including host reapproval). Phase 4 emits `grant.changed` from here.
+    /// Called after every saved edit (including host reapproval); the app emits `grant.changed` from here.
     public func onEdit(_ observer: @escaping @Sendable (GrantEdit) -> Void) { editObservers.append(observer) }
 
-    /// Protocol 1's create: v1 capabilities mapped to v2, preset Custom, every project and agent.
+    /// A Custom grant over every project and agent, for the common shape (tests and scripts).
     public func create(
-        name: String, capabilities: Set<Capability>, spaceScope: SpaceScope, hostScope: HostScope, lifetime: TimeInterval
+        name: String, capabilities: Set<CapabilityV2>, spaceScope: SpaceScope, hostScope: HostScope, lifetime: TimeInterval
     ) throws(GrantError) -> (grant: AutomationGrant, token: String) {
-        try create(
-            GrantSettings(name: name, capabilities: Set(capabilities.map(CapabilityV2.init)), scope: GrantScope(spaces: spaceScope, hosts: hostScope)), lifetime: lifetime)
+        try create(GrantSettings(name: name, capabilities: capabilities, scope: GrantScope(spaces: spaceScope, hosts: hostScope)), lifetime: lifetime)
     }
 
     /// Returns the grant and its token. The token is not retrievable later.

@@ -10,10 +10,11 @@ final class AutomationOutputTests: XCTestCase {
     func testReadOutputViewsCursorsAndLimitsEndToEnd() async throws {
         let h = try Harness()
         try await h.grant("full")
-        var published: [WorkspaceEvent] = []
-        h.model.onWorkspaceEvents = { published += $0 }
-        let space: String = try await h.value("spaceId", "space.create", ["name": "Out"])
-        XCTAssertTrue(published.contains { $0.type == "space.created" && $0.resourceID.uuidString == space })
+        var transitions = 0
+        h.model.onWorkspaceTransition = { _, _ in transitions += 1 }
+        let space: [String: Any] = try await h.value("space", "space.create", ["name": "Out"])
+        XCTAssertEqual(space["name"] as? String, "Out")
+        XCTAssertGreaterThan(transitions, 0, "The created space is published for the event stream")
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         let script = #"stty raw -echo; printf '\303'; sleep 0.05; printf '\251\000\377READY-END'; exec /bin/sleep 30"#
         _ = try await h.model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/zsh", arguments: ["-f", "-c", script], directory: "/tmp")))
@@ -26,7 +27,7 @@ final class AutomationOutputTests: XCTestCase {
             }
         }
         try await terminal.waitFor("READY-END")
-        let session = terminal.native.sessionID.uuidString
+        let session = terminal.native.sessionID.uuidString.lowercased()
 
         let stream = try result(try await h.call("session.readOutput", ["id": session, "view": "stream"]))
         let bytes = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(stream["base64"] as? String)))
@@ -60,7 +61,7 @@ final class AutomationOutputTests: XCTestCase {
         let foreignCode = try await h.code("session.readOutput", ["id": session, "view": "stream", "cursor": foreign])
         XCTAssertEqual(foreignCode, "INVALID_CURSOR")
         _ = try await h.code("session.restart", ["paneId": pane.uuidString, "allowRunning": true])
-        let restarted = try XCTUnwrap(h.model.terminals[pane]?.sessionID.uuidString)
+        let restarted = try XCTUnwrap(h.model.terminals[pane]?.sessionID.uuidString.lowercased())
         XCTAssertNotEqual(restarted, session)
         let stale = try await h.code("session.readOutput", ["id": restarted, "view": "stream", "cursor": cursor])
         XCTAssertEqual(stale, "INVALID_CURSOR")

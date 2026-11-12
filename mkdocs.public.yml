@@ -79,10 +79,11 @@ nav:
       - Remote workspaces: features/remote-workspaces.md
   - Automation:
       - Overview: api/index.md
-      - Authorization: api/authorization.md
+      - Resources: api/resources.md
+      - Methods: api/methods.md
+      - Permissions: api/permissions.md
+      - Events and output: api/events.md
+      - Layouts: api/layouts.md
       - CLI: api/cli.md
       - MCP server: api/mcp.md
-      - Methods: api/methods.md
-      - Output and events: api/output-events.md
-      - Layouts: api/layouts.md
-      - Errors: api/errors.md
+      - Migration from v1: api/migration.md

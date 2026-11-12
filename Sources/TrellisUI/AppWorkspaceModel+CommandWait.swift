@@ -15,9 +15,27 @@ final class CommandWait {
 
     let sessionID: UUID
     private(set) var startedAt: Date?
-    fileprivate(set) var outcome: Outcome?
+    fileprivate(set) var outcome: Outcome? { didSet { if outcome != nil { wake() } } }
+    /// The waiter, parked until a mark settles the outcome or its next liveness check is due.
+    private var waiter: CheckedContinuation<Void, Never>?
 
     init(sessionID: UUID) { self.sessionID = sessionID }
+
+    /// Parks until `apply` settles the outcome or `interval` passes, whichever is first.
+    fileprivate func signal(within interval: Duration) async {
+        guard outcome == nil else { return }
+        let timer = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: interval)
+            self?.wake()
+        }
+        await withCheckedContinuation { waiter = $0 }
+        timer.cancel()
+    }
+
+    private func wake() {
+        waiter?.resume()
+        waiter = nil
+    }
 
     /// Advances on a shell mark, as `TaskRun.apply` does.
     fileprivate func apply(_ event: ShellIntegrationEvent, now: Date) {
@@ -52,8 +70,9 @@ extension AppWorkspaceModel {
         return wait
     }
 
-    /// Waits for the command's finish mark, the session's end or the timeout, whichever comes first. Each check is a few
-    /// comparisons on the main actor; marks themselves arrive through `updateCommandWaits`.
+    /// Waits for the command's finish mark, the session's end or the timeout, whichever comes first. Marks arrive through
+    /// `updateCommandWaits` and wake the waiter at once; the session's end, the deadline and cancellation are checked at
+    /// least every 250 ms, a few comparisons on the main actor.
     func awaitCommand(_ wait: CommandWait, paneID: UUID, timeout: Duration) async -> CommandWait.Outcome {
         let deadline = ContinuousClock.now + timeout
         defer { endCommandWait(wait, paneID: paneID) }
@@ -64,7 +83,7 @@ extension AppWorkspaceModel {
             } else if ContinuousClock.now >= deadline || Task.isCancelled {
                 wait.outcome = .timedOut
             } else {
-                try? await Task.sleep(for: .milliseconds(20))
+                await wait.signal(within: min(.milliseconds(250), deadline - .now))
             }
         }
         return wait.outcome ?? .timedOut

@@ -22,7 +22,7 @@ These pages are the behavior contract for Trellis and the guide for anyone worki
 - **Overview:** [product](overview/product.md) and [status](overview/status.md).
 - **Architecture:** [modules and components](architecture/index.md), [domain model](architecture/domain-model.md), [sessions and processes](architecture/sessions.md), [persistence](architecture/persistence.md) and the [terminal engine](architecture/terminal-engine.md).
 - **Features:** [workspace](features/workspace.md), [terminal](features/terminal.md), [SSH hosts](features/ssh-hosts.md), [themes](features/themes.md) and [keyboard and accessibility](features/keyboard-accessibility.md).
-- **Automation API:** [overview and transport](api/index.md), [authorization](api/authorization.md), [methods](api/methods.md), [output and events](api/output-events.md), [errors](api/errors.md), [layouts](api/layouts.md) and the [CLI](api/cli.md).
+- **Automation API (protocol 2):** [overview, transport and errors](api/index.md), [resources](api/resources.md), [methods](api/methods.md), [permissions](api/permissions.md), [events and output](api/events.md), [layouts](api/layouts.md), the [CLI](api/cli.md), the [MCP server](api/mcp.md) and [migration from v1](api/migration.md).
 - **Platform:** [integrations](integrations.md) and [macOS support](platform/macos.md).
 - **Development:** [getting started](development/getting-started.md), [rules](development/rules.md), [testing](development/testing.md), [contribution workflow](development/workflow.md) and the [release guide](release/README.md).
 - **Project:** [roadmap and decisions](project/roadmap.md).

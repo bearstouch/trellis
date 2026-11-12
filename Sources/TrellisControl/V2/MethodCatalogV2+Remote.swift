@@ -1,7 +1,7 @@
 import Foundation
 import TrellisCore
 
-/// Phase 6 of the catalog (docs/api/v2/methods.md#remote-workspaces): remote workspaces and the helper on each host.
+/// The catalog's remote workspaces (docs/api/methods.md#remote-workspaces): remote workspaces and the helper on each host.
 /// Each may wait on the host or on the person, so the socket answers them out of order (`waits`).
 extension MethodCatalogV2 {
     private static let hostID = ParamV2("hostId", .uuid, required: true, "The saved host; it must be in the grant's host scope at its current connection.")
@@ -23,7 +23,7 @@ extension MethodCatalogV2 {
             capabilities: [.remoteConnect], resources: [hostRule], effect: .mutating(revision: .resource(param: "hostId")), errors: remoteErrors, waits: true),
         MethodSpecV2(
             "remote.helper.install", "Install this build's helper on a host, or update an older one, verified by its SHA-256 there.", params: [hostID],
-            capabilities: [.remoteManage], resources: [hostRule], effect: .mutating(revision: .resource(param: "hostId")), errors: remoteErrors, waits: true),
+            capabilities: [.remoteManage], resources: [hostRule], effect: .mutating(revision: .resource(param: "hostId"), destructive: true), errors: remoteErrors, waits: true),
         MethodSpecV2(
             "remote.helper.remove", "Remove the helper from a host (~/.trellis/remote and ~/.trellis/run) for every Mac using it.",
             params: [hostID, ParamV2("stopSessions", .boolean, "Stop this Mac's sessions still running there first (needs session.close).")],

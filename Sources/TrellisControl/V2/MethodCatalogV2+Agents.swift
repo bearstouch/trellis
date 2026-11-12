@@ -1,7 +1,7 @@
 import Foundation
 import TrellisCore
 
-/// Phase 5 of the catalog (docs/api/v2/methods.md#agents): agent definitions, runs, starting, answering and installing.
+/// The catalog's agents (docs/api/methods.md#agents): agent definitions, runs, starting, answering and installing.
 extension MethodCatalogV2 {
     private static let agentID = ParamV2("agentId", .string(maxBytes: 64), required: true, "The agent definition's ID, as agent.list names it.")
     private static let sessionID = ParamV2("sessionId", .uuid, required: true, "The agent run's session.")
@@ -56,7 +56,7 @@ extension MethodCatalogV2 {
         MethodSpecV2(
             "agent.restart", "Start an agent pane again with a new session, after its agent exited; resume continues its last conversation.",
             params: [sessionID, ParamV2("resume", .boolean, "Continue the agent's last conversation.")], capabilities: [.agentControl],
-            resources: [ResourceRuleV2(.session, "sessionId")], effect: .mutating(revision: .resource(param: "sessionId")),
+            resources: [ResourceRuleV2(.session, "sessionId")], effect: .mutating(revision: .resource(param: "sessionId"), destructive: true),
             errors: [.invalidState, .launchFailed, .agentUnavailable, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
             "agent.respond", "Answer an agent that needs input: approve (1 and Return), reject (Escape) or reply (text and Return).",

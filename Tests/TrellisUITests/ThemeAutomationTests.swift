@@ -23,9 +23,10 @@ final class ThemeAutomationTests: XCTestCase {
         let h = try Harness(themeDirectory: themes)
         defer { h.discardPreferences() }
         try await h.grant("full")
-        let space: String = try await h.value("spaceId", "space.create", ["name": "W"])
+        let created: [String: Any] = try await h.value("space", "space.create", ["name": "W"])
+        let space = try XCTUnwrap(created["id"] as? String)
         try await h.grant("read", [.themeRead])
-        try await h.grant("layout", [.metadataRead, .layoutWrite])
+        try await h.grant("layout", [.workspaceRead, .workspaceWrite])
         try await h.grant("scoped", [.themeRead, .themeWrite], scope: .spaces([UUID(uuidString: space)!]))
         try await h.grant("global", [.themeRead, .themeWrite])
         let reads: [(String, [String: Any])] = [

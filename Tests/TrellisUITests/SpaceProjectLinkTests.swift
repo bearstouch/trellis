@@ -31,15 +31,16 @@ final class SpaceProjectLinkTests: XCTestCase {
         XCTAssertFalse(h.model.isTemporaryTab(projectTab))
         XCTAssertTrue(h.model.isTemporaryTab(temporaryTab))
 
-        let detail = try result(try await h.call("space.get", ["id": space.id.uuidString]))
-        XCTAssertEqual(detail["projectId"] as? String, project.id.uuidString)
-        // Deprecated names: window.* and windowId still work and answer with the new names.
-        let listed = try result(try await h.call("window.list"))
-        XCTAssertEqual((listed["spaces"] as? [[String: Any]])?.count, 1)
-        XCTAssertNil(listed["windows"])
-        let tabList = try result(try await h.call("tab.list", ["windowId": space.id.uuidString]))
+        let detail: [String: Any] = try await h.value("space", "space.get", ["id": space.id.uuidString])
+        XCTAssertEqual((detail["project"] as? [String: Any])?["id"] as? String, lower(project.id))
+        // Protocol 1's names are gone: window.* and windowId are refused, never mapped.
+        let window = try await h.call("window.list")
+        XCTAssertEqual((window["error"] as? [String: Any])?["code"] as? Int, -32601)
+        let windowID = try await h.call("tab.list", ["windowId": space.id.uuidString])
+        XCTAssertEqual((windowID["error"] as? [String: Any])?["code"] as? Int, -32602)
+        let tabList = try result(try await h.call("tab.list", ["spaceId": space.id.uuidString]))
         let tabs = try XCTUnwrap(tabList["tabs"] as? [[String: Any]])
-        XCTAssertEqual(tabs.map { $0["temporary"] as? Bool }, [false, true])
+        XCTAssertEqual(tabs.map { $0["role"] as? String }, ["project", "temporary"])
 
         // A deleted project leaves a plain space: no project name, no temporary tabs.
         library = []

@@ -25,8 +25,8 @@ final class EventsHarness {
         let hub = EventHubV2(instanceID: UUID(), grants: base.grants)
         self.hub = hub
         base.handler = AuthorizingControlHandler(
-            grants: base.grants, domain: AutomationService(model: base.model, hosts: base.hosts), idempotency: IdempotencyCache(now: { [clock = base.clock] in clock.now }),
-            v2Domain: AutomationServiceV2(model: base.model, hosts: base.hosts, instanceID: hub.instanceID), eventsV2: hub)
+            grants: base.grants, domain: AutomationServiceV2(model: base.model, hosts: base.hosts, instanceID: hub.instanceID),
+            idempotency: IdempotencyCache(now: { [clock = base.clock] in clock.now }), events: hub)
         let (stream, feed) = AsyncStream<Item>.makeStream()
         self.feed = feed
         Task.detached {

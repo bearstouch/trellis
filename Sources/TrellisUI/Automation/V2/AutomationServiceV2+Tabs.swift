@@ -12,7 +12,9 @@ extension AutomationServiceV2 {
             let projection = projection(call, spaces: [spaceID])
             guard let space = projection.snapshot.spaces.first(where: { $0.id == spaceID }) else { throw Self.notFound }
             let layout = try p.optionalStrings("include")?.contains("layout") == true
-            let page = try PageV2(p, method: call.spec.name).slice(space.tabIDs.compactMap { projection.snapshot.tabs[$0] })
+            let title = try p.optionalString("title")
+            let tabs = space.tabIDs.compactMap { projection.snapshot.tabs[$0] }.filter { title == nil || model.displayTitle($0) == title }
+            let page = try PageV2(p, method: call.spec.name).slice(tabs)
             return ConventionsV2.list("tabs", page.items.map { projection.tab($0, layout: layout) }, revision: space.revision, nextCursor: page.nextCursor)
         case "tab.get": return ConventionsV2.resource("tab", try tab(call, try p.uuid("id")))
         case "tab.create":

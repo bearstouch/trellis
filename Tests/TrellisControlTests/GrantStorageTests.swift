@@ -50,7 +50,6 @@ final class GrantStorageTests: XCTestCase {
         XCTAssertEqual(grants.count, 2)
         let reader = try XCTUnwrap(grants.first { $0.name == "Reader" })
         XCTAssertEqual(reader.capabilitiesV2, [.workspaceRead, .sessionOutputRead], "Exactly the mapped capabilities")
-        XCTAssertEqual(reader.capabilities, [.metadataRead, .sessionOutputRead], "Protocol 1 sees what it saw before")
         XCTAssertEqual(reader.preset, .custom)
         XCTAssertEqual(reader.revision, 1)
         XCTAssertEqual(reader.spaceScope, .spaces([scoped]))
@@ -58,7 +57,10 @@ final class GrantStorageTests: XCTestCase {
         XCTAssertEqual(reader.projectScope, .all)
         XCTAssertEqual(reader.agentScope, .all)
         let everything = try XCTUnwrap(grants.first { $0.name == "Everything" })
-        XCTAssertEqual(everything.capabilities, Set(Capability.allCases))
+        XCTAssertEqual(
+            everything.capabilitiesV2,
+            [.workspaceRead, .workspaceWrite, .sessionStart, .sessionInput, .sessionExecute, .sessionOutputRead, .sessionClose, .themeRead, .themeWrite, .hostRead, .hostWrite],
+            "Every v1 capability, under its v2 name")
         XCTAssertTrue(everything.capabilitiesV2.isDisjoint(with: [.agentControl, .agentRespond, .agentInstall, .remoteConnect, .remoteManage, .projectRead, .projectWrite, .projectLaunch, .taskRead, .taskRun]))
         XCTAssertNotNil(everything.revokedAt)
 
@@ -80,16 +82,18 @@ final class GrantStorageTests: XCTestCase {
         XCTAssertEqual(token?.id, reader.id, "The token still authenticates")
     }
 
-    func testAMigratedGrantAuthorizesProtocol1ExactlyAsBefore() async throws {
+    /// A migrated grant authorizes over protocol 2 exactly what its v1 capabilities allowed, and nothing of the new areas.
+    func testAMigratedGrantAuthorizesExactlyTheMappedMethods() async throws {
         let domain = FakeDomain()
         try OwnerOnlyFile.publish(Data(legacyFile(scoped: domain.spaceA, host: UUID(), tokens: ("trl_reader", "trl_all")).utf8), to: url)
         let migrated = store()
-        let handler = AuthorizingControlHandler(grants: migrated, domain: domain, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
+        let handler = AuthorizingControlHandler(grants: migrated, domain: FakeDomainV2(base: domain), limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
         let session = ControlSession(peerUID: geteuid(), handler: handler)
-        let auth = try await lastReply(session, request(1, "auth.authenticate", ["protocolVersion": .number(1), "token": .string("trl_reader")]))
-        let result = try XCTUnwrap(auth["result"] as? [String: Any])
-        XCTAssertEqual(result["capabilities"] as? [String], ["metadata.read", "session.output.read"])
-        XCTAssertEqual(result["spaceScope"] as? [String], [domain.spaceA.uuidString])
+        let auth = try await lastReply(session, request(1, "auth.authenticate", ["protocolVersion": .number(2), "token": .string("trl_reader")]))
+        let view = try XCTUnwrap((auth["result"] as? [String: Any])?["grant"] as? [String: Any])
+        XCTAssertEqual(view["capabilities"] as? [String], ["session.output.read", "workspace.read"])
+        XCTAssertEqual((view["scope"] as? [String: Any])?["spaces"] as? [String], [domain.spaceA.uuidString.lowercased()])
+        XCTAssertEqual(view["preset"] as? String, "custom")
         func code(_ id: Int, _ method: String, _ params: [String: JSONValue]) async throws -> String {
             let response = try await lastReply(session, request(id, method, params))
             return response["result"] != nil ? "OK" : appCode(response) ?? "?"
@@ -100,6 +104,13 @@ final class GrantStorageTests: XCTestCase {
         XCTAssertEqual(hidden, "NOT_FOUND")
         let denied = try await code(4, "tab.create", ["spaceId": .string(domain.spaceA.uuidString)])
         XCTAssertEqual(denied, "PERMISSION_DENIED")
+        let output = try await code(5, "session.readOutput", ["id": .string(domain.sessionA.uuidString), "view": .string("screen")])
+        XCTAssertEqual(output, "OK", "session.output.read kept its name")
+        for (index, method) in ["agent.runs", "project.list", "task.get"].enumerated() {
+            let params: [String: JSONValue] = method == "task.get" ? ["paneId": .string(domain.paneA.uuidString)] : [:]
+            let area = try await code(6 + index, method, params)
+            XCTAssertEqual(area, method == "agent.runs" ? "OK" : "PERMISSION_DENIED", "\(method): a migrated grant gains nothing")
+        }
     }
 
     func testUnreadableNewerOrCorruptFilesAreNeverOverwritten() async throws {

@@ -50,7 +50,7 @@ final class ProjectsV2Tests: XCTestCase {
     /// (sharing the 16-call budget); without `wait` it keeps its place in the connection's order.
     func testExecuteWithWaitIsAnsweredOutOfOrder() async throws {
         domainV2.hold(["session.execute"])
-        let handler = AuthorizingControlHandler(grants: store, domain: domain, v2Domain: domainV2)
+        let handler = AuthorizingControlHandler(grants: store, domain: domainV2)
         let (_, token) = try await store.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases)), lifetime: 3600)
         let replies = DeliveryLog()
         let session = ControlSession(peerUID: geteuid(), handler: handler, reply: { replies.deliver($0) })

@@ -20,7 +20,7 @@ Trellis bundles `trellis-github-prs`, built only on the public API and the v1 co
 - Refresh on focus change, `repository.changed`, the Refresh command, and every 2 minutes while the sidebar is shown, with ETag conditional requests. The badge refreshes every 5 minutes even when the sidebar is hidden.
 - Sign in with the GitHub device flow through a GitHub App with read-only access to pull requests, checks and metadata; no client secret, no redirect, no `repo` scope. An `EmptyState` with Sign In until signed in.
 - Setting "Include drafts" (on by default).
-- Manifest: permissions `metadata.read`, `git.read`, `terminal.open`, `clipboard.write`, `auth`, `storage`, `notifications`; network `https://api.github.com`; events `selection.pane`, `repository.changed`.
+- Manifest: permissions `workspace.read`, `git.read`, `terminal.open`, `clipboard.write`, `auth`, `storage`, `notifications`; network `https://api.github.com`; events `selection.pane`, `repository.changed`.
 
 **Out**
 

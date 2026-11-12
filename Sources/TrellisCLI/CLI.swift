@@ -5,29 +5,27 @@ import TrellisControl
 import TrellisCore
 import TrellisRelease
 
-/// A failure with the documented exit status (API-06 CLI contract).
+/// A failure with the documented exit status: application codes map through the error registry
+/// (`APIErrorCode.cliExitStatus`), local failures use the same numbers.
 public struct CLIFailure: Error, Equatable, Sendable {
     public let code: String
     public let message: String
     public let exitStatus: Int32
     public var details: JSONValue?
+    public var retryable: Bool?
 
     static func arguments(_ message: String) -> Self { Self(code: "INVALID_ARGUMENTS", message: message, exitStatus: 2) }
     static let notRunning = Self(code: "APP_NOT_RUNNING", message: "Trellis is not running. Start it, or pass --launch to start it.", exitStatus: 7)
     static func transport(_ message: String) -> Self { Self(code: "TRANSPORT", message: message, exitStatus: 7) }
+    /// The running app speaks another protocol than this binary (an older app, or this is an older `trellis`).
+    static let otherProtocol = Self(
+        code: APIErrorCode.unsupportedVersion.rawValue,
+        message:
+            "The running Trellis speaks another automation protocol than this trellis command (protocol \(ControlDiscovery.currentProtocolVersion)). Update Trellis, or use the trellis inside the running Trellis.app: run its 'trellis cli install-link' to re-link it.",
+        exitStatus: APIErrorCode.unsupportedVersion.cliExitStatus)
 
-    /// 0 ok · 2 arguments/schema · 3 not found · 4 auth/permission · 5 conflict ·
-    /// 6 launch failure · 7 app unavailable/transport · 8 other application error.
-    static func status(appCode: String?, rpcCode: Int) -> Int32 {
-        switch appCode {
-        case "NOT_FOUND"?: return 3
-        case "AUTH_REQUIRED"?, "PERMISSION_DENIED"?: return 4
-        case "CONFLICT"?, "CONFIRMATION_REQUIRED"?: return 5
-        case "LAUNCH_FAILED"?: return 6
-        case "UNSUPPORTED_VERSION"?: return 7
-        case .some: return 8
-        case nil: return [-32700, -32600, -32602].contains(rpcCode) ? 2 : rpcCode == -32601 ? 3 : 8
-        }
+    init(code: String, message: String, exitStatus: Int32, details: JSONValue? = nil) {
+        self.code = code; self.message = message; self.exitStatus = exitStatus; self.details = details
     }
 }
 
@@ -110,12 +108,14 @@ public enum CLI {
                 environment.stdout(json ? encode(.object(["ok": .bool(true), "result": .object(["help": .string(text)])])) : text)
             case .version: environment.stdout(json ? encode(.object(["ok": .bool(true), "result": .object(["version": .string(AppVersion.current)])])) : CLIHelp.version)
             case .run(let command):
-                let result = try execute(command, environment)
+                let (result, status) = try execute(command, environment)
                 emit(.object(["ok": .bool(true), "result": result]), json: json, environment: environment)
+                return status
             }
             return 0
         } catch let failure as CLIFailure {
             var error: [String: JSONValue] = ["code": .string(failure.code), "message": .string(failure.message), "exitStatus": .number(Double(failure.exitStatus))]
+            if let retryable = failure.retryable { error["retryable"] = .bool(retryable) }
             if let details = failure.details { error["details"] = details }
             if json {
                 environment.stdout(encode(.object(["ok": .bool(false), "error": .object(error)])))
@@ -153,25 +153,44 @@ public enum CLI {
 
     // MARK: - Execution
 
-    private static func execute(_ command: ParsedCommand, _ environment: CLIEnvironment) throws -> JSONValue {
-        if command.noun == "cli" { return try local(command, environment) }
+    /// The result and the exit status: 0, or with `session execute --wait` the command's own exit code.
+    private static func execute(_ command: ParsedCommand, _ environment: CLIEnvironment) throws -> (JSONValue, Int32) {
+        if command.noun == "cli" { return (try local(command, environment), 0) }
         let token = try credential(command, environment)
         let stateDirectory = command.value("state-directory").map { URL(fileURLWithPath: $0, isDirectory: true) } ?? environment.defaultStateDirectory
         let transport = try connect(stateDirectory, explicit: command.value("state-directory") != nil, launch: command.has("launch"), environment)
         defer { transport.close() }
-        let auth = try transport.call("auth.authenticate", ["protocolVersion": .number(1), "token": .string(token)])
-        if auth["error"] != nil { throw failure(from: auth) }
+        let auth = try transport.call("auth.authenticate", ["protocolVersion": .number(Double(ControlDiscovery.currentProtocolVersion)), "token": .string(token)])
+        if auth["error"] != nil {
+            let failure = failure(from: auth)
+            throw failure.code == APIErrorCode.unsupportedVersion.rawValue ? CLIFailure.otherProtocol : failure
+        }
         var resolver = Resolver(transport: transport)
-        let params = try buildParams(command, &resolver, environment)
+        let params = try CLIParams.build(command, &resolver, environment)
         if command.spec == "events.subscribe" { try stream(command, params, transport, environment) }
         let response = try transport.call(command.spec, params)
         if response["error"] != nil { throw failure(from: response) }
+        let result = response["result"] ?? .null
         // An invalid document is a schema error (exit 2), with the issues as details.
-        if ["layout.validate", "theme.validate"].contains(command.spec), case .object(let result)? = response["result"], result["valid"] == .bool(false) {
+        if ["layout.validate", "theme.validate"].contains(command.spec), result["valid"] == .bool(false) {
             let kind = command.spec == "theme.validate" ? "THEME" : "LAYOUT"
-            throw CLIFailure(code: "INVALID_\(kind)", message: "The \(kind.lowercased()) document is invalid.", exitStatus: 2, details: response["result"])
+            throw CLIFailure(code: "INVALID_\(kind)", message: "The \(kind.lowercased()) document is invalid.", exitStatus: 2, details: result)
         }
-        return response["result"] ?? .null
+        if command.spec == "session.execute", command.has("wait") { return (result, try waitStatus(result)) }
+        return (result, 0)
+    }
+
+    /// `session execute --wait` exits with the command's exit code. A wait that ended first (the command keeps running) is
+    /// 124, as timeout(1) does; a session that ended before the command finished is 125.
+    static func waitStatus(_ result: JSONValue) throws -> Int32 {
+        if result["timedOut"] == .bool(true) {
+            throw CLIFailure(code: "TIMED_OUT", message: "The wait ended before the command finished; it keeps running.", exitStatus: 124, details: result)
+        }
+        if result["sessionEnded"] == .bool(true) {
+            throw CLIFailure(code: "SESSION_ENDED", message: "The session ended before the command finished.", exitStatus: 125, details: result)
+        }
+        guard case .number(let code)? = result["exitCode"] else { return 0 }
+        return (0...255).contains(code) && code.rounded() == code ? Int32(code) : 1
     }
 
     /// Explicit, user-invoked setup. Only one symlink in a user-local directory is
@@ -245,25 +264,38 @@ public enum CLI {
 
     /// Discovery only; the app is started solely when --launch was passed.
     private static func connect(_ stateDirectory: URL, explicit: Bool, launch: Bool, _ environment: CLIEnvironment) throws(CLIFailure) -> CLITransport {
-        if let discovery = environment.discover(stateDirectory), let transport = try? environment.connect(discovery.socketPath) { return transport }
+        // An app that publishes another protocol never gets the token.
+        func reach(_ discovery: ControlDiscovery?) throws(CLIFailure) -> CLITransport? {
+            guard let discovery else { return nil }
+            guard discovery.protocolVersion == ControlDiscovery.currentProtocolVersion else { throw CLIFailure.otherProtocol }
+            return try? environment.connect(discovery.socketPath)
+        }
+        if let transport = try reach(environment.discover(stateDirectory)) { return transport }
         guard launch else { throw CLIFailure.notRunning }
         guard environment.launchApp(explicit ? stateDirectory : nil) else { throw CLIFailure.transport("Trellis could not be launched.") }
         for _ in 0..<50 {
             environment.sleep(0.2)
-            if let discovery = environment.discover(stateDirectory), let transport = try? environment.connect(discovery.socketPath) { return transport }
+            if let transport = try reach(environment.discover(stateDirectory)) { return transport }
         }
         throw CLIFailure.transport("Trellis was launched but its control socket did not appear.")
     }
 
+    /// Application errors carry `data: {code, message, retryable, details?}`; JSON-RPC errors their fields in `data`.
     static func failure(from response: [String: JSONValue]) -> CLIFailure {
         guard case .object(let error)? = response["error"] else { return CLIFailure(code: "INTERNAL", message: "Malformed response.", exitStatus: 8) }
         let rpcCode: Int = if case .number(let value)? = error["code"] { Int(value) } else { -32603 }
         let message: String = if case .string(let text)? = error["message"] { text } else { "The request failed." }
         var appCode: String?
-        if case .object(let data)? = error["data"], case .string(let code)? = data["code"] { appCode = code }
+        if case .string(let code)? = error["data"]?["code"] { appCode = code }
         var failure = CLIFailure(
-            code: appCode ?? (rpcCode == -32602 ? "INVALID_PARAMS" : rpcCode == -32601 ? "METHOD_NOT_FOUND" : "PROTOCOL_ERROR"), message: message, exitStatus: CLIFailure.status(appCode: appCode, rpcCode: rpcCode))
-        failure.details = error["data"]
+            code: appCode ?? (rpcCode == -32602 ? "INVALID_PARAMS" : rpcCode == -32601 ? "METHOD_NOT_FOUND" : "PROTOCOL_ERROR"), message: message,
+            exitStatus: APIErrorCode.cliExitStatus(appCode: appCode, rpcCode: rpcCode))
+        if appCode != nil {
+            failure.details = error["data"]?["details"]
+            if case .bool(let retryable)? = error["data"]?["retryable"] { failure.retryable = retryable }
+        } else {
+            failure.details = error["data"]
+        }
         return failure
     }
 
@@ -276,173 +308,7 @@ public enum CLI {
         emit(.object(["ok": .bool(true), "result": response["result"] ?? .null]), json: command.has("json"), environment: environment)
         environment.stderr("trellis: subscribed; streaming events (Ctrl-C to stop)")
         while let event = try transport.nextNotification() { environment.stdout(encode(.object(event))) }
-        throw CLIFailure.transport("The app closed the event stream. Resubscribe with --instance and --after-sequence to resume.")
-    }
-
-    // MARK: - Params
-
-    private static func buildParams(_ command: ParsedCommand, _ resolver: inout Resolver, _ environment: CLIEnvironment) throws -> [String: JSONValue] {
-        var params: [String: JSONValue] = [:]
-        func set(_ key: String, _ option: String) { if let value = command.value(option) { params[key] = .string(value) } }
-        func uuid(_ key: String, _ option: String) throws {
-            guard let raw = command.value(option) else { return }
-            guard UUID(uuidString: raw) != nil else { throw CLIFailure.arguments("--\(option) expects a UUID.") }
-            params[key] = .string(raw)
-        }
-        func number(_ key: String, _ option: String, integer: Bool = false) throws {
-            guard let raw = command.value(option) else { return }
-            guard let value = Double(raw), value.isFinite, !integer || value.rounded() == value else {
-                throw CLIFailure.arguments("--\(option) expects \(integer ? "an integer" : "a number").")
-            }
-            params[key] = .number(value)
-        }
-        func flag(_ key: String, _ name: String) { if command.has(name) { params[key] = .bool(true) } }
-        func space(_ key: String) throws { if let raw = command.value("space") { params[key] = .string(try resolver.space(raw).uuidString) } }
-        func tab(_ key: String) throws { if let raw = command.value("tab") { params[key] = .string(try resolver.tab(raw).uuidString) } }
-        func host(_ key: String) throws { if let raw = command.value("host") { params[key] = .string(try resolver.host(raw).uuidString) } }
-        func idList(_ option: String) throws -> JSONValue? {
-            guard let raw = command.value(option) else { return nil }
-            let ids = raw.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-            guard ids.allSatisfy({ UUID(uuidString: $0) != nil }) else { throw CLIFailure.arguments("--\(option) expects comma-separated UUIDs.") }
-            return .array(ids.map(JSONValue.string))
-        }
-        func launch() throws {
-            let kinds = [command.has("shell"), command.value("process") != nil, command.value("host-launch") != nil].filter { $0 }.count
-            guard kinds <= 1 else { throw CLIFailure.arguments("Use only one of --shell, --process, or --host-launch.") }
-            if command.has("shell") {
-                var object: [String: JSONValue] = ["kind": .string("shell")]
-                if let directory = command.value("directory") { object["directory"] = .string(directory) }
-                params["launch"] = .object(object)
-            } else if let executable = command.value("process") {
-                guard let directory = command.value("directory") else { throw CLIFailure.arguments("--process needs --directory.") }
-                params["launch"] = .object([
-                    "kind": .string("process"), "executable": .string(executable), "directory": .string(directory),
-                    "arguments": .array((command.options["arg"] ?? []).map(JSONValue.string))
-                ])
-            } else if let raw = command.value("host-launch") {
-                params["launch"] = .object(["kind": .string("host"), "hostId": .string(try resolver.host(raw).uuidString)])
-            } else if command.value("directory") != nil || command.options["arg"] != nil {
-                throw CLIFailure.arguments("--directory and --arg need --shell or --process.")
-            }
-        }
-        func document() throws {
-            guard let path = command.positionals.first else { return }
-            let data: Data
-            do { data = try environment.readFile(path) } catch { throw CLIFailure.arguments("Cannot read \(path).") }
-            guard data.count <= 1_000_000, let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {
-                throw CLIFailure.arguments("\(path) is not a JSON layout document of at most 1 MB.")
-            }
-            params["document"] = value
-        }
-        set("idempotencyKey", "idempotency-key")
-        try number("expectedRevision", "expected-revision", integer: true)
-        switch command.spec {
-        case "space.get", "space.update", "space.focus", "space.close":
-            try space("id")
-            guard params["id"] != nil else { throw CLIFailure.arguments("--space is required.") }
-            set("name", "name")
-            flag("allowRunning", "allow-running"); flag("force", "force"); flag("activateApp", "activate")
-        case "space.create": set("name", "name"); flag("start", "start")
-        case "space.reorder": params["ids"] = try idList("ids")
-        case "tab.list", "tab.create", "tab.reorder":
-            try space("spaceId")
-            set("title", "title"); flag("start", "start")
-            if let ids = try idList("ids") { params["ids"] = ids }
-        case "tab.get", "tab.update", "tab.focus", "tab.close":
-            try tab("id")
-            set("title", "title"); flag("allowRunning", "allow-running"); flag("force", "force")
-            // `none` removes the label; the app validates color names.
-            if let color = command.value("color") { params["color"] = color == "none" ? .null : .string(color) }
-        case "pane.split":
-            try uuid("paneId", "pane"); set("axis", "axis"); try number("ratio", "ratio"); flag("start", "start")
-        case "pane.resize": try uuid("branchId", "branch"); try number("ratio", "ratio")
-        case "pane.focus", "pane.close": try uuid("id", "pane"); flag("allowRunning", "allow-running"); flag("force", "force")
-        case "pane.maximize": try uuid("id", "pane"); params["maximized"] = .bool(!command.has("restore"))
-        case "session.get", "session.sendInput", "session.execute", "session.readOutput":
-            try uuid("id", "session")
-            set("text", "text"); set("base64", "base64"); set("mode", "mode"); set("command", "command"); set("view", "view"); set("cursor", "cursor")
-            try number("maxBytes", "max-bytes", integer: true)
-            flag("submit", "submit")
-        case "session.start", "session.restart":
-            try uuid("paneId", "pane"); try launch(); flag("allowRunning", "allow-running"); flag("force", "force")
-        case "host.list": set("query", "query")
-        case "host.get", "host.update", "host.delete", "host.create", "host.connect":
-            try host(command.spec == "host.connect" ? "hostId" : "id")
-            set("name", "name"); set("destination", "destination"); set("user", "user"); set("identityFile", "identity-file")
-            try number("port", "port", integer: true)
-            if let tags = command.value("tags") { params["tags"] = .array(tags.split(separator: ",").map { .string(String($0)) }) }
-            if command.spec == "host.connect" { try space("spaceId"); try uuid("paneId", "pane"); set("axis", "axis") }
-        case "layout.validate", "layout.plan", "layout.apply":
-            try document(); set("namespace", "namespace"); flag("startNew", "start-new")
-        case "theme.validate", "theme.import":
-            // Theme files go as raw text so the app's validator sees duplicate keys exactly.
-            if let path = command.positionals.first {
-                guard let data = try? environment.readFile(path), data.count <= 1_000_000, let text = String(data: data, encoding: .utf8) else {
-                    throw CLIFailure.arguments("Cannot read \(path) as a UTF-8 theme file.")
-                }
-                params["documentText"] = .string(text)
-            }
-            flag("replace", "replace")
-        case "theme.get", "theme.export", "theme.delete":
-            set("id", "id"); set("id", "theme"); flag("resolved", "resolved")
-            guard params["id"] != nil else { throw CLIFailure.arguments("--id is required.") }
-        case "appearance.set": set("mode", "mode"); set("lightThemeId", "light-theme"); set("darkThemeId", "dark-theme")
-        case "layout.export":
-            if let spaces = command.options["space"] { params["spaceIds"] = .array(try spaces.map { .string(try resolver.space($0).uuidString) }) }
-        case "events.subscribe":
-            params["topics"] = .array((command.value("topics") ?? "resources,selection,session").split(separator: ",").map { .string(String($0)) })
-            if let resources = command.options["resource"] {
-                guard resources.allSatisfy({ UUID(uuidString: $0) != nil }) else { throw CLIFailure.arguments("--resource expects UUIDs.") }
-                params["resourceIds"] = .array(resources.map(JSONValue.string))
-            }
-            try number("afterSequence", "after-sequence", integer: true)
-            set("instanceId", "instance")
-        default: break
-        }
-        return params
-    }
-}
-
-/// Resolves explicit UUIDs directly, or exact names via list calls. A name
-/// that matches several resources is an argument error, never a guess.
-struct Resolver {
-    let transport: CLITransport
-
-    private func list(_ method: String, _ params: [String: JSONValue], key: String) throws -> [[String: JSONValue]] {
-        let response = try transport.call(method, params)
-        // A denied or failed lookup keeps its own status; it is not "no match".
-        if response["error"] != nil { throw CLI.failure(from: response) }
-        guard case .object(let result)? = response["result"], case .array(let items)? = result[key] else { return [] }
-        return items.compactMap { if case .object(let item) = $0 { item } else { nil } }
-    }
-
-    private func match(_ name: String, in items: [[String: JSONValue]], field: String, kind: String) throws -> UUID {
-        if let id = UUID(uuidString: name) { return id }
-        let matches = items.filter { $0[field] == .string(name) }
-        guard !matches.isEmpty else { throw CLIFailure(code: "NOT_FOUND", message: "No \(kind) is named \(name).", exitStatus: 3) }
-        guard matches.count == 1, case .string(let raw)? = matches[0]["id"], let id = UUID(uuidString: raw) else {
-            throw CLIFailure.arguments("\(matches.count) \(kind)s are named \(name). Use its UUID instead.")
-        }
-        return id
-    }
-
-    mutating func space(_ value: String) throws -> UUID {
-        if let id = UUID(uuidString: value) { return id }
-        return try match(value, in: try list("space.list", [:], key: "spaces"), field: "name", kind: "space")
-    }
-
-    mutating func tab(_ value: String) throws -> UUID {
-        if let id = UUID(uuidString: value) { return id }
-        var tabs: [[String: JSONValue]] = []
-        for space in try list("space.list", [:], key: "spaces") {
-            if let id = space["id"] { tabs += try list("tab.list", ["spaceId": id], key: "tabs") }
-        }
-        return try match(value, in: tabs, field: "title", kind: "tab")
-    }
-
-    mutating func host(_ value: String) throws -> UUID {
-        if let id = UUID(uuidString: value) { return id }
-        return try match(value, in: try list("host.list", [:], key: "hosts"), field: "name", kind: "host")
+        throw CLIFailure.transport("The app closed the event stream. Subscribe again with --instance and --after-sequence to resume.")
     }
 }
 
@@ -455,6 +321,16 @@ final class SocketTransport: CLITransport {
     private var pending: [[String: JSONValue]] = []
     /// A reply that never comes must not hang a script forever.
     static let replyTimeout = 120
+
+    /// A call that waits on the server (`session.execute` with `wait`, `events.poll`) gets its own wait plus the usual margin.
+    /// One that waits on a host, the person or a project's setup (`MethodSpecV2.waits`) gets the setup's 15-minute bound:
+    /// timing out closes the connection, which cancels the call (and a running setup) in the app.
+    static func replyTimeout(_ method: String, _ params: [String: JSONValue]) -> Int {
+        let waited: JSONValue? = method == "session.execute" ? params["wait"]?["timeoutMs"] ?? params["wait"].map { _ in .number(30_000) } : method == "events.poll" ? params["timeoutMs"] : nil
+        if case .number(let milliseconds)? = waited, milliseconds.isFinite, milliseconds > 0 { return replyTimeout + Int(min(milliseconds, 3_600_000) / 1_000) }
+        if MethodCatalogV2.spec(method)?.waits(for: params) == true { return replyTimeout + 900 }
+        return replyTimeout
+    }
 
     init(path: String) throws(CLIFailure) {
         guard (try? ControlEndpoint.verifySocket(path, uid: geteuid())) != nil else { throw CLIFailure.transport("The control socket is missing or unsafe.") }
@@ -482,7 +358,7 @@ final class SocketTransport: CLITransport {
         let id = nextID
         var data = Data(CLI.encode(.object(["jsonrpc": .string("2.0"), "id": .number(Double(id)), "method": .string(method), "params": .object(params)])).utf8)
         data.append(0x0A)
-        setReceiveTimeout(Self.replyTimeout)
+        setReceiveTimeout(Self.replyTimeout(method, params))
         guard writeAll(data) else { throw CLIFailure.transport("The connection closed while sending. The request may or may not have run; inspect state before retrying.") }
         while true {
             guard let message = try readMessage() else {

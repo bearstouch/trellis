@@ -1,7 +1,7 @@
 import Foundation
 import TrellisCore
 
-/// Phase 4 of the catalog (docs/api/v2/events.md): subscriptions on the socket and `events.poll` on any transport.
+/// Events (docs/api/events.md): subscriptions on the socket and `events.poll` on any transport.
 extension MethodCatalogV2 {
     /// Each topic's capability, required only when the topic is asked for (events.md, Topics and types).
     private static func topicCapabilities(_ topics: [EventTopicV2]) -> [ConditionalCapabilityV2] {

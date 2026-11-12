@@ -1,7 +1,7 @@
 import Foundation
 import TrellisCore
 
-/// Protocol 2 event topics (docs/api/v2/events.md). Each topic is gated by the capabilities a grant needs to receive it at
+/// Protocol 2 event topics (docs/api/events.md). Each topic is gated by the capabilities a grant needs to receive it at
 /// all; space, host and project scope and per-field rules are checked per event on top.
 public enum EventTopicV2: String, CaseIterable, Sendable, Comparable {
     case workspace, selection, session, attention, shell, agent, remote, project, task, host, appearance, grant, output

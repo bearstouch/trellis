@@ -16,7 +16,7 @@ final class MCPTailnetTests: XCTestCase {
     private let build = IPAddressLiteral("100.70.9.3")!
 
     private func token() async throws -> String {
-        try await store.create(name: "agent", capabilities: Set(Capability.allCases), spaceScope: .all, hostScope: .all, lifetime: 3600).token
+        try await store.create(name: "agent", capabilities: Set(CapabilityV2.allCases), spaceScope: .all, hostScope: .all, lifetime: 3600).token
     }
 
     private func initialize(token: String, headers: [String: String]) async -> HTTPResponse {

@@ -85,13 +85,13 @@ final class ProjectionV2Tests: XCTestCase {
         return runtime
     }
 
-    private func projection(_ capabilities: Set<Capability>, hosts: HostScope = .all, spaces: SpaceScope = .all) -> ProjectionV2 {
+    private func projection(_ capabilities: Set<CapabilityV2>, hosts: HostScope = .all, spaces: SpaceScope = .all) -> ProjectionV2 {
         let grant = AutomationGrant(
             id: UUID(), name: "Test", tokenHash: "", capabilities: capabilities, spaceScope: spaces, hostScope: hosts, createdAt: started, expiresAt: started.addingTimeInterval(60))
         return ProjectionV2(snapshot: snapshot(), runtime: runtime(), hosts: [host.id: host, other.id: other], grant: grant)
     }
 
-    private let everything: Set<Capability> = [.metadataRead, .sessionExecute, .hostRead]
+    private let everything: Set<CapabilityV2> = [.workspaceRead, .sessionExecute, .hostRead]
 
     private func object(_ value: JSONValue) -> [String: JSONValue] { if case .object(let object) = value { object } else { [:] } }
     private func pane(_ projection: ProjectionV2, _ id: UUID) -> [String: JSONValue] { object(projection.pane(projection.snapshot.panes[id]!)) }
@@ -115,7 +115,7 @@ final class ProjectionV2Tests: XCTestCase {
         XCTAssertEqual(object(spaces[2]["project"] ?? .null)["missing"], .bool(true))
         XCTAssertEqual(spaces[2]["attention"], .object(["activity": .string("exit")]))
 
-        let reader = projection([.metadataRead])
+        let reader = projection([.workspaceRead])
         XCTAssertEqual(object(reader.space(reader.snapshot.spaces[1]))["machine"], .object(["kind": .string("remote")]), "hostId needs host.read")
         let approved = projection(everything, hosts: .approved([HostApproval(hostID: other.id, connectionRevision: 1)]))
         XCTAssertEqual(object(approved.space(approved.snapshot.spaces[1]))["machine"], .object(["kind": .string("remote")]), "…and the host in scope")
@@ -197,7 +197,7 @@ final class ProjectionV2Tests: XCTestCase {
         XCTAssertEqual(pane(full, remoteAgent)["machine"], .object(["kind": .string("remote"), "hostId": .string(host.id.uuidString.lowercased())]))
         XCTAssertEqual(pane(full, agent)["machine"], .object(["kind": .string("local")]))
 
-        let reader = projection([.metadataRead])
+        let reader = projection([.workspaceRead])
         XCTAssertNil(pane(reader, shell)["folder"], "folder needs session.execute")
         XCTAssertEqual(pane(reader, ssh)["machine"], .object(["kind": .string("ssh")]))
     }
@@ -205,7 +205,7 @@ final class ProjectionV2Tests: XCTestCase {
     // MARK: Session
 
     func testSessionsReportEveryLaunchKindWithRedaction() {
-        let full = projection(everything), reader = projection([.metadataRead])
+        let full = projection(everything), reader = projection([.workspaceRead])
         let hostID = JSONValue.string(host.id.uuidString.lowercased())
         let expected: [(UUID, JSONValue, JSONValue)] = [
             (shell, .object(["kind": .string("shell"), "directory": .string("/Users/me/src")]), .object(["kind": .string("shell")])),
@@ -307,7 +307,7 @@ final class ProjectionV2Tests: XCTestCase {
                 .object(["machine": .object(["kind": .string("remote"), "hostId": .string(host.id.uuidString.lowercased())]), "status": .string("missing"), "installable": .bool(true)])
             ]), "A host outside scope isn't listed; installed needs no installable flag")
         // Without session.execute nothing says what runs; without host.read no host is listed.
-        let plain = object(projection([.metadataRead]).agent(definition, revision: 3, availability: availability))
+        let plain = object(projection([.workspaceRead]).agent(definition, revision: 3, availability: availability))
         XCTAssertNil(plain["executable"])
         XCTAssertNil(plain["install"])
         XCTAssertEqual(plain["availability"], .array([.object(["machine": .object(["kind": .string("local")]), "status": .string("installed")])]))
@@ -356,5 +356,16 @@ final class ProjectionV2Tests: XCTestCase {
         let text = String(decoding: try JSONEncoder().encode(JSONValue.array(values)), as: UTF8.self)
         XCTAssertNil(text.firstMatch(of: /[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}/), "UUIDs are written lowercase")
         XCTAssertFalse(text.contains("\"\""), "No empty-string placeholders")
+    }
+}
+
+extension AutomationGrant {
+    /// A Custom grant over every project and agent, for projection tests that build grants by hand.
+    init(
+        id: UUID, name: String, tokenHash: String, capabilities: Set<CapabilityV2>, spaceScope: SpaceScope, hostScope: HostScope, createdAt: Date, expiresAt: Date
+    ) {
+        self.init(
+            id: id, tokenHash: tokenHash, settings: GrantSettings(name: name, capabilities: capabilities, scope: GrantScope(spaces: spaceScope, hosts: hostScope)),
+            createdAt: createdAt, expiresAt: expiresAt)
     }
 }

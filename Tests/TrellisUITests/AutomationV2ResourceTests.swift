@@ -18,15 +18,15 @@ final class HarnessV2 {
     init(projects: ProjectListModel? = nil) throws {
         base = try Harness()
         base.handler = AuthorizingControlHandler(
-            grants: base.grants, domain: AutomationService(model: base.model, hosts: base.hosts), idempotency: IdempotencyCache(now: { [clock = base.clock] in clock.now }),
-            v2Domain: AutomationServiceV2(model: base.model, hosts: base.hosts, projects: projects))
+            grants: base.grants, domain: AutomationServiceV2(model: base.model, hosts: base.hosts, projects: projects),
+            idempotency: IdempotencyCache(now: { [clock = base.clock] in clock.now }))
         if let projects { base.model.commandPaletteProjects = { projects.projects } }
     }
 
     /// Clients of a harness whose handler is already set up (an `EventsHarness`'s, with its event hub).
     init(base: Harness) { self.base = base }
 
-    func grant(_ name: String, _ capabilities: Set<Capability> = Set(Capability.allCases), scope: SpaceScope = .all, hosts: HostScope = .all) async throws {
+    func grant(_ name: String, _ capabilities: Set<CapabilityV2> = Set(CapabilityV2.allCases), scope: SpaceScope = .all, hosts: HostScope = .all) async throws {
         tokens[name] = try await base.grants.create(name: name, capabilities: capabilities, spaceScope: scope, hostScope: hosts, lifetime: 3600).token
         sessions[name] = nil
     }
@@ -214,8 +214,8 @@ final class AutomationV2ResourceTests: XCTestCase {
         let theirs = try XCTUnwrap(object(r12, "space")["id"] as? String)
         let theirTab = try XCTUnwrap(v.model.snapshot.spaces.first { $0.id.uuidString.lowercased() == theirs }?.activeTabID)
         let theirPane = try XCTUnwrap(v.model.snapshot.tabs[theirTab]?.activePaneID)
-        try await v.grant("reader", [.metadataRead])
-        try await v.grant("scoped", Set(Capability.allCases), scope: .spaces([try XCTUnwrap(UUID(uuidString: mine))]))
+        try await v.grant("reader", [.workspaceRead])
+        try await v.grant("scoped", Set(CapabilityV2.allCases), scope: .spaces([try XCTUnwrap(UUID(uuidString: mine))]))
         let committed = v.model.snapshot
 
         let denied = try await v.call("tab.create", ["spaceId": mine], as: "reader")
@@ -251,13 +251,13 @@ final class AutomationV2ResourceTests: XCTestCase {
     func testStartingNewPanesNeedsWhatStartingTheirLaunchNeeds() async throws {
         let v = try HarnessV2()
         defer { v.cleanUp() }
-        try await v.grant("full")
+        try await v.grant("full", Set(CapabilityV2.allCases).subtracting([.agentControl]))
         let created = try await v.ok("space.create", ["name": "Agents"])
         let tabID = try XCTUnwrap(object(created, "tab")["id"] as? String)
         let paneID = try XCTUnwrap(v.model.snapshot.tabs[try XCTUnwrap(UUID(uuidString: tabID))]?.activePaneID)
         _ = try await v.model.automationExecute(.configureStoppedSession(paneID: paneID, launch: .agent(AgentLaunch(agentID: "trellis-claude-code", directory: nil))))
         let committed = v.model.snapshot
-        // A duplicated agent pane would start an agent: that needs agent.control, which a grant made with v1 capabilities never holds.
+        // A duplicated agent pane would start an agent: that needs agent.control, which this grant doesn't hold.
         let duplicate = try await v.call("tab.duplicate", ["id": tabID, "start": true])
         XCTAssertEqual(errorCode(duplicate), "PERMISSION_DENIED")
         XCTAssertEqual(details(duplicate)?["missing"] as? [String], ["agent.control"])
@@ -278,8 +278,8 @@ final class AutomationV2ResourceTests: XCTestCase {
     func testSessionsStartStopAndTakeInputWithRealProcesses() async throws {
         let v = try HarnessV2()
         defer { v.cleanUp() }
-        try await v.grant("full")
-        try await v.grant("starter", [.metadataRead, .sessionStart])
+        try await v.grant("full", Set(CapabilityV2.allCases).subtracting([.agentControl]))
+        try await v.grant("starter", [.workspaceRead, .sessionStart])
         let created = try await v.ok("space.create", ["name": "Live"])
         let paneID = try XCTUnwrap((created["panes"] as? [[String: Any]])?.first?["id"] as? String)
         let pane = try XCTUnwrap(UUID(uuidString: paneID))
@@ -332,7 +332,7 @@ final class AutomationV2ResourceTests: XCTestCase {
         XCTAssertEqual(details(unconfirmed)?["sessionIds"] as? [String], [running])
         _ = try await v.ok("session.stop", ["id": running])
 
-        // An agent pane's saved launch needs agent.control, which no grant holds before phase 3.
+        // An agent pane's saved launch needs agent.control, which this grant doesn't hold.
         let other = try await v.ok("tab.create", ["spaceId": try XCTUnwrap(object(created, "space")["id"] as? String)])
         let agentPane = try XCTUnwrap(UUID(uuidString: try XCTUnwrap((other["panes"] as? [[String: Any]])?.first?["id"] as? String)))
         _ = try await v.model.service.execute(.configureStoppedSession(paneID: agentPane, launch: .agent(AgentLaunch(agentID: "trellis-claude-code", directory: "/tmp"))))
@@ -444,7 +444,7 @@ final class AutomationV2ResourceTests: XCTestCase {
         let v = try HarnessV2()
         defer { v.cleanUp() }
         try await v.grant("full")
-        try await v.grant("reader", [.metadataRead])
+        try await v.grant("reader", [.workspaceRead])
         let space = try await v.model.service.execute(.createSpace(name: "Huge"))
         let pane = try XCTUnwrap(space.snapshot.tabs.values.first?.activePaneID)
         let argument = String(repeating: "a", count: 60_000)

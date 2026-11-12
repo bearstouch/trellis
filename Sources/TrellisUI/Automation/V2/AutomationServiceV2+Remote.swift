@@ -92,7 +92,7 @@ extension AutomationServiceV2 {
     /// out of order, let ssh ask in the app's console (`interactive`); others connect as an automatic attempt does.
     @MainActor func readyRemoteLink(_ hostID: UUID, _ call: CallV2, interactive: Bool = false) async throws {
         guard let remote = model.remoteHosts, remote.isAvailable else { throw Self.remoteUnavailable }
-        guard !model.shuttingDown, !model.isRestoring else { throw Self.map(.unavailable) }
+        guard !model.shuttingDown, !model.isRestoring else { throw Self.map(AutomationModelError.unavailable) }
         if remote.workspaceConnection(hostID) != nil { return }
         guard let host = hosts.hosts.first(where: { $0.id == hostID }) else { throw Self.notFound }
         let (connection, failure) = await model.remoteConnection(host, remoteHosts: remote, interactive: interactive, install: installPolicy(host, call))

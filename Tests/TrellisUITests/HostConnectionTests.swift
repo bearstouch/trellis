@@ -373,13 +373,12 @@ final class HostConnectionTests: XCTestCase {
         let tab = try XCTUnwrap(model.snapshot.panes[pane]?.tabID)
         XCTAssertEqual(model.snapshot.tabs[tab]?.title, "Prod", "The host-named tab keeps its title")
 
-        let session = try XCTUnwrap(model.snapshot.panes[pane]?.sessionID)
-        let reported = try result(try await h.call("session.get", ["id": session.uuidString]))
-        let shell = try XCTUnwrap(reported["shellIntegration"] as? [String: Any])
-        XCTAssertEqual(shell["remote"] as? Bool, true)
-        XCTAssertEqual(shell["lastExitStatus"] as? Double, 3)
+        let reported: [String: Any] = try await h.value("pane", "pane.get", ["id": pane.uuidString])
+        let shell = try XCTUnwrap(reported["shell"] as? [String: Any])
+        XCTAssertEqual(shell["integration"] as? String, "remote")
+        XCTAssertEqual(shell["lastExitCode"] as? Double, 3)
         XCTAssertEqual(shell["commandRunning"] as? Bool, false)
-        XCTAssertNil(shell["currentDirectory"], "Never a remote path, even with execute permission")
+        XCTAssertNotEqual(reported["folder"] as? String, directory.path, "Never a remote path as this Mac's folder, even with execute permission")
 
         // A split from the SSH pane starts a local shell in the default directory, not the remote path.
         let splitResult = await model.splitPane(pane, axis: .x, startSession: false)

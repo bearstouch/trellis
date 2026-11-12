@@ -25,7 +25,7 @@ final class PermissionsV2Tests: XCTestCase {
         // Every call reads the grant afresh, as the handler does.
         let current = await store.activeGrant(id: grant.id) ?? grant
         return await dispatcher.dispatch(
-            method, params: .object(params), grant: current, identity: ControlIdentity(connectionID: UUID(), peerUID: geteuid(), grantID: grant.id, protocolVersion: 2))
+            method, params: .object(params), grant: current, identity: ControlIdentity(connectionID: UUID(), peerUID: geteuid(), grantID: grant.id))
     }
 
     private func outcome(_ result: Result<JSONValue, ControlError>) -> String {
@@ -198,25 +198,22 @@ final class PermissionsV2Tests: XCTestCase {
         let connect = await call(core, "host.connect", ["hostId": .string(UUID().uuidString), "placement": .object(["kind": .string("space")])], setScoped)
         XCTAssertEqual(outcome(connect), "NOT_FOUND", "Visibility comes first")
 
-        // The grant view says `created`; protocol 1 sees the created spaces as a plain set and can't create spaces.
+        // The grant view says `created`, on the socket's authentication result too.
         let view = await call(core, "grant.get", [:], orchestrator)
         guard case .success(.object(let result)) = view, case .object(let grantView)? = result["grant"], case .object(let scope)? = grantView["scope"] else { return XCTFail() }
         XCTAssertEqual(scope["spaces"], .string("created"))
-        let handler = AuthorizingControlHandler(grants: store, domain: domain, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
+        let handler = AuthorizingControlHandler(grants: store, domain: domainV2, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }))
         let (_, token) = try await grant([.workspaceRead, .workspaceWrite], GrantScope(spaces: .created))
-        let v1Grant = await store.activeGrant(token: token)
-        store.recordCreatedSpace(domain.spaceB, grant: try XCTUnwrap(v1Grant).id)
         let session = ControlSession(peerUID: geteuid(), handler: handler)
-        let auth = try await lastReply(session, request(1, "auth.authenticate", ["protocolVersion": .number(1), "token": .string(token)]))
-        XCTAssertEqual((auth["result"] as? [String: Any])?["spaceScope"] as? [String], [domain.spaceB.uuidString])
-        let v1Create = try await lastReply(session, request(2, "space.create", ["name": .string("X")]))
-        XCTAssertEqual(appCode(v1Create), "PERMISSION_DENIED", "Protocol 1 never records created spaces, so it can't create any")
-        let v1Hidden = try await lastReply(session, request(3, "space.get", ["id": .string(domain.spaceA.uuidString)]))
-        XCTAssertEqual(appCode(v1Hidden), "NOT_FOUND")
+        let auth = try await lastReply(session, request(1, "auth.authenticate", ["protocolVersion": .number(2), "token": .string(token)]))
+        let authScope = ((auth["result"] as? [String: Any])?["grant"] as? [String: Any])?["scope"] as? [String: Any]
+        XCTAssertEqual(authScope?["spaces"] as? String, "created")
+        let hidden = try await lastReply(session, request(3, "space.get", ["id": .string(domain.spaceA.uuidString)]))
+        XCTAssertEqual(appCode(hidden), "NOT_FOUND", "A created grant sees nothing it didn't create")
     }
 
     func testCreatedSpaceEventsReachTheirGrantOnly() async throws {
-        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
+        let hub = EventHubV2(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         let sink = DeliverySink()
         await hub.setDelivery { connection, data in
             sink.append(connection, data); return true
@@ -224,34 +221,36 @@ final class PermissionsV2Tests: XCTestCase {
         let (mine, _) = try await grant([.workspaceRead], GrantScope(spaces: .created))
         let (theirs, _) = try await grant([.workspaceRead], GrantScope(spaces: .created))
         let mineConnection = UUID(), theirConnection = UUID()
-        _ = await hub.subscribe(connectionID: mineConnection, grant: mine, topics: ["resources"], resourceIDs: [], afterSequence: nil)
-        _ = await hub.subscribe(connectionID: theirConnection, grant: theirs, topics: ["resources"], resourceIDs: [], afterSequence: nil)
+        _ = await hub.subscribe(connectionID: mineConnection, grant: mine, filter: EventFilterV2(topics: [.workspace]), afterSequence: nil, instanceID: nil)
+        _ = await hub.subscribe(connectionID: theirConnection, grant: theirs, filter: EventFilterV2(topics: [.workspace]), afterSequence: nil, instanceID: nil)
         let space = UUID()
         store.recordCreatedSpace(space, grant: mine.id)
-        await hub.publish([WorkspaceEvent(type: "space.created", resourceID: space, spaceID: space, data: [:]), WorkspaceEvent(type: "tab.created", resourceID: UUID(), spaceID: UUID())])
+        await hub.publish([
+            EventDraftV2("space.created", kind: "space", id: space, spaceID: space), EventDraftV2("tab.created", kind: "tab", id: UUID(), spaceID: UUID())
+        ])
         XCTAssertEqual(sink.count(mineConnection), 1, "The creating grant gets its space's event")
         XCTAssertEqual(sink.count(theirConnection), 0)
     }
 
-    /// Delivery re-checks the capabilities per event, so nothing reaches a narrowed grant before `revalidate` runs.
+    /// Delivery re-checks the capabilities per event, so nothing reaches a narrowed grant before `grantEdited` runs.
     func testANarrowedGrantGetsNoEventsBeforeRevalidation() async throws {
-        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
+        let hub = EventHubV2(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         let sink = DeliverySink()
         await hub.setDelivery { connection, data in
             sink.append(connection, data); return true
         }
-        let (grant, _) = try await grant([.workspaceRead, .sessionOutputRead])
+        let (grant, _) = try await grant([.workspaceRead, .sessionOutputRead, .themeRead])
         let connection = UUID()
-        _ = await hub.subscribe(connectionID: connection, grant: grant, topics: ["resources", "output"], resourceIDs: [], afterSequence: nil)
-        await hub.publish([WorkspaceEvent(type: "space.created", resourceID: domain.spaceA, spaceID: domain.spaceA, data: [:])])
+        _ = await hub.subscribe(connectionID: connection, grant: grant, filter: EventFilterV2(topics: [.workspace, .output]), afterSequence: nil, instanceID: nil)
+        await hub.publish([EventDraftV2("space.created", kind: "space", id: domain.spaceA, spaceID: domain.spaceA)])
         XCTAssertEqual(sink.count(connection), 1)
         var narrower = grant.settings
-        narrower.capabilities = [.sessionOutputRead]
+        narrower.capabilities = [.themeRead]
         try await store.update(grant.id, to: narrower, expectedRevision: grant.revision, confirmedWidening: false)
-        await hub.publish([WorkspaceEvent(type: "space.updated", resourceID: domain.spaceA, spaceID: domain.spaceA, data: [:])])
+        await hub.publish([EventDraftV2("space.updated", kind: "space", id: domain.spaceA, spaceID: domain.spaceA)])
         await hub.publishOutput(
             session: domain.sessionA, spaceID: domain.spaceA, data: Data("x".utf8), next: OutputCursor(instanceID: UUID(), sessionID: domain.sessionA, offset: 1))
-        XCTAssertEqual(sink.count(connection), 1, "No metadata or output after workspace.read was removed")
+        XCTAssertEqual(sink.count(connection), 1, "No workspace events or output after workspace.read and session.output.read were removed")
     }
 
     // MARK: - Agent and project scopes (API2-06e)
@@ -288,26 +287,24 @@ final class PermissionsV2Tests: XCTestCase {
     /// Removing capabilities ends a subscription that needed them; open connections get AUTH_REQUIRED once, then the
     /// re-read grant answers PERMISSION_DENIED. Widening needs the UI's confirmation and doesn't end anything.
     func testNarrowingEndsSubscriptionsAndReauthenticatesWideningAsksFirst() async throws {
-        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
+        let hub = EventHubV2(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         await hub.setDelivery { _, _ in true }
         let handler = AuthorizingControlHandler(
-            grants: store, domain: domain, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }), idempotency: IdempotencyCache(now: { [clock] in clock.now }),
-            events: hub, v2Domain: domainV2)
-        await store.onEdit { edit in
-            guard edit.change.narrows else { return }
-            Task { await hub.revalidate(edit.new) }
-        }
+            grants: store, domain: domainV2, limiter: AuthenticationRateLimiter(now: { [clock] in clock.now }), idempotency: IdempotencyCache(now: { [clock] in clock.now }),
+            events: hub)
+        await store.onEdit { edit in Task { await hub.grantEdited(edit.new, narrowed: edit.change.narrows) } }
         let (grant, token) = try await grant([.workspaceRead, .sessionInput, .sessionOutputRead])
+        // Two connections of the same grant: one follows events, the other types.
         let v1 = ControlSession(peerUID: geteuid(), handler: handler), v2 = ControlSession(peerUID: geteuid(), handler: handler)
         func send(_ session: ControlSession, _ method: String, _ params: [String: JSONValue] = [:]) async throws -> String {
             let response = try await lastReply(session, request(1, method, params))
             return response["result"] != nil ? "OK" : appCode(response) ?? "?"
         }
-        let authV1 = try await send(v1, "auth.authenticate", ["protocolVersion": .number(1), "token": .string(token)])
+        let authV1 = try await send(v1, "auth.authenticate", ["protocolVersion": .number(2), "token": .string(token)])
         let authV2 = try await send(v2, "auth.authenticate", ["protocolVersion": .number(2), "token": .string(token)])
         XCTAssertEqual([authV1, authV2], ["OK", "OK"])
-        let subscribed = try await send(v1, "events.subscribe", ["topics": .array([.string("output"), .string("resources")])])
-        let metadataOnly = try await send(v1, "events.subscribe", ["topics": .array([.string("resources")])])
+        let subscribed = try await send(v1, "events.subscribe", ["topics": .array([.string("output"), .string("workspace")])])
+        let metadataOnly = try await send(v1, "events.subscribe", ["topics": .array([.string("workspace")])])
         XCTAssertEqual([subscribed, metadataOnly], ["OK", "OK"])
         let input: [String: JSONValue] = ["id": .string(domain.sessionA.uuidString), "text": .string("ls\n")]
         let typed = try await send(v2, "session.sendInput", input)
@@ -338,7 +335,7 @@ final class PermissionsV2Tests: XCTestCase {
         XCTAssertEqual(denied, "PERMISSION_DENIED")
         let reading = try await send(v2, "space.list")
         XCTAssertEqual(reading, "OK", "Re-authenticated at the new revision")
-        _ = try await send(v1, "auth.authenticate", ["protocolVersion": .number(1), "token": .string(token)])
+        _ = try await send(v1, "auth.authenticate", ["protocolVersion": .number(2), "token": .string(token)])
         let v1Input = try await send(v1, "session.sendInput", input)
         XCTAssertEqual(v1Input, "PERMISSION_DENIED")
     }

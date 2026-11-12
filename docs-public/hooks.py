@@ -20,7 +20,7 @@ PAGES = Path(__file__).with_name("pages")
 # Inline Markdown links and images to a relative .md target, with an optional #anchor.
 LINK = re.compile(r"(\]\()([^)\s#:]+\.md)(#[^)\s]*)?(\))")
 
-_ID = r"`?\b(?:FR|API|INT|MAC|EX)-[A-Z]*\d+[a-z]?\b`?"
+_ID = r"`?\b(?:FR|API2?|INT|MAC|EX)-[A-Z]*\d+[a-z]?\b`?"
 # "(FR-W08)", "(API-01, API-02)", "(FR-RW02, FR-RW17)", "(`FR-A05`)".
 ID_PARENS = re.compile(rf"\s*\(\s*{_ID}(?:\s*(?:,|and|/|–|-)\s*{_ID})*\s*\)")
 # "the [API-06 code](errors.md)" → "the [error code](errors.md)".
@@ -30,6 +30,9 @@ CONTRACT_SECTIONS = re.compile(
     r"^(requirements|verification|contract acceptance|implementation notes.*|release verification|definition of done.*|milestones)$", re.I
 )
 ID_TABLE_HEADER = re.compile(r"^\|\s*ID\s*\|", re.I)
+
+# An anchor to a heading whose requirement IDs were stripped: "#errors-api2-03" → "#errors".
+ANCHOR_ID = re.compile(r"-(?:fr|api2?|int|mac|ex)-[a-z]*\d+[a-z]?(?=-|$)")
 
 # Contributor pages with a user-guide equivalent: links to them go to the guide instead of GitHub.
 GUIDE_FOR = {"release/README.md": ("getting-started.md", "#install-the-command-line-tool")}
@@ -89,8 +92,12 @@ def on_page_markdown(markdown, page, config, files):
 
     def rewrite(m):
         target = posixpath.normpath(posixpath.join(base, m.group(2)))
-        if target in _published or target.startswith("../"):
+        if target.startswith("../"):
             return m.group(0)
+        if target in _published:
+            anchor = m.group(3) or ""
+            if not (PAGES / target).exists(): anchor = ANCHOR_ID.sub("", anchor)
+            return f"{m.group(1)}{m.group(2)}{anchor}{m.group(4)}"
         if target in GUIDE_FOR:
             guide, anchor = GUIDE_FOR[target]
             return f"{m.group(1)}{posixpath.relpath(guide, base or '.')}{anchor}{m.group(4)}"

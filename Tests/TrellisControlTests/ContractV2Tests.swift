@@ -3,12 +3,12 @@ import TrellisCore
 @testable import TrellisControl
 
 /// API2-01–03 contract harness: walks the v2 method catalog and the error registry, and checks both against the
-/// draft contract pages in docs/api/v2.
+/// contract pages in docs/api.
 final class ContractV2Tests: XCTestCase {
-    private static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    private static let root = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
     private func page(_ name: String) throws -> String {
-        try String(contentsOf: Self.root.appendingPathComponent("docs/api/v2/\(name)"), encoding: .utf8)
+        try String(contentsOf: Self.root.appendingPathComponent("docs/api/\(name)"), encoding: .utf8)
     }
 
     /// Shapes later phases declare, so the checks below run on mutating, scoped, paginated and destructive methods too.
@@ -46,9 +46,10 @@ final class ContractV2Tests: XCTestCase {
                 "session.sendInput", "session.execute", "session.readOutput", "agent.list", "agent.get", "agent.runs", "agent.start", "agent.restart", "agent.respond",
                 "agent.install", "host.list", "host.get", "host.create", "host.update", "host.delete", "host.connect", "remote.open", "remote.status",
                 "remote.reconnect", "remote.helper.install", "remote.helper.remove", "project.list", "project.get", "project.create", "project.update",
-                "project.delete", "project.capture", "project.check", "project.launch", "task.list", "task.get", "task.run", "task.stop", "events.subscribe",
-                "events.unsubscribe", "events.poll"
-            ], "Phases 1, 2 and 4–7")
+                "project.delete", "project.capture", "project.check", "project.launch", "task.list", "task.get", "task.run", "task.stop", "layout.validate",
+                "layout.plan", "layout.apply", "layout.export", "theme.list", "theme.get", "theme.validate", "theme.import", "theme.export", "theme.delete",
+                "appearance.get", "appearance.set", "events.subscribe", "events.unsubscribe", "events.poll"
+            ])
     }
 
     func testEveryMethodHasAPolicyADescriptionAndAContractRow() throws {
@@ -62,9 +63,49 @@ final class ContractV2Tests: XCTestCase {
             XCTAssertTrue(spec.errors.isSuperset(of: [.authRequired, .limitExceeded]), spec.name)
         }
         XCTAssertNil(MethodCatalogV2.spec("window.list"))
-        XCTAssertNil(MethodCatalogV2.spec("layout.apply"), "v1 methods are not in the v2 catalog until their phase lands")
+        XCTAssertNil(MethodCatalogV2.spec("window.close"), "No v1 alias is a method")
         XCTAssertFalse(MethodCatalogV2.isMutating("system.info"))
         XCTAssertTrue(MethodCatalogV2.isMutating("no.suchMethod"), "Unknown names are treated as mutating")
+    }
+
+    /// migration.md: destructiveHint is on close, stop, restart, delete, input, execute, agent_respond, task_run,
+    /// project_launch and remote_helper_*; nothing else, and never on a read-only method.
+    func testDestructiveFlagsFollowTheMigrationRule() {
+        let named: Set<String> = [
+            "session.sendInput", "session.execute", "agent.respond", "task.run", "project.launch", "remote.helper.install", "remote.helper.remove"
+        ]
+        for spec in MethodCatalogV2.methods {
+            let verb = String(spec.name.split(separator: ".").last ?? "")
+            let expected = ["close", "stop", "restart", "delete"].contains(verb) || named.contains(spec.name)
+            XCTAssertEqual(spec.isDestructive, expected, spec.name)
+            if spec.isDestructive { XCTAssertTrue(spec.isMutating, "\(spec.name): a read is never destructive") }
+        }
+        XCTAssertEqual(MethodCatalogV2.methods.filter(\.isDestructive).count, 17)
+    }
+
+    func testLayoutAndAppearanceDeclarations() throws {
+        let apply = try XCTUnwrap(MethodCatalogV2.spec("layout.apply"))
+        XCTAssertTrue(apply.requiresAllSpaces)
+        XCTAssertEqual(apply.requiredCapabilities(for: [:]), [.workspaceWrite])
+        XCTAssertEqual(apply.requiredCapabilities(for: ["startNew": .bool(true)]), [.workspaceWrite, .sessionStart])
+        XCTAssertEqual(apply.revisionTarget, .container("workspace"))
+        XCTAssertFalse(apply.isDestructive, "Apply only adds and updates")
+        for name in ["layout.validate", "layout.plan", "layout.export"] { XCTAssertEqual(MethodCatalogV2.spec(name)?.capabilities, [.workspaceRead], name) }
+        for name in ["theme.import", "theme.delete", "appearance.set"] {
+            let spec = try XCTUnwrap(MethodCatalogV2.spec(name))
+            XCTAssertTrue(spec.requiresAllSpaces, "\(name) changes every space")
+            XCTAssertEqual(spec.capabilities, [.themeWrite], name)
+        }
+        let set = try XCTUnwrap(MethodCatalogV2.spec("appearance.set"))
+        XCTAssertEqual(set.revisionTarget, .container("appearance"))
+        XCTAssertEqual(RevisionSubjectV2.of(set, ParamsV2(["mode": .string("dark")])), .appearance)
+        guard case .failure = set.validate(.object([:])) else { return XCTFail("appearance.set needs something to set") }
+        guard case .failure = try XCTUnwrap(MethodCatalogV2.spec("theme.import")).validate(.object(["document": .object([:]), "documentText": .string("{}")])) else {
+            return XCTFail("theme.import takes one document")
+        }
+        XCTAssertTrue(try XCTUnwrap(MethodCatalogV2.spec("theme.list")).paginated)
+        XCTAssertEqual(MethodCatalogV2.spec("space.list")?.params.first?.name, "name", "The CLI's name filter")
+        XCTAssertTrue(MethodCatalogV2.spec("tab.list")?.params.contains { $0.name == "title" } == true, "The CLI's title filter")
     }
 
     func testMutatingMethodsTakeIdempotencyKeyAndExpectedRevision() {
@@ -211,7 +252,7 @@ final class ContractV2Tests: XCTestCase {
             let text = try String(contentsOf: url, encoding: .utf8)
             for match in text.matches(of: /(?:application\(\s*|appCode == )"([A-Z_]+)"/) { used.insert(String(match.output.1)) }
         }
-        XCTAssertTrue(used.contains("REMOTE_DISCONNECTED"), "The scan sees multi-line call sites")
+        XCTAssertTrue(used.contains("UNSUPPORTED_VERSION"), "The scan sees multi-line call sites (ControlError.unsupportedVersion)")
         XCTAssertEqual(used.subtracting(registry), [], "Application codes in Sources/ must be in APIErrorCode")
     }
 
@@ -323,13 +364,17 @@ final class ContractV2Tests: XCTestCase {
         for bad in ["", String(repeating: "a", count: 129), "tab\t", "line\n", "é", "\u{7F}"] { XCTAssertFalse(ConventionsV2.isValidIdempotencyKey(bad), bad.debugDescription) }
     }
 
-    func testCapabilitiesMapFromV1WithoutWidening() {
+    func testCapabilitiesMapFromV1WithoutWidening() throws {
         XCTAssertEqual(CapabilityV2(.metadataRead), .workspaceRead)
         XCTAssertEqual(CapabilityV2(.layoutWrite), .workspaceWrite)
-        for capability in Capability.allCases where ![.metadataRead, .layoutWrite].contains(capability) {
+        let v1 = try [
+            "metadata.read", "layout.write", "session.start", "session.input", "session.execute", "session.output.read", "session.close", "theme.read", "theme.write",
+            "host.read", "host.write"
+        ].map { try XCTUnwrap(CapabilityV1(rawValue: $0), $0) }
+        for capability in v1 where ![.metadataRead, .layoutWrite].contains(capability) {
             XCTAssertEqual(CapabilityV2(capability).rawValue, capability.rawValue)
         }
-        XCTAssertEqual(Set(Capability.allCases.map(CapabilityV2.init)).count, Capability.allCases.count)
+        XCTAssertEqual(Set(v1.map(CapabilityV2.init)).count, v1.count)
         let permissions = (try? page("permissions.md")) ?? ""
         for capability in CapabilityV2.allCases where ![.themeRead, .themeWrite].contains(capability) {
             XCTAssertTrue(permissions.contains("| `\(capability.rawValue)` |"), "\(capability.rawValue) is in the capability table")

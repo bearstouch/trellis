@@ -1,7 +1,7 @@
 import Foundation
 
-/// Protocol 2 capabilities (docs/api/v2/permissions.md, API2-06). Grants store them (grants.json schema 2); protocol 1
-/// sees them under their v1 names (`Capability.init?(_:)`), and a migrated v1 grant holds exactly the mapped set.
+/// Capabilities (docs/api/permissions.md, API2-06). Grants store them (grants.json schema 2); a migrated v1 grant holds
+/// exactly the mapped set.
 public enum CapabilityV2: String, CaseIterable, Codable, Sendable, Comparable {
     case workspaceRead = "workspace.read"
     case workspaceWrite = "workspace.write"
@@ -28,7 +28,7 @@ public enum CapabilityV2: String, CaseIterable, Codable, Sendable, Comparable {
     public static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
 
     /// The v2 name of a v1 capability (migration.md, Capabilities).
-    public init(_ v1: Capability) {
+    init(_ v1: CapabilityV1) {
         switch v1 {
         case .metadataRead: self = .workspaceRead
         case .layoutWrite: self = .workspaceWrite

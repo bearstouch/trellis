@@ -56,7 +56,7 @@ Always run format + lint + build + test before committing.
 | `TrellisBroker` / `TrellisBrokerMain` | `trellis-broker` helper (FR-R03, FR-R07), on by default: owns the PTYs of sessions kept after quit, their replay ring and the owner-only AF_UNIX protocol. Depends only on `TrellisPOSIX`. |
 | `TrellisTerminal` | SwiftTerm-specific code only: `NativeTerminal`, `AccessibleTerminalView`, `PTYProcess`, scrollback, search, selection bookmarks, terminal appearance. |
 | `TrellisUI` | SwiftUI/AppKit views and `AppWorkspaceModel` (`@MainActor` `ObservableObject` bridging store ↔ views ↔ terminals). |
-| `TrellisControl` | Local automation: AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, auth-gated `ControlHandler`. |
+| `TrellisControl` | Local automation (protocol 2 only): AF_UNIX JSON-RPC server, framing, endpoint/discovery safety, the method catalog (`V2/MethodCatalogV2*`) that drives validation, authorization, MCP tools and CLI help, `DispatcherV2`, projections and the typed event hub (`EventHubV2`). |
 | `TrellisMCP` | Optional MCP server (Streamable HTTP, off by default): TCP listener, HTTP parser, MCP sessions, tool table over `AuthorizingControlHandler`. Settings → Remote Control. |
 | `TrellisApp` | `AppMain.swift`: app entry, menus/commands, launch arguments. |
 | `TrellisRelease` | Release manifest checks, user-local CLI link planner, uninstall allow-list, release checklist. |
@@ -92,7 +92,7 @@ change in `ThirdParty/SwiftTerm/PATCHES.md`. Never import SwiftTerm outside `Tre
   `;`-joined trivial statements are normal here. Comments are sparse and explain *why*.
 - `public` APIs across module boundaries; `Sendable`/`Equatable` value types in Core.
 - `@MainActor` for UI and terminal-facing classes; actors for stores/persistence/library.
-- Error codes are SCREAMING_SNAKE strings (e.g. `CONFIRMATION_REQUIRED`) shared with the API docs (`docs/api/errors.md`).
+- Error codes are SCREAMING_SNAKE strings (e.g. `CONFIRMATION_REQUIRED`) shared with the API docs (the error table in `docs/api/index.md`; the one list is `APIErrorCode`).
 - Keep accessibility in mind for every view: labels, roles, selected state, text not color-only.
 
 ## Tests
@@ -126,8 +126,11 @@ are recorded as **pending**, never as passed. Document blockers instead of fakin
 - Product renamed uTerm → Trellis; migration copies the old Application Support data and the
   `trellis-` theme-ID prefix is reserved for built-ins. Don't reintroduce `UTerm*` names.
 - Managed windows were renamed Spaces (workspace schema 4). A few stored names keep the old spelling on purpose
-  (`newWindow`… shortcut raw values, grant `windowScope`, the `trellis-window` project binding key) and the API/CLI
-  accept `window.*`/`windowId`/`--window` as deprecated aliases. "Window" still means the native NSWindow and the macOS Window menu.
+  (`newWindow`… shortcut raw values, a schema 1 grant's `windowScope` read by the migration, the `trellis-window` project
+  binding key). Protocol 2 has no `window.*`/`windowId`/`--window` aliases. "Window" still means the native NSWindow and the macOS Window menu.
+- Automation is protocol 2 only (docs/api/, migration in `docs/api/migration.md`): add a method by declaring it in the
+  catalog (`MethodCatalogV2+*.swift`) and implementing it in `Sources/TrellisUI/Automation/V2/`; MCP tools and CLI help follow.
+  The `*V2` type names are historical (they grew beside protocol 1).
 - `--fixture` runs a fixed shell that exits with code 7; the window stays inspectable.
 - `scripts/run-feasibility.sh` copies the SwiftPM resource bundles (`SwiftTerm_SwiftTerm`,
   `Trellis_TrellisCore`) into the app; a new target with resources must be added there too.

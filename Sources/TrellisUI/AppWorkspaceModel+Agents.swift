@@ -378,7 +378,8 @@ extension AppWorkspaceModel {
         }
         agentStates[paneID] = AgentStateReducer(integration: definition.integration)
         return BrokerLoginRequest(
-            sessionID: sessionID, shell: nil, directory: agent.directory, environment: LocalLaunchValidator.terminalEnvironment, integration: nil, columns: 80, rows: 24,
+            sessionID: sessionID, shell: nil, directory: Self.hostPath(agent.directory, home: info.home), environment: LocalLaunchValidator.terminalEnvironment,
+            integration: nil, columns: 80, rows: 24,
             command: AgentShell.remoteCommand(shell: info.shell, line: line), agentHooks: hooks)
     }
 

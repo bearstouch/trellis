@@ -1,7 +1,4 @@
-# Resources (draft)
-
-!!! warning "Draft contract — not implemented"
-    Part of the proposed [protocol 2](index.md).
+# Resources
 
 Fields marked **(cap)** appear only when the grant holds that capability; without it they are omitted, never blanked. Out-of-scope resources don't appear at all (`NOT_FOUND` on direct access).
 
@@ -44,7 +41,7 @@ Where something runs. Used by spaces, panes and agent availability.
 
 | Field | Notes |
 | --- | --- |
-| `machine` | `local`, or `remote` for a [remote workspace](../../features/remote-workspaces.md) (FR-RW01). A space never has kind `ssh`. |
+| `machine` | `local`, or `remote` for a [remote workspace](../features/remote-workspaces.md) (FR-RW01). A space never has kind `ssh`. |
 | `project` | Present for a project-bound space (FR-W08) whose project is in the grant's project scope. `name` and `target` need **project.read**; `folder` also needs **session.execute**. `target` is `{"kind": "local"}` or `{"kind": "host", "hostId"}` (the host's ID as for machines); `folder` is the folder the space was launched in, as `project.launch` takes it (absolute on this Mac, relative to home on a host), omitted when Trellis can't tell. A space whose project was deleted keeps `id` and gets `missing: true`, once the project library has loaded: a library that hasn't loaded (or couldn't be read) calls nothing missing. |
 | `attention` | `needsInput`: panes waiting for input in this space. `activity`: `output`, `exit` or omitted, for inactive spaces (the sidebar dot). |
 

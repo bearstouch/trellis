@@ -17,7 +17,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 - **Closing a running pane** needs confirmation. Terminate the process group gracefully, wait 2 seconds, and force only when explicitly asked. **Never signal a reused PID.** Check `OwnedProcessIdentity` first.
 - **Threading:** PTY I/O and parsing run off the main thread, and view updates run on `@MainActor`. Bound every buffer that grows with output.
 - **Engine boundary:** only `TrellisTerminal` imports SwiftTerm. Record every change to `ThirdParty/SwiftTerm` in `PATCHES.md`, and regenerate `trellis.patch`.
-- **Automation is never a side door.** Every control method needs an entry in the `AuthorizationPolicy` table, goes through the shared model, and treats out-of-scope IDs as `NOT_FOUND`.
+- **Automation is never a side door.** Every control method is declared once in the method catalog (`MethodCatalogV2`), which authorization, validation, MCP tools and CLI help derive from; it goes through the shared model, and treats out-of-scope IDs as `NOT_FOUND`.
 - **Inject dependencies:** time, the filesystem, processes, the clipboard, the Keychain and transports are injected so tests are deterministic. `SessionClosureCoordinator(now:sleep:)` shows the pattern.
 
 ## Data and persistence
@@ -42,7 +42,7 @@ Review enforces these rules. Most of them exist to protect users' running sessio
 - Keep comments sparse, and use them to explain *why*.
 - Use `public` for APIs that cross module boundaries. Core value types are `Sendable` and `Equatable`.
 - Use `@MainActor` for UI and terminal-facing classes, and actors for stores, persistence and libraries.
-- Error codes are `SCREAMING_SNAKE` strings shared with the API (see [Errors](../api/errors.md)).
+- Error codes are `SCREAMING_SNAKE` strings shared with the API (see [Errors](../api/index.md#errors-api2-03); add new ones to `APIErrorCode`).
 - The build must be warning-free, and `swift format lint --strict` must print nothing.
 
 ## Accessibility

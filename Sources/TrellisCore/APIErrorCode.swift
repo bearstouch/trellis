@@ -2,7 +2,7 @@ import Foundation
 
 /// API2-03: the one list of application error codes (`data.code` on JSON-RPC -32000 errors). Diagnostics'
 /// `knownErrorCodes`, the CLI exit-code map and the MCP mapping derive from it, and a test compares it with the error
-/// table in `docs/api/v2/index.md`.
+/// table in `docs/api/index.md`.
 public enum APIErrorCode: String, CaseIterable, Codable, Sendable {
     case authRequired = "AUTH_REQUIRED"
     case permissionDenied = "PERMISSION_DENIED"

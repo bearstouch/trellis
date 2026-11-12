@@ -66,22 +66,15 @@ nav:
       - Languages: features/localization.md
       - Welcome tour: features/welcome-tour.md
   - Automation API:
-      - Overview and transport: api/index.md
-      - Authorization: api/authorization.md
+      - Overview, transport and errors: api/index.md
+      - Resources: api/resources.md
       - Methods: api/methods.md
-      - Output and events: api/output-events.md
-      - Errors: api/errors.md
+      - Permissions: api/permissions.md
+      - Events and output: api/events.md
       - Layouts: api/layouts.md
       - CLI: api/cli.md
       - MCP server: api/mcp.md
-      - API v2 (draft):
-          - Overview: api/v2/index.md
-          - Resources: api/v2/resources.md
-          - Methods: api/v2/methods.md
-          - Permissions: api/v2/permissions.md
-          - Events: api/v2/events.md
-          - Migration: api/v2/migration.md
-          - Implementation plan: api/v2/implementation.md
+      - Migration from v1: api/migration.md
   - Platform:
       - Integrations: integrations.md
       - macOS support: platform/macos.md
@@ -93,3 +86,4 @@ nav:
       - Release guide: release/README.md
   - Project:
       - Roadmap and decisions: project/roadmap.md
+      - API v2 implementation history: project/api-v2-implementation.md

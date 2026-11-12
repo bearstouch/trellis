@@ -23,7 +23,7 @@ Part of the [Extensions specification](SPEC.md#stories). **Epic:** 3, Tier 0 · 
 
 ## Acceptance criteria
 
-- [ ] **Given** an extension with only `metadata.read`, **when** it calls `state.get()`, **then** it gets `focus`, `spaces`, tabs, panes and `tasks`, but no `cwd`, `repository`, `hosts` or `appearance`.
+- [ ] **Given** an extension with only `workspace.read`, **when** it calls `state.get()`, **then** it gets `focus`, `spaces`, tabs, panes and `tasks`, but no `cwd`, `repository`, `hosts` or `appearance`.
 - [ ] **Given** `git.read`, **when** a local pane in a git repository is focused, **then** `repository` has root, branch, head, ahead, behind, changed and remotes. **Given** a remote or SSH pane, **then** it is `null`.
 - [ ] **Given** an extension without `session.execute`, **when** it reads panes, **then** `cwd` is absent.
 - [ ] **Given** IDs in the snapshot, **when** the extension passes them to `trellis.call`, **then** they resolve to the same spaces, tabs and panes.

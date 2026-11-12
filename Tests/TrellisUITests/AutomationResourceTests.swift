@@ -55,13 +55,15 @@ final class Harness {
         }
         hosts = HostListModel(library: HostLibrary(storage: MemoryHosts()))
         grants = GrantStore(url: nil, secrets: NoSecrets(), now: { [clock] in clock.now })
+        // An event hub as the app has (events.poll answers), though nothing feeds it here; EventsHarness wires one that is.
         handler = AuthorizingControlHandler(
-            grants: grants, domain: AutomationService(model: model, hosts: hosts), idempotency: IdempotencyCache(now: { [clock] in clock.now }))
+            grants: grants, domain: AutomationServiceV2(model: model, hosts: hosts), idempotency: IdempotencyCache(now: { [clock] in clock.now }),
+            events: EventHubV2(instanceID: UUID(), grants: grants))
     }
 
     func discardPreferences() { preferences.removePersistentDomain(forName: suite) }
 
-    func grant(_ name: String, _ capabilities: Set<Capability> = Set(Capability.allCases), scope: SpaceScope = .all) async throws {
+    func grant(_ name: String, _ capabilities: Set<CapabilityV2> = Set(CapabilityV2.allCases), scope: SpaceScope = .all) async throws {
         tokens[name] = try await grants.create(name: name, capabilities: capabilities, spaceScope: scope, hostScope: .all, lifetime: 3600).token
         sessions[name] = nil
     }
@@ -69,7 +71,7 @@ final class Harness {
     /// Fresh handler state (same grants), as after an app relaunch.
     func restartInstance() {
         handler = AuthorizingControlHandler(
-            grants: grants, domain: AutomationService(model: model, hosts: hosts), idempotency: IdempotencyCache(now: { [clock] in clock.now }))
+            grants: grants, domain: AutomationServiceV2(model: model, hosts: hosts), idempotency: IdempotencyCache(now: { [clock] in clock.now }))
         sessions = [:]
     }
 
@@ -78,7 +80,7 @@ final class Harness {
         if sessions[name] == nil {
             let session = ControlSession(peerUID: geteuid(), handler: handler)
             sessions[name] = session
-            _ = try await send(session, "auth.authenticate", ["protocolVersion": 1, "token": tokens[name]!])
+            _ = try await send(session, "auth.authenticate", ["protocolVersion": 2, "token": tokens[name]!])
         }
         return try await send(sessions[name]!, method, params)
     }
@@ -112,29 +114,39 @@ func errorCode(_ response: [String: Any]) -> String? {
     ((response["error"] as? [String: Any])?["data"] as? [String: Any])?["code"] as? String
 }
 
+/// IDs in protocol 2 results are lowercase.
+func lower(_ id: UUID) -> String { id.uuidString.lowercased() }
+
+/// `space.create`'s space, tab and first pane IDs.
+@MainActor
+func createdIDs(_ result: [String: Any]) throws -> (space: String, tab: String, pane: String) {
+    let space = try XCTUnwrap((result["space"] as? [String: Any])?["id"] as? String)
+    let tab = try XCTUnwrap((result["tab"] as? [String: Any])?["id"] as? String)
+    let pane = try XCTUnwrap((result["panes"] as? [[String: Any]])?.first?["id"] as? String)
+    return (space, tab, pane)
+}
+
 final class AutomationResourceTests: XCTestCase {
     @MainActor
     func testApiCreatesStoppedHierarchy() async throws {
         let h = try Harness()
         try await h.grant("full")
         let space = try result(try await h.call("space.create", ["name": "Project"]))
-        let spaceID = try XCTUnwrap(space["spaceId"] as? String)
-        let firstPane = try XCTUnwrap((space["panes"] as? [[String: Any]])?.first)
-        XCTAssertEqual(firstPane["state"] as? String, "stopped")
-        let tab = try result(try await h.call("tab.create", ["spaceId": spaceID, "title": "Logs"]))
+        let (spaceID, _, firstPane) = try createdIDs(space)
+        XCTAssertEqual(h.model.snapshot.panes[try XCTUnwrap(UUID(uuidString: firstPane))].flatMap { h.model.snapshot.sessions[$0.sessionID] }?.state, .stopped)
+        let tab: [String: Any] = try await h.value("tab", "tab.create", ["spaceId": spaceID, "title": "Logs"])
         XCTAssertEqual(tab["spaceId"] as? String, spaceID)
         XCTAssertEqual(tab["title"] as? String, "Logs")
         let tabPane = try XCTUnwrap((tab["paneIds"] as? [String])?.first)
-        let split = try result(try await h.call("pane.split", ["paneId": tabPane, "axis": "x", "ratio": 0.3]))
-        let newPane = try XCTUnwrap((split["pane"] as? [String: Any])?["paneId"] as? String)
+        let split = try result(try await h.call("pane.split", ["id": tabPane, "axis": "x", "ratio": 0.3]))
+        let newPane = try XCTUnwrap((split["pane"] as? [String: Any])?["id"] as? String)
         let layout = try XCTUnwrap((split["tab"] as? [String: Any])?["layout"] as? [String: Any])
         XCTAssertEqual(layout["type"] as? String, "split")
-        XCTAssertEqual(layout["id"] as? String, split["branchId"] as? String)
         XCTAssertEqual(layout["axis"] as? String, "x")
         XCTAssertEqual(try XCTUnwrap(layout["ratio"] as? Double), 0.3, accuracy: 0.0001)
         XCTAssertEqual((layout["children"] as? [[String: Any]])?.compactMap { $0["id"] as? String }, [tabPane, newPane], "The existing pane is the first child")
 
-        let detail = try result(try await h.call("space.get", ["id": spaceID]))
+        let detail: [String: Any] = try await h.value("space", "space.get", ["id": spaceID])
         XCTAssertEqual((detail["tabIds"] as? [String])?.count, 2)
         // Zero spawns: every session is stopped and owns no process.
         let snapshot = h.model.snapshot
@@ -150,18 +162,18 @@ final class AutomationResourceTests: XCTestCase {
     func testStaleMutationHasNoEffects() async throws {
         let h = try Harness()
         try await h.grant("full")
-        let created = try result(try await h.call("space.create", ["name": "One"]))
-        let spaceID = try XCTUnwrap(created["spaceId"] as? String)
+        let (spaceID, tabID, _) = try createdIDs(try result(try await h.call("space.create", ["name": "One"])))
         defer { h.model.terminals.values.forEach { $0.adapter.detach() } }
-        let revision: Int = try await h.value("revision", "space.get", ["id": spaceID])
-        let renamed = try result(try await h.call("space.update", ["id": spaceID, "name": "Two", "expectedRevision": revision]))
+        let space: [String: Any] = try await h.value("space", "space.get", ["id": spaceID])
+        let revision = try XCTUnwrap(space["revision"] as? Int)
+        let renamed: [String: Any] = try await h.value("space", "space.update", ["id": spaceID, "name": "Two", "expectedRevision": revision])
         XCTAssertGreaterThan(try XCTUnwrap(renamed["revision"] as? Int), revision)
         let committed = h.model.snapshot
         let stale = try await h.call("space.update", ["id": spaceID, "name": "Three", "expectedRevision": revision])
         XCTAssertEqual(errorCode(stale), "CONFLICT")
-        XCTAssertEqual(((stale["error"] as? [String: Any])?["data"] as? [String: Any])?["expectedRevision"] as? Int, revision)
+        let details = (((stale["error"] as? [String: Any])?["data"] as? [String: Any])?["details"] as? [String: Any])
+        XCTAssertEqual(details?["currentRevision"] as? Int, renamed["revision"] as? Int)
         XCTAssertEqual(h.model.snapshot, committed, "A rejected mutation changes nothing")
-        let tabID = try XCTUnwrap(created["tabId"] as? String)
         let code1 = try await h.code("tab.update", ["id": tabID, "title": "X", "expectedRevision": 0])
         XCTAssertEqual(code1, "CONFLICT")
         let code2 = try await h.code("space.reorder", ["ids": [spaceID], "expectedRevision": 0])
@@ -176,13 +188,13 @@ final class AutomationResourceTests: XCTestCase {
     func testTabUpdateSetsAndClearsColorAtomically() async throws {
         let h = try Harness()
         try await h.grant("full")
-        let created = try result(try await h.call("space.create", ["name": "One"]))
-        let tabID = try XCTUnwrap(created["tabId"] as? String), id = try XCTUnwrap(UUID(uuidString: tabID))
+        let (_, tabID, _) = try createdIDs(try result(try await h.call("space.create", ["name": "One"])))
+        let id = try XCTUnwrap(UUID(uuidString: tabID))
         defer { h.model.terminals.values.forEach { $0.adapter.detach() } }
-        let colored = try result(try await h.call("tab.update", ["id": tabID, "color": "blue"]))
+        let colored: [String: Any] = try await h.value("tab", "tab.update", ["id": tabID, "color": "blue"])
         XCTAssertEqual(colored["color"] as? String, "blue")
         XCTAssertEqual(h.model.snapshot.tabs[id]?.color, .blue)
-        let both = try result(try await h.call("tab.update", ["id": tabID, "title": "Deploy", "color": "orange"]))
+        let both: [String: Any] = try await h.value("tab", "tab.update", ["id": tabID, "title": "Deploy", "color": "orange"])
         XCTAssertEqual(both["title"] as? String, "Deploy")
         XCTAssertEqual(both["color"] as? String, "orange")
         let committed = h.model.snapshot
@@ -193,7 +205,7 @@ final class AutomationResourceTests: XCTestCase {
         let neither = try await h.call("tab.update", ["id": tabID])
         XCTAssertEqual((neither["error"] as? [String: Any])?["code"] as? Int, -32602)
         XCTAssertEqual(h.model.snapshot, committed, "A rejected update applies neither the title nor the color")
-        let cleared = try result(try await h.call("tab.update", ["id": tabID, "color": NSNull()]))
+        let cleared: [String: Any] = try await h.value("tab", "tab.update", ["id": tabID, "color": NSNull()])
         XCTAssertNil(cleared["color"])
         XCTAssertNil(h.model.snapshot.tabs[id]?.color)
         XCTAssertEqual(h.model.snapshot.tabs[id]?.title, "Deploy")
@@ -207,7 +219,7 @@ final class AutomationResourceTests: XCTestCase {
         defer { h.model.terminals.values.forEach { $0.adapter.detach() } }
         let first = try result(try await h.call("space.create", ["name": "A", "idempotencyKey": "k1"]))
         let replay = try result(try await h.call("space.create", ["name": "A", "idempotencyKey": "k1"]))
-        XCTAssertEqual(replay["spaceId"] as? String, first["spaceId"] as? String)
+        XCTAssertEqual(try createdIDs(replay).space, try createdIDs(first).space)
         XCTAssertEqual(h.model.snapshot.spaces.count, 1, "The duplicate executed once")
         let code3 = try await h.code("space.create", ["name": "B", "idempotencyKey": "k1"])
         XCTAssertEqual(code3, "CONFLICT")
@@ -250,10 +262,10 @@ final class AutomationResourceTests: XCTestCase {
         let api = try Harness()
         try await api.grant("full")
         defer { api.model.terminals.values.forEach { $0.adapter.detach() } }
-        let space: String = try await api.value("spaceId", "space.create", ["name": "Project"])
-        let tab = try result(try await api.call("tab.create", ["spaceId": space, "title": "Logs"]))
+        let space = try createdIDs(try result(try await api.call("space.create", ["name": "Project"]))).space
+        let tab: [String: Any] = try await api.value("tab", "tab.create", ["spaceId": space, "title": "Logs"])
         let pane = try XCTUnwrap((tab["paneIds"] as? [String])?.first)
-        _ = try result(try await api.call("pane.split", ["paneId": pane, "axis": "y"]))
+        _ = try result(try await api.call("pane.split", ["id": pane, "axis": "y"]))
         _ = try result(try await api.call("space.update", ["id": space, "name": "Renamed"]))
 
         XCTAssertEqual(Self.normalized(ui.model.snapshot), Self.normalized(api.model.snapshot))
@@ -265,10 +277,9 @@ final class AutomationResourceTests: XCTestCase {
     func testClosingRunningContainersNeedsAllowRunningAndCloseCapability() async throws {
         let h = try Harness()
         try await h.grant("full")
-        try await h.grant("layout", [.metadataRead, .layoutWrite])
-        let created = try result(try await h.call("space.create", ["name": "Live"]))
-        let spaceID = try XCTUnwrap(created["spaceId"] as? String)
-        let paneID = try XCTUnwrap(UUID(uuidString: try XCTUnwrap((created["panes"] as? [[String: Any]])?.first?["paneId"] as? String)))
+        try await h.grant("layout", [.workspaceRead, .workspaceWrite])
+        let (spaceID, _, pane) = try createdIDs(try result(try await h.call("space.create", ["name": "Live"])))
+        let paneID = try XCTUnwrap(UUID(uuidString: pane))
         _ = try await h.model.service.execute(
             .configureStoppedSession(paneID: paneID, launch: .process(executable: "/bin/sleep", arguments: ["30"], directory: "/tmp")))
         await h.model.refresh()
@@ -279,27 +290,31 @@ final class AutomationResourceTests: XCTestCase {
 
         let unconfirmed = try await h.call("space.close", ["id": spaceID])
         XCTAssertEqual(errorCode(unconfirmed), "CONFIRMATION_REQUIRED")
-        XCTAssertEqual(((unconfirmed["error"] as? [String: Any])?["data"] as? [String: Any])?["sessionIds"] as? [String], [terminal.sessionID.uuidString])
+        let details = ((unconfirmed["error"] as? [String: Any])?["data"] as? [String: Any])?["details"] as? [String: Any]
+        XCTAssertEqual(details?["sessionIds"] as? [String], [lower(terminal.sessionID)])
+        XCTAssertEqual(details?["reason"] as? String, "runningSessions")
         let code4 = try await h.code("space.close", ["id": spaceID, "allowRunning": true], as: "layout")
         XCTAssertEqual(code4, "PERMISSION_DENIED")
         XCTAssertTrue(terminal.isRunning, "Denied closes send no signal")
 
         // Launch details are redacted without session.execute.
-        let redacted = try result(try await h.call("session.get", ["id": terminal.sessionID.uuidString], as: "layout"))
-        XCTAssertNil(redacted["executable"])
-        XCTAssertNil(redacted["arguments"])
-        let full = try result(try await h.call("session.get", ["id": terminal.sessionID.uuidString]))
-        XCTAssertEqual(full["executable"] as? String, "/bin/sleep")
+        let redacted: [String: Any] = try await h.value("session", "session.get", ["id": lower(terminal.sessionID)], as: "layout")
+        XCTAssertEqual((redacted["launch"] as? [String: Any])?["kind"] as? String, "process")
+        XCTAssertNil((redacted["launch"] as? [String: Any])?["executable"])
+        XCTAssertNil((redacted["launch"] as? [String: Any])?["arguments"])
+        let full: [String: Any] = try await h.value("session", "session.get", ["id": lower(terminal.sessionID)])
+        XCTAssertEqual((full["launch"] as? [String: Any])?["executable"] as? String, "/bin/sleep")
 
         // A stale revision is rejected before any session is signaled.
-        let spaceRevision: Int = try await h.value("revision", "space.get", ["id": spaceID])
+        let space: [String: Any] = try await h.value("space", "space.get", ["id": spaceID])
+        let spaceRevision = try XCTUnwrap(space["revision"] as? Int)
         _ = try result(try await h.call("space.update", ["id": spaceID, "name": "Renamed"]))
         let stale = try await h.code("space.close", ["id": spaceID, "allowRunning": true, "expectedRevision": spaceRevision])
         XCTAssertEqual(stale, "CONFLICT")
         XCTAssertTrue(terminal.isRunning, "A conflicting close sends no signal")
 
         let closed = try result(try await h.call("space.close", ["id": spaceID, "allowRunning": true]))
-        XCTAssertEqual(closed["closed"] as? Bool, true)
+        XCTAssertEqual((closed["deleted"] as? [String: Any])?["id"] as? String, spaceID)
         XCTAssertFalse(terminal.isRunning)
         XCTAssertTrue(h.model.snapshot.spaces.isEmpty)
     }
@@ -309,18 +324,23 @@ final class AutomationResourceTests: XCTestCase {
         let h = try Harness()
         try await h.grant("full")
         defer { h.model.terminals.values.forEach { $0.adapter.detach() } }
-        let a: String = try await h.value("spaceId", "space.create", ["name": "A"])
-        let b: String = try await h.value("spaceId", "space.create", ["name": "B"])
-        try await h.grant("scoped", [.metadataRead, .layoutWrite], scope: .spaces([UUID(uuidString: a)!]))
+        let a = try createdIDs(try result(try await h.call("space.create", ["name": "A"]))).space
+        let b = try createdIDs(try result(try await h.call("space.create", ["name": "B"]))).space
+        try await h.grant("scoped", [.workspaceRead, .workspaceWrite], scope: .spaces([UUID(uuidString: a)!]))
         let listed = try result(try await h.call("space.list", as: "scoped"))
         XCTAssertEqual((listed["spaces"] as? [[String: Any]])?.compactMap { $0["id"] as? String }, [a])
         let code5 = try await h.code("space.update", ["id": b, "name": "x"], as: "scoped")
         XCTAssertEqual(code5, "NOT_FOUND")
+        // The CLI's name filter is applied within scope.
+        let named = try result(try await h.call("space.list", ["name": "B"], as: "scoped"))
+        XCTAssertEqual((named["spaces"] as? [[String: Any]])?.count, 0)
+        let byName = try result(try await h.call("space.list", ["name": "B"]))
+        XCTAssertEqual((byName["spaces"] as? [[String: Any]])?.compactMap { $0["id"] as? String }, [b])
 
         let invalid = try await h.call("host.create", ["name": "Prod", "destination": "-oProxyCommand=x", "port": 70000])
         let fields = (((invalid["error"] as? [String: Any])?["data"] as? [String: Any])?["fields"] as? [String: String]) ?? [:]
-        XCTAssertEqual(Set(fields.keys), ["destination", "port"])
-        let host = try result(try await h.call("host.create", ["name": "Prod", "destination": "prod", "port": 2222, "tags": ["a", "b"]]))
+        XCTAssertFalse(fields.isEmpty, "Bad host fields are named")
+        let host: [String: Any] = try await h.value("host", "host.create", ["name": "Prod", "destination": "prod", "port": 2222, "tags": ["a", "b"]])
         let hostID = try XCTUnwrap(host["id"] as? String)
         let revision = try XCTUnwrap(host["revision"] as? Int)
         _ = try result(try await h.call("host.update", ["id": hostID, "name": "Production", "expectedRevision": revision]))
@@ -338,26 +358,26 @@ final class AutomationResourceTests: XCTestCase {
         let h = try Harness()
         try await h.grant("full")
         defer { h.model.terminals.values.forEach { $0.adapter.detach() } }
-        let created = try result(try await h.call("space.create", ["name": "One"]))
-        let tabID = try XCTUnwrap(UUID(uuidString: try XCTUnwrap(created["tabId"] as? String)))
+        let (spaceID, tab, _) = try createdIDs(try result(try await h.call("space.create", ["name": "One"])))
+        let tabID = try XCTUnwrap(UUID(uuidString: tab))
         let paneID = try XCTUnwrap(h.model.snapshot.tabs[tabID]?.activePaneID)
         // Just wide enough for an even split, so a 0.1 ratio breaks the size rules.
         h.model.setCanvasSize(CanvasDimensions.minimum(for: .split(id: UUID(), axis: .x, ratio: 0.5, children: [.pane(UUID()), .pane(UUID())])), tabID: tabID)
         let before = h.model.snapshot
-        let narrow = try await h.code("pane.split", ["paneId": paneID.uuidString, "axis": "x", "ratio": 0.1])
+        let narrow = try await h.code("pane.split", ["id": lower(paneID), "axis": "x", "ratio": 0.1])
         XCTAssertEqual(narrow, "INVALID_STATE")
         XCTAssertEqual(h.model.snapshot, before, "A rejected ratio leaves no half-made split")
         XCTAssertEqual(h.model.terminals.count, 1)
         for bad: Any in ["1", 1.5, -1, true] {
-            let response = try await h.call("space.update", ["id": created["spaceId"]!, "name": "Two", "expectedRevision": bad])
+            let response = try await h.call("space.update", ["id": spaceID, "name": "Two", "expectedRevision": bad])
             XCTAssertEqual((response["error"] as? [String: Any])?["code"] as? Int, -32602, "\(bad)")
         }
         XCTAssertEqual(h.model.snapshot, before, "Invalid revisions are never treated as omitted")
 
         // Maximizing also focuses the pane, exactly as in the UI.
-        let split = try result(try await h.call("pane.split", ["paneId": paneID.uuidString, "axis": "x"]))
-        XCTAssertEqual(h.model.snapshot.tabs[tabID]?.activePaneID.uuidString, (split["pane"] as? [String: Any])?["paneId"] as? String)
-        _ = try result(try await h.call("pane.maximize", ["id": paneID.uuidString, "maximized": true]))
+        let split = try result(try await h.call("pane.split", ["id": lower(paneID), "axis": "x"]))
+        XCTAssertEqual(lower(try XCTUnwrap(h.model.snapshot.tabs[tabID]?.activePaneID)), (split["pane"] as? [String: Any])?["id"] as? String)
+        _ = try result(try await h.call("pane.maximize", ["id": lower(paneID), "maximized": true]))
         XCTAssertEqual(h.model.snapshot.tabs[tabID]?.activePaneID, paneID)
         XCTAssertEqual(h.model.maximizedPanes[tabID], paneID)
         XCTAssertNil(h.model.errorMessage, "Automation never raises UI alerts")

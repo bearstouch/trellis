@@ -53,7 +53,6 @@ Formatting uses the toolchain's `swift format` with the repo's `.swift-format`: 
 | `swift run Trellis --state-directory /abs/path` | Uses a separate workspace and theme library. Recommended. |
 | `swift run Trellis --fixture` | Starts an isolated demo window whose fixed shell exits with code 7. The window stays open for inspection. Without `--state-directory` it uses a new empty workspace in `$TMPDIR` (left for the system to clean up), never your dev workspace. Quitting it ends its sessions, whatever **Stop sessions when Trellis quits** says, so scripted runs leave nothing behind. |
 | `swift run Trellis --no-mcp` | Never starts the MCP server for this launch, whatever Settings → Remote Control says. `--fixture` implies it. |
-| `swift run Trellis --automation-v2` | Also accepts the draft [automation API v2](../api/v2/index.md) (`auth.authenticate {protocolVersion: 2}`) on the control socket, beside protocol 1. For developing and testing v2 only; `control.json` then lists `protocolVersions: [1, 2]`. |
 | `scripts/run-feasibility.sh` | Assembles `.build/Trellis.app`, ad-hoc signs and verifies it, and opens it. Use it when you need a real bundle (icon, Info.plist, resources). |
 | `scripts/run-feasibility.sh --build-only` | Same, without opening a window |
 
@@ -98,7 +97,7 @@ Sources/
   TrellisCore/       engine-independent domain: store, command service, persistence, themes
   TrellisPOSIX/      small C target for PTY and process-group spawning
   TrellisTerminal/   all SwiftTerm-specific code (the only place SwiftTerm is imported)
-  TrellisUI/         SwiftUI/AppKit views, AppWorkspaceModel, AutomationService
+  TrellisUI/         SwiftUI/AppKit views, AppWorkspaceModel, Automation/V2 (the API adapter)
   TrellisControl/    local JSON-RPC server, framing, grants, events
   TrellisMCP/        optional MCP server (HTTP) over the same authorizer
   TrellisApp/        app entry point, menus, launch arguments

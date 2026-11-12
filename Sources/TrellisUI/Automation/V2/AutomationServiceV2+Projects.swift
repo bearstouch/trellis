@@ -271,7 +271,11 @@ extension AutomationServiceV2 {
         terminal.onExit = { status in
             exit.ended = true; exit.code = status
         }
-        if let failure = await launcher.startSetup(launch, in: terminal, environment: ["GIT_TERMINAL_PROMPT": "0"]) {
+        // A host's git and ssh settings can't be read from here, so only a local setup gets ssh's batch mode.
+        let local = launch.target == .local
+        let configured = local ? await Task.detached { Self.gitSSHCommandConfigured() }.value : true
+        let environment = Self.setupEnvironment(ProcessInfo.processInfo.environment, sshCommandConfigured: configured)
+        if let failure = await launcher.startSetup(launch, in: terminal, environment: environment) {
             throw launchFailure(failure, launch.target, message: Self.openMessage(failure.reason))
         }
         let deadline = ContinuousClock.now + model.automationSetupLimit
@@ -303,6 +307,33 @@ extension AutomationServiceV2 {
                     : "The project's setup failed; nothing was opened. Launch it from the app to see the output, then retry.",
                 details: .object(["setup": .object(details)]))
         }
+    }
+}
+
+extension AutomationServiceV2 {
+    /// Nobody sees an API setup's terminal, so prompts must fail fast instead of waiting out the limit: git's credential
+    /// prompts are off, and ssh runs in batch mode unless the user already chose how git runs ssh (`GIT_SSH_COMMAND`,
+    /// `GIT_SSH`, or `core.sshCommand`, which `GIT_SSH_COMMAND` would override).
+    static func setupEnvironment(_ environment: [String: String], sshCommandConfigured: Bool) -> [String: String] {
+        var setup = ["GIT_TERMINAL_PROMPT": "0"]
+        if !sshCommandConfigured, environment["GIT_SSH_COMMAND"] == nil, environment["GIT_SSH"] == nil { setup["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes" }
+        return setup
+    }
+
+    /// Whether the user's git configuration (system or global) sets `core.sshCommand`; an unreadable answer counts as set,
+    /// so the user's choice is never overridden.
+    nonisolated static func gitSSHCommandConfigured() -> Bool {
+        let process = Process(), output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["config", "--get", "core.sshCommand"]
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return true }
+        let value = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        // 1 means the key isn't set; anything else but a clean empty answer is treated as configured.
+        return process.terminationStatus == 1 ? false : process.terminationStatus != 0 || !value.isEmpty
     }
 }
 

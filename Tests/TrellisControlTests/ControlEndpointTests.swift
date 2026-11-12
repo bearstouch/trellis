@@ -66,7 +66,7 @@ final class ControlEndpointTests: XCTestCase {
         let data = try Data(contentsOf: endpoint.discoveryURL)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(Set(object.keys), ["protocolVersion", "instanceID", "socketPath"])
-        XCTAssertEqual(object["protocolVersion"] as? Int, 1)
+        XCTAssertEqual(object["protocolVersion"] as? Int, 2)
         XCTAssertEqual(object["socketPath"] as? String, discovery.socketPath)
         for forbidden in ["token", "secret", "password", "letmein"] { XCTAssertFalse(String(decoding: data, as: UTF8.self).lowercased().contains(forbidden)) }
         XCTAssertEqual(mode(endpoint.discoveryURL.path), 0o600)

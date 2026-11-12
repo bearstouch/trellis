@@ -1,9 +1,9 @@
 import Foundation
 import TrellisCore
 
-/// Protocol 2 workspace, selection and session events for the transition `old → new` (events.md). Unlike protocol 1's
-/// `WorkspaceEvents.diff` (unchanged), data is typed, updates name their `changed` fields, and a restart (`session.replaced`)
-/// and a reconfigured stopped pane (`session.launchChanged`) are reported. Pure, so it runs off the main actor.
+/// Workspace, selection and session events for the transition `old → new` (events.md): typed data, updates naming their
+/// `changed` fields, a restart (`session.replaced`) and a reconfigured stopped pane (`session.launchChanged`). Pure, so it
+/// runs off the main actor.
 public enum WorkspaceDiffV2 {
     public static func diff(_ old: WorkspaceSnapshot, _ new: WorkspaceSnapshot) -> [EventDraftV2] {
         guard old != new else { return [] }

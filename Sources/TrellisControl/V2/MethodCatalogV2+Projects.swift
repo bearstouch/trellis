@@ -1,7 +1,7 @@
 import Foundation
 import TrellisCore
 
-/// Phase 7 of the catalog (docs/api/v2/methods.md#projects, #tasks): the project library, launching projects, and a
+/// The catalog's projects and tasks (docs/api/methods.md#projects, #tasks): the project library, launching projects, and a
 /// pane's tasks. Project definitions and task files are untrusted: what they run needs session.execute to write or read.
 extension MethodCatalogV2 {
     private static let projectID = ParamV2("id", .uuid, required: true, "The project's ID.")
@@ -57,7 +57,7 @@ extension MethodCatalogV2 {
             capabilities: [.projectLaunch, .sessionStart],
             conditional: [
                 ConditionalCapabilityV2(.sessionExecute, if: .anyOf([.present("setup"), .present("folder")])), ConditionalCapabilityV2(.remoteConnect, if: onHost)
-            ], resources: [projectRule, targetRule], createsSpace: true, effect: .mutating(revision: .resource(param: "id")),
+            ], resources: [projectRule, targetRule], createsSpace: true, effect: .mutating(revision: .resource(param: "id"), destructive: true),
             errors: projectErrors.union([.setupRequired, .launchFailed]), waitsIf: .anyOf([onHost, .present("setup")]))
     ]
 
@@ -72,7 +72,7 @@ extension MethodCatalogV2 {
         MethodSpecV2(
             "task.run", "Type a task into the pane's shell at its prompt, as the app's Run does; launch.json tasks must be trusted in the app first.",
             params: [paneID, ParamV2("taskId", .string(maxBytes: 200), required: true, "The task's ID, as task.list names it.")], capabilities: [.taskRun],
-            resources: [paneRule], effect: .mutating(revision: .resource(param: "paneId")), errors: [.taskUntrusted, .invalidState, .remoteDisconnected]),
+            resources: [paneRule], effect: .mutating(revision: .resource(param: "paneId"), destructive: true), errors: [.taskUntrusted, .invalidState, .remoteDisconnected]),
         MethodSpecV2(
             "task.stop", "Stop the pane's running task with Ctrl-C; force (2 s after the first stop) sends Ctrl-\\.",
             params: [paneID, ParamV2("force", .boolean, "After CLOSE_PENDING and 2 s, send Ctrl-\\ (SIGQUIT) instead.")], capabilities: [.taskRun],

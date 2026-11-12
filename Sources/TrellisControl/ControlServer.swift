@@ -47,9 +47,7 @@ public final class ControlServer: @unchecked Sendable {
             close(fd); unlink(path); rmdir(directory)
             throw error
         }
-        let versions = handler.supportedProtocolVersions
-        let published = ControlDiscovery(
-            protocolVersion: ControlDiscovery.currentProtocolVersion, instanceID: instanceID, socketPath: path, protocolVersions: versions == [1] ? nil : versions)
+        let published = ControlDiscovery(protocolVersion: ControlDiscovery.currentProtocolVersion, instanceID: instanceID, socketPath: path)
         do {
             try endpoint.publish(published)
         } catch {

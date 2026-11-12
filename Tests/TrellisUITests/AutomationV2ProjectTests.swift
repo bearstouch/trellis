@@ -337,4 +337,12 @@ final class AutomationV2ProjectTests: XCTestCase {
         XCTAssertEqual(value20, "OK")
         XCTAssertEqual(service.currentRevision(.resource(.project, project.id)), nil)
     }
+
+    /// Nobody sees an API setup's terminal: git never prompts, and ssh runs in batch mode unless the user chose how git runs ssh.
+    func testAPISetupNeverWaitsForAPrompt() {
+        XCTAssertEqual(AutomationServiceV2.setupEnvironment([:], sshCommandConfigured: false), ["GIT_TERMINAL_PROMPT": "0", "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"])
+        XCTAssertEqual(AutomationServiceV2.setupEnvironment(["GIT_SSH_COMMAND": "ssh -i ~/.ssh/deploy"], sshCommandConfigured: false), ["GIT_TERMINAL_PROMPT": "0"])
+        XCTAssertEqual(AutomationServiceV2.setupEnvironment(["GIT_SSH": "/usr/local/bin/my-ssh"], sshCommandConfigured: false), ["GIT_TERMINAL_PROMPT": "0"])
+        XCTAssertEqual(AutomationServiceV2.setupEnvironment([:], sshCommandConfigured: true), ["GIT_TERMINAL_PROMPT": "0"], "core.sshCommand is never overridden")
+    }
 }

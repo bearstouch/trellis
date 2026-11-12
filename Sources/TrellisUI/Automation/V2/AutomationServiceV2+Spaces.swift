@@ -19,7 +19,8 @@ extension AutomationServiceV2 {
             return .object(["savedAt": .string(ConventionsV2.timestamp(Date()))])
         case "space.list":
             let projection = projection(call)
-            let page = try PageV2(p, method: call.spec.name).slice(projection.visibleSpaces())
+            let name = try p.optionalString("name")
+            let page = try PageV2(p, method: call.spec.name).slice(projection.visibleSpaces().filter { name == nil || $0.name == name })
             return ConventionsV2.list("spaces", page.items.map(projection.space), revision: projection.snapshot.revision, nextCursor: page.nextCursor)
         case "space.get": return ConventionsV2.resource("space", try space(call, try p.uuid("id")))
         case "space.create":

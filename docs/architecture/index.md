@@ -8,7 +8,7 @@ Trellis is native Swift: SwiftUI draws the application chrome, and AppKit hosts 
 flowchart TD
     App[TrellisApp<br/>entry point, menus, wiring] --> UI
     App --> Control
-    UI[TrellisUI<br/>views, AppWorkspaceModel, AutomationService] --> Terminal
+    UI[TrellisUI<br/>views, AppWorkspaceModel, AutomationServiceV2] --> Terminal
     UI --> Control
     UI --> Core
     Terminal[TrellisTerminal<br/>SwiftTerm adapter, PTYProcess] --> Core
@@ -28,9 +28,9 @@ flowchart TD
 | `TrellisCore` | Domain logic that doesn't depend on the terminal engine. Bundles `Resources/Themes`. | `WorkspaceStore` (actor), `WorkspaceCommand`, `WorkspaceCommandService`, `WorkspacePersistence`, `LocalSessionController`, `LocalLaunchValidator`, `SessionClosureCoordinator`, `HostLibrary`, `SavedHost`, `LayoutPlanner`, `ThemeLibrary`, `ThemeValidator`, `LinkPolicy`, `SecretRedactor`, `OutputJournal`, `ScrollbackBudget` |
 | `TrellisPOSIX` | A small C target for PTY spawning and process identity | `trellis_spawn_pty`, `trellis_read_process_identity` |
 | `TrellisTerminal` | All SwiftTerm-specific code. **The only module that imports SwiftTerm.** | `NativeTerminal`, `PTYProcess`, `AccessibleTerminalView`, `TerminalScrollback`, `PaneTextSearch`, `TerminalSelectionBookmark`, `TerminalAppearance` |
-| `TrellisControl` | The local automation server | `ControlServer`, `ControlEndpoint`, `ControlSession`, `ControlFramer`, `AuthorizingControlHandler`, `AuthorizationPolicy`, `GrantStore`, `KeychainGrantSecretStore`, `EventHub`, `LayoutJSON`, `PortableDocument` |
+| `TrellisControl` | The local automation server | `ControlServer`, `ControlEndpoint`, `ControlSession`, `ControlFramer`, `AuthorizingControlHandler`, `MethodCatalogV2` (the method catalog), `DispatcherV2`, `ProjectionV2`, `GrantStore`, `KeychainGrantSecretStore`, `EventHubV2`, `LayoutJSON`, `PortableDocument` |
 | `TrellisMCP` | The optional MCP server: an HTTP transport over the same authorizer ([MCP server](../api/mcp.md)) | `MCPServer`, `MCPListener`, `MCPEndpoint`, `MCPTools`, `HTTPRequestParser` |
-| `TrellisUI` | SwiftUI and AppKit views, and the bridge between the store, the views and the terminals | `AppWorkspaceModel` (`@MainActor ObservableObject`), `AutomationService`, `WorkspaceRootView`, `PaneTreeView`, `HostListModel`, `DiagnosticsExporter`, `PortableTransfer`, settings views |
+| `TrellisUI` | SwiftUI and AppKit views, and the bridge between the store, the views and the terminals | `AppWorkspaceModel` (`@MainActor ObservableObject`), `AutomationServiceV2` (`Automation/V2/`, one file per API area), `WorkspaceRootView`, `PaneTreeView`, `HostListModel`, `DiagnosticsExporter`, `PortableTransfer`, settings views |
 | `TrellisApp` | The `Trellis` executable. Wires everything together. | `TrellisMain` (`@main`), `AppDelegate` (menus, shortcuts, termination), `EventForwarder` |
 | `TrellisRelease` | Release-time policy | `ReleaseManifest`, `CLILinkPlanner`, `UninstallPlanner`, `ReleaseChecklist` |
 | `TrellisCLI` / `TrellisCLIMain` | The `trellis-cli` executable, installed as `trellis` | `CLI`, `SocketTransport`, `Resolver`, `CLICommands` |
@@ -58,7 +58,7 @@ Every change to the workspace goes through a single command boundary:
 sequenceDiagram
     participant V as View / menu
     participant C as Control socket
-    participant A as AutomationService
+    participant A as AutomationServiceV2
     participant M as AppWorkspaceModel (@MainActor)
     participant S as WorkspaceStore (actor)
     participant T as NativeTerminal / PTYProcess
@@ -77,7 +77,7 @@ sequenceDiagram
 - `WorkspaceStore.execute` checks the optional revision expectations, copies the state, bumps the revision, runs `validate()` on the result, and commits it. If anything fails, the previous state is kept.
 - **A process launch is an effect that happens after the commit.** `.startSession` moves the session to `starting`, stamps it with a `launchAttemptID`, and returns a `.start` effect. The model performs the spawn and then reports `.completeLaunch` with that attempt ID. A stale attempt is rejected, so a failed launch produces a failed session and never a dangling reference in the tree.
 - `AppWorkspaceModel.enqueue` chains callbacks from terminals so they reach the store in order.
-- Automation never gets a side door. `AutomationService` calls the same model entry points as the UI, which apply the same closing-hierarchy gates.
+- Automation never gets a side door. `AutomationServiceV2` calls the same model entry points as the UI, which apply the same closing-hierarchy gates.
 
 ## Threading
 

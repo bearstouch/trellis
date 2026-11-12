@@ -13,12 +13,12 @@ final class DispatchV2Tests: XCTestCase {
     private lazy var dispatcher = DispatcherV2(domain: domainV2, idempotency: IdempotencyCache(now: { [clock] in clock.now }))
     private lazy var host = SavedHost(id: UUID(), draft: try! HostDraft(name: "Prod", destination: "prod").validated { _ in false }, revision: 4)
 
-    private func grant(_ capabilities: Set<Capability> = Set(Capability.allCases), spaces: SpaceScope = .all, hosts: HostScope = .all) async throws -> AutomationGrant {
+    private func grant(_ capabilities: Set<CapabilityV2> = Set(CapabilityV2.allCases), spaces: SpaceScope = .all, hosts: HostScope = .all) async throws -> AutomationGrant {
         try await store.create(name: "Bot", capabilities: capabilities, spaceScope: spaces, hostScope: hosts, lifetime: 3600).grant
     }
 
     private func call(_ method: String, _ params: [String: JSONValue], _ grant: AutomationGrant) async -> Result<JSONValue, ControlError> {
-        await dispatcher.dispatch(method, params: .object(params), grant: grant, identity: ControlIdentity(connectionID: UUID(), peerUID: geteuid(), grantID: grant.id, protocolVersion: 2))
+        await dispatcher.dispatch(method, params: .object(params), grant: grant, identity: ControlIdentity(connectionID: UUID(), peerUID: geteuid(), grantID: grant.id))
     }
 
     /// The fake workspace's ID for a resource kind.
@@ -87,10 +87,10 @@ final class DispatchV2Tests: XCTestCase {
             checked.append(spec.name)
         }
         XCTAssertEqual(domainV2.performed, checked, "Stale calls never reach the domain; current ones do")
-        XCTAssertEqual(checked.count, MethodCatalogV2.methods.filter(\.isMutating).count - 4, "Every mutating method but the four exempt ones")
+        XCTAssertEqual(checked.count, MethodCatalogV2.methods.filter(\.isMutating).count - 6, "Every mutating method but the six exempt ones")
         XCTAssertTrue(checked.contains("pane.resize") && checked.contains("session.sendInput") && checked.contains("host.connect"))
         XCTAssertTrue(["agent.start", "agent.restart", "agent.respond", "agent.install"].allSatisfy(checked.contains))
-        XCTAssertTrue(["project.update", "project.delete", "project.launch", "task.run", "task.stop"].allSatisfy(checked.contains))
+        XCTAssertTrue(["project.update", "project.delete", "project.launch", "task.run", "task.stop", "layout.apply", "appearance.set"].allSatisfy(checked.contains))
     }
 
     /// API2-05 for every method: a grant without its capabilities gets PERMISSION_DENIED naming exactly what is missing,
@@ -124,7 +124,8 @@ final class DispatchV2Tests: XCTestCase {
         }
         XCTAssertEqual(domainV2.performed, [])
         // events.* need the capabilities of the topics asked for (EventsV2Tests), and none for no topics.
-        XCTAssertEqual(denied, MethodCatalogV2.methods.count - 5, "Every method but system.info, grant.get and events.* needs a capability")
+        let themeReads = ["theme.list", "theme.get", "theme.validate", "theme.export", "appearance.get"]
+        XCTAssertEqual(denied, MethodCatalogV2.methods.count - 5 - themeReads.count, "Every method but system.info, grant.get, events.* and the theme reads needs more than theme.read")
         XCTAssertGreaterThanOrEqual(hidden, 30)
     }
 
@@ -187,7 +188,7 @@ final class DispatchV2Tests: XCTestCase {
         guard case .failure(let unapproved) = await call("session.start", ssh, approved) else { return XCTFail() }
         XCTAssertEqual(unapproved.appCode, "NOT_FOUND", "launch.hostId is scoped like a top-level ID")
 
-        let starter = try await grant([.metadataRead, .sessionStart])
+        let starter = try await grant([.workspaceRead, .sessionStart])
         guard case .success = await call("session.start", ssh, starter) else { return XCTFail("A saved host needs host scope, not session.execute") }
         let process: [String: JSONValue] = ["paneId": .string(domain.paneA.uuidString), "launch": .object(["kind": .string("process"), "executable": .string("/bin/sh"), "directory": .string("/tmp")])]
         guard case .failure(let denied) = await call("session.start", process, starter) else { return XCTFail() }

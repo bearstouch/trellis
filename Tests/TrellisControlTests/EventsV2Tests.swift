@@ -3,7 +3,7 @@ import XCTest
 import TrellisCore
 @testable import TrellisControl
 
-/// Protocol 2 events (docs/api/v2/events.md, API2-07): the typed stream, redaction, subscriptions, polling and coalescing.
+/// Protocol 2 events (docs/api/events.md, API2-07): the typed stream, redaction, subscriptions, polling and coalescing.
 final class EventsV2Tests: XCTestCase {
     private let secrets = MemorySecrets()
     private lazy var store = GrantStore(url: nil, secrets: secrets)
@@ -28,7 +28,7 @@ final class EventsV2Tests: XCTestCase {
     // MARK: Contract
 
     func testEveryTypeIsInTheContractTable() throws {
-        let page = try String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../docs/api/v2/events.md"), encoding: .utf8)
+        let page = try String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../docs/api/events.md"), encoding: .utf8)
         for (type, topic) in EventTopicV2.types {
             let row = page.split(separator: "\n").first { $0.hasPrefix("| `\(topic.rawValue)` |") }
             let leaf = type.split(separator: ".").last.map(String.init) ?? type
@@ -254,7 +254,7 @@ final class EventsV2Tests: XCTestCase {
 
     private func handler(_ hub: EventHubV2) -> AuthorizingControlHandler {
         let domain = FakeDomain()
-        return AuthorizingControlHandler(grants: store, domain: domain, v2Domain: FakeDomainV2(base: domain), eventsV2: hub)
+        return AuthorizingControlHandler(grants: store, domain: FakeDomainV2(base: domain), events: hub)
     }
 
     private func session(_ handler: AuthorizingControlHandler, _ token: String, reply: (@Sendable (Data) -> Bool)? = nil) async throws -> ControlSession {

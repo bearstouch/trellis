@@ -27,7 +27,7 @@ final class RemoteV2Tests: XCTestCase {
         }
         XCTAssertEqual(MethodCatalogV2.spec("remote.helper.remove")?.requirementSummary, "remote.manage (+session.close if stopSessions)")
         XCTAssertTrue(MethodCatalogV2.spec("remote.helper.remove")?.isDestructive == true)
-        XCTAssertFalse(MethodCatalogV2.spec("remote.helper.install")?.isDestructive == true)
+        XCTAssertTrue(MethodCatalogV2.spec("remote.helper.install")?.isDestructive == true, "migration.md marks remote_helper_* destructive")
         XCTAssertEqual(MethodCatalogV2.toolName("remote.helper.install"), "remote_helper_install")
     }
 
@@ -36,7 +36,7 @@ final class RemoteV2Tests: XCTestCase {
     func testAWaitingRemoteCallDoesNotBlockTheConnection() async throws {
         domain.setHost(host)
         domainV2.hold(["remote.reconnect"])
-        let handler = AuthorizingControlHandler(grants: store, domain: domain, v2Domain: domainV2)
+        let handler = AuthorizingControlHandler(grants: store, domain: domainV2)
         let (_, token) = try await store.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases)), lifetime: 3600)
         let replies = DeliveryLog()
         let session = ControlSession(peerUID: geteuid(), handler: handler, reply: { replies.deliver($0) })
@@ -64,7 +64,7 @@ final class RemoteV2Tests: XCTestCase {
     func testWaitingCallsAreCappedAndDroppedOnClose() async throws {
         domain.setHost(host)
         domainV2.hold(["remote.reconnect"])
-        let handler = AuthorizingControlHandler(grants: store, domain: domain, v2Domain: domainV2)
+        let handler = AuthorizingControlHandler(grants: store, domain: domainV2)
         let (_, token) = try await store.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases)), lifetime: 3600)
         let replies = DeliveryLog()
         let session = ControlSession(peerUID: geteuid(), handler: handler, reply: { replies.deliver($0) })

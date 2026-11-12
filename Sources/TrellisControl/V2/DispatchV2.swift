@@ -31,6 +31,8 @@ public struct CallV2: Sendable {
 /// What an `expectedRevision` is compared with.
 public enum RevisionSubjectV2: Sendable, Equatable, Hashable {
     case workspace
+    /// The appearance settings' own revision (`appearance.set`).
+    case appearance
     /// A branch answers with its tab's revision.
     case resource(ResourceKind, UUID)
 
@@ -57,6 +59,7 @@ public enum RevisionSubjectV2: Sendable, Equatable, Hashable {
         switch spec.revisionTarget {
         case .resource(let param)?: return resource(param)
         case .container("workspace", nil)?: return .workspace
+        case .container("appearance", nil)?: return .appearance
         case .container(_, let param?)?: return resource(param)
         case .anyResource(let params)?: return params.lazy.compactMap(resource).first
         default: return nil
@@ -137,8 +140,8 @@ public enum ResultsV2 {
     }
 }
 
-/// Protocol 2 dispatch: catalog lookup, schema validation, authorization derived from the method's declaration,
-/// idempotency, then the built-in method or the domain. v1 names and aliases never resolve here.
+/// Dispatch: catalog lookup, schema validation, authorization derived from the method's declaration, idempotency, then
+/// the built-in method or the domain. v1 names and aliases never resolve here.
 struct DispatcherV2: Sendable {
     let domain: any ControlDomainV2
     let idempotency: IdempotencyCache
@@ -166,7 +169,6 @@ struct DispatcherV2: Sendable {
         if case .failure(let error) = await authorize(spec, params, access) { return .failure(error) }
         let call = CallV2(spec: spec, params: params, access: access, identity: identity, ledger: ledger)
         guard spec.isMutating, let key = params.idempotencyKey else { return await run(call) }
-        // Namespaced so a key used on a v1 connection never replays into v2, or the reverse.
         switch await idempotency.begin(grant: grant.id, key: key, method: "v2:" + spec.name, params: .object(params.values)) {
         case .replay(let result): return result
         case .conflict: return .failure(.api(.conflict, "This idempotencyKey was already used with a different method or parameters."))

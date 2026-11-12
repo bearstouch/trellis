@@ -1,9 +1,6 @@
-# Events (draft)
+# Events
 
-!!! warning "Draft contract — not implemented"
-    Part of the proposed [protocol 2](index.md). Built in [phase 4](implementation.md#progress) behind `--automation-v2`; every requirement stays unchecked until v2 ships.
-
-v1 events only described stored-snapshot differences. v2 also reports the live state the UI shows, so an orchestrator can wait for "agent needs you", "command finished" or "task done" instead of polling a terminal. Events are delivered by subscription on the socket, and by `events.poll` on any transport, including MCP.
+Events report changes to the workspace and the live state the UI shows, so an orchestrator can wait for "agent needs you", "command finished" or "task done" instead of polling a terminal. Events are delivered by subscription on the socket, and by `events.poll` on any transport, including MCP.
 
 ## Envelope
 
@@ -15,7 +12,7 @@ v1 events only described stored-snapshot differences. v2 also reports the live s
 
 `data` holds typed JSON (numbers as numbers). Events never carry terminal output (except the `output` topic), typed input, command text, environment values or secrets. `resource.id` is a lowercase UUID, an agent or task ID, or absent where there is no single resource (`space.reordered`: `{"kind": "workspace"}`; `appearance.changed`). `spaceId` is present on every event whose resource lives in a space. A pushed event also carries its `subscriptionId`.
 
-Protocol 2 has its **own stream**: its own `sequence` (from 1 per app instance) and its own replay ring of the last **2,000** events, separate from protocol 1's (whose topics, ring of 1,000, string data and aliases are unchanged until the switch).
+The stream has its own `sequence` (from 1 per app instance) and a replay ring of the last **2,000** events. Protocol 1's topics, aliases and string `data` are gone ([Migration](migration.md#methods)).
 
 ## Topics and types
 
@@ -40,7 +37,7 @@ Protocol 2 has its **own stream**: its own `sequence` (from 1 per app instance) 
 Every delivery (push, replay or poll) re-reads the grant and checks the event against it, so revocation, expiry and a narrowing edit apply to the very next event.
 
 - **Topic capability:** the topic's capability in the table above.
-- **Space scope:** every event whose resource lives in a space carries `spaceId` and is delivered only to grants that can see that space, including a `created` scope's own spaces (the v1 docs/code disagreement about `space.*` events is settled: scoped grants get events for their own spaces); a closed space's events, its `space.deleted` included, stay visible in polls and replays to the grant that created it after the space left its scope). `space.reordered` reveals every space's place, so it needs all-spaces scope.
+- **Space scope:** every event whose resource lives in a space carries `spaceId` and is delivered only to grants that can see that space, including a `created` scope's own spaces (scoped grants get `space.*` events for their own spaces); a closed space's events, its `space.deleted` included, stay visible in polls and replays to the grant that created it after the space left its scope). `space.reordered` reveals every space's place, so it needs all-spaces scope.
 - **Host scope:** `remote.*` and a host's `agent.availability` need host.read and the host approved **at its current connection revision**; `host.*` needs host.read and the host approved at all, so a grant learns that its approval went stale.
 - **Project scope:** `project.*` needs project.read and the project in project scope.
 - **Fields:** `folder.changed`'s `path` and `project.launched`'s `folder` need session.execute; `project.launched`'s `hostId` needs the host in scope. Without them the field is omitted and the event is still delivered.
@@ -51,7 +48,7 @@ Every delivery (push, replay or poll) re-reads the grant and checks the event ag
 
 `events.subscribe {topics, resourceIds?, spaceIds?, afterSequence?, instanceId?}` returns `{subscriptionId, sequence, instanceId}`; events then arrive as `events.event` notifications. It needs each requested topic's capability (`PERMISSION_DENIED` with `details.missing` otherwise) and is socket-only: MCP follows events with `events_poll`.
 
-Replayed events (from `afterSequence`) are pushed **before** the `events.subscribe` reply, as in v1, so a client may see `events.event` notifications carrying a `subscriptionId` it hasn't been told yet. Buffer them until the reply arrives, then match on `subscriptionId`.
+Replayed events (from `afterSequence`) are pushed **before** the `events.subscribe` reply, so a client may see `events.event` notifications carrying a `subscriptionId` it hasn't been told yet. Buffer them until the reply arrives, then match on `subscriptionId`.
 
 - `resourceIds` names spaces, tabs, panes or sessions in scope and matches the event's resource, its pane, session or tab, or its space. `spaceIds` matches the event's space; events without one (hosts, projects, appearance, grant, this Mac's agent availability) never match a space filter.
 - Up to 16 subscriptions per connection. With `afterSequence`, retained matching events after it are replayed first (each once); a client too far behind gets `events.gap {subscriptionId, instanceId, oldestSequence, action: "resnapshot"}` and should call `workspace.get`. An `afterSequence` newer than the stream, or an `instanceId` from another app instance, is `INVALID_CURSOR`.
@@ -65,10 +62,34 @@ Replayed events (from `afterSequence`) are pushed **before** the `events.subscri
 
 - `nextSequence` is what to pass as `afterSequence` next: the last returned event, or the newest event scanned (events the filter skipped are never scanned again).
 - A stale `afterSequence` (evicted from the ring) returns no events, `gap: {oldestSequence, action: "resnapshot"}` and `nextSequence` at the stream's end: read `workspace.get`, then poll from there. A changed `instanceId` (the app restarted) is `INVALID_CURSOR` with `details.instanceId`: start over from `workspace.get`.
-- It never returns `output` events (`topics: ["output"]` is `-32602`) — use `session.readOutput` with a cursor.
+- It never returns `output` events (`topics: ["output"]` is `-32602`) — use [`session.readOutput`](#reading-output) with a cursor.
 - A waiting poll suspends only itself: on the socket it is answered out of order (JSON-RPC replies carry their `id`) while the connection keeps serving later frames, and it never holds the main actor. At most **4** polls may wait per grant at once; more is `LIMIT_EXCEEDED` (retryable). Revocation ends a waiting poll with `AUTH_REQUIRED`, and closing the connection cancels it.
 
 This is how MCP clients follow live state: the `events_poll` tool.
+
+## Reading output
+
+`session.readOutput {id, view, cursor?, maxBytes?}` (API-05) needs session.output.read (and, for a remote workspace session, its host in scope). `view` is required:
+
+| View | Returns | Notes |
+| --- | --- | --- |
+| `screen` | `{view, text, capturedAt, truncated, historyNotice}` | Plain text of the visible screen, terminal controls stripped |
+| `scrollback` | Same as `screen` | Plain text of the retained history; if it's too long, the newest text is kept up to `maxBytes` |
+| `stream` | `{view, base64, nextCursor, truncated, gap, capturedAt}` | Raw PTY bytes, base64-encoded, from an opaque cursor |
+
+- `maxBytes` defaults to 64 KiB and can go up to 256 KiB. Only `stream` takes a `cursor`.
+- `screen` and `scrollback` are display snapshots; they can't reconstruct every byte the process wrote.
+- `stream` bytes are raw and untrusted. Escape sequences are the caller's problem, and so is a UTF-8 character split across two reads.
+- Stream cursors belong to one session and one app instance. A cursor from another session or instance is `INVALID_CURSOR`, and a restart invalidates every cursor. A session with no output yet returns an empty read with a cursor at offset 0.
+- When output older than the cursor has been evicted, the read sets `gap: true`.
+
+The journal behind `stream` is an in-memory ring with a global budget of **8 MiB** shared by all sessions; the oldest output is evicted first, and it is never persisted. Output replayed from the session broker when a kept session is reattached (FR-R03), and text restored from the scrollback file (FR-R04), are display only: they never enter the journal and are never streamed. A reattached session's journal starts with its first live output.
+
+### The output topic
+
+`events.subscribe {topics: ["output"]}` (socket only, needs session.output.read) pushes `session.output` events with `base64`, `cursor`, `nextCursor` and `gap`; they have no `sequence` and aren't replayed. At most 8 MiB of output is in flight to clients at once: output beyond it is dropped, and the session's next output event has `gap: true`; read the missed bytes with `session.readOutput` from the last `nextCursor`. Each connection has a 1 MiB outbound queue, and a client that falls further behind is disconnected.
+
+Subscriptions and polls aren't a lossless audit log. A correct client detects gaps and resynchronizes (`workspace.get`, then poll or read from there), and never assumes it has seen the complete history (FR-A05).
 
 ## Requirements
 

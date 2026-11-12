@@ -2,20 +2,19 @@ import Foundation
 import TrellisControl
 import TrellisCore
 
-/// Feeds the event hub from one FIFO consumer, so metadata and output events
+/// Feeds the event hub from one FIFO consumer, so workspace, live-state and output events
 /// reach subscribers in the order the workspace produced them.
 final class EventForwarder: @unchecked Sendable {
     enum Item: Sendable {
-        case metadata([WorkspaceEvent])
         case output(session: UUID, space: UUID?, data: Data, next: UInt64, gap: Bool = false)
-        /// Protocol 2: a published transition, diffed here, off the main actor.
+        /// A published transition, diffed here, off the main actor.
         case transition(WorkspaceSnapshot, WorkspaceSnapshot)
-        /// Protocol 2 live-state and library events.
+        /// Live-state and library events.
         case live([EventDraftV2])
     }
 
     /// Pending raw output allowed in flight; beyond it output events are
-    /// skipped (readers recover through stream cursors). Metadata is never
+    /// skipped (readers recover through stream cursors). Other events are never
     /// dropped, so event sequences stay gap-free.
     static let outputBudget = 8 * 1_048_576
     private let continuation: AsyncStream<Item>.Continuation
@@ -24,27 +23,28 @@ final class EventForwarder: @unchecked Sendable {
     /// Sessions whose output was skipped; their next event is flagged as a gap.
     private var skipped = Set<UUID>()
 
-    /// `delivered` runs after each metadata batch reached subscribers (closed spaces leave `created` scopes only then, so
-    /// their grants still get the `space.deleted` event).
-    init(hub: EventHub, hubV2: EventHubV2? = nil, instanceID: UUID, delivered: @escaping @Sendable ([WorkspaceEvent]) async -> Void = { _ in }) {
+    /// `delivered` gets the spaces a transition closed once its events reached subscribers (closed spaces leave `created`
+    /// scopes only then, so their grants still get the `space.deleted` event).
+    init(hub: EventHubV2, instanceID: UUID, delivered: @escaping @Sendable (Set<UUID>) async -> Void = { _ in }) {
         let (stream, continuation) = AsyncStream<Item>.makeStream()
         self.continuation = continuation
         Task.detached { [self] in
             for await item in stream {
                 switch item {
-                case .metadata(let events):
-                    await hub.publish(events)
-                    await delivered(events)
                 case .output(let session, let space, let data, let next, let gap):
-                    let cursor = OutputCursor(instanceID: instanceID, sessionID: session, offset: next)
-                    await hub.publishOutput(session: session, spaceID: space, data: data, next: cursor, gap: gap)
-                    if let hubV2, hubV2.hasOutputSubscribers { await hubV2.publishOutput(session: session, spaceID: space, data: data, next: cursor, gap: gap) }
+                    if hub.hasOutputSubscribers {
+                        let cursor = OutputCursor(instanceID: instanceID, sessionID: session, offset: next)
+                        await hub.publishOutput(session: session, spaceID: space, data: data, next: cursor, gap: gap)
+                    }
                     lock.withLock { pendingOutput -= data.count }
                 case .transition(let old, let new):
                     let events = WorkspaceDiffV2.diff(old, new)
-                    if let hubV2, !events.isEmpty { await hubV2.publish(events) }
+                    guard !events.isEmpty else { continue }
+                    await hub.publish(events)
+                    let closed = Set(events.filter { $0.type == "space.deleted" }.compactMap(\.spaceID))
+                    if !closed.isEmpty { await delivered(closed) }
                 case .live(let events):
-                    if let hubV2, !events.isEmpty { await hubV2.publish(events) }
+                    if !events.isEmpty { await hub.publish(events) }
                 }
             }
         }

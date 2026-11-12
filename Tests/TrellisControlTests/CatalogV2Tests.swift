@@ -132,7 +132,7 @@ final class CatalogV2Tests: XCTestCase {
             }
             exempt.append(spec.name)
         }
-        XCTAssertEqual(exempt, ["workspace.save", "host.create", "project.create", "project.capture"], "Exemptions stay deliberate")
+        XCTAssertEqual(exempt, ["workspace.save", "host.create", "project.create", "project.capture", "theme.import", "theme.delete"], "Exemptions stay deliberate")
         let id = UUID()
         XCTAssertEqual(RevisionSubjectV2.of(try spec("pane.resize"), ParamsV2(["branchId": .string(id.uuidString)])), .resource(.branch, id))
         XCTAssertEqual(RevisionSubjectV2.of(try spec("tab.create"), ParamsV2(["spaceId": .string(id.uuidString)])), .resource(.space, id))

@@ -2,7 +2,7 @@ import Foundation
 import TrellisControl
 import TrellisCore
 
-/// `session.*` (methods.md#sessions). Input and output rules are v1's: exact byte limits, paste framing, signed output
+/// `session.*` (methods.md#sessions). Input and output rules are protocol 1's: exact byte limits, paste framing, signed output
 /// cursors and FR-RW15 host checks for remote workspace sessions.
 extension AutomationServiceV2 {
     /// Exact decoded bytes accepted per input or execute call.

@@ -22,7 +22,7 @@ A native Swift terminal for macOS. "Native calm" chrome (dark by default, or lig
 - **Command palette:** ⇧⌘P opens one searchable list of every action, space, tab, pane, saved host, task and theme.
 - **Directory jump:** ⌘J lists the directories your shells have recently and frequently been in, on this Mac and in remote workspaces. Return goes there in the current pane, or in a new tab if it's busy.
 - **Command scratchpad:** write a script beside your panes with syntax highlighting, check it, run it in the focused pane, or save it as a task.
-- **Automation:** a local JSON-RPC API with scoped grants, the `trellis` CLI, and an optional [MCP server](docs/api/mcp.md) for agents, which can be shared to your tailnet over HTTPS with Tailscale.
+- **Automation:** a local JSON-RPC API ([protocol 2](docs/api/index.md)) with scoped grants and presets: spaces, tabs and panes, sessions, agents (start, answer, install), remote workspaces, projects and tasks, live-state events with long polling, and declarative layouts; the `trellis` CLI; and an optional [MCP server](docs/api/mcp.md) for agents, which can be shared to your tailnet over HTTPS with Tailscale.
 - **Keyboard and accessibility:** rebindable shortcuts, Option-as-Meta and accessibility labels throughout.
 - **Updates:** **Trellis → Check for Updates…** installs signed updates in place. Automatic checks and beta versions are opt-in.
 - **Privacy:** no telemetry; terminal output and typed input are never logged. The only network request Trellis makes by itself is the update check you start or turn on.
@@ -103,11 +103,22 @@ An ordinary new workspace starts a login shell. Use Quit to close live sessions 
 3. Call the CLI:
 
    ```sh
-   swift run trellis-cli space list --token-stdin --json < .build/token.txt
+   swift run trellis-cli workspace get --include tabs,panes --token-stdin --json < .build/token.txt
    swift run trellis-cli                      # prints the available nouns
    ```
 
-The packaged app ships this binary as `trellis` (see the [release guide](docs/release/README.md)). The protocol is documented in [`docs/api`](docs/api/index.md).
+The packaged app ships this binary as `trellis` (see the [release guide](docs/release/README.md)). Credentials come from standard input (`--token-stdin`) or the Keychain (`--keychain-grant <grant-uuid>`), never from an argument. A few examples:
+
+```sh
+trellis workspace get --include tabs,panes --keychain-grant <grant-uuid>
+trellis space create --name Build --start --keychain-grant <grant-uuid>
+trellis session execute --session <uuid> --command 'swift test' --wait --keychain-grant <grant-uuid>   # exits with the command's exit code
+trellis agent start --agent trellis-claude-code --space Build --keychain-grant <grant-uuid>
+trellis events poll --topics agent,attention --timeout-ms 20000 --keychain-grant <grant-uuid>
+trellis layout apply ./layout.json --namespace project --expected-revision 12 --keychain-grant <grant-uuid>
+```
+
+The protocol is documented in [`docs/api`](docs/api/index.md) and the CLI in [`docs/api/cli.md`](docs/api/cli.md). Protocol 2 replaced protocol 1 in a clean break: the `window` noun, `--window` and `space focus --activate` are gone, pane verbs take `--pane`, and an older `trellis` binary gets `UNSUPPORTED_VERSION` until it's re-linked with `trellis cli install-link`; see [Migration](docs/api/migration.md).
 
 ### Other scripts
 

@@ -1,7 +1,7 @@
 import Foundation
 import TrellisCore
 
-/// Phase 2 of the catalog (docs/api/v2/methods.md): the system, workspace, space, tab, pane, session and host methods.
+/// The system, workspace, space, tab, pane, session and host methods (docs/api/methods.md).
 extension MethodCatalogV2 {
     // MARK: Shared parameters
 
@@ -77,7 +77,9 @@ extension MethodCatalogV2 {
     // MARK: Spaces
 
     static let spaces: [MethodSpecV2] = [
-        MethodSpecV2("space.list", "Spaces in scope, in sidebar order.", capabilities: [.workspaceRead], paginated: true),
+        MethodSpecV2(
+            "space.list", "Spaces in scope, in sidebar order.", params: [ParamV2("name", .string(maxBytes: 800), "Only spaces with exactly this name (how the CLI resolves --space).")],
+            capabilities: [.workspaceRead], paginated: true),
         MethodSpecV2("space.get", "One space.", params: [id("space")], capabilities: [.workspaceRead], resources: [ResourceRuleV2(.space, "id")]),
         MethodSpecV2(
             "space.create", "Create a local space with one tab and one stopped pane, optionally starting it; with created scope it joins the grant's scope.", params: [name, start], capabilities: [.workspaceWrite],
@@ -104,7 +106,10 @@ extension MethodCatalogV2 {
     static let tabs: [MethodSpecV2] = [
         MethodSpecV2(
             "tab.list", "A space's tabs in order.",
-            params: [ParamV2("spaceId", .uuid, required: true, "The space."), ParamV2("include", .stringList(values: ["layout"], maxCount: 1), "layout adds each tab's split tree.")],
+            params: [
+                ParamV2("spaceId", .uuid, required: true, "The space."), ParamV2("include", .stringList(values: ["layout"], maxCount: 1), "layout adds each tab's split tree."),
+                ParamV2("title", .string(maxBytes: 800), "Only tabs whose title (as shown) is exactly this (how the CLI resolves --tab).")
+            ],
             capabilities: [.workspaceRead], resources: [ResourceRuleV2(.space, "spaceId")], paginated: true),
         MethodSpecV2("tab.get", "One tab with its layout.", params: [id("tab")], capabilities: [.workspaceRead], resources: [ResourceRuleV2(.tab, "id")]),
         MethodSpecV2(
@@ -183,7 +188,7 @@ extension MethodCatalogV2 {
             "session.restart", "Replace a pane's session with a new one (a new session ID), stopping a running one first if allowed.",
             params: [ParamV2("paneId", .uuid, required: true, "The pane."), launch, allowRunning, force], capabilities: [.sessionStart],
             conditional: [choosesWhatRuns, stopsSessions], resources: [ResourceRuleV2(.pane, "paneId"), launchRule],
-            effect: .mutating(revision: .resource(param: "paneId")), errors: closeErrors.union([.launchFailed, .remoteDisconnected, .confirmationRequired])),
+            effect: .mutating(revision: .resource(param: "paneId"), destructive: true), errors: closeErrors.union([.launchFailed, .remoteDisconnected, .confirmationRequired])),
         MethodSpecV2(
             "session.stop", "Stop a running session gracefully; force after CLOSE_PENDING ends it.", params: [id("session"), force], capabilities: [.sessionClose],
             resources: [ResourceRuleV2(.session, "id")], effect: .mutating(revision: .resource(param: "id"), destructive: true), errors: [.invalidState, .closePending, .remoteDisconnected]),
@@ -193,11 +198,11 @@ extension MethodCatalogV2 {
                 id("session"), ParamV2("text", .string(), "UTF-8 text."), ParamV2("base64", .string(), "Bytes, base64-encoded."),
                 ParamV2("mode", .string(values: ["literal", "paste"]), "literal (default) or paste.")
             ], capabilities: [.sessionInput], rules: [.exactlyOne(["text", "base64"])], resources: [ResourceRuleV2(.session, "id")],
-            effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .remoteDisconnected]),
+            effect: .mutating(revision: .resource(param: "id"), destructive: true), errors: [.invalidState, .remoteDisconnected]),
         MethodSpecV2(
             "session.execute", "Type one command line plus Return into a running session; with wait, return when the shell reports it finished.",
             params: [id("session"), ParamV2("command", .string(), required: true, "One line, no CR or LF."), executeWait], capabilities: [.sessionExecute],
-            resources: [ResourceRuleV2(.session, "id")], effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .remoteDisconnected],
+            resources: [ResourceRuleV2(.session, "id")], effect: .mutating(revision: .resource(param: "id"), destructive: true), errors: [.invalidState, .remoteDisconnected],
             waitsIf: .present("wait")),
         MethodSpecV2(
             "session.readOutput", "Read a session's screen, its scrollback or its raw output stream from a cursor.",

@@ -12,7 +12,8 @@ final class AutomationSessionTests: XCTestCase {
 
     @MainActor
     private func liveSpace(_ h: Harness, script: String = byteEcho) async throws -> (space: String, pane: UUID, terminal: NativeTerminalHandle) {
-        let space: String = try await h.value("spaceId", "space.create", ["name": "Live"])
+        let created: [String: Any] = try await h.value("space", "space.create", ["name": "Live"])
+        let space = try XCTUnwrap(created["id"] as? String)
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         _ = try await h.model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/zsh", arguments: ["-f", "-c", script], directory: "/tmp")))
         await h.model.refresh()
@@ -27,7 +28,7 @@ final class AutomationSessionTests: XCTestCase {
     func testRejectUnapprovedLaunchDescriptor() async throws {
         let h = try Harness()
         try await h.grant("full")
-        try await h.grant("starter", [.metadataRead, .sessionStart], scope: .all)
+        try await h.grant("starter", [.workspaceRead, .sessionStart], scope: .all)
         defer {
             h.model.terminals.values.forEach {
                 $0.requestTermination(force: true); $0.adapter.detach()
@@ -40,11 +41,11 @@ final class AutomationSessionTests: XCTestCase {
         let codes = [
             try await h.code("session.start", ["paneId": pane.uuidString, "launch": arbitrary], as: "starter"),
             try await h.code("session.start", ["paneId": pane.uuidString, "launch": ["kind": "shell", "directory": "/tmp"]], as: "starter"),
-            try await h.code("session.start", ["paneId": pane.uuidString, "launch": ["kind": "host", "hostId": UUID().uuidString, "environment": ["A": "1"]]], as: "starter"),
+            try await h.code("session.start", ["paneId": pane.uuidString, "launch": ["kind": "shell", "environment": ["A": "1"]]], as: "starter"),
             try await h.code("session.restart", ["paneId": pane.uuidString, "launch": arbitrary], as: "starter")
         ]
         XCTAssertEqual(codes, ["PERMISSION_DENIED", "PERMISSION_DENIED", "PERMISSION_DENIED", "PERMISSION_DENIED"])
-        let unknownHost = try await h.code("session.start", ["paneId": pane.uuidString, "launch": ["kind": "host", "hostId": UUID().uuidString]], as: "starter")
+        let unknownHost = try await h.code("session.start", ["paneId": pane.uuidString, "launch": ["kind": "ssh", "hostId": UUID().uuidString]], as: "starter")
         XCTAssertEqual(unknownHost, "NOT_FOUND")
         // Reserved control variables are rejected even for execute grants.
         let reserved = try await h.call("session.start", ["paneId": pane.uuidString, "launch": arbitrary.merging(["environment": ["TRELLIS_TOKEN": "x"]]) { $1 }])
@@ -58,7 +59,9 @@ final class AutomationSessionTests: XCTestCase {
         await h.model.refresh()
         let started = try result(try await h.call("session.start", ["paneId": pane.uuidString], as: "starter"))
         XCTAssertEqual((started["session"] as? [String: Any])?["state"] as? String, "running")
-        XCTAssertNil((started["session"] as? [String: Any])?["executable"], "Launch details stay redacted without execute")
+        let launch = (started["session"] as? [String: Any])?["launch"] as? [String: Any]
+        XCTAssertEqual(launch?["kind"] as? String, "process")
+        XCTAssertNil(launch?["executable"], "Launch details stay redacted without execute")
 
         // A failed arbitrary launch returns LAUNCH_FAILED with the failed record.
         _ = try await h.code("space.create", ["name": "Fail"])
@@ -66,8 +69,8 @@ final class AutomationSessionTests: XCTestCase {
         let failed = try await h.call(
             "session.start", ["paneId": failPane.uuidString, "launch": ["kind": "process", "executable": "/nonexistent/tool", "directory": "/tmp"]])
         XCTAssertEqual(errorCode(failed), "LAUNCH_FAILED")
-        XCTAssertEqual(
-            ((((failed["error"] as? [String: Any])?["data"] as? [String: Any])?["session"]) as? [String: Any])?["state"] as? String, "failed")
+        let details = ((failed["error"] as? [String: Any])?["data"] as? [String: Any])?["details"] as? [String: Any]
+        XCTAssertEqual((details?["session"] as? [String: Any])?["state"] as? String, "failed")
     }
 
     @MainActor
@@ -102,24 +105,26 @@ final class AutomationSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testExecuteRequiresSubmit() async throws {
+    func testExecuteTypesOneLineAndNeedsExecute() async throws {
         let h = try Harness()
         try await h.grant("full")
-        try await h.grant("input", [.metadataRead, .sessionInput])
+        try await h.grant("input", [.workspaceRead, .sessionInput])
         let live = try await liveSpace(h)
         defer { live.terminal.close() }
         let id = live.terminal.native.sessionID.uuidString
-        let missing = try await h.call("session.execute", ["id": id, "command": "ls"])
-        let disabled = try await h.call("session.execute", ["id": id, "command": "ls", "submit": false])
-        let multiline = try await h.call("session.execute", ["id": id, "command": "ls\nrm -rf ~", "submit": true])
-        for response in [missing, disabled, multiline] { XCTAssertEqual((response["error"] as? [String: Any])?["code"] as? Int, -32602) }
-        let inputOnly = try await h.code("session.execute", ["id": id, "command": "ls", "submit": true], as: "input")
+        // v1's `submit` is gone (an unknown parameter), and a command is one line.
+        let submit = try await h.call("session.execute", ["id": id, "command": "ls", "submit": true])
+        let empty = try await h.call("session.execute", ["id": id, "command": ""])
+        let multiline = try await h.call("session.execute", ["id": id, "command": "ls\nrm -rf ~"])
+        for response in [submit, empty, multiline] { XCTAssertEqual((response["error"] as? [String: Any])?["code"] as? Int, -32602) }
+        let inputOnly = try await h.code("session.execute", ["id": id, "command": "ls"], as: "input")
         XCTAssertEqual(inputOnly, "PERMISSION_DENIED", "Input capability does not imply execute")
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(try live.terminal.output().trimmingCharacters(in: .whitespacesAndNewlines), "READY", "Rejected calls sent zero bytes")
 
-        let accepted = try result(try await h.call("session.execute", ["id": id, "command": "ls", "submit": true]))
+        let accepted = try result(try await h.call("session.execute", ["id": id, "command": "ls"]))
         XCTAssertEqual(accepted["acceptedBytes"] as? Int, 3)
+        XCTAssertEqual(accepted["submitted"] as? Bool, true)
         try await live.terminal.waitFor("6c 73 0d")
         let received = try live.terminal.output().replacingOccurrences(of: "READY", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
         XCTAssertEqual(received, "6c 73 0d", "Exactly the command plus one carriage return")
@@ -129,7 +134,7 @@ final class AutomationSessionTests: XCTestCase {
     func testDisconnectDoesNotReplayOrClose() async throws {
         let h = try Harness()
         try await h.grant("full")
-        let token = try await h.grants.create(name: "socket", capabilities: Set(Capability.allCases), spaceScope: .all, hostScope: .all, lifetime: 600).token
+        let token = try await h.grants.create(name: "socket", capabilities: Set(CapabilityV2.allCases), spaceScope: .all, hostScope: .all, lifetime: 600).token
         let live = try await liveSpace(h)
         defer { live.terminal.close() }
         let sessionID = live.terminal.native.sessionID
@@ -144,8 +149,8 @@ final class AutomationSessionTests: XCTestCase {
         let path = discovery.socketPath
         try await Task.detached {
             let client = try BlockingClient(path: path)
-            _ = try client.request(#"{"jsonrpc":"2.0","id":1,"method":"auth.authenticate","params":{"protocolVersion":1,"token":"\#(token)"}}"#)
-            client.send(#"{"jsonrpc":"2.0","id":2,"method":"session.execute","params":{"id":"\#(sessionID.uuidString)","command":"x","submit":true}}"# + "\n")
+            _ = try client.request(#"{"jsonrpc":"2.0","id":1,"method":"auth.authenticate","params":{"protocolVersion":2,"token":"\#(token)"}}"#)
+            client.send(#"{"jsonrpc":"2.0","id":2,"method":"session.execute","params":{"id":"\#(sessionID.uuidString)","command":"x"}}"# + "\n")
             client.close()  // Disconnect without reading the reply.
         }.value
         try await live.terminal.waitFor("78 0d")
@@ -187,26 +192,27 @@ final class AutomationSessionTests: XCTestCase {
         XCTAssertTrue(live.terminal.native.isRunning)
         let restarted = try result(try await h.call("session.restart", ["paneId": live.pane.uuidString, "allowRunning": true]))
         let newSession = try XCTUnwrap((restarted["session"] as? [String: Any])?["id"] as? String)
-        XCTAssertNotEqual(newSession, oldSession.uuidString)
+        XCTAssertNotEqual(newSession, lower(oldSession))
         XCTAssertFalse(live.terminal.native.isRunning)
         XCTAssertEqual(h.model.terminals[live.pane]?.sessionState, .running)
 
-        // host.connect uses the saved host and stays inside the authorized window.
+        // host.connect uses the saved host and opens where its placement says.
         let fake = FileManager.default.temporaryDirectory.appendingPathComponent("fake-ssh-\(UUID().uuidString)")
         try Data("#!/bin/sh\nprintf 'FAKE-SSH %s\\n' \"$*\"\nexec /bin/sleep 30\n".utf8).write(to: fake)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fake.path)
         defer { try? FileManager.default.removeItem(at: fake) }
         h.model.sshExecutable = fake.path
-        let hostID: String = try await h.value("id", "host.create", ["name": "Prod", "destination": "prod"])
+        let host: [String: Any] = try await h.value("host", "host.create", ["name": "Prod", "destination": "prod"])
+        let hostID = try XCTUnwrap(host["id"] as? String)
         await h.hosts.load()
         h.model.resolveHost = { [hosts = h.hosts] id in await hosts.host(id) }
-        let other: String = try await h.value("spaceId", "space.create", ["name": "Other"])
-        let foreignPane = try XCTUnwrap(h.model.snapshot.spaces.first { $0.id.uuidString == other }.flatMap { h.model.snapshot.tabs[$0.activeTabID]?.activePaneID })
-        let wrongTarget = try await h.code("host.connect", ["hostId": hostID, "spaceId": live.space, "paneId": foreignPane.uuidString, "axis": "x"])
-        XCTAssertEqual(wrongTarget, "NOT_FOUND")
-        let connected = try result(try await h.call("host.connect", ["hostId": hostID, "spaceId": live.space]))
+        let missingSpace = try await h.code("host.connect", ["hostId": hostID, "placement": ["kind": "tab", "spaceId": UUID().uuidString]])
+        XCTAssertEqual(missingSpace, "NOT_FOUND")
+        let v1Shape = try await h.call("host.connect", ["hostId": hostID, "spaceId": live.space])
+        XCTAssertEqual((v1Shape["error"] as? [String: Any])?["code"] as? Int, -32602, "v1's spaceId/paneId form is gone")
+        let connected = try result(try await h.call("host.connect", ["hostId": hostID, "placement": ["kind": "tab", "spaceId": live.space]]))
         let session = try XCTUnwrap(connected["session"] as? [String: Any])
-        XCTAssertEqual(session["launchKind"] as? String, "host")
+        XCTAssertEqual((session["launch"] as? [String: Any])?["kind"] as? String, "ssh")
         XCTAssertEqual(session["state"] as? String, "running")
         let paneID = try XCTUnwrap(UUID(uuidString: try XCTUnwrap(session["paneId"] as? String)))
         XCTAssertEqual(h.model.snapshot.panes[paneID].flatMap { h.model.snapshot.tabs[$0.tabID] }?.title, "Prod")

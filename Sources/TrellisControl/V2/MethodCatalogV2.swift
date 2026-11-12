@@ -1,9 +1,10 @@
 import Foundation
 import TrellisCore
 
-/// The protocol 2 method catalog (docs/api/v2/methods.md). Each phase adds its area here; nothing else lists methods.
+/// The method catalog (docs/api/methods.md): every method is declared here once; nothing else lists methods.
 public enum MethodCatalogV2 {
-    public static let methods: [MethodSpecV2] = system + workspace + spaces + tabs + panes + sessions + agents + hosts + remote + projects + tasks + events
+    public static let methods: [MethodSpecV2] =
+        system + workspace + spaces + tabs + panes + sessions + agents + hosts + remote + projects + tasks + layouts + themes + events
 
     public static let byName: [String: MethodSpecV2] = Dictionary(methods.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
 
@@ -151,7 +152,7 @@ public enum MethodCatalogV2 {
                 if !params.contains(where: { $0.name == "expectedRevision" }) { problem("mutating methods take expectedRevision") }
             case .container(let container, let param)?:
                 switch (container, param) {
-                case ("workspace", nil): break
+                case ("workspace", nil), ("appearance", nil): break
                 case (_, let param?):
                     let kind = spec.resources.first { $0.param == param && !$0.list }?.kind
                     if byName[param]?.type != .uuid || byName[param]?.required != true || kind.map(Self.kindName) != container {

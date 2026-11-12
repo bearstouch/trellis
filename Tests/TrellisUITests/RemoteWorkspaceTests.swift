@@ -192,8 +192,7 @@ final class RemoteWorkspaceTests: XCTestCase {
 
         let grants = GrantStore(url: nil, secrets: NoSecrets(), now: Date.init)
         let handler = AuthorizingControlHandler(
-            grants: grants, domain: AutomationService(model: model, hosts: hosts), idempotency: IdempotencyCache(now: Date.init),
-            v2Domain: AutomationServiceV2(model: model, hosts: hosts))
+            grants: grants, domain: AutomationServiceV2(model: model, hosts: hosts), idempotency: IdempotencyCache(now: Date.init))
         let token = try await grants.create(GrantSettings(name: "Bot", capabilities: Set(CapabilityV2.allCases)), lifetime: 3600).token
         let session = ControlSession(peerUID: geteuid(), handler: handler)
         var id = 0
@@ -506,7 +505,7 @@ final class RemoteWorkspaceAutomationReviewTests: XCTestCase {
         XCTAssertEqual(start, "PERMISSION_DENIED")
         let input = try await h.code("session.sendInput", ["id": pane.sessionID.uuidString, "text": "id\n"])
         XCTAssertEqual(input, "PERMISSION_DENIED")
-        let execute = try await h.code("session.execute", ["id": pane.sessionID.uuidString, "command": "id", "submit": true])
+        let execute = try await h.code("session.execute", ["id": pane.sessionID.uuidString, "command": "id"])
         XCTAssertEqual(execute, "PERMISSION_DENIED")
         XCTAssertEqual(h.model.snapshot.sessions[pane.sessionID]?.state, .stopped, "Nothing started")
     }
@@ -521,17 +520,18 @@ final class RemoteWorkspaceAutomationReviewTests: XCTestCase {
         let space = try XCTUnwrap(created.snapshot.spaces.first { $0.id == created.createdSpaceID })
         let pane = try XCTUnwrap(created.snapshot.tabs[space.activeTabID].flatMap { created.snapshot.panes[$0.activePaneID] })
         h.model.remoteLinks[host.id] = .reconnecting(attempt: 2, at: Date())
-        let session = try result(try await h.call("session.get", ["id": pane.sessionID.uuidString]))
-        XCTAssertEqual(session["launchKind"] as? String, "remoteShell")
-        XCTAssertEqual(session["hostId"] as? String, host.id.uuidString)
-        XCTAssertEqual(session["remoteLink"] as? String, "reconnecting")
+        let session: [String: Any] = try await h.value("session", "session.get", ["id": pane.sessionID.uuidString])
+        XCTAssertEqual((session["launch"] as? [String: Any])?["kind"] as? String, "remoteShell")
+        XCTAssertEqual((session["launch"] as? [String: Any])?["hostId"] as? String, lower(host.id))
+        let remote: [String: Any] = try await h.value("remote", "remote.status", ["hostId": lower(host.id)])
+        XCTAssertEqual((remote["link"] as? [String: Any])?["state"] as? String, "reconnecting")
         let stopped = try await h.code("session.sendInput", ["id": pane.sessionID.uuidString, "text": "id\n"])
         XCTAssertNotEqual(stopped, "REMOTE_DISCONNECTED", "A session that isn't running fails as not running, not as retryable")
         // Running on the host while its link is down.
         h.model.publish(try await h.model.service.execute(.adoptRunningSession(sessionID: pane.sessionID, processID: 4242)).snapshot)
         let input = try await h.code("session.sendInput", ["id": pane.sessionID.uuidString, "text": "id\n"])
         XCTAssertEqual(input, "REMOTE_DISCONNECTED", "Never queued for later (FR-RW15)")
-        let execute = try await h.code("session.execute", ["id": pane.sessionID.uuidString, "command": "id", "submit": true])
+        let execute = try await h.code("session.execute", ["id": pane.sessionID.uuidString, "command": "id"])
         XCTAssertEqual(execute, "REMOTE_DISCONNECTED")
     }
 }
