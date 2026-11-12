@@ -210,7 +210,7 @@ private struct GrantSheet: View {
             if let token {
                 created(token)
             } else {
-                Text(editing == nil ? L("New Automation Grant") : L("Edit “%@”", editing?.name ?? "")).font(.headline).padding(.leading, 20).accessibilityAddTraits(.isHeader)
+                Text(editing == nil ? L("New Automation Grant") : L("Edit “%@”", editing?.name ?? "")).font(.headline).accessibilityAddTraits(.isHeader)
                 ScrollView { form.frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 12) }
                 if let message { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true) }
                 HStack {
@@ -262,7 +262,7 @@ private struct GrantSheet: View {
                 sectionHeader(L("Preset"))
             }
             Section {
-                Text(L("Changing any capability makes the grant Custom.")).font(.caption).foregroundStyle(.secondary)
+                caption(L("Changing any capability makes the grant Custom."))
                 ForEach(CapabilityV2.Area.allCases, id: \.self) { area in
                     Text(area.localizedName).font(.subheadline.weight(.semibold)).padding(.top, 6).accessibilityAddTraits(.isHeader)
                     ForEach(CapabilityV2.allCases.filter { $0.area == area }, id: \.self) { capability in capabilityToggle(capability) }
@@ -286,7 +286,9 @@ private struct GrantSheet: View {
                     Text(L("30 days")).tag(TimeInterval?.some(30 * 86_400))
                     Text(L("90 days")).tag(TimeInterval?.some(90 * 86_400))
                 }
-                if editing != nil { Text(L("A new expiry counts from now.")).font(.caption).foregroundStyle(.secondary) }
+                // The Expiry heading names it; a label column here would sit at the sheet's edge.
+                .labelsHidden().frame(width: 220, alignment: .leading)
+                if editing != nil { caption(L("A new expiry counts from now.")) }
             } header: {
                 sectionHeader(L("Expiry"))
             }
@@ -340,9 +342,9 @@ private struct GrantSheet: View {
         }
         .pickerStyle(.radioGroup)
         switch draft.spaceChoice {
-        case .all: Text(L("Needed to reorder spaces, apply layouts or change themes.")).font(.caption).foregroundStyle(.secondary)
+        case .all: caption(L("Needed to reorder spaces, apply layouts or change themes."))
         case .created:
-            Text(L("The grant can create spaces and sees only those. Spaces you create in Trellis never join it.")).font(.caption).foregroundStyle(.secondary)
+            caption(L("The grant can create spaces and sees only those. Spaces you create in Trellis never join it."))
         case .chosen:
             ForEach(workspace.snapshot.spaces) { space in choice(space.name, $draft.spaces, space.id) }
         }
@@ -354,7 +356,7 @@ private struct GrantSheet: View {
         .pickerStyle(.radioGroup)
         if !draft.allProjects {
             let projects = workspace.commandPaletteProjects()
-            if projects.isEmpty { Text(L("No projects in the library.")).font(.caption).foregroundStyle(.secondary) }
+            if projects.isEmpty { caption(L("No projects in the library.")) }
             ForEach(projects) { project in choice(project.name, $draft.projects, project.id) }
         }
         Divider()
@@ -364,7 +366,7 @@ private struct GrantSheet: View {
         }
         .pickerStyle(.radioGroup)
         if !draft.allHosts {
-            Text(L("Approved hosts must be reapproved after their destination, user, port, or identity file changes.")).font(.caption).foregroundStyle(.secondary)
+            caption(L("Approved hosts must be reapproved after their destination, user, port, or identity file changes."))
             ForEach(hosts.hosts) { host in choice(host.name, $draft.hosts, host.id) }
         }
         Divider()
@@ -374,9 +376,14 @@ private struct GrantSheet: View {
         }
         .pickerStyle(.radioGroup)
         if !draft.allAgents {
-            Text(L("Limits which agents the grant can start or install; it can still read every agent's runs.")).font(.caption).foregroundStyle(.secondary)
+            caption(L("Limits which agents the grant can start or install; it can still read every agent's runs."))
             ForEach(workspace.agentCatalog.definitions) { agent in choice(agent.name, $draft.agents, agent.id) }
         }
+    }
+
+    /// A caption that wraps: without it a Form lays the text out on one line and widens itself past the sheet.
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
     private func choice<ID: Hashable>(_ title: String, _ set: Binding<Set<ID>>, _ id: ID) -> some View {
