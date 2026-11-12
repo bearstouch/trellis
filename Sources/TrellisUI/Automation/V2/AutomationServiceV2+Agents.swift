@@ -44,8 +44,9 @@ extension AutomationServiceV2 {
         case .some(let host): machines = [host]
         case nil: machines = [nil] + remoteAgentHosts().map(Optional.some)
         }
-        let availability = machines.map { availability(definition, hostID: $0) }
-        return projection.agent(definition, revision: model.automationRevisions.agents[definition.id] ?? 0, availability: availability)
+        // Not named `availability`: Swift 6.3 resolves the closure's call to the constant being declared.
+        let perMachine = machines.map { availability(definition, hostID: $0) }
+        return projection.agent(definition, revision: model.automationRevisions.agents[definition.id] ?? 0, availability: perMachine)
     }
 
     /// Hosts used as remote workspaces: with an open space, a helper check or an agent found missing there, in library order.
