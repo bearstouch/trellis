@@ -1353,6 +1353,20 @@ public struct LaunchSettingsView: View {
                 ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? L("Off") : L("After %d s", $0)).tag($0) }
             }.disabled(!model.appearance.desktopNotifications).accessibilityIdentifier("settings.commandFinishedNotification")
             caption(L("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line."))
+            Picker(L("Programs can copy to the clipboard"), selection: appearanceSetting(\.clipboardWriteAccess)) {
+                ForEach(ClipboardWriteAccess.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }.accessibilityIdentifier("settings.clipboardWriteAccess")
+            switch model.appearance.clipboardWriteAccess {
+            case .off: caption(L("Programs can't set the clipboard (OSC 52). Selecting text and ⌘C always work."))
+            case .ssh:
+                caption(L("Programs on remote hosts (saved hosts, remote workspaces and ssh or mosh sessions) can replace what you copied, as Claude Code, tmux and Neovim do over SSH. They can never read it."))
+            case .everywhere:
+                // Spoken and visible, not color-only: the risk is in the words.
+                Label(
+                    L("Risk: any output, including a file you cat or a page you curl, can silently replace what you copied. Check what you paste. Programs can never read the clipboard."),
+                    systemImage: "exclamationmark.triangle"
+                ).font(.caption).foregroundStyle(model.themeColor(.warning)).wrappingSettingsCaption().accessibilityIdentifier("settings.clipboardWriteRisk")
+            }
             Toggle(L("GPU rendering (Metal)"), isOn: appearanceSetting(\.gpuRendering)).accessibilityIdentifier("settings.gpuRendering")
             caption(L("Draws terminals with Metal, or with the CPU if Metal fails."))
             HStack {

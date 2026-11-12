@@ -82,6 +82,33 @@ final class TerminalMetalRendererTests: XCTestCase {
         XCTAssertTrue(native.isUsingMetalRenderer)
     }
 
+    /// The Metal view covers the grid; a click on it must still give the terminal the keyboard, taking it from a text field
+    /// (a sidebar filter, say).
+    @MainActor
+    func testClickOnMetalTerminalTakesKeyboardFromTextField() throws {
+        let (native, view) = try hostedTerminal()
+        defer { native.adapter.detach() }
+        let window = try XCTUnwrap(view.window)
+        view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let field = NSTextField(frame: NSRect(x: 620, y: 10, width: 200, height: 24))
+        window.contentView?.addSubview(field)
+        XCTAssertTrue(native.isUsingMetalRenderer)
+        XCTAssertTrue(window.makeFirstResponder(field))
+        let point = view.convert(NSPoint(x: 100, y: 100), to: nil)
+        let hit = try XCTUnwrap(window.contentView?.hitTest(window.contentView!.convert(point, from: nil)))
+        XCTAssertTrue(hit === view, "the grid, not the Metal view, takes the click")
+        // A test runner isn't the active app, so `sendEvent` would only try to make the window key; deliver the click
+        // to the hit view as the key window does.
+        for (type, deliver) in [(NSEvent.EventType.leftMouseDown, hit.mouseDown), (.leftMouseUp, hit.mouseUp)] {
+            deliver(
+                try XCTUnwrap(
+                    NSEvent.mouseEvent(
+                        with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                        clickCount: 1, pressure: 1)))
+        }
+        XCTAssertTrue(window.firstResponder === view, "the clicked terminal has the keyboard")
+    }
+
     @MainActor
     func testMetalLigaturesMatchCoreGraphicsAndFollowTheSetting() throws {
         let (native, view) = try hostedTerminal(jetBrains())

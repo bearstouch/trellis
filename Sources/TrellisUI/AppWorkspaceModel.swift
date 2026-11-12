@@ -1212,6 +1212,19 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
 
+    /// FR-C09: whether a program in this pane may set the clipboard (OSC 52), read when the write arrives.
+    func clipboardWriteAllowed(paneID: UUID) -> Bool {
+        ClipboardWritePolicy.allows(appearance.clipboardWriteAccess, sshPane: isSSHPane(paneID: paneID))
+    }
+
+    /// A saved host's or remote workspace's pane, one started as `ssh`/`mosh`/`autossh`, or a local shell whose authenticated
+    /// marks (FR-SI02) say it is running one of them now, alone on its line. Output can't forge the last: it needs the session's nonce.
+    func isSSHPane(paneID: UUID) -> Bool {
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return false }
+        if Self.isRemote(launch) { return true }
+        return shellStates[paneID].map(ClipboardWritePolicy.runsSSH) ?? false
+    }
+
     /// File links resolve only in local panes, read at click time so a restart is seen (FR-L04).
     func fileLinkContext(paneID: UUID) -> FileLinkContext? {
         guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch) else { return nil }
@@ -1563,6 +1576,7 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyAppearance(terminalAppearance)
         terminal.optionAsMeta = keyboard.optionAsMeta
         terminal.searchShortcut = keyboard.shortcuts[.findInPane]
+        terminal.allowsClipboardWrite = { [weak self] in self?.clipboardWriteAllowed(paneID: pane.id) ?? false }
         terminal.inputSuspended = terminalInputBlocked
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
