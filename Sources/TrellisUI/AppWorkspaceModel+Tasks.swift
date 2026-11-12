@@ -42,6 +42,15 @@ public struct TaskCatalog: Equatable, Sendable {
 
     /// The file already has a task with this command and folder.
     public func contains(_ task: LaunchTask) -> Bool { tasks.contains { $0.command == task.command && $0.cwd == task.cwd } }
+
+    /// The Tasks view's filter (FR-TK02): every word of the query, ignoring case and accents, appears in the task's
+    /// name, command, group or detected source. An empty query matches everything.
+    public static func matches(_ task: LaunchTask, detail: String? = nil, query: String) -> Bool {
+        let words = query.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty else { return true }
+        let haystack = [task.name, task.command, task.group?.rawValue, detail].compactMap { $0 }.joined(separator: " ")
+        return words.allSatisfy { haystack.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
 }
 
 /// A file task waiting for the user to review the file's tasks (FR-TK06). Running uses this parsed copy, never a

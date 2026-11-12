@@ -9,6 +9,9 @@ struct TasksSidebarView: View {
     /// The pane the list was last read for; a `cd` reads it again without flashing the progress view.
     @State private var loadedPane: UUID?
     private var loaded: Bool { loadedPane == paneID }
+    /// The filter over the listed tasks' names, commands and groups; kept while focus moves between panes.
+    @State private var query = ""
+    @FocusState private var queryFocused: Bool
     /// A `cd`, or a remote shell's first authenticated mark, changes the folder and reads the project again (FR-TK02).
     private var refreshKey: [String?] { [paneID.uuidString, model.paneDirectory(paneID) ?? model.remoteWorkingDirectory(paneID: paneID)] }
 
@@ -23,6 +26,11 @@ struct TasksSidebarView: View {
                 .help(L("Reload launch.json")).accessibilityLabel(L("Reload Tasks"))
             }
             Divider().overlay(model.separatorOverlay)
+            if loaded, let catalog = model.taskCatalog, catalog.paneID == paneID, !(catalog.tasks.isEmpty && catalog.detected.isEmpty) {
+                TextField(L("Find tasks"), text: $query).textFieldStyle(.roundedBorder).focused($queryFocused).accessibilityLabel(L("Find tasks"))
+                    .onExitCommand { query = "" }
+                    .padding(.horizontal, 12).padding(.top, 10)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if !loaded {
@@ -70,29 +78,51 @@ struct TasksSidebarView: View {
         case .invalid(let reason):
             Label(reason, systemImage: "exclamationmark.triangle").font(.caption).fixedSize(horizontal: false, vertical: true)
         case .loaded(let file):
-            if file.tasks.isEmpty { Text(L("No tasks yet.")).font(.caption).foregroundStyle(muted) }
-            ForEach(file.tasks, id: \.name) { task in
+            let tasks = file.tasks.filter { TaskCatalog.matches($0, query: query) }
+            if file.tasks.isEmpty && query.allSatisfy(\.isWhitespace) {
+                Text(L("No tasks yet.")).font(.caption).foregroundStyle(muted)
+            } else if tasks.isEmpty {
+                Text(L("No matching tasks.")).font(.caption).foregroundStyle(muted)
+            }
+            ForEach(tasks, id: \.name) { task in
                 TaskRow(model: model, catalog: catalog, task: task, detected: nil, env: file.environment(for: task).map(\.name))
             }
         }
-        if !catalog.detected.isEmpty {
+        let detected = catalog.detected.filter { TaskCatalog.matches($0.task, detail: $0.detail, query: query) }
+        if !detected.isEmpty {
             Divider().padding(.vertical, 2)
             Text(L("Detected")).font(.subheadline.weight(.semibold))
-            ForEach(catalog.detected) { detected in TaskRow(model: model, catalog: catalog, task: detected.task, detected: detected, env: []) }
+            ForEach(detected) { detected in TaskRow(model: model, catalog: catalog, task: detected.task, detected: detected, env: []) }
         }
     }
 
-    /// The focused pane's task, in words and a symbol (FR-TK07). Only a running task's elapsed time changes, so the
-    /// timeline ticks only then.
+    /// The focused pane's task, in words and a symbol (FR-TK07). While it is active the stop symbol is a button: Stop,
+    /// then Force Stop after the wait (FR-TK08). Only an active task's text or button changes, so the timeline ticks only then.
     @ViewBuilder private var runStatus: some View {
         if let run = model.taskRuns[paneID] {
-            TimelineView(.periodic(from: .now, by: run.isRunning ? 1 : 3600)) { context in
-                Label(run.statusText(now: context.date), systemImage: symbol(run)).font(.system(size: 12, weight: .medium)).monospacedDigit()
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Capsule().fill(model.themeColor(.accent).opacity(run.isActive ? 0.18 : 0.08)))
-                    .accessibilityElement(children: .ignore).accessibilityLabel(L("Task")).accessibilityValue(run.statusText(now: context.date))
+            TimelineView(.periodic(from: .now, by: run.isActive ? 0.5 : 3600)) { context in
+                HStack(spacing: 6) {
+                    if run.isActive { stopButton(run) } else { Image(systemName: symbol(run)).accessibilityHidden(true) }
+                    Text(run.statusText(now: context.date)).accessibilityLabel(L("Task")).accessibilityValue(run.statusText(now: context.date))
+                }
+                .font(.system(size: 12, weight: .medium)).monospacedDigit()
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(model.themeColor(.accent).opacity(run.isActive ? 0.18 : 0.08)))
+                .accessibilityElement(children: .contain)
             }
         }
+    }
+
+    private func stopButton(_ run: TaskRun) -> some View {
+        let force = model.canForceStop(paneID: paneID)
+        return Button {
+            if force { model.forceStopTask(paneID: paneID) } else { model.stopTask(paneID: paneID) }
+        } label: {
+            Image(systemName: force ? "stop.circle.fill" : "stop.circle")
+        }
+        .buttonStyle(.borderless)
+        .help(force ? L("Send Ctrl-\\ (SIGQUIT) to the task") : L("Send Ctrl-C (SIGINT) to the task"))
+        .accessibilityLabel(force ? L("Force stop %@", run.name) : L("Stop %@", run.name))
     }
 
     private func symbol(_ run: TaskRun) -> String {

@@ -32,6 +32,10 @@ The first time you run a task from a `launch.json`, Trellis asks you to review i
 
 Before the line, Trellis sends Ctrl-E and Ctrl-U (end of line, then delete to its start) to clear anything half-typed at the prompt. Quoting follows the pane's shell: POSIX single quotes for zsh and bash, fish's own escapes for fish.
 
+### Find a task
+
+Type in **Find tasks** at the top of the Tasks view to keep only the tasks whose name, command, group or source contains every word you type; case and accents don't matter. Press Escape to clear it.
+
 ### While it runs
 
 The top of the Tasks view shows the focused pane's task:
@@ -48,7 +52,7 @@ Each state has a symbol as well as a color, and VoiceOver reads the same words. 
 
 ### Stop a task
 
-**Stop** sends Ctrl-C to the task, and you can press it again. If the task is still running 2 seconds after the first Stop, the button becomes **Force Stop**, which sends Ctrl-\\. The shell and the pane stay open either way.
+**Stop** sends Ctrl-C to the task, and you can press it again. If the task is still running 2 seconds after the first Stop, the button becomes **Force Stop**, which sends Ctrl-\\. The shell and the pane stay open either way. While the task is starting or running, the stop symbol next to its status at the top of the Tasks view is the same button: click it to stop the task (it fills in once it would force stop).
 
 ## Detected tasks
 
