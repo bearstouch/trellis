@@ -837,26 +837,31 @@ struct TrellisMain {
                 clientID: try? RemoteClientIdentity.load(stateDirectory: directory))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
-            let events = EventHub(instanceID: instanceID, grants: grantStore)
+            // The typed event stream (docs/api/events.md): one sequence and a ring of 2,000 for the socket and MCP.
+            let events = EventHubV2(instanceID: instanceID, grants: grantStore)
+            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
             let handler = AuthorizingControlHandler(
-                grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
+                grants: grantStore, domain: AutomationServiceV2(model: model, hosts: hosts, projects: projects, instanceID: instanceID), events: events)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
-            let forwarder = EventForwarder(hub: events, instanceID: instanceID)
-            model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
-            // Appearance is global; the hub gates it on theme.read, not window scope.
-            let appearanceResource = UUID(uuidString: "00000000-0000-0000-0000-00000000A99E")!
+            let forwarder = EventForwarder(
+                hub: events, instanceID: instanceID,
+                delivered: { closed in await grantStore.forgetCreatedSpaces(closed) })
+            model.onWorkspaceTransition = { forwarder.send(.transition($0, $1)) }
+            model.onLiveEvents = { forwarder.send(.live($0)) }
+            hosts.onHostsChanged = { forwarder.send(.live(EventDraftV2.hostChanges($0, $1))) }
+            hosts.remote?.onHelperChanged = { [weak hosts] id, record in
+                let host = EventHostV2(id: id, connectionRevision: hosts?.hosts.first { $0.id == id }?.connectionRevision)
+                forwarder.send(.live([.remoteHelper(host: host, status: record?.state.rawValue ?? "unknown")]))
+            }
             model.onAppearanceChanged = { [weak model] in
                 guard let model else { return }
                 let settings = model.appearance
                 forwarder.send(
-                    .metadata([
-                        WorkspaceEvent(
-                            type: "appearance.changed", resourceID: appearanceResource, spaceID: nil,
-                            data: [
-                                "mode": settings.chromeMode.rawValue, "lightThemeId": settings.lightThemeID, "darkThemeId": settings.darkThemeID,
-                                "effectiveThemeId": model.effectiveTheme.id, "revision": String(model.appearanceRevision)
-                            ])
+                    .live([
+                        .appearance(
+                            mode: settings.chromeMode.rawValue, lightThemeID: settings.lightThemeID, darkThemeID: settings.darkThemeID,
+                            effectiveThemeID: model.effectiveTheme.id, revision: model.appearanceRevision)
                     ]))
             }
             model.onSessionOutput = { [weak model] session, pane, data, next in
@@ -875,8 +880,18 @@ struct TrellisMain {
                         control.closeConnections(await handler.connections(for: grantID))
                     }
                 }
+                // Narrowing applies at once (permissions.md#editing-grants): subscriptions that lost access end, MCP sessions
+                // start again with the new tool list, and socket connections get AUTH_REQUIRED on their next call. Every edit
+                // (reapproval included) sends grant.changed to that grant's own subscribers and pollers first.
+                await grantStore.onEdit { edit in
+                    Task {
+                        await events.grantEdited(edit.new, narrowed: edit.change.narrows)
+                        guard edit.change.narrows else { return }
+                        await mcp.closeSessions(grantID: edit.new.id)
+                    }
+                }
             }
-            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
+            projects.onProjectsChanged = { forwarder.send(.live(EventDraftV2.projectChanges($0, $1))) }
             let delegate = AppDelegate(
                 model: model, hosts: hosts, projects: projects, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate

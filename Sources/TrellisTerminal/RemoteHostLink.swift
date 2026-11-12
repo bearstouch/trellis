@@ -45,7 +45,26 @@ public final class RemoteHostLink {
         /// An automatic attempt couldn't reach the host; a later one may (FR-RW07).
         case unreachable(String)
         /// An automatic attempt needs the person: a password, a passphrase or a host-key decision. Never retried alone.
-        case needsInput(String)
+        case needsInput(String, RemoteLinkReason)
+
+        /// The stable code for this failure (protocol 2), beside the words the app shows.
+        public var reason: RemoteLinkReason {
+            switch self {
+            case .spawn: .sshUnavailable
+            case .exited: .sshExited
+            case .unsupported: .helperUnsupported
+            case .noChecksumTool: .noChecksumTool
+            case .artifactUnavailable: .helperUnavailable
+            case .declined, .remote("MISSING"): .helperMissing
+            case .remote("DIGEST"), .remote("MKDIR"), .remote("GZIP"): .installFailed
+            case .remote: .hostRefused
+            case .incompatible: .helperIncompatible
+            case .cancelled: .cancelled
+            case .lost: .lost
+            case .unreachable: .hostUnreachable
+            case .needsInput(_, let reason): reason
+            }
+        }
     }
 
     public enum State: Equatable, Sendable { case idle, connecting, installing, connected, closed, failed(Failure) }
@@ -96,7 +115,7 @@ public final class RemoteHostLink {
             try? await Task.sleep(for: .milliseconds(200))
             switch RemoteSSHDiagnosis.classify(exitCode: code, output: console.screenText) {
             case .unreachable(let reason): result = .failure(.unreachable(reason))
-            case .needsInput(let reason): result = .failure(.needsInput(reason))
+            case .needsInput(let text, let reason): result = .failure(.needsInput(text, reason))
             }
         }
         // close() during an await above: never report (or stay) connected, or retryable, after the caller closed the link.

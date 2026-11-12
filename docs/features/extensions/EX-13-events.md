@@ -29,7 +29,7 @@ Events come from `EventHub`, the same source as API clients. Extensions get only
 - [ ] **Given** an agent pane changes to Needs you, **when** subscribed to `agent.state`, **then** the extension receives `needsYou` for that pane.
 - [ ] **Given** a task run starts and finishes, **when** subscribed to `task.state`, **then** both are delivered.
 - [ ] **Given** the focused repository's branch or changed-file count changes, **when** subscribed to `repository.changed` with `git.read`, **then** it is delivered.
-- [ ] **Given** an API client subscribed to the new topics, **when** they occur, **then** it receives them as documented in `docs/api/output-events.md`.
+- [ ] **Given** an API client subscribed to the new topics, **when** they occur, **then** it receives them as documented in `docs/api/events.md`.
 - [ ] **Given** an extension falls behind the 1,000-event ring, **when** it catches up, **then** it gets `events.gap`.
 - [ ] **Given** the extension is disabled, **when** the next event is delivered, **then** it doesn't reach the extension.
 

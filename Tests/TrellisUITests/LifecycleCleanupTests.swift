@@ -46,7 +46,8 @@ final class LifecycleCleanupTests: XCTestCase {
     /// One live session (or a failed launch every tenth cycle), then a full close.
     @MainActor
     private func cycle(_ h: Harness, index: Int) async throws -> Set<pid_t> {
-        let space: String = try await h.value("spaceId", "space.create", ["name": "Cycle \(index)"])
+        let created: [String: Any] = try await h.value("space", "space.create", ["name": "Cycle \(index)"])
+        let space = try XCTUnwrap(created["id"] as? String)
         let pane = try XCTUnwrap(h.model.presentation.activePane?.id)
         let launch: [String: Any] =
             index % 10 == 9

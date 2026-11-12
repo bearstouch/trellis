@@ -3,7 +3,8 @@ import Foundation
 
 /// Token-free discovery document published in the Application Support directory.
 public struct ControlDiscovery: Codable, Equatable, Sendable {
-    public static let currentProtocolVersion = 1
+    /// The only protocol `auth.authenticate` accepts (API2-01).
+    public static let currentProtocolVersion = 2
     public let protocolVersion: Int
     public let instanceID: UUID
     public let socketPath: String

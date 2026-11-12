@@ -15,7 +15,7 @@ The spec becomes the contract pages the repo already uses for other features. Ph
 - `docs/api/extension-ui.md`: the UI schema v1 component reference.
 - `docs/api/extension-manifest.schema.json` and `docs/api/extension-ui.schema.json`.
 - An example fixture extension in `docs/extensions/example/`.
-- Updates to `mkdocs.yml`, the right sidebar page, `docs/api/authorization.md` (the new `git.read`, `terminal.open` and `clipboard.write` permissions), `docs/api/methods.md` (`extension.list`, `extension.reload`), `docs/api/output-events.md` (`agent.state`, `task.state`, `repository.changed`), `docs/api/errors.md` (the new codes) and `docs/project/roadmap.md` (the deferred list).
+- Updates to `mkdocs.yml`, the right sidebar page, `docs/api/permissions.md` (the new `git.read`, `terminal.open` and `clipboard.write` permissions), `docs/api/methods.md` (`extension.list`, `extension.reload`), `docs/api/events.md` (`agent.state`, `task.state`, `repository.changed`), the error table in `docs/api/index.md` (the new codes) and `docs/project/roadmap.md` (the deferred list).
 
 **Out**
 
@@ -26,16 +26,16 @@ The spec becomes the contract pages the repo already uses for other features. Ph
 
 - [ ] **Given** the docs site, **when** I run the MkDocs build, **then** the new pages are in the nav and every internal link resolves.
 - [ ] **Given** `docs/features/extensions.md`, **when** I read it, **then** it lists FR-EX01–FR-EX29 with the same acceptance checks and phases as this specification.
-- [ ] **Given** `docs/api/errors.md`, **when** I search it, **then** it defines `PERMISSION_DENIED`, `PROMPT_DENIED`, `PROMPT_LIMIT`, `NETWORK_NOT_DECLARED`, `USER_GESTURE_REQUIRED`, `EXTENSION_SUSPENDED`, `NOT_SIGNED_IN` and `AUTH_FAILED`.
+- [ ] **Given** the error table in `docs/api/index.md`, **when** I search it, **then** it defines `PERMISSION_DENIED`, `PROMPT_DENIED`, `PROMPT_LIMIT`, `NETWORK_NOT_DECLARED`, `USER_GESTURE_REQUIRED`, `EXTENSION_SUSPENDED`, `NOT_SIGNED_IN` and `AUTH_FAILED`.
 - [ ] **Given** the example fixture in `docs/extensions/example/`, **when** I validate its `package.json` against `docs/api/extension-manifest.schema.json`, **then** it passes.
 - [ ] **Given** a render tree in the API docs, **when** I validate it against `docs/api/extension-ui.schema.json`, **then** it passes, and the schema lists exactly the 21 v1 components.
-- [ ] **Given** `docs/api/output-events.md`, **when** I read it, **then** `agent.state`, `task.state` and `repository.changed` are documented for automation clients too.
+- [ ] **Given** `docs/api/events.md`, **when** I read it, **then** `agent.state`, `task.state` and `repository.changed` are documented for automation clients too.
 - [ ] **Given** `docs/project/roadmap.md`, **when** I read it, **then** the Deferred list from this specification is recorded there.
 
 ## Implementation notes
 
 - New pages: `docs/features/extensions.md`, `docs/api/extensions.md`, `docs/api/extension-ui.md`, both schemas and `docs/extensions/example/`.
-- Existing pages to update: `docs/features/sidebar.md`, `docs/api/authorization.md`, `docs/api/methods.md`, `docs/api/output-events.md`, `docs/api/errors.md`, `docs/project/roadmap.md` and `mkdocs.yml`.
+- Existing pages to update: `docs/features/sidebar.md`, `docs/api/permissions.md`, `docs/api/methods.md`, `docs/api/events.md`, the error table in `docs/api/index.md`, `docs/project/roadmap.md` and `mkdocs.yml`.
 - Follow the style of `docs/features/sidebar.md` and `docs/features/agents.md`: short sentences, a requirements table with acceptance checks.
 - Once the contract pages exist, this `SPEC.md` either becomes a pointer to them or is removed, and the stories link to the new pages.
 

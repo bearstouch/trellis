@@ -68,7 +68,7 @@ A host you reach by typing `ssh` inside a local shell isn't treated as remote: i
 - The command line is kept only while the session runs. It's never saved, logged, exported or shown to the automation API. Only the program name appears, as a title and in notifications.
 - The folder a shell reports is saved only as a local pane's starting folder for next launch and, unless you turn it off, in your [directory history](directory-jump.md). A folder reported in an SSH pane is never saved.
 - Programs you run can't fake the reports of a local shell: each session uses a random secret that Trellis doesn't pass on to them.
-- Through the [automation API](../api/index.md), `session.get` reports a pane's last exit status, and its current folder only to clients allowed to run commands.
+- Through the [automation API](../api/index.md), `pane.get` reports a pane's last exit status, and its current folder only to clients allowed to run commands; `session.execute` can wait for a command and return its exit status, and `command.finished` events report each command.
 
 ## Limits
 

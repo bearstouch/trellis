@@ -19,65 +19,25 @@ final class DeliveryLog: @unchecked Sendable {
     }
 }
 
+/// What the event hub shares with every transport: the delivery budget, revocation, output cursors and the socket's
+/// outbound limit. Typed events, replay, polling and redaction are in `EventsV2Tests`.
 final class EventHubTests: XCTestCase {
     private let clock = TestClock()
     private let secrets = MemorySecrets()
 
-    private func event(_ space: UUID, _ type: String = "space.updated") -> WorkspaceEvent {
-        WorkspaceEvent(type: type, resourceID: space, spaceID: space, data: ["revision": "1"])
-    }
-
-    func testMetadataReplayGap() async throws {
-        let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
-        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
-        let log = DeliveryLog()
-        await hub.setDelivery { _, data in log.deliver(data) }
-        let space = UUID()
-        await hub.publish((0..<1_001).map { _ in event(space) })
-        let current = await hub.currentSequence
-        XCTAssertEqual(current, 1_001)
-
-        // Sequence 1 was evicted: the client is told to resnapshot, nothing is replayed.
-        let gapped = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["resources"], resourceIDs: [], afterSequence: 0)
-        XCTAssertNotNil(try? gapped.get())
-        XCTAssertEqual(log.messages.map { $0["method"] as? String }, ["events.gap"])
-        XCTAssertEqual((log.messages[0]["params"] as? [String: Any])?["oldestSequence"] as? Int, 2)
-        XCTAssertEqual((log.messages[0]["params"] as? [String: Any])?["action"] as? String, "resnapshot")
-
-        // From the oldest retained sequence, all 1,000 retained events replay in order.
-        _ = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["resources"], resourceIDs: [], afterSequence: 1)
-        let replayed = log.messages.dropFirst().compactMap { ($0["params"] as? [String: Any])?["sequence"] as? Int }
-        XCTAssertEqual(replayed, Array(2...1_001))
-        let future = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["resources"], resourceIDs: [], afterSequence: 5_000)
-        guard case .failure(let error) = future else { return XCTFail("Accepted a future sequence") }
-        XCTAssertEqual(error.appCode, "INVALID_CURSOR")
-    }
-
-    func testReplayKeepsToTheSubscribedTopics() async throws {
-        let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
-        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
-        let log = DeliveryLog()
-        await hub.setDelivery { _, data in log.deliver(data) }
-        let space = UUID()
-        await hub.publish([event(space), event(space, "selection.changed"), event(space, "session.state"), event(space, "selection.changed")])
-        _ = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["selection"], resourceIDs: [], afterSequence: 0)
-        let replayed = log.messages.compactMap { ($0["params"] as? [String: Any])?["sequence"] as? Int }
-        XCTAssertEqual(replayed, [2, 4], "Only selection events replay, as they would have been delivered live")
-    }
+    private func ref(_ space: UUID) -> PaneRefV2 { PaneRefV2(pane: UUID(), session: UUID(), tab: UUID(), space: space) }
 
     func testSlowOrRevokedSubscriberStops() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "r", capabilities: [.metadataRead, .sessionOutputRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
-        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
+        let (grant, _) = try await store.create(
+            name: "r", capabilities: [.workspaceRead, .sessionOutputRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
+        let hub = EventHubV2(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
         let slow = DeliveryLog()
         slow.budget = 2_000
-        let slowConnection = UUID()
         await hub.setDelivery { _, data in slow.deliver(data) }
-        _ = await hub.subscribe(connectionID: slowConnection, grant: grant, topics: ["resources", "output"], resourceIDs: [], afterSequence: nil)
+        _ = await hub.subscribe(connectionID: UUID(), grant: grant, filter: EventFilterV2(topics: [.shell, .output]), afterSequence: nil, instanceID: nil)
         let space = UUID()
-        for _ in 0..<50 { await hub.publish([event(space)]) }
+        for _ in 0..<50 { await hub.publish([.commandStarted(ref(space))]) }
         let delivered = slow.messages.count
         XCTAssertLessThan(delivered, 50, "Delivery stopped at the queue budget")
         let remaining = await hub.subscriptionCount
@@ -85,54 +45,47 @@ final class EventHubTests: XCTestCase {
         await hub.publishOutput(session: UUID(), spaceID: space, data: Data(repeating: 1, count: 10), next: OutputCursor(instanceID: UUID(), sessionID: UUID(), offset: 10))
         XCTAssertEqual(slow.messages.count, delivered)
 
+        // A sequence ahead of now is refused rather than waited for.
+        guard case .failure(let future) = await hub.subscribe(connectionID: UUID(), grant: grant, filter: EventFilterV2(topics: [.shell]), afterSequence: 5_000, instanceID: nil)
+        else { return XCTFail("Accepted a future sequence") }
+        XCTAssertEqual(future.appCode, "INVALID_CURSOR")
+
         // Revocation ends observation at the next event.
         let log = DeliveryLog()
         await hub.setDelivery { _, data in log.deliver(data) }
-        _ = await hub.subscribe(connectionID: UUID(), grant: grant, topics: ["resources"], resourceIDs: [], afterSequence: nil)
-        await hub.publish([event(space)])
+        _ = await hub.subscribe(connectionID: UUID(), grant: grant, filter: EventFilterV2(topics: [.shell]), afterSequence: nil, instanceID: nil)
+        await hub.publish([.commandStarted(ref(space))])
         XCTAssertEqual(log.messages.count, 1)
         try await store.revoke(grant.id)
-        await hub.publish([event(space)])
+        await hub.publish([.commandStarted(ref(space))])
         XCTAssertEqual(log.messages.count, 1)
-        let afterRevoke = await hub.subscriptionCount
-        XCTAssertEqual(afterRevoke, 0)
-    }
-
-    func testRedactionByScopeAndOutputCapability() async throws {
-        let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let visible = UUID(), hidden = UUID()
-        let (scoped, _) = try await store.create(name: "s", capabilities: [.metadataRead], spaceScope: .spaces([visible]), hostScope: .all, lifetime: 3600)
-        let hub = EventHub(instanceID: UUID(), grants: store, now: { [clock] in clock.now })
-        let log = DeliveryLog()
-        await hub.setDelivery { _, data in log.deliver(data) }
-        _ = await hub.subscribe(connectionID: UUID(), grant: scoped, topics: ["resources", "session", "output"], resourceIDs: [], afterSequence: nil)
-        await hub.publish([event(hidden), event(visible), WorkspaceEvent(type: "session.state", resourceID: UUID(), spaceID: hidden, data: ["state": "running"])])
-        await hub.publishOutput(session: UUID(), spaceID: visible, data: Data("secret".utf8), next: OutputCursor(instanceID: UUID(), sessionID: UUID(), offset: 6))
-        XCTAssertEqual(log.messages.compactMap { ($0["params"] as? [String: Any])?["resourceId"] as? String }, [visible.uuidString])
-        XCTAssertFalse(log.messages.description.contains(hidden.uuidString))
     }
 
     func testOutputEventsCarryStartCursorAndGap() async throws {
         let store = GrantStore(url: nil, secrets: secrets, now: { [clock] in clock.now })
-        let (grant, _) = try await store.create(name: "o", capabilities: [.metadataRead, .sessionOutputRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
+        let (grant, _) = try await store.create(
+            name: "o", capabilities: [.workspaceRead, .sessionOutputRead], spaceScope: .all, hostScope: .all, lifetime: 3600)
         let instance = UUID()
-        let hub = EventHub(instanceID: instance, grants: store, now: { [clock] in clock.now })
+        let hub = EventHubV2(instanceID: instance, grants: store, now: { [clock] in clock.now })
         let log = DeliveryLog()
         await hub.setDelivery { _, data in log.deliver(data) }
         let connection = UUID()
-        guard case .success(let subscription) = await hub.subscribe(connectionID: connection, grant: grant, topics: ["output"], resourceIDs: [], afterSequence: nil) else {
-            return XCTFail("Subscribe failed")
-        }
+        _ = await hub.subscribe(connectionID: connection, grant: grant, filter: EventFilterV2(topics: [.shell]), afterSequence: nil, instanceID: nil)
+        guard case .success(let (subscription, _)) = await hub.subscribe(connectionID: connection, grant: grant, filter: EventFilterV2(topics: [.output]), afterSequence: nil, instanceID: nil)
+        else { return XCTFail("Subscribe failed") }
         let session = UUID()
         await hub.publishOutput(session: session, spaceID: UUID(), data: Data("abc".utf8), next: OutputCursor(instanceID: instance, sessionID: session, offset: 10), gap: true)
         let data = try XCTUnwrap((log.messages.last?["params"] as? [String: Any])?["data"] as? [String: Any])
         XCTAssertEqual(data["cursor"] as? String, OutputCursor(instanceID: instance, sessionID: session, offset: 7).token)
         XCTAssertEqual(data["gap"] as? Bool, true)
         // Unsubscribed (or disconnected) subscribers receive nothing further.
-        let removed = await hub.unsubscribe(subscription.id, connectionID: connection)
+        let removed = await hub.unsubscribe(subscription, connectionID: connection)
         XCTAssertTrue(removed)
         await hub.publishOutput(session: session, spaceID: nil, data: Data("d".utf8), next: OutputCursor(instanceID: instance, sessionID: session, offset: 11))
         XCTAssertEqual(log.messages.count, 1)
+        let remaining = await hub.subscriptionCount
+        XCTAssertEqual(remaining, 1, "The other subscription stays")
+        XCTAssertFalse(hub.hasOutputSubscribers)
     }
 
     func testCursorTokenRoundTripAndRejectsGarbage() {

@@ -159,7 +159,7 @@ A definition written for a newer Trellis keeps working: an `integration` or `ico
 - Your interactive shell startup files run before the agent starts. One that waits for input holds the agent until you answer it in the pane.
 - On a remote host, Trellis learns that an agent is missing only when it fails to start; it doesn't check ahead.
 - After Trellis reconnects to a pane that kept running, the tab shows the agent's last reported state; **Done** then counts as seen.
-- Automation reports an agent pane and its state (see [Methods](../api/methods.md)), but can't yet start agent panes or list agents.
+- Automation can list agents, start, restart, answer and install them, and wait for their state with events (see [Methods](../api/methods.md#agents)).
 - Extra arguments per agent aren't configurable; add a definition of your own instead.
 - Typed agents are recognised by the program name alone. `npx claude` and `cd x && claude` aren't recognised, and neither is an alias in zsh or fish (bash reports the expanded command, so an alias works there). An agent started over `ssh`, in a nested shell or resumed with `fg` isn't recognised either. Another program with the same name, such as a different `pi`, shows that agent's icon, and gets its wiring arguments through the shell function; run it with `command pi` or turn the setting off.
 - A typed agent gets live state only on this Mac, with the setting on, in a shell started after it was turned on, and when your own function or alias doesn't take its place. Otherwise a bell shows the generic **Input** badge, as for any program. Open the agent from the Agents view to get live state there.

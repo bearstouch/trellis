@@ -60,6 +60,17 @@ final class ProjectJSONTests: XCTestCase {
         XCTAssertEqual(String(decoding: ProjectJSON.encode(project), as: UTF8.self), text)
     }
 
+    /// FR-PL10: an agent pane survives the JSON form (it used to be refused as an unknown field, and dropped on export).
+    func testAnAgentPaneRoundTrips() throws {
+        let json = #"{"name":"P","tabs":[{"title":"T","root":{"type":"split","axis":"x","children":[{"type":"pane","title":"Codex","agent":"trellis-codex"},{"type":"pane"}]}}]}"#
+        let project = try ProjectJSON.parse(Data(json.utf8)).get()
+        XCTAssertEqual(project.agentCount, 1)
+        let again = try ProjectJSON.parse(ProjectJSON.encode(project)).get()
+        XCTAssertEqual(again.tabs.first?.root.panes.first?.pane.agent, "trellis-codex")
+        XCTAssertEqual(again.tabs, project.tabs)
+        XCTAssertNotNil(String(decoding: ProjectJSON.encode(project), as: UTF8.self).range(of: #""title": "Codex",\n\s*"agent": "trellis-codex""#, options: .regularExpression))
+    }
+
     func testUnknownFieldsAndRuleBreaksAreReportedWithTheirPlace() {
         func problems(_ json: String) -> [String] {
             guard case .failure(let error) = ProjectJSON.parse(Data(json.utf8)) else { return [] }

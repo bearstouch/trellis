@@ -3,7 +3,8 @@ import Darwin
 import Foundation
 import Security
 
-public enum Capability: String, Codable, CaseIterable, Sendable, Comparable {
+/// A protocol 1 capability name, read only when migrating a schema 1 `grants.json` (migration.md, Capabilities).
+enum CapabilityV1: String, Decodable, Sendable {
     case metadataRead = "metadata.read"
     case layoutWrite = "layout.write"
     case sessionStart = "session.start"
@@ -15,32 +16,26 @@ public enum Capability: String, Codable, CaseIterable, Sendable, Comparable {
     case themeWrite = "theme.write"
     case hostRead = "host.read"
     case hostWrite = "host.write"
-
-    public static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
-
-    /// Plain-language description shown when creating a grant.
-    public var summary: String {
-        switch self {
-        case .metadataRead: "List spaces, tabs, panes, and session states"
-        case .layoutWrite: "Create, rename, split, resize, and focus layout (new panes stay stopped)"
-        case .sessionStart: "Start stopped sessions with the default shell or an approved host"
-        case .sessionInput: "Type into terminals, including control keys (can run commands)"
-        case .sessionExecute: "Run arbitrary programs and shell commands"
-        case .sessionOutputRead: "Read terminal screens, scrollback, and output"
-        case .sessionClose: "Terminate running sessions"
-        case .themeRead: "Read themes and appearance (global)"
-        case .themeWrite: "Change themes and appearance for every space (global)"
-        case .hostRead: "Read saved hosts, aliases, and identity-file paths"
-        case .hostWrite: "Create, edit, and delete saved hosts"
-        }
-    }
 }
 
-public enum SpaceScope: Codable, Equatable, Sendable {
+/// The spaces a grant reaches (permissions.md#scopes), and with them their tabs, panes and sessions.
+public enum SpaceScope: Equatable, Sendable {
     case all
+    /// Only the spaces this grant created through protocol 2 (`AutomationGrant.createdSpaces`). Protocol 1 treats it as
+    /// that set of spaces, so it can't create spaces (that needs all spaces there).
+    case created
     case spaces(Set<UUID>)
-    // Stored under the name from before windows were renamed spaces, so grants.json reads the same in every build.
-    private enum CodingKeys: String, CodingKey { case all, spaces = "windows" }
+}
+
+public enum ProjectScope: Equatable, Sendable {
+    case all
+    case projects(Set<UUID>)
+}
+
+/// Agent definition IDs (`trellis-claude-code`). Limits starting and installing; runs of other agents stay readable.
+public enum AgentScope: Equatable, Sendable {
+    case all
+    case agents(Set<String>)
 }
 
 /// A host approved for this grant at a specific connection revision.
@@ -50,28 +45,295 @@ public struct HostApproval: Codable, Equatable, Hashable, Sendable {
     public init(hostID: UUID, connectionRevision: UInt64) { self.hostID = hostID; self.connectionRevision = connectionRevision }
 }
 
-public enum HostScope: Codable, Equatable, Sendable {
+public enum HostScope: Equatable, Sendable {
     case all
     case approved(Set<HostApproval>)
 }
 
-/// Grant metadata. The token itself is never stored here, only its SHA-256.
+public struct GrantScope: Equatable, Sendable {
+    public var spaces: SpaceScope
+    public var projects: ProjectScope
+    public var hosts: HostScope
+    public var agents: AgentScope
+    public init(spaces: SpaceScope = .all, projects: ProjectScope = .all, hosts: HostScope = .all, agents: AgentScope = .all) {
+        self.spaces = spaces; self.projects = projects; self.hosts = hosts; self.agents = agents
+    }
+}
+
+/// The grant sheet's presets (permissions.md#presets). A grant stores its capabilities, which are what is enforced, and
+/// the preset they came from, for display; changing a capability makes it Custom.
+public enum GrantPreset: String, Codable, CaseIterable, Sendable {
+    case observer, `operator`, agentOrchestrator, fullControl, custom
+
+    /// Exactly the preset's capabilities; nil for Custom.
+    public var capabilities: Set<CapabilityV2>? {
+        switch self {
+        case .observer: [.workspaceRead, .sessionOutputRead, .hostRead, .projectRead, .taskRead, .themeRead]
+        case .operator: Self.observer.capabilities!.union([.workspaceWrite, .sessionStart, .sessionInput, .sessionClose, .taskRun])
+        case .agentOrchestrator: Self.operator.capabilities!.union([.agentControl, .agentRespond, .projectLaunch, .remoteConnect])
+        case .fullControl: Set(CapabilityV2.allCases)
+        case .custom: nil
+        }
+    }
+
+    /// The scope the sheet starts from. Host access stays opt-in (approved hosts) wherever the preset can start sessions,
+    /// except Full control; an orchestrator sees only the spaces it creates.
+    public var defaultScope: GrantScope {
+        switch self {
+        case .observer, .fullControl, .custom: GrantScope()
+        case .operator: GrantScope(hosts: .approved([]))
+        case .agentOrchestrator: GrantScope(spaces: .created, hosts: .approved([]))
+        }
+    }
+}
+
+/// Everything the user chooses for a grant: all but its token, times and runtime state.
+public struct GrantSettings: Equatable, Sendable {
+    public var name: String
+    public var preset: GrantPreset
+    public var capabilities: Set<CapabilityV2>
+    public var scope: GrantScope
+    public init(name: String, preset: GrantPreset = .custom, capabilities: Set<CapabilityV2>, scope: GrantScope = GrantScope()) {
+        self.name = name; self.preset = preset; self.capabilities = capabilities; self.scope = scope
+    }
+}
+
+/// Grant metadata, stored as a `grants.json` schema 2 record. The token itself is never stored here, only its SHA-256.
 public struct AutomationGrant: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
     public let tokenHash: String
-    public var capabilities: Set<Capability>
+    public var preset: GrantPreset
+    /// Increases on every edit (permissions.md#editing-grants).
+    public var revision: UInt64
+    /// Protocol 2 capabilities: what is enforced. Protocol 1 sees them through `capabilities`.
+    public var capabilitiesV2: Set<CapabilityV2>
     public var spaceScope: SpaceScope
     public var hostScope: HostScope
+    public var projectScope: ProjectScope
+    public var agentScope: AgentScope
+    /// Spaces this grant created through protocol 2: the members of the `created` scope. Kept whatever the scope, so a
+    /// grant narrowed to `created` keeps what it made; IDs of closed spaces are pruned and grant nothing anyway.
+    public var createdSpaces: Set<UUID>
     public let createdAt: Date
-    public let expiresAt: Date
+    public var expiresAt: Date
     public var revokedAt: Date?
+    /// Connections that authenticated at an older revision must authenticate again. Raised by an edit that narrows the
+    /// grant; never stored, since no connection outlives the app.
+    public var reauthenticateBelow: UInt64 = 0
 
-    // `spaceScope` keeps its stored name from before the rename (see `SpaceScope`).
-    private enum CodingKeys: String, CodingKey { case id, name, tokenHash, capabilities, spaceScope = "windowScope", hostScope, createdAt, expiresAt, revokedAt }
+    public init(
+        id: UUID, tokenHash: String, settings: GrantSettings, createdAt: Date, expiresAt: Date, revision: UInt64 = 1, createdSpaces: Set<UUID> = [],
+        revokedAt: Date? = nil
+    ) {
+        self.id = id; name = settings.name; self.tokenHash = tokenHash; preset = settings.preset; self.revision = revision
+        capabilitiesV2 = settings.capabilities; spaceScope = settings.scope.spaces; hostScope = settings.scope.hosts; projectScope = settings.scope.projects
+        agentScope = settings.scope.agents; self.createdSpaces = createdSpaces; self.createdAt = createdAt; self.expiresAt = expiresAt; self.revokedAt = revokedAt
+    }
+
+    public var scope: GrantScope { GrantScope(spaces: spaceScope, projects: projectScope, hosts: hostScope, agents: agentScope) }
+    public var settings: GrantSettings { GrantSettings(name: name, preset: preset, capabilities: capabilitiesV2, scope: scope) }
 
     public func isActive(at now: Date) -> Bool { revokedAt == nil && now < expiresAt }
-    public func allows(_ capability: Capability) -> Bool { capabilities.contains(capability) }
+    public func holds(_ capability: CapabilityV2) -> Bool { capabilitiesV2.contains(capability) }
+
+    /// Whether the space scope includes this space ID (existence is the caller's check).
+    public func reaches(space id: UUID) -> Bool {
+        switch spaceScope {
+        case .all: true
+        case .created: createdSpaces.contains(id)
+        case .spaces(let ids): ids.contains(id)
+        }
+    }
+
+    /// Creating a top-level space needs `all` or `created` space scope; with `created` the new space joins it.
+    public var mayCreateSpaces: Bool { spaceScope == .all || spaceScope == .created }
+
+    // MARK: Schema 2 record
+
+    private enum CodingKeys: String, CodingKey { case id, name, tokenHash, preset, revision, capabilities, scope, createdSpaces, createdAt, expiresAt, revokedAt }
+    private enum ScopeKeys: String, CodingKey { case spaces, projects, hosts, agents }
+    private struct HostRecord: Codable {
+        let hostId: UUID
+        let connectionRevision: UInt64
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        tokenHash = try c.decode(String.self, forKey: .tokenHash)
+        preset = try c.decode(GrantPreset.self, forKey: .preset)
+        revision = try c.decode(UInt64.self, forKey: .revision)
+        // An unknown capability (from a newer build) fails the load, so nothing is overwritten.
+        capabilitiesV2 = try c.decode(Set<CapabilityV2>.self, forKey: .capabilities)
+        let s = try c.nestedContainer(keyedBy: ScopeKeys.self, forKey: .scope)
+        spaceScope = try Self.scope(s, .spaces, words: ["all": .all, "created": .created]) { .spaces(Set(try $0.map(Self.uuid))) }
+        projectScope = try Self.scope(s, .projects, words: ["all": .all]) { .projects(Set(try $0.map(Self.uuid))) }
+        agentScope = try Self.scope(s, .agents, words: ["all": .all]) { .agents(Set($0)) }
+        if (try? s.decode(String.self, forKey: .hosts)) == "all" {
+            hostScope = .all
+        } else {
+            hostScope = .approved(Set(try s.decode([HostRecord].self, forKey: .hosts).map { HostApproval(hostID: $0.hostId, connectionRevision: $0.connectionRevision) }))
+        }
+        createdSpaces = try c.decodeIfPresent(Set<UUID>.self, forKey: .createdSpaces) ?? []
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        expiresAt = try c.decode(Date.self, forKey: .expiresAt)
+        revokedAt = try c.decodeIfPresent(Date.self, forKey: .revokedAt)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(tokenHash, forKey: .tokenHash)
+        try c.encode(preset, forKey: .preset)
+        try c.encode(revision, forKey: .revision)
+        try c.encode(capabilitiesV2.sorted(), forKey: .capabilities)
+        var s = c.nestedContainer(keyedBy: ScopeKeys.self, forKey: .scope)
+        switch spaceScope {
+        case .all: try s.encode("all", forKey: .spaces)
+        case .created: try s.encode("created", forKey: .spaces)
+        case .spaces(let ids): try s.encode(Self.sorted(ids), forKey: .spaces)
+        }
+        switch projectScope {
+        case .all: try s.encode("all", forKey: .projects)
+        case .projects(let ids): try s.encode(Self.sorted(ids), forKey: .projects)
+        }
+        switch hostScope {
+        case .all: try s.encode("all", forKey: .hosts)
+        case .approved(let approvals):
+            try s.encode(
+                approvals.sorted { $0.hostID.uuidString < $1.hostID.uuidString }.map { HostRecord(hostId: $0.hostID, connectionRevision: $0.connectionRevision) },
+                forKey: .hosts)
+        }
+        switch agentScope {
+        case .all: try s.encode("all", forKey: .agents)
+        case .agents(let ids): try s.encode(ids.sorted(), forKey: .agents)
+        }
+        if !createdSpaces.isEmpty { try c.encode(Self.sorted(createdSpaces), forKey: .createdSpaces) }
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(expiresAt, forKey: .expiresAt)
+        try c.encodeIfPresent(revokedAt, forKey: .revokedAt)
+    }
+
+    private static func sorted(_ ids: Set<UUID>) -> [String] { ids.map { $0.uuidString.lowercased() }.sorted() }
+
+    private static func uuid(_ text: String) throws -> UUID {
+        guard let id = UUID(uuidString: text) else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Not a UUID")) }
+        return id
+    }
+
+    /// A scope stored as a word (`all`, `created`) or a list of IDs.
+    private static func scope<T>(_ c: KeyedDecodingContainer<ScopeKeys>, _ key: ScopeKeys, words: [String: T], list: ([String]) throws -> T) throws -> T {
+        if let word = try? c.decode(String.self, forKey: key) {
+            guard let value = words[word] else { throw DecodingError.dataCorruptedError(forKey: key, in: c, debugDescription: "Unknown scope") }
+            return value
+        }
+        return try list(try c.decode([String].self, forKey: key))
+    }
+}
+
+/// A `grants.json` record as protocol 1 builds wrote it (schema 1: a bare array). Read once, by the migration; its
+/// `windowScope`/`windows` names are never written again.
+struct LegacyGrantV1: Decodable {
+    enum SpaceScopeV1: Decodable {
+        case all
+        case spaces(Set<UUID>)
+        private enum CodingKeys: String, CodingKey { case all, spaces = "windows" }
+    }
+    enum HostScopeV1: Decodable {
+        case all
+        case approved(Set<HostApproval>)
+    }
+    let id: UUID
+    let name: String
+    let tokenHash: String
+    let capabilities: Set<CapabilityV1>
+    let windowScope: SpaceScopeV1
+    let hostScope: HostScopeV1
+    let createdAt: Date
+    let expiresAt: Date
+    let revokedAt: Date?
+
+    /// Exactly the mapped capabilities, never more (migration.md); Custom, with every project and agent.
+    var migrated: AutomationGrant {
+        let spaces: SpaceScope =
+            switch windowScope {
+            case .all: .all
+            case .spaces(let ids): .spaces(ids)
+            }
+        let hosts: HostScope =
+            switch hostScope {
+            case .all: .all
+            case .approved(let approvals): .approved(approvals)
+            }
+        return AutomationGrant(
+            id: id, tokenHash: tokenHash,
+            settings: GrantSettings(name: name, capabilities: Set(capabilities.map(CapabilityV2.init)), scope: GrantScope(spaces: spaces, hosts: hosts)),
+            createdAt: createdAt, expiresAt: expiresAt, revokedAt: revokedAt)
+    }
+}
+
+/// How an edit changes what a grant reaches. Widening (a capability or scope added, a later expiry) needs the user's
+/// confirmation; narrowing applies at once and makes open connections authenticate again. An edit can do both.
+public struct GrantChange: Equatable, Sendable {
+    public var widens = false
+    public var narrows = false
+    public init(widens: Bool = false, narrows: Bool = false) { self.widens = widens; self.narrows = narrows }
+
+    public init(from old: AutomationGrant, to settings: GrantSettings, expiresAt: Date) {
+        func add(_ change: (widens: Bool, narrows: Bool)) { widens = widens || change.widens; narrows = narrows || change.narrows }
+        add((!settings.capabilities.isSubset(of: old.capabilitiesV2), !old.capabilitiesV2.isSubset(of: settings.capabilities)))
+        add(Self.compare(old.spaceScope, settings.scope.spaces, created: old.createdSpaces))
+        add(Self.compare(old.projectScope.ids, settings.scope.projects.ids))
+        add(Self.compare(old.agentScope.ids, settings.scope.agents.ids))
+        add(Self.compare(old.hostScope, settings.scope.hosts))
+        add((expiresAt > old.expiresAt, expiresAt < old.expiresAt))
+    }
+
+    /// nil means all.
+    static func compare<T>(_ old: Set<T>?, _ new: Set<T>?) -> (widens: Bool, narrows: Bool) {
+        switch (old, new) {
+        case (nil, nil): (false, false)
+        case (nil, _?): (false, true)
+        case (_?, nil): (true, false)
+        case (let old?, let new?): (!new.isSubset(of: old), !old.isSubset(of: new))
+        }
+    }
+
+    /// `created` reaches the spaces created so far and may create more, so moving to it from a set widens.
+    static func compare(_ old: SpaceScope, _ new: SpaceScope, created: Set<UUID>) -> (widens: Bool, narrows: Bool) {
+        switch (old, new) {
+        case (.all, .all), (.created, .created): (false, false)
+        case (.all, _): (false, true)
+        case (_, .all): (true, false)
+        case (.created, .spaces(let ids)): (!ids.isSubset(of: created), true)
+        case (.spaces(let ids), .created): (true, !ids.isSubset(of: created))
+        case (.spaces(let old), .spaces(let new)): compare(Optional(old), Optional(new))
+        }
+    }
+
+    /// Approvals compare by host; approving a host at a newer connection revision widens (it was unusable before).
+    static func compare(_ old: HostScope, _ new: HostScope) -> (widens: Bool, narrows: Bool) {
+        switch (old, new) {
+        case (.all, .all): return (false, false)
+        case (.all, .approved): return (false, true)
+        case (.approved, .all): return (true, false)
+        case (.approved(let old), .approved(let new)):
+            let before = Dictionary(old.map { ($0.hostID, $0.connectionRevision) }, uniquingKeysWith: max)
+            let after = Dictionary(new.map { ($0.hostID, $0.connectionRevision) }, uniquingKeysWith: max)
+            return (after.contains { before[$0.key] != $0.value }, before.keys.contains { after[$0] == nil })
+        }
+    }
+}
+
+extension ProjectScope {
+    var ids: Set<UUID>? { if case .projects(let ids) = self { ids } else { nil } }
+}
+
+extension AgentScope {
+    var ids: Set<String>? { if case .agents(let ids) = self { ids } else { nil } }
 }
 
 /// The identity and connection revision of a host being approved.
@@ -85,6 +347,10 @@ public enum GrantError: Error, Equatable, Sendable {
     case invalidName, noCapabilities, invalidExpiry, notFound, io, secretStore
     /// `grants.json` exists but is unreadable or newer; it is preserved, not overwritten.
     case readOnly
+    /// The edit widens the grant and wasn't confirmed; nothing changed.
+    case confirmationRequired
+    /// The grant changed since the edit started; nothing changed.
+    case conflict
 }
 
 /// Where the token secret lives so the CLI can use a Keychain credential reference.
@@ -134,129 +400,6 @@ public enum GrantToken {
         let actual = Array(hash(token).utf8), wanted = Array(expected.utf8)
         guard actual.count == wanted.count else { return false }
         return zip(actual, wanted).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0
-    }
-}
-
-/// Owner-only, atomically published `grants.json`. Revoked and expired grants
-/// remain listed (inactive) so their status stays visible.
-public actor GrantStore {
-    public private(set) var grants: [AutomationGrant] = []
-    private let url: URL?
-    private let secrets: any GrantSecretStore
-    private let now: @Sendable () -> Date
-    private var revocationObservers: [@Sendable (UUID) -> Void] = []
-    /// Set when the stored file cannot be used: no grant is active and nothing is written.
-    public private(set) var loadFailed = false
-
-    /// `url == nil` keeps grants in memory only (tests).
-    public init(url: URL?, secrets: any GrantSecretStore, now: @escaping @Sendable () -> Date = { Date() }) {
-        self.url = url; self.secrets = secrets; self.now = now
-    }
-
-    private var loaded = false
-
-    /// Loads once before the first authentication, so a client connecting during
-    /// app startup is never rejected (or rate limited) for an unloaded store.
-    public func ensureLoaded() {
-        if !loaded { load() }
-    }
-
-    public func load() {
-        loaded = true
-        guard let url else { return }
-        do {
-            guard let data = try OwnerOnlyFile.read(url, limit: 1_048_576) else { grants = []; loadFailed = false; return }
-            grants = try JSONDecoder.grants.decode([AutomationGrant].self, from: data)
-            loadFailed = false
-        } catch {
-            grants = []; loadFailed = true
-        }
-    }
-
-    /// Called with the grant ID whenever a grant is revoked.
-    public func onRevocation(_ observer: @escaping @Sendable (UUID) -> Void) { revocationObservers.append(observer) }
-
-    /// Returns the grant and its token. The token is not retrievable later.
-    public func create(
-        name: String, capabilities: Set<Capability>, spaceScope: SpaceScope, hostScope: HostScope, lifetime: TimeInterval
-    ) throws(GrantError) -> (grant: AutomationGrant, token: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= 100, !trimmed.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) else {
-            throw .invalidName
-        }
-        guard !capabilities.isEmpty else { throw .noCapabilities }
-        guard lifetime.isFinite, (60...(90 * 86_400)).contains(lifetime) else { throw .invalidExpiry }
-        // Never publish a list built from an unloaded store: it would drop the saved grants.
-        ensureLoaded()
-        guard !loadFailed else { throw .readOnly }
-        let token = GrantToken.generate()
-        let created = now()
-        let grant = AutomationGrant(
-            id: UUID(), name: trimmed, tokenHash: GrantToken.hash(token), capabilities: capabilities, spaceScope: spaceScope,
-            hostScope: hostScope, createdAt: created, expiresAt: created.addingTimeInterval(lifetime), revokedAt: nil)
-        do { try secrets.store(token, grantID: grant.id) } catch { throw .secretStore }
-        do {
-            try persist(grants + [grant])
-        } catch {
-            secrets.remove(grantID: grant.id)
-            throw error
-        }
-        grants.append(grant)
-        return (grant, token)
-    }
-
-    public func revoke(_ id: UUID) throws(GrantError) {
-        guard let index = grants.firstIndex(where: { $0.id == id }) else { throw .notFound }
-        guard grants[index].revokedAt == nil else { return }
-        var next = grants
-        next[index].revokedAt = now()
-        // Block use immediately, even if the file write then fails.
-        grants = next
-        secrets.remove(grantID: id)
-        for observer in revocationObservers { observer(id) }
-        try persist(next)
-    }
-
-    /// Replaces host approvals with the hosts' current connection revisions.
-    public func approveHosts(_ grantID: UUID, hosts: [SavedHostApprovalInput]) throws(GrantError) {
-        guard let index = grants.firstIndex(where: { $0.id == grantID }), grants[index].revokedAt == nil else { throw .notFound }
-        var next = grants
-        next[index].hostScope = .approved(Set(hosts.map { HostApproval(hostID: $0.id, connectionRevision: $0.connectionRevision) }))
-        try persist(next)
-        grants = next
-    }
-
-    /// Matching active grant for a presented token, if any.
-    public func activeGrant(token: String) -> AutomationGrant? {
-        grants.first { GrantToken.matches(token, hash: $0.tokenHash) && $0.isActive(at: now()) }
-    }
-
-    public func activeGrant(id: UUID) -> AutomationGrant? { grants.first { $0.id == id && $0.isActive(at: now()) } }
-
-    public func currentDate() -> Date { now() }
-
-    private func persist(_ next: [AutomationGrant]) throws(GrantError) {
-        guard !loadFailed else { throw .readOnly }
-        guard let url else { return }
-        guard let data = try? JSONEncoder.grants.encode(next) else { throw .io }
-        do { try OwnerOnlyFile.publish(data, to: url) } catch { throw .io }
-    }
-}
-
-extension JSONEncoder {
-    fileprivate static var grants: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }
-}
-
-extension JSONDecoder {
-    fileprivate static var grants: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
     }
 }
 

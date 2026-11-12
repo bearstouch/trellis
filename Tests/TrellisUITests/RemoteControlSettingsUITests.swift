@@ -98,7 +98,7 @@ final class RemoteControlSettingsUITests: XCTestCase {
     func testMCPToolsDriveTheWorkspaceEndToEnd() async throws {
         let h = try Harness()
         defer { h.discardPreferences() }
-        let token = try await h.grants.create(name: "mcp", capabilities: Set(Capability.allCases), spaceScope: .all, hostScope: .all, lifetime: 3600).token
+        let token = try await h.grants.create(name: "mcp", capabilities: Set(CapabilityV2.allCases), spaceScope: .all, hostScope: .all, lifetime: 3600).token
         let endpoint = MCPEndpoint(handler: h.handler, serverVersion: "test", loopbackOnly: true)
         func post(_ body: [String: Any], session: String?) async throws -> HTTPResponse {
             var headers = ["Host": "127.0.0.1", "Content-Type": "application/json", "Authorization": "Bearer \(token)"]
@@ -113,12 +113,12 @@ final class RemoteControlSettingsUITests: XCTestCase {
             let response = try await post(["jsonrpc": "2.0", "id": nextID, "method": "tools/call", "params": ["name": name, "arguments": arguments]], session: session)
             let result = try XCTUnwrap((try JSONSerialization.jsonObject(with: response.body) as? [String: Any])?["result"] as? [String: Any])
             XCTAssertEqual(result["isError"] as? Bool, false, "\(name): \(result)")
-            return try XCTUnwrap(result["structuredContent"] as? [String: Any])
+            return try XCTUnwrap(result["structuredContent"] as? [String: Any], "\(name): \(result)")
         }
 
         let created = try await tool("space_create", ["name": "From MCP"])
         XCTAssertTrue(h.model.snapshot.spaces.contains { $0.name == "From MCP" })
-        let pane = try XCTUnwrap(((created["panes"] as? [[String: Any]])?.first)?["paneId"] as? String)
+        let pane = try XCTUnwrap(((created["panes"] as? [[String: Any]])?.first)?["id"] as? String)
         defer {
             h.model.terminals.values.forEach {
                 $0.requestTermination(force: true); $0.adapter.detach()
@@ -131,5 +131,10 @@ final class RemoteControlSettingsUITests: XCTestCase {
         try await terminal.waitFor("MCP-READY")
         let output = try await tool("session_read_output", ["id": terminal.native.sessionID.uuidString, "view": "screen"])
         XCTAssertTrue((output["text"] as? String ?? "").contains("MCP-READY"))
+        // One call shows the whole workspace, and the agent waits with events_poll instead of polling reads.
+        let workspace = try await tool("workspace_get", ["include": ["panes", "sessions"]])
+        XCTAssertTrue((workspace["sessions"] as? [[String: Any]] ?? []).contains { $0["state"] as? String == "running" })
+        let polled = try await tool("events_poll", ["topics": ["session"], "timeoutMs": 0])
+        XCTAssertNotNil(polled["nextSequence"])
     }
 }

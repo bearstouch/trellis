@@ -378,7 +378,8 @@ extension AppWorkspaceModel {
         }
         agentStates[paneID] = AgentStateReducer(integration: definition.integration)
         return BrokerLoginRequest(
-            sessionID: sessionID, shell: nil, directory: agent.directory, environment: LocalLaunchValidator.terminalEnvironment, integration: nil, columns: 80, rows: 24,
+            sessionID: sessionID, shell: nil, directory: Self.hostPath(agent.directory, home: info.home), environment: LocalLaunchValidator.terminalEnvironment,
+            integration: nil, columns: 80, rows: 24,
             command: AgentShell.remoteCommand(shell: info.shell, line: line), agentHooks: hooks)
     }
 
@@ -494,19 +495,26 @@ extension AppWorkspaceModel {
         let hooked = agentStates[paneID]?.hooked == true
         agentStates.removeValue(forKey: paneID)
         guard code == AgentCommand.notInstalledStatus, !hooked else { return }
-        let platform: String
-        var missing: [String] = []
-        if let host = launch.hostID {
-            remoteMissingAgents[host, default: []].insert(agent.id)
-            platform = remoteHostPlatforms[host] ?? "linux"
-        } else {
-            agentAvailability[agent.id] = .missing
-            platform = "darwin"
-            if let path = agentLoginPath { missing = agent.install[platform]?.requires.filter { AgentPathProbe.resolve($0, path: path) == nil } ?? [] }
-        }
+        if let host = launch.hostID { remoteMissingAgents[host, default: []].insert(agent.id) } else { agentAvailability[agent.id] = .missing }
+        let installer = agentInstaller(agent, hostID: launch.hostID)
         agentInstallOffer = AgentInstallOffer(
             id: UUID(), paneID: paneID, agent: agent, hostID: launch.hostID, hostName: launch.hostID.map(remoteHostName) ?? L("this Mac"),
-            recipe: agent.install[platform], missingRequirements: missing, afterInstall: installed)
+            recipe: installer.recipe, missingRequirements: installer.missingRequirements, afterInstall: installed)
+    }
+
+    /// The installer offered for an agent on a machine (FR-AG12): the recipe for its platform (a host's from its helper,
+    /// else Linux), and the programs it needs that this Mac's login PATH lacks; a host's can't be checked first.
+    public func agentInstaller(_ agent: AgentDefinition, hostID: UUID?) -> (recipe: AgentInstallRecipe?, missingRequirements: [String]) {
+        guard hostID == nil else { return (agent.install[agentPlatform(hostID: hostID)], []) }
+        let recipe = agent.install["darwin"]
+        guard let path = agentLoginPath else { return (recipe, []) }
+        return (recipe, recipe?.requires.filter { AgentPathProbe.resolve($0, path: path) == nil } ?? [])
+    }
+
+    /// `darwin` for this Mac; a host's OS as its helper last reported it, else `linux`.
+    public func agentPlatform(hostID: UUID?) -> String {
+        guard let hostID else { return "darwin" }
+        return remoteHostPlatforms[hostID] ?? remoteHosts?.preferences[hostID]?.helper.map { $0.system.lowercased() } ?? "linux"
     }
 
     /// Runs the vendor's installer in the same pane, in the login shell, then the agent (FR-AG12).
@@ -514,7 +522,20 @@ extension AppWorkspaceModel {
         agentInstallOffer = nil
         guard offer.recipe != nil, agentLaunch(paneID: offer.paneID)?.agentID == offer.agent.id else { return }
         agentInstallPanes.insert(offer.paneID)
-        if let host = offer.hostID { remoteMissingAgents[host]?.remove(offer.agent.id) } else { agentAvailability.removeValue(forKey: offer.agent.id); agentPathCheckedAt = nil }
+        forgetMissingAgent(offer.agent.id, hostID: offer.hostID)
         await restartAgent(paneID: offer.paneID, resume: false)
+        // A launch refused before its command was built never took the mark; a later start must not run the installer.
+        agentInstallPanes.remove(offer.paneID)
+    }
+
+    /// The installer is about to change whether the agent is there, so a missing mark no longer holds.
+    func forgetMissingAgent(_ agentID: String, hostID: UUID?) {
+        if let hostID { remoteMissingAgents[hostID]?.remove(agentID) } else { agentAvailability.removeValue(forKey: agentID); agentPathCheckedAt = nil }
+    }
+
+    /// An agent run's `since` (API v2): when each pane's agent entered its current state.
+    func noteAgentStateTimes(from old: [UUID: AgentStateReducer]) {
+        for (id, reducer) in agentStates where old[id]?.state != reducer.state { agentStateSince[id] = activityNow() }
+        if agentStateSince.count > agentStates.count { agentStateSince = agentStateSince.filter { agentStates[$0.key] != nil } }
     }
 }

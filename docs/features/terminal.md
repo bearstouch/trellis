@@ -53,7 +53,7 @@ Known limits: ligatures whose font merges several characters into one glyph take
 | FR-C05 | Paste file paths through an explicit action. | **Paste Escaped Path** escapes paths for the configured shell; shells it doesn't support get a quoted-path preview. Ordinary paste stays plain text. |
 | FR-C08 | Drop files from Finder onto a pane to insert their paths. | Every file type behaves the same: the paths are inserted as text, in drag order and separated by spaces, under the same escaping, bracketed paste and preview rules as FR-C05. Nothing is run, opened or uploaded, and no newline is added. The pane under the pointer takes focus first, including an unfocused split, and Trellis comes to the front. A pane refuses the drop when its session isn't running, while a tab rename or the command palette owns the keyboard, and while a sheet is open on the window. Only the terminal area takes a drop, not the pane header or find bar. Text, web URLs and file promises are not accepted. A pane launched as an SSH host, remote shell or agent offers the local path after the preview; `ssh` or an agent started by hand in a shell pane gets the local path with no preview, like any other program in that pane. |
 
-The UI paste review is mandatory. API input (`session.sendInput`) doesn't show it, because the grant itself authorizes input. See [Methods](../api/methods.md#session-launch-and-input).
+The UI paste review is mandatory. API input (`session.sendInput`) doesn't show it, because the grant itself authorizes input. See [Methods](../api/methods.md#launch-and-input-limits).
 
 ## Scrollback and search
 

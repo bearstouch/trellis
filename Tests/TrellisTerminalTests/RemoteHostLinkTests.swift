@@ -59,6 +59,19 @@ final class RemoteHostLinkTests: XCTestCase {
 
     private var installRoot: String { home + "/.trellis/remote" }
 
+    /// Phase 6: every failure has a stable reason code for protocol 2, derived from the failure, never from its words.
+    func testEveryFailureHasAReasonCode() {
+        let cases: [(RemoteHostLink.Failure, RemoteLinkReason)] = [
+            (.spawn(ENOENT), .sshUnavailable), (.exited(255), .sshExited), (.exited(nil), .sshExited), (.unsupported("FreeBSD amd64"), .helperUnsupported),
+            (.noChecksumTool, .noChecksumTool), (.artifactUnavailable("Linux riscv64"), .helperUnavailable), (.declined, .helperMissing),
+            (.remote("MISSING"), .helperMissing), (.remote("DIGEST"), .installFailed), (.remote("MKDIR"), .installFailed), (.remote("GZIP"), .installFailed),
+            (.remote("BUSY"), .hostRefused), (.incompatible, .helperIncompatible), (.cancelled, .cancelled), (.lost, .lost),
+            (.unreachable("Connection refused"), .hostUnreachable), (.needsInput("Host key verification failed.", .hostKeyUnverified), .hostKeyUnverified),
+            (.needsInput("dev@build-box's password:", .needsPassword), .needsPassword)
+        ]
+        for (failure, reason) in cases { XCTAssertEqual(failure.reason, reason, "\(failure)") }
+    }
+
     func testCheckInstallBridgeAndRemove() async throws {
         let catalog = RemoteArtifactCatalog.load(remoteDirectory: nil, macHelper: helper)
         let artifact = try XCTUnwrap(catalog.artifacts["darwin"])

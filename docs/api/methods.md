@@ -1,118 +1,241 @@
 # Methods
 
-## Resource conventions (API-03)
+Every method follows the [conventions](index.md#conventions-api2-02). In the tables, **Caps** are required [capabilities](permissions.md); `+x if y` is a conditional capability. Every `id`-addressed method answers `NOT_FOUND` for resources outside the grant's scope. Unless stated otherwise, mutating methods take `expectedRevision` and `idempotencyKey`.
 
-- IDs are UUID strings. Matching by name is only a CLI convenience, and an ambiguous name fails. Unattended scripts should use IDs.
-- Mutations are serialized and return the current resource revisions.
-- Methods that change an existing resource accept `expectedRevision`, and a stale revision returns `CONFLICT` with `{expectedRevision, currentRevision}`. Leaving the revision out mutates the latest state. The one exception is `layout.apply`, where `expectedRevision` is **required**.
-- `space.create`, `tab.create` and `pane.split` create **stopped** panes unless you pass `start: true`, which also needs the matching start capability. UI creation starts sessions immediately, through the same service.
-- A new space has one tab with one pane, and a new tab has one pane. Creation results return every created ID, the revisions and any launch outcomes.
-- Destructive container operations accept `allowRunning: true`, which needs `session.close`. Without it they return `CONFIRMATION_REQUIRED` and list the affected sessions. Containers with no running sessions need only `layout.write`.
-- No API method ever opens a modal dialog that would block a client, and there's no unrestricted "force everything" setting.
-- If a mutation fails, the domain is left exactly as it was.
+## System and workspace
 
-## Idempotency (API-04)
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `system.info` | — | `appVersion`, `protocolVersion`, `instanceId`, `limits` (`maxFrameBytes`, `maxJsonDepth`, `maxConnections`, `maxPageSize`, `maxPanes`) | none |
+| `grant.get` | — | `grant` (the caller's own [grant view](permissions.md#grant-view)) | none |
+| `workspace.get` | `include?: ["tabs","panes","sessions","agents","layout"]` | Everything in scope in one call: `revision`, `activeSpaceId`, `spaces`, and the included collections | workspace.read |
+| `workspace.save` | — | `savedAt` | workspace.write |
 
-Mutating calls accept an optional `idempotencyKey` (1–128 bytes):
+`workspace.get` is the starting point for agents: one call instead of `space.list` + N × `tab.get`. `include: ["layout"]` adds each tab's split tree (and implies `tabs`); `include: ["agents"]` adds `agentRuns`, the [agent runs](resources.md#agent-run) in scope as `agent.runs` returns them (definitions come from `agent.list`). It is bounded by the 1 MiB frame; `LIMIT_EXCEEDED` tells the client to page with the list methods. `workspace.save` takes no `expectedRevision`: it writes the current state and changes no resource.
 
-- A repeated key with the **same** method and parameters, from the same grant and app instance, returns the original result for 10 minutes.
-- Reusing a key with **different** parameters returns `CONFLICT`. If the original call is still running, the response is a retryable `CONFLICT`.
-- Keys live in memory only and don't survive an app restart. Each grant can hold up to 1,000 keys. A call that fails with a retryable error releases its key.
+## Spaces
 
-**Never retry a command blindly.** If you disconnect while a call is executing, inspect the session and state before you do anything else. A missing response doesn't mean nothing ran.
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `space.list` | `name?`, `limit?`, `cursor?` | `spaces`, `revision` (workspace) | workspace.read |
+| `space.get` | `id` | `space` | workspace.read |
+| `space.create` | `name`, `start?` | `space`, `tab`, `panes` | workspace.write (+session.start if `start`), all or `created` spaces |
+| `space.update` | `id`, `name` | `space` | workspace.write |
+| `space.reorder` | `ids` | `spaces`, `revision` | workspace.write, all-spaces |
+| `space.focus` | `id` | `space` | workspace.write |
+| `space.close` | `id`, `allowRunning?`, `force?` | `deleted` | workspace.write (+session.close if running) |
 
-## Method catalog
+`space.list`'s `name` keeps only spaces with exactly that name (after trimming), so a client can resolve a name without listing everything; the CLI's `--space NAME` uses it. Remote and project spaces are created by [`remote.open`](#remote-workspaces) and [`project.launch`](#projects). A grant whose space scope is `created` can see and change only the spaces it created.
 
-| Method | Key parameters | Result / semantics |
-| --- | --- | --- |
-| `system.info` | — | `apiVersion`, `appVersion`, `instanceId`, the grant's capabilities and `limits` (`maxFrameBytes`, `maxPanes`, `maxNesting`) |
-| `space.list`, `space.get` | `id` for get | Scoped metadata and revisions; `projectId` when the space was loaded from a library project (FR-W08) |
-| `space.create` | `name`, `start?` | The space plus its initial tab, pane and session IDs |
-| `space.update` | `id`, `name`, `expectedRevision?` | The renamed resource |
-| `space.reorder` | ordered `ids`, `expectedRevision?` | New collection revision. Needs all-spaces scope. |
-| `space.focus` | `id` | Selects the space |
-| `space.close` | `id`, `allowRunning?`, `force?`, `expectedRevision?` | A close result or pending cleanup |
-| `tab.list`, `tab.get` | `spaceId` / `id` | Ordered tabs / split-tree metadata; `temporary: true` for a tab its space's project doesn't define (FR-W08) |
-| `tab.create` | `spaceId`, `title?`, `start?` | The tab plus its initial pane and session IDs |
-| `tab.update`, `tab.reorder` | `id`, `title?`, `color?` / `spaceId`, `ids`; revision optional | Updated metadata or order |
-| `tab.focus`, `tab.close` | `id`, plus close flags | Selection / close result |
-| `pane.split` | `paneId`, `axis`, `ratio?`, `start?` | New pane and branch IDs. The existing pane becomes the first child. |
-| `pane.resize` | `branchId`, `ratio`, `expectedRevision?` | Updated branch, with geometry constraints enforced |
-| `pane.focus`, `pane.close` | `id`, plus close flags | Selection / close result |
-| `pane.maximize` | `id`, `maximized` | Temporary presentation state |
-| `session.get` | `id` | State and exit status. Launch details only with execute permission. With [shell integration](../features/shell-integration.md), `shellIntegration: {commandRunning, lastExitStatus?, currentDirectory?, remote?}`; the directory needs execute permission, and command text is never included. In an SSH pane the state comes from the remote shell's unverified marks ([FR-SI09](../features/shell-integration.md)): `remote: true` is set and `currentDirectory` is never reported. A [remote workspace](../features/remote-workspaces.md) session reports `launchKind: "remoteShell"`, its `hostId` and `remoteLink` (`connected`, `connecting`, `reconnecting`, `offline`, `needsInput` or `disconnected`) with host-read access to that host, and its starting `directory` (a path on the host) with execute permission; `currentDirectory` is never reported for it (FR-RW15). An [agent pane](../features/agents.md) reports `launchKind: "agent"`, its `agentId`, `agentState` (`ready`, `working`, `needsInput`, `done` or `error`) while it runs, the host as a remote workspace session does when it runs on one, and its `directory` with execute permission; its command line is never reported (FR-AG13). `waitingForInput: "password"|"attention"` while the program waits for the user ([FR-T06](../features/workspace.md#tabs)). `progress: {state: "normal"|"error"|"paused"|"indeterminate", percent?}` while the program reports OSC 9;4 progress ([FR-T09](../features/workspace.md#tabs)); `percent` is 0-100 and absent while indeterminate or for an error with no known value. |
-| `session.start` | `paneId`, `launch?` | New or stopped session ID and the launch status |
-| `session.restart` | `paneId`, `allowRunning?`, `launch?` | Replaces the session after any required termination. The new session gets a new UUID. |
-| `session.sendInput` | `id`, `text` or `base64`, `mode: literal\|paste` | Accepted byte count. Acceptance doesn't mean the input has been processed. |
-| `session.execute` | `id`, `command`, `submit: true` | `{acceptedBytes, submitted: true}` |
-| `session.readOutput` | `id`, `view`, `cursor?`, `maxBytes?` | See [Output and events](output-events.md) |
-| `host.list`, `host.get` | `query?`, tags / `id` | Scoped host metadata. Never a password, nor whether one is saved. Automation can't set passwords. |
-| `host.create`, `host.update`, `host.delete` | Validated host fields; revision on update and delete | Persisted metadata change |
-| `host.connect` | `hostId`, `spaceId`, optional split target and `axis` | A new tab or pane, plus the SSH launch outcome |
-| `layout.validate` | `document` | Errors and warnings, without changing anything |
-| `layout.plan` | `namespace`, `document` | Proposed keyed changes, conflicts and `baseRevision` |
-| `layout.apply` | `namespace`, `document`, `expectedRevision`, `startNew?` | Applied IDs, the key mapping and per-pane launch results |
-| `layout.export` | `spaceIds` | A safe declarative document with fresh export keys |
-| `theme.list`, `theme.get` | — / `id` | Installed theme metadata / the resolved palette |
-| `theme.validate` | `document` | Schema and semantic errors, plus contrast warnings |
-| `theme.import` | `document`, `replace?` | The theme, installed atomically |
-| `theme.export` | `id`, `resolved?` | `{id, resolved, document}`. Built-in themes are always exported complete. |
-| `theme.delete` | `id` | Deletes a custom theme. Any slot that had it selected falls back to the built-in theme. |
-| `appearance.get` | — | Mode, selected theme IDs and the effective theme; `rendering` gives the effective GPU setting (`gpuRendering`, including a `--renderer` launch override), how many panes draw with each renderer (`metalPanes`, `coreGraphicsPanes`) and the frames they have drawn (`metalFrames`, `coreGraphicsFrames`) (FR-TX05); `backgroundOpacity` and `backgroundBlur` give the saved pane background setting and `effectiveBackgroundOpacity` what panes show, which is 1 while Reduce Transparency or Increase Contrast is on (FR-TH10) |
-| `appearance.set` | `mode: system\|dark\|light`, `darkThemeId?`, `lightThemeId?`, `expectedRevision?` | Atomic settings update. A theme in the wrong appearance slot is rejected. Font, cursor, scrollback, text-rendering (FR-TX01, FR-TX03, FR-TX05), bell (FR-T07), desktop-notification (FR-T08) and background opacity and blur (FR-TH10) settings aren't exposed and are kept unchanged. |
-| `events.subscribe` | `topics`, `resourceIds?`, `afterSequence?`, `instanceId?` | `{subscriptionId, sequence, instanceId}` |
-| `events.unsubscribe` | `subscriptionId` | The subscription stops |
+## Tabs
 
-[Authorization](authorization.md#how-capabilities-compose) lists the capability each method needs.
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `tab.list` | `spaceId`, `title?`, `include?: ["layout"]` | `tabs`, `revision` (space) | workspace.read |
+| `tab.get` | `id` | `tab` with `layout` | workspace.read |
+| `tab.create` | `spaceId`, `title?`, `color?`, `start?` | `tab`, `panes` | workspace.write (+session.start) |
+| `tab.update` | `id`, `title?` (null → automatic), `color?` (null clears) | `tab` | workspace.write |
+| `tab.duplicate` | `id`, `start?` | `tab`, `panes` | workspace.write (+session.start) |
+| `tab.reorder` | `spaceId`, `ids` | `tabs`, `revision` (space) | workspace.write |
+| `tab.focus` | `id` | `tab` | workspace.write |
+| `tab.close` | `id`, `allowRunning?`, `force?` | `deleted` | workspace.write (+session.close) |
 
-## Deprecated names
+`tab.list`'s `title` keeps only tabs whose current title is exactly that text (the CLI's `--tab NAME`). In a project space, `tab.create` makes a temporary tab (FR-W08); project tabs come from the project. `tab.update` needs at least one of `title` and `color`; `tab.duplicate`'s `expectedRevision` is the source tab's.
 
-Spaces were called windows before. For now the API also accepts the old names, mapped before authorization, so a grant and its scope work the same either way:
+## Panes
 
-- `window.list`, `window.get`, `window.create`, `window.update`, `window.reorder`, `window.focus` and `window.close` run the matching `space.*` method.
-- The params `windowId` and `windowIds` are read as `spaceId` and `spaceIds`; when both are given, the new name wins.
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `pane.list` | `tabId` or `spaceId` | `panes`, `revision` | workspace.read |
+| `pane.get` | `id` | `pane` | workspace.read |
+| `pane.split` | `id`, `axis` `x`/`y`, `ratio?`, `start?` | `pane` (new), `tab` | workspace.write (+session.start) |
+| `pane.resize` | `branchId`, `ratio` | `tab` | workspace.write |
+| `pane.focus` | `id` | `pane` | workspace.write |
+| `pane.maximize` | `id`, `maximized` | `pane`, `tab` | workspace.write |
+| `pane.close` | `id`, `allowRunning?`, `force?` | `deleted` | workspace.write (+session.close) |
 
-Replies and events always use the new names: `spaces`, `spaceId`, the events `space.created`, `space.updated`, `space.deleted`, `space.reordered` and `selection.space` (were `window.*` and `selection.window`), and a grant's scope in the authentication reply is `spaceScope` (was `windowScope`). MCP tools are only listed and accepted under the new names (`space_list` and so on); a client that cached `window_*` tool names must list the tools again. A newer CLI talking to an older running app gets method-not-found for `space.*`; update both together. The old names will be removed in a later release; see the [changelog](https://github.com/bearstouch/trellis/blob/master/CHANGELOG.md).
+A new pane inherits the source pane's machine and folder, as in the UI: a split of a remote pane is a remote shell on the same host. `pane.list` takes exactly one of `tabId` and `spaceId`; its `revision` is that tab's or space's. A branch has no revision of its own, so `pane.resize`'s `expectedRevision` is its tab's. `pane.split` is refused with `INVALID_STATE` while the tab has a maximized pane, as in the app.
 
-## Splits and geometry
+## Sessions
 
-- `axis: x` is left/right, and `axis: y` is top/bottom.
-- Ratios must be finite and between 0.1 and 0.9.
-- Each pane keeps a minimum size of 20 columns × 5 rows.
-- Trees can nest at most 16 levels, and a workspace holds at most 100 panes.
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `session.get` | `id` | `session` | workspace.read |
+| `session.start` | `paneId`, `launch?` | `session` | session.start (+session.execute for a `shell` with `directory`, any `process`, or an `environment`) |
+| `session.restart` | `paneId`, `launch?`, `allowRunning?`, `force?` | `session` (new ID) | session.start (+session.close if running, +session.execute as above) |
+| `session.stop` | `id`, `force?` | `session` | session.close |
+| `session.sendInput` | `id`, `text` or `base64`, `mode` `literal`/`paste` | `acceptedBytes` | session.input |
+| `session.execute` | `id`, `command`, `wait?: {until: "finished", timeoutMs?}` | `submitted`, `acceptedBytes`, and with `wait`: `timedOut`, `exitCode?`, `durationMs?`, `sessionEnded?` | session.execute |
+| `session.readOutput` | `id`, `view` `screen`/`scrollback`/`stream`, `cursor?`, `maxBytes?` | `view`, `text` or `base64`, `nextCursor` (stream), `truncated`, `gap`, `capturedAt` ([Reading output](events.md#reading-output)) | session.output.read |
 
-## Session launch and input
+- `launch` is `{"kind": "shell", "directory"?, "environment"?}`, `{"kind": "process", "executable", "arguments"?, "directory", "environment"?}` or `{"kind": "ssh", "hostId"}` (the host must be in scope). Paths are absolute; `TRELLIS_` environment names are reserved. In a remote workspace only `shell` is accepted, and it runs on the space's host (as layouts do, FR-RW10).
+- Without `launch`, `session.start` uses the pane's saved launch, which may be an SSH host (needs the host in scope) or an agent (needs **agent.control** and the agent in the grant's agent scope). The same applies to `start: true` on `space.create`, `tab.create`, `tab.duplicate` and `pane.split`, checked before anything is created: a duplicated agent or SSH pane, or a new pane in a remote workspace (the space's host).
+- `launch.kind: "agent"` is accepted only through `agent.start`; `session.start` refuses it with `-32602` so agent permissions can't be bypassed.
+- `session.start`'s and `session.restart`'s `expectedRevision` is the pane's (`paneId`); the other session methods compare the session's. A running pane is `INVALID_STATE` for `session.start` (`details.state`). `session.stop` asks gracefully; `force: true` is honoured only once the graceful request is 2 s old, so the first call is `CLOSE_PENDING` either way if the process ignores it.
+- `session.sendInput` takes exactly one of `text` and `base64` (64 KiB decoded, `LIMIT_EXCEEDED` above) and returns `acceptedBytes` and `mode`; `session.execute` returns `submitted` and `acceptedBytes`.
+- `session.execute` with `wait` needs authenticated shell integration (FR-SI02) and returns when the command-finished mark arrives. Without integration it is `INVALID_STATE` (`details.state: "noIntegration"`). Remote workspace panes return `REMOTE_DISCONNECTED` while the link is down.
+    - The shell must be at its prompt: a running command (or a task, another `session.execute` still waiting in that pane, or a kept session still replaying) is `INVALID_STATE` with `details.state: "busy"` (retryable), because the next command to finish might not be this one. The wait is registered before the line is typed, and the command is the next one the shell starts, matched by order as task runs are (bash reports only a line's first command).
+    - `timeoutMs` is 1–600000 (default 30000). The result says `timedOut: true` when the wait ended first (the command keeps running), else `exitCode` (omitted when the shell didn't report one, for example a line that ran no command, which returns at once) and `durationMs`; `sessionEnded: true` when the session ended or the pane closed first. Marks replayed from a kept session never answer a wait.
+    - With `wait` the socket answers the call out of order (`waitsIf`, sharing the 16-waiting-calls budget per connection with `events.poll` and the remote methods), so a later call on the connection can be handled before the line is typed; send later input for the same session after the reply, or on another connection. Without `wait` it keeps its place in the connection's order.
+- **Remote workspace sessions need their host (FR-RW15).** Every session method that acts on a remote workspace session or reads what it printed (`session.start`, `session.restart`, `session.stop`, `session.sendInput`, `session.execute`, `session.readOutput`, and `agent.restart` and `agent.respond`) needs that host in the grant's host scope at its current connection, as `host.connect` does; otherwise `PERMISSION_DENIED`. The record itself (`session.get`, `pane.get`, `workspace.get`) stays readable by space scope, with the host's ID shown only with host.read and the host in scope. Closing a remote workspace's panes, tabs or spaces follows space scope and session.close, like any other pane.
+- While a remote workspace's link is down, `session.sendInput`, `session.execute`, `session.stop` and restarting a running session are `REMOTE_DISCONNECTED` (`details.state` and `details.reason` are the link's, see [Host](resources.md#host)); nothing is queued and the session keeps running on the host. `session.readOutput` still reads what the pane already shows.
+- Starting a session on a remote workspace host whose link is down (`session.start`, `session.restart`, `start: true` on `tab.create`, `tab.duplicate` and `pane.split`, and `agent.*` in a remote workspace) connects first, before anything is created, as an automatic attempt does: ssh never asks (BatchMode), and the [helperInstall rule](#remote-workspaces) applies. A connection that fails is `REMOTE_DISCONNECTED` with `details.reason`, a missing helper `CONFIRMATION_REQUIRED`, and the pane stays stopped. These methods are answered in order, so only `remote.open` and `remote.reconnect`, which the socket answers out of order, let ssh ask the person.
 
-**Tab colors.** `tab.update` takes `title`, `color` or both, and at least one is required. `color` is one of `red`, `orange`, `yellow`, `green`, `blue`, `purple` or `gray`, or `null` to remove the label (`FR-T04`). Any other value returns `-32602` with a `color` field error. When you pass both, they apply together or not at all. Tab results include `color` only when the tab has a label, and a change emits `tab.updated`.
+### Launch and input limits
 
-**Launch descriptors.** `session.start` with no `launch` uses the pane's saved shell or approved host. Starting an arbitrary executable uses a descriptor like this, and always needs `session.execute`:
+- Paths in a launch are absolute, without NUL, at most 4,096 bytes. `arguments` holds at most 256 entries of up to 64 KiB; processes are spawned with an argument array, no shell involved. `environment` holds at most 256 entries (keys up to 256 bytes, values up to 32 KiB); keys starting with `TRELLIS_`, `__TRELLIS_`, `UTERM_` or `__UTERM_` are refused. Environment values exist only at runtime: they are never persisted or exported.
+- `session.sendInput` `literal` writes the exact bytes; `paste` adds bracketed-paste framing when the shell asked for it and refuses text holding the end marker. API input skips the app's paste review, because the grant is the authorization. Accepted bytes don't mean the program has read them.
+- `session.execute` takes one non-empty line without NUL, CR or LF and appends a carriage return; the shell parses it, deliberately.
+- A shell that has started isn't necessarily at its prompt yet; `wait` and `pane.shell` say when it is.
+- **Never retry a command blindly.** If a connection drops while a call runs, inspect the session first: a missing reply doesn't mean nothing ran. `idempotencyKey` makes a retried call safe.
 
-```json
-{"kind": "process", "executable": "/absolute/path", "arguments": [], "directory": "/absolute/path", "environment": {}}
-```
+### Splits and geometry
 
-- Paths must be absolute, with no NUL, and at most 4,096 bytes.
-- `arguments` holds at most 256 entries of up to 64 KiB each. Processes are spawned with an argument array; no shell is involved.
-- `environment` holds at most 256 entries, with keys up to 256 bytes and values up to 32 KiB. Keys starting with `TRELLIS_`, `__TRELLIS_`, `UTERM_` or `__UTERM_` are rejected.
-- Environment values exist only at runtime. They're never persisted or exported.
-- A launch error returns `LAUNCH_FAILED` along with a failed session record.
-- A shell that has started isn't necessarily ready to accept commands yet.
+`axis: x` is left/right and `y` top/bottom; ratios are finite, 0.1–0.9; each pane keeps at least 20 columns × 5 rows; trees nest at most 16 levels, and a workspace holds at most 100 panes. No method ever opens a modal dialog that would block a client, and a failed mutation leaves the workspace exactly as it was.
 
-**`session.sendInput`** needs `session.input`, targets a running session, and accepts up to 64 KiB of decoded payload.
+## Agents
 
-- `literal` mode writes the exact bytes.
-- `paste` mode adds bracketed-paste framing if the shell negotiated it.
-- API input skips the UI paste review, because the grant is the authorization. Clients that want a review step have to build their own.
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `agent.list` | `machine?`, `limit?`, `cursor?` | `agents` (definitions with availability) | workspace.read (+host.read if `machine.hostId`) |
+| `agent.get` | `id` | `agent` | workspace.read |
+| `agent.runs` | `spaceId?`, `state?` | `runs` (agent runs in scope, in sidebar order) | workspace.read |
+| `agent.start` | `agentId`, `placement`, `directory?`, `resume?` | `run`, `session`, `pane`, `tab?` | agent.control + workspace.write (+session.execute if `directory`) |
+| `agent.restart` | `sessionId`, `resume?` | `run`, `session`, `pane` (a new session) | agent.control |
+| `agent.respond` | `sessionId`, `action` `approve`/`reject`/`reply`, `text?`, `expectedState?` | `run`, `acceptedBytes` | agent.respond (or session.input) |
+| `agent.install` | `agentId`, `placement` | `run`, `session`, `pane`, `tab?` | agent.install + session.execute + agent.control + workspace.write |
 
-**`session.execute`** needs `session.execute`. It takes a single non-empty line with no NUL, CR or LF, and `submit` must be exactly `true`. Trellis appends a carriage return. The text is parsed by the shell, deliberately.
+- `placement` is `{"kind": "tab", "spaceId"}`, `{"kind": "split", "paneId", "axis"}` or `{"kind": "pane", "paneId"}`. A `pane` placement takes a pane whose session isn't running: a stopped pane, or a finished one (exited or failed), which first gets a fresh stopped session, as the app's **This Tab** does; a running pane is `INVALID_STATE` (`details.state`), never ended for the agent. A split behind a maximized pane is `INVALID_STATE` (`maximized`), as in the app. `expectedRevision` is the space's for `tab` (compared atomically with the new tab) and the pane's for `split` and `pane`. A new tab or split and its agent launch are created in one store transaction, so a refusal leaves nothing behind.
+- The machine is the space's or pane's: a remote workspace runs the agent on its host (FR-AG12), which needs the host in scope like any other launch there (`PERMISSION_DENIED` otherwise). Without `directory` the agent starts in the folder of the pane it replaces or opens beside (the space's focused pane for a new tab), as the Agents view does; a `directory` on this Mac must be an existing folder (`-32602`), a host's isn't checked.
+- `AGENT_UNAVAILABLE` (`details`: `agentId`, `machine`, `install`, and, with session.execute, `requires` when the installer's own requirements are missing on this Mac) answers `agent.start` and `agent.restart` when the agent is **known** to be missing on that machine: from this Mac's login PATH check, or from an earlier launch that exited 127 there. `details.install` is true when the definition has an installer for the machine's platform that `agent.install` can run. An agent whose availability is unknown is started; if it then isn't found, its run ends (`agent.ended`), `agent.availability` reports `missing`, and the app shows its install offer, exactly as for a launch from the app.
+- `agent.start` and `agent.install` return once the session is launched (or `LAUNCH_FAILED` with `details.session`), not when the agent or its installer finishes. `run` is omitted if the agent already ended by then; `session` says how (for example exit code 127). A slow installer never holds the main actor or the connection: follow it with `agent.*` events.
+- `agent.restart` restarts a **managed** run (an agent pane) whose agent has ended, or a restored stopped agent pane: a new session in the same pane, with `resume` continuing the agent's last conversation (FR-AG06). A running agent is `INVALID_STATE` (`details.state`: `running`; stop it with `session.stop` first); an agent typed in a shell is `INVALID_STATE` with `details.state: "detected"`, and a session without an agent `noAgent`. `sessionId` must be the pane's current session.
+- `agent.respond` sends fixed bytes: `approve` is `1` + Return, `reject` is Escape, `reply` is the text + Return. `text` is required for `reply` and refused otherwise; it is one line without control characters (no Return, Escape or other C0/C1 bytes), at most 16 KiB. It is refused with `INVALID_STATE` (`details.state` holding the run's state) unless the run's state is `needsInput` (or `expectedState` if given), so a stale answer never reaches a prompt that moved on; a session without a run is `noAgent`. Approve and reply count as the user's Return for the run's state (FR-AG11). The bytes go through the same input path as `session.sendInput`: a remote workspace session needs its host in scope and a connected link (`REMOTE_DISCONNECTED`, never queued). The reply text is never logged. It is a narrower permission than **session.input**, and works for detected runs too.
+- `agent.install` runs the definition's installer for the machine's platform in the placement's pane, in the login shell, and then the agent, exactly as the app's **Install and Launch** does (FR-AG12): it is `agent.start` with the installer first, so it needs what `agent.start` needs as well. A machine without an installer for the agent, or an installer whose required programs this Mac's login PATH lacks, is `AGENT_UNAVAILABLE` with `details.install: false`. The missing mark for that machine is cleared, as in the app; whether the agent is there afterwards shows in the run (it starts, or ends with exit 127 and `agent.availability` `missing` again).
+- `agent.list` and `agent.get` read every definition, whatever the grant's agent scope (which limits only starting, restarting and installing). `machine` (`{"kind": "local"}` or `{"kind": "remote", "hostId"}`) limits `availability` to that machine.
 
-Neither `sendInput` nor `execute` waits for the command to finish, and neither returns an exit status. An agent that needs a reliable exit code should start a dedicated, non-interactive `kind: process` session and watch for its `session.exit` event.
+## Hosts
 
-## Theme automation
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `host.list` | `query?`, `tags?`, `limit?`, `cursor?` | `hosts` | host.read |
+| `host.get` | `id` | `host` | host.read |
+| `host.create` | `name`, `destination`, `user?`, `port?`, `identityFile?`, `tags?` | `host` | host.write + session.execute |
+| `host.update` | `id`, fields | `host` | host.write (+session.execute if a connection field changes) |
+| `host.delete` | `id` | `deleted` | host.write |
+| `host.connect` | `hostId`, `placement` (`tab`, `split` or `space`) | `session`, `pane` | session.start + workspace.write |
 
-Themes follow the [theme format](../features/themes.md).
+Passwords are never set or read through the API; saving one stays a UI action (FR-H09).
 
-- Theme operations are global and independent of layout documents. They never start or alter a process.
-- Writes need `theme.write` with all-spaces scope, and follow the usual revision and idempotency rules.
-- A missing theme ID returns `NOT_FOUND`. Trying to replace or delete a built-in theme returns `INVALID_STATE`.
-- Appearance changes emit `appearance.changed` events to subscribers with `theme.read`.
+- `host.list` filters by `query` (every word matches a name, destination, user or tag) and `tags` (every tag, any case). It has no `revision`: the host library has no collection revision. `host.create` takes no `expectedRevision` for the same reason. `host.create` returns the new host even to a grant limited to approved hosts; it can't be used through that grant until it is approved.
+- `host.update` needs at least one field; `null` clears `user`, `port`, `identityFile` or `tags`. Sending any of `destination`, `user`, `port` or `identityFile`, `null` included, needs **session.execute**.
+- `host.delete` returns `deleted` without `workspaceRevision`.
+- `host.connect`'s `placement` is `{"kind": "tab", "spaceId"}`, `{"kind": "split", "paneId", "axis"?}` or `{"kind": "space", "name"?}`; a new space needs all or `created` space scope, and with `created` it joins the grant's scope. Its `expectedRevision` is the host's, so a client connects to the host it read. An ssh pane never opens in a remote workspace (`INVALID_STATE`). The new tab or space is named after the host.
+
+## Remote workspaces
+
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `remote.open` | `hostId`, `name?`, `start?` | `space`, `tab`, `panes` | remote.connect + workspace.write (+session.start if `start`), all or `created` spaces |
+| `remote.status` | `hostId` | `remote` (helper and link) | host.read |
+| `remote.reconnect` | `hostId`, `interactive?` | `remote` | remote.connect |
+| `remote.helper.install` | `hostId` | `remote` | remote.manage |
+| `remote.helper.remove` | `hostId`, `stopSessions?` | `remote` | remote.manage (+session.close if `stopSessions`) |
+
+Every method here needs the host in the grant's host scope at its current `connectionRevision` (a host outside it is `NOT_FOUND`, a stale approval `PERMISSION_DENIED`). `remote` is [Host](resources.md#host)'s `remote` object, always present in these results (`helper: "unknown"` before any check).
+
+- `remote.open` is the app's **Open Remote Workspace** (FR-RW01): a space bound to the host, named `name` or after the host, with one tab. With a `created` space scope the space joins the grant's scope inside the transaction that creates it. Without `start` its pane stays stopped and nothing connects, like a restored remote workspace; a later `session.start` connects. With `start: true` the host's link is made ready **first**, so a refusal leaves nothing behind: ssh may ask in the app's connection console (a password, a host key, as the app does), then the space is created and its shell started on the host. A shell that then fails is `LAUNCH_FAILED` with `details.session`, and the space stays, as in the app. `expectedRevision` is the workspace's, compared when the space is created.
+- **helperInstall rule.** A connection made through the API (`remote.open`, `remote.reconnect`, and starting a session on a host as above) installs or updates the helper without asking only when the host's **Install helper automatically** is on (FR-RW17) or the grant holds **remote.manage**, the consent the user gave the grant. Otherwise a host without the helper is `CONFIRMATION_REQUIRED` with `details.reason: "helperInstall"`, nothing is written on the host and nothing is created; the app never shows its install sheet for an API call. The user can install it in the app (**Hosts → Install Trellis Helper…**), turn on automatic install, or give the grant remote.manage. An older helper already there is used as the app uses it (FR-RW14).
+- `remote.status` reads what Trellis last observed and never probes the host (the app's **Check Helper Status** does).
+- `remote.reconnect` is **Retry Now** (an automatic attempt, never prompting) or, with `interactive: true`, **Reconnect…** (ssh may ask in the console). As in the space's menu, it is `INVALID_STATE` while the link is `connected` or `connecting` (`details.state`), and with `details.state: "noWorkspace"` when no remote workspace on this Mac uses the host. It returns when the attempt ends, with the link as it then is: `connected`, `needsInput` or `disconnected` with a `reason`, or `reconnecting` when automatic attempts continue; their outcome arrives as `remote.link` events. A missing helper under the helperInstall rule is `CONFIRMATION_REQUIRED`.
+- `remote.helper.install` is **Install Trellis Helper…** / **Update Helper…** (FR-RW02, FR-RW17): the same link, console, SHA-256 check on the host and atomic install, without the sheet (remote.manage is the consent). It returns when the action ends; a host that already has this build's helper keeps it.
+- `remote.helper.remove` is **Remove Helper…**: it deletes `~/.trellis/remote` and `~/.trellis/run` on the host, for every Mac using it. As in the app it isn't refused because a remote workspace is open; it is refused while this Mac's sessions run there: `CONFIRMATION_REQUIRED` with `details.reason: "runningSessions"` and `details.count`, unless `stopSessions: true` (needs session.close) stops them first, as **Stop and Remove** does. Sessions that can't be counted keep the helper: `INVALID_STATE` with `details.state: "sessionsUnknown"`.
+- Failures carry a [reason code](resources.md#remote-link-reasons): a host that can't be reached or logged in to is `REMOTE_DISCONNECTED` (`retryable` for `hostUnreachable` and `lost`); a helper that can't be used there (`helperUnsupported`, `helperUnavailable`, `noChecksumTool`, `helperIncompatible`, `installFailed`, `hostRefused`) is `INVALID_STATE` with `details.state` the helper's status; an attempt cancelled in the app is `INVALID_STATE` (`cancelled`). Another helper action running on the host is `INVALID_STATE` (`busy`, retryable). The message is the app's own, in English.
+- Agents in a remote workspace need a helper of protocol 3 or later (FR-RW18): with an older one connected, `agent.start`, `agent.restart` and `agent.install` are `INVALID_STATE` with `details.state: "helperOutdated"` and `details.reason: "helperTooOldForAgents"`, before anything is created.
+- **Waiting.** These four mutating methods may wait on the host or on the person, so the socket answers them out of order (up to 16 waiting per connection; more are answered in order) and keeps serving the connection's later calls; MCP answers each call on its own request. Nothing waits on the main thread.
+
+## Projects
+
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `project.list` | `query?` (names and notes; repository URLs too with session.execute), `limit?`, `cursor?` | `projects`, `revision` (the library's) | project.read |
+| `project.get` | `id` | `project` | project.read |
+| `project.create` | `document` (project JSON, FR-PL03) | `project` | project.write + session.execute |
+| `project.update` | `id`, `document` | `project` | project.write (+session.execute if commands, agents, repositories or folders change) |
+| `project.delete` | `id` | `deleted` | project.write |
+| `project.capture` | `spaceId`, `name` | `project`, `warnings?` | project.write + workspace.read |
+| `project.check` | `id`, `target`, `folder?` | `plan` | project.read (+remote.connect for a host target) |
+| `project.launch` | `id`, `target`, `folder?`, `setup?` | `space`, `launches` | project.launch + session.start (+session.execute if `setup` or `folder`, or the project runs pane commands; +agent.control if it starts agents; +remote.connect for a host target), all or `created` spaces |
+
+`project.launch` does what the app's launch sheet does (FR-PL06–PL08), through the same model-level launcher, and binds the space to the project (FR-W08). If setup is needed and `setup` isn't true, it is `SETUP_REQUIRED` with the plan in `details.plan`. Project definitions are untrusted: a grant can only run what the plan shows, and a project changed after `project.check` is `CONFLICT`.
+
+- **Documents.** `document` is the library's JSON form (FR-PL03: `name`, `notes`, `repository`, `tabs`, panes with `title`, `directory`, `command`, `agent` and `repository`), at most 256 KiB, validated exactly as the editor's JSON mode validates it (`-32602` with every problem in the message). A created project gets a new ID; `project.update` replaces the definition and keeps the folders it was launched in. `project.create` and `project.capture` take no `expectedRevision` (a new project conflicts with none); `project.update` and `project.delete` compare the project's `revision`. Changes go through the library window's own model, so the window and `project.*` events follow them.
+- **What runs needs session.execute.** `project.update` compares what the new document runs with the stored one — each pane's folder, command, agent and repository, and the project's and tabs' repositories, as a multiset (reordering or renaming changes nothing) — and needs session.execute if they differ (`PERMISSION_DENIED`, `details.missing`). A grant without it sees no commands, repositories or folders (resources.md#project), so it can rename a project only by sending what it read plus what it kept.
+- **`project.capture`** is **New from Space…** (FR-PL04): a space in scope becomes a library project named `name`; commands are never captured, agent panes stay agent panes, and `warnings` (English) name panes that became shells.
+- **`target`** is `{"kind": "local"}` or `{"kind": "host", "hostId"}` (the host in the grant's host scope at its current connection). `folder` is the project folder as the sheet takes it: absolute or `~/…` on this Mac, relative to home on a host; without it, the last folder used on that target, else `~/<name>`. A folder that can't be used is `-32602` (`data.fields.folder`). Choosing a `folder` for a launch needs session.execute, as a launch `directory` does.
+- **`project.check`** returns `plan`: `revision` (the project's, to send as `project.launch`'s `expectedRevision`), `target`, `folder` (execute), `folderExists`, `needsSetup`, `checkouts` (`state` `clone`/`present`/`blocked`; `folder` and `repository` with execute), `commands` (`paneKey`, and `command` with execute) and `agents` (`paneKey`, `agentId`). Pane keys are the launch's layout keys (`t1-0` for a tab's only pane, `t2-12` for the second child of the first child in tab 2), as `project.get` names panes. A host target is connected first, as below, since checking reads the host (FR-PL06).
+- **`project.launch`** checks, before anything runs or is created: the capabilities what the definition runs needs (session.execute for pane commands, agent.control for agent panes, each agent in the grant's agent scope as `session.start` requires for a saved agent launch), then a host target's link, then the target. Setup runs only with `setup: true`; the space then opens from the definition that was checked, or the call is `CONFLICT` (`details.currentRevision`) if the project changed meanwhile. A new space joins a `created` scope inside the transaction that creates it; launching a project already open in a space reconciles that space (FR-PL08: nothing restarts, no command runs again), and is `PERMISSION_DENIED` when that space is outside the grant's scope. The space is selected, as in the app.
+- **`launches`** lists the panes the launch created and started, by layout key: `paneKey`, `paneId`, `tabId`, `session` (as `session.get` returns it), `agentId` for an agent pane and `command: true` when a command will be typed at its first prompt (never the text). Reconciling an open space creates none. A pane whose start failed is reported with its failed session, as in the app; the launch itself still succeeds.
+- **Setup through the API** runs the sheet's setup (FR-PL07) in a terminal nobody sees: git's credential prompts are off (`GIT_TERMINAL_PROMPT=0`), a setup on this Mac runs git's ssh in batch mode (`GIT_SSH_COMMAND="ssh -o BatchMode=yes"`, unless `GIT_SSH_COMMAND`, `GIT_SSH` or git's `core.sshCommand` already says how), and an ssh prompt can't be answered, so a setup still running after 15 minutes, or when the call is cancelled (its connection closed), gets a hangup (git removes a partial clone) and then a kill. A setup that fails or is ended is `LAUNCH_FAILED` with `details.setup` (`exitCode?`, `timedOut`), and nothing opens. Set up a project that needs a passphrase or a host key from the app.
+- **Host targets** connect first, as an automatic attempt (BatchMode: ssh never asks) under the [helperInstall rule](#remote-workspaces): a missing helper is `CONFIRMATION_REQUIRED` (`helperInstall`) unless the host installs automatically or the grant holds remote.manage, and a failed connection is `REMOTE_DISCONNECTED` with `details.reason`, all before anything is created. Setup and agent panes there need a helper of protocol 3 or later (`INVALID_STATE`, `helperOutdated`). The space is bound to the host like a remote workspace (FR-RW01).
+- **Waiting.** `project.check` on a host and `project.launch` on a host or with `setup` may wait on the host or the setup, so the socket answers them out of order like the remote methods (`waitsIf`); a local launch without setup keeps its place.
+
+## Tasks
+
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `task.list` | `paneId`, `limit?`, `cursor?` | `tasks`, `file` (`loaded`/`missing`/`invalid`), `folder` (execute) | task.read |
+| `task.run` | `paneId`, `taskId` | `run` | task.run |
+| `task.stop` | `paneId`, `force?` | `run` | task.run |
+| `task.get` | `paneId` | `run?` (the pane's current or last run; omitted when there is none) | task.read |
+
+`task.run` types the task into the pane's shell exactly as the app does (FR-TK04, FR-TK05, FR-TK09) and needs a shell pane with integration; an untrusted `launch.json` task is `TASK_UNTRUSTED` — trust is only given in the app. Stop sends Ctrl-C and force sends Ctrl-\ (FR-TK08).
+
+- The pane's folder decides the project (FR-TK02), read as the Tasks view reads it but without changing what the view shows. Task IDs are `file:<name>` for `launch.json` tasks and `detected:<name>` for detected ones (`detected:swift: build`), as `task.run` events name them. A pane without a project lists no tasks (and no `file`).
+- `task.run` refuses with `INVALID_STATE` and `details.state`: `noIntegration` (no authenticated prompt mark yet), `busy` (a command is running), `taskActive`, `notRunning`, `notShell` (an SSH pane), `noProject`, `unquotable`, or `trustUnreadable` (the trusted-files list can't be read). An unknown `taskId` is `NOT_FOUND`. `TASK_UNTRUSTED` carries `details.taskId` and `changedSinceTrusted`; the app's review is never opened by the API.
+- Runs are the app's runs: the Tasks button, `pane.task`, `task.get` and the `task.run` events all follow the same one (FR-TK07), whoever started it.
+- `task.stop` without a running task is `INVALID_STATE`. `force: true` sends Ctrl-\ only once the first stop is 2 s old, as the app's **Force Stop** appears; before that it sends Ctrl-C (if not yet sent) and answers `CLOSE_PENDING`.
+- A remote workspace pane's tasks are read and typed on its host (FR-RW11): `task.list`, `task.run` and `task.stop` need the host in scope (FR-RW15) and its link (`REMOTE_DISCONNECTED` while down).
+
+## Layouts
+
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `layout.validate` | `document` | `valid`, `version` (3), `upgradedFrom?`, `errors`, `warnings` | workspace.read |
+| `layout.plan` | `namespace`, `document` | `baseRevision`, `applicable`, `errors`, `warnings`, `conflicts`, `creates`, `updates`, `unmanaged` | workspace.read |
+| `layout.apply` | `namespace`, `document`, `expectedRevision` (required), `startNew?` | `workspaceRevision`, `changed`, `mapping`, `creates`, `launches` | workspace.write, all spaces (+session.start if `startNew`, +remote.connect if a space has a remote `machine`, +project.launch if a space has `projectId`, +agent.control if a pane has an `agent`) |
+| `layout.export` | `spaceIds?` | `document` (version 3), `redacted`, `importable` | workspace.read |
+
+[Layouts](layouts.md) describes documents (version 3; versions 1 and 2 are read as 3, a `windows` list is refused), matching by namespace and key, and what export redacts. The capabilities a document's contents need are checked by `layout.apply` and answered with `PERMISSION_DENIED` and `details.missing`; validate and plan only read. `layout.apply`'s `expectedRevision` is the workspace revision from `layout.plan`'s `baseRevision`. Namespaces match the key pattern, so they never reach the `project:…` bindings project launches keep in the same `layout-bindings.json`.
+
+## Themes and appearance
+
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `theme.list` | `limit?`, `cursor?` | `themes` (`id`, `name`, `appearance`, `builtIn`, `selectedFor`), `appearanceRevision`, `nextCursor?` | theme.read |
+| `theme.get` | `id` | the theme's summary with `resolved` (its palette) and `contrastWarnings` | theme.read |
+| `theme.validate` | `document` or `documentText` | `valid`, `id?`, `appearance?`, `errors`, `warnings` | theme.read |
+| `theme.import` | `document` or `documentText`, `replace?` | the installed theme's summary | theme.write, all spaces |
+| `theme.export` | `id`, `resolved?` | `id`, `resolved`, `document` | theme.read |
+| `theme.delete` | `id` | `deleted` | theme.write, all spaces |
+| `appearance.get` | — | `mode`, `lightThemeId`, `darkThemeId`, `effectiveThemeId`, `revision`, `rendering`, `backgroundOpacity`, `backgroundBlur`, `effectiveBackgroundOpacity` | theme.read |
+| `appearance.set` | `mode` `system`/`dark`/`light`, `lightThemeId?`, `darkThemeId?` | the appearance, as `appearance.get` | theme.write, all spaces |
+
+Themes follow the [theme format](../features/themes.md) and work as in protocol 1, with v2 conventions (lowercase IDs, omitted absent values, pagination):
+
+- Theme operations are global and independent of layout documents; they never start or alter a process. A missing theme ID is `NOT_FOUND`; replacing or deleting a built-in `trellis-` theme is `INVALID_STATE`; importing an ID that exists without `replace: true` is `CONFLICT`.
+- `documentText` sends a theme file as raw text, so the validator sees duplicate keys and number forms exactly as the app's import does; send it or `document`, not both.
+- `theme.export` always exports built-in themes complete. Deleting a theme a slot had selected falls back to the built-in theme.
+- `appearance.set`'s `expectedRevision` is the appearance `revision`. A theme in the wrong slot (a light theme as `darkThemeId`) is `-32602`. Font, cursor, scrollback, text rendering (FR-TX01, FR-TX03, FR-TX05), bell (FR-T07), desktop notifications (FR-T08) and background opacity and blur (FR-TH10) aren't exposed and stay unchanged.
+- `appearance.get`'s `rendering` gives the effective GPU setting (`gpuRendering`, including a `--renderer` launch override), how many panes draw with each renderer (`metalPanes`, `coreGraphicsPanes`) and the frames they have drawn (`metalFrames`, `coreGraphicsFrames`) (FR-TX05); `effectiveBackgroundOpacity` is what panes show, 1 while Reduce Transparency or Increase Contrast is on (FR-TH10).
+- Changes emit `appearance.changed` to grants with theme.read.
+
+## Events
+
+| Method | Params | Result | Caps |
+| --- | --- | --- | --- |
+| `events.subscribe` | `topics`, `resourceIds?`, `spaceIds?`, `afterSequence?`, `instanceId?` | `subscriptionId`, `sequence`, `instanceId`; then `events.event` notifications | each topic's (none for `grant`); socket only |
+| `events.unsubscribe` | `subscriptionId` | `deleted` (`kind: subscription`) | — |
+| `events.poll` | `topics`, `spaceIds?`, `afterSequence?`, `instanceId?`, `timeoutMs?`, `limit?` | `events`, `nextSequence`, `instanceId`, `gap?` | each topic's; any transport |
+
+Topics, envelopes, redaction and the wait rules are in [Events](events.md).

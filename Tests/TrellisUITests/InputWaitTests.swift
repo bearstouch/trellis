@@ -45,15 +45,14 @@ final class InputWaitTests: XCTestCase {
         XCTAssertEqual(h.model.spacesNeedingInput, [try XCTUnwrap(h.model.snapshot.activeSpaceID)])
         XCTAssertTrue(h.model.accessibility.spaces.first?.value.contains("waiting for input") == true)
 
-        let session = try XCTUnwrap(h.model.terminals[t.paneB]?.sessionID)
-        let reported = try result(try await h.call("session.get", ["id": session.uuidString]))
-        XCTAssertEqual(reported["waitingForInput"] as? String, "attention")
+        let reported: [String: Any] = try await h.value("pane", "pane.get", ["id": t.paneB.uuidString])
+        XCTAssertEqual((reported["attention"] as? [String: Any])?["needsInput"] as? String, "attention")
 
         await h.model.selectTab(t.b)
         XCTAssertNil(h.model.inputWait(tabID: t.b), "Showing the pane answers the bell")
         XCTAssertTrue(h.model.spacesNeedingInput.isEmpty)
-        let cleared = try result(try await h.call("session.get", ["id": session.uuidString]))
-        XCTAssertNil(cleared["waitingForInput"])
+        let cleared: [String: Any] = try await h.value("pane", "pane.get", ["id": t.paneB.uuidString])
+        XCTAssertNil((cleared["attention"] as? [String: Any])?["needsInput"])
     }
 
     @MainActor

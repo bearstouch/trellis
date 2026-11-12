@@ -141,11 +141,11 @@ def read_rate(stats_path, timeout=30):
 def workload_idle(binary, renderer, seconds):
     app, _, created = fresh(binary, renderer)
     try:
-        c, pane = app.client, created["panes"][0]["paneId"]
+        c, pane = app.client, created["panes"][0]["id"]
         panes = [pane]
         for axis in ["x", "y", "y"]:
-            split = c.result("pane.split", {"paneId": panes[-1], "axis": axis})
-            panes.append(split["pane"]["paneId"])
+            split = c.result("pane.split", {"id": panes[-1], "axis": axis})
+            panes.append(split["pane"]["id"])
         for p in panes:
             start_process(c, p, "exec /bin/cat")
         result = measure(app, seconds, settle=4)
@@ -159,10 +159,10 @@ def workload_stream(binary, renderer, seconds, rate, payload, name, splits=0):
     app, _, created = fresh(binary, renderer)
     try:
         c = app.client
-        panes = [created["panes"][0]["paneId"]]
+        panes = [created["panes"][0]["id"]]
         for index in range(splits):
-            split = c.result("pane.split", {"paneId": panes[index // 2], "axis": "x" if index % 2 == 0 else "y"})
-            panes.append(split["pane"]["paneId"])
+            split = c.result("pane.split", {"id": panes[index // 2], "axis": "x" if index % 2 == 0 else "y"})
+            panes.append(split["pane"]["id"])
         stats = [run_writer(app, p, seconds + 4, rate, payload, f"{name}{i}") for i, p in enumerate(panes)]
         result = measure(app, seconds, settle=2)
         check_renderer(result, renderer, len(panes))

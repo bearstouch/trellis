@@ -34,7 +34,7 @@ class Client:
         self.sock.connect(path)
         self.buffer = b""
         self.next_id = 0
-        reply = self.call("auth.authenticate", {"protocolVersion": 1, "token": token})
+        reply = self.call("auth.authenticate", {"protocolVersion": 2, "token": token})
         assert "result" in reply, reply
 
     def call(self, method, params=None):
@@ -76,16 +76,18 @@ class App:
         os.chmod(self.state, 0o700)
         self.token = "trl_QUALIFY_" + uuid.uuid4().hex
         now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+        # grants.json schema 2 (docs/api/permissions.md): a Custom grant over every space, host, project and agent.
         grant = {
-            "id": str(uuid.uuid4()).upper(), "name": "qualification", "tokenHash": "sha256:" + hashlib.sha256(self.token.encode()).hexdigest(),
-            "capabilities": ["metadata.read", "layout.write", "session.start", "session.input", "session.execute", "session.output.read",
-                             "session.close", "theme.read", "host.read"],
-            "windowScope": {"all": {}}, "hostScope": {"all": {}},
+            "id": str(uuid.uuid4()), "name": "qualification", "tokenHash": "sha256:" + hashlib.sha256(self.token.encode()).hexdigest(),
+            "preset": "custom", "revision": 1,
+            "capabilities": sorted(["workspace.read", "workspace.write", "session.start", "session.input", "session.execute", "session.output.read",
+                                    "session.close", "theme.read", "host.read"]),
+            "scope": {"spaces": "all", "projects": "all", "hosts": "all", "agents": "all"},
             "createdAt": now.isoformat().replace("+00:00", "Z"), "expiresAt": (now + datetime.timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
         }
         path = os.path.join(self.state, "grants.json")
         with open(path, "w") as handle:
-            json.dump([grant], handle)
+            json.dump({"schemaVersion": 2, "grants": [grant]}, handle)
         os.chmod(path, 0o600)
         self.started = time.perf_counter()
         # --fixture: the initial space runs a fixed `zsh -f` demo, never the user's login shell.
@@ -158,9 +160,9 @@ def start_process(client, pane, script, executable="/bin/sh", arguments=None):
     return client.result("session.start", {"paneId": pane, "launch": launch})
 
 
-def first_pane(client, window_id):
-    tab = client.result("space.get", {"id": window_id})["activeTabId"]
-    return client.result("tab.get", {"id": tab})["paneIds"][0]
+def first_pane(client, space_id):
+    tab = client.result("space.get", {"id": space_id})["space"]["activeTabId"]
+    return client.result("tab.get", {"id": tab})["tab"]["paneIds"][0]
 
 
 def main():
@@ -208,8 +210,8 @@ def main():
         windows = []
         for index in range(10):
             created = c.result("space.create", {"name": f"Q{index}"})
-            windows.append(created["spaceId"])
-            start_process(c, created["panes"][0]["paneId"], "exec /bin/cat")
+            windows.append(created["space"]["id"])
+            start_process(c, created["panes"][0]["id"], "exec /bin/cat")
         time.sleep(5)
         cpu_before = app.cpu_seconds()
         time.sleep(idle_seconds)
@@ -220,26 +222,18 @@ def main():
         # 10 spaces, 50 tabs, 100 sessions.
         for window in windows:
             for _ in range(4):
-                tab = c.result("tab.create", {"spaceId": window})
+                tab = c.result("tab.create", {"spaceId": window})["tab"]
                 start_process(c, tab["paneIds"][0], "exec /bin/cat")
         for window in windows:
             for tab in c.result("tab.list", {"spaceId": window})["tabs"]:
                 pane = tab["paneIds"][0]
-                split = c.result("pane.split", {"paneId": pane, "axis": "x"})
-                start_process(c, split["pane"]["paneId"], "exec /bin/cat")
+                split = c.result("pane.split", {"id": pane, "axis": "x"})
+                start_process(c, split["pane"]["id"], "exec /bin/cat")
         listed = c.result("space.list")["spaces"]
         tabs = [t for w in listed for t in c.result("tab.list", {"spaceId": w["id"]})["tabs"]]
         panes = [p for t in tabs for p in t["paneIds"]]
-        sessions = [c.result("tab.get", {"id": t["id"]}) for t in tabs]
-        running = 0
-        for t in sessions:
-            stack = [t["layout"]]
-            while stack:
-                node = stack.pop()
-                if node["type"] == "split":
-                    stack.extend(node["children"])
-                elif node["state"] == "running":
-                    running += 1
+        sessions = c.result("workspace.get", {"include": ["sessions"]})["sessions"]
+        running = sum(1 for session in sessions if session["state"] == "running")
         results["capacity"] = {"spaces": len(listed), "tabs": len(tabs), "panes": len(panes), "unique_ids": len(set(panes)) == len(panes), "running": running}
         results["capacity_rss_mib"] = round(app.rss_mib(), 1)
         results["capacity_children_rss_mib"] = round(app.children_rss_mib(), 1)
@@ -254,7 +248,7 @@ def main():
 
         # Proxy: one byte to a cat pane until the PTY echo reaches the app.
         echo_pane = panes[0]
-        echo_session = c.result("session.get", {"id": c.result("tab.get", {"id": tabs[0]["id"]})["layout"]["children"][0]["sessionId"]})["id"]
+        echo_session = c.result("pane.get", {"id": echo_pane})["pane"]["sessionId"]
         cursor = c.result("session.readOutput", {"id": echo_session, "view": "stream"})["nextCursor"]
         echo = []
         for _ in range(100):
@@ -276,7 +270,7 @@ def main():
         c.result("space.close", {"id": windows[-1], "allowRunning": True})
         tabs = [t for t in tabs if t["spaceId"] != windows[-1]]
         flood_window = c.result("space.create", {"name": "Flood"})
-        flood_pane = flood_window["panes"][0]["paneId"]
+        flood_pane = flood_window["panes"][0]["id"]
         # 10 MiB per wall-clock second (sub-second timer), paced; a slow reader blocks the writer, so the
         # achieved rate is what the app actually consumed. The writer records it for the report.
         stats_path = os.path.join(app.state, "flood-stats.txt")
@@ -289,13 +283,13 @@ def main():
         while time.time() < end:
             begin = time.perf_counter()
             # Alternate into the flooding tab so switches also land on a pane that is rendering output.
-            target = flood_window["tabId"] if len(flood_switch) % 2 == 0 else tabs[(len(flood_switch) // 2) % len(tabs)]["id"]
+            target = flood_window["tab"]["id"] if len(flood_switch) % 2 == 0 else tabs[(len(flood_switch) // 2) % len(tabs)]["id"]
             c.result("tab.focus", {"id": target})
             flood_switch.append((time.perf_counter() - begin) * 1000)
             if len(flood_switch) % 20 == 0:
                 flood_rss.append(app.rss_mib())
             time.sleep(0.05)
-        flood_session = c.result("tab.get", {"id": flood_window["tabId"]})["layout"]["sessionId"]
+        flood_session = c.result("pane.get", {"id": flood_pane})["pane"]["sessionId"]
         read = c.result("session.readOutput", {"id": flood_session, "view": "stream", "maxBytes": 1})
         deadline = time.time() + 30
         while not os.path.exists(stats_path) and time.time() < deadline:
@@ -322,9 +316,9 @@ def main():
         for index in range(100):
             created = c.result("space.create", {"name": f"Cycle {index}"})
             existing = set(app.children())
-            start_process(c, created["panes"][0]["paneId"], "exec /bin/sleep 30")
+            start_process(c, created["panes"][0]["id"], "exec /bin/sleep 30")
             spawned |= set(app.children()) - existing
-            reply = c.call("space.close", {"id": created["spaceId"], "allowRunning": True})
+            reply = c.call("space.close", {"id": created["space"]["id"], "allowRunning": True})
             if "result" not in reply:
                 notes.append(f"cycle {index}: {reply.get('error')}")
         time.sleep(3)

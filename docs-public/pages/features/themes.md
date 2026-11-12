@@ -74,7 +74,7 @@ Use the same steps: **Preview JSON…**, then **Save & Use Theme**. Trellis copi
 
 If you already have a theme with the same `id`, Trellis offers **Replace Theme**, which overwrites the installed one. Replacing is all or nothing: if it fails, the previous version stays.
 
-Themes can also be installed and selected through the [automation API](../api/methods.md#theme-automation) by a client with theme permission.
+Themes can also be installed and selected through the [automation API](../api/methods.md#themes-and-appearance) by a client with theme permission.
 
 ## Theme file format
 
