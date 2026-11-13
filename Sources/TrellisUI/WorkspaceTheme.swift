@@ -41,10 +41,6 @@ extension AppWorkspaceModel {
         case .success, .warning, .error: return Color(themeRGB: effectiveTheme[field].rgb)
         }
     }
-    /// FR-P05. The system accent can't be measured here, so native chrome uses a fixed tint, as the sidebar selection does.
-    var focusedPaneHeaderBackground: Color {
-        usesNativeChrome ? Color.accentColor.opacity(0.16) : Color(themeRGB: effectiveTheme.focusedPaneHeader.rgb)
-    }
     /// How a pane shows focus right now (FR-P05). Only a tab showing several panes needs telling apart.
     func paneFocusStyle(paneID: UUID, tabID: UUID, windowActive: Bool, increasedContrast: Bool) -> PaneFocusStyle {
         let panes = snapshot.tabs[tabID]?.root.paneIDs.count ?? 0
