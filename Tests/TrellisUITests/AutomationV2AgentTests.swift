@@ -21,10 +21,11 @@ final class AutomationV2AgentTests: XCTestCase {
         shell = scratch.appendingPathComponent("bin/sh").path
         try "#!/bin/sh\nprintf 'SHELL-UP\\n'\n[ \"$2\" = -c ] && exec /bin/sh -c \"$3\"\nexec /bin/cat\n".write(toFile: shell, atomically: true, encoding: .utf8)
         echoAgent = scratch.appendingPathComponent("bin/echo-agent").path
+        // Raw mode before the marker: tests send keys as soon as they see it, and a cooked tty would turn \r into \n.
         try """
         #!/bin/sh
-        printf 'FAKE-AGENT-UP %s %s\\n' "$PWD" "$*"
         stty raw -echo
+        printf 'FAKE-AGENT-UP %s %s\\n' "$PWD" "$*"
         while :; do
           b=$(dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' \\n')
           [ -n "$b" ] || exit 0
