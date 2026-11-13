@@ -43,14 +43,14 @@ public struct ProjectLibraryView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(stored == nil ? "New Project" : "Edit Project").font(.system(size: 22, weight: .semibold))
-                        Text("Tabs, splits, folders, commands and repositories. Launch it on this Mac or a saved host.")
+                        Text(stored == nil ? L("New Project") : L("Edit Project")).font(.system(size: 22, weight: .semibold))
+                        Text(L("Tabs, splits, folders, commands and repositories. Launch it on this Mac or a saved host."))
                             .font(.callout).foregroundStyle(workspace.themeColor(.mutedForeground))
                     }
                     Spacer()
                     // A closure, not `set: switchEditor`: Swift 6.3.3 (Xcode 26.6, CI) crashes in IRGen on that method-reference thunk.
-                    SegmentedPicker("Editor", selection: showsJSON, options: [(false, "Form"), (true, "JSON")]) { switchEditor($0) }
-                        .fixedSize().accessibilityLabel("Editor")
+                    SegmentedPicker(L("Editor"), selection: showsJSON, options: [(false, L("Form")), (true, "JSON")]) { switchEditor($0) }
+                        .fixedSize().accessibilityLabel(L("Editor"))
                 }
                 .padding(28)
                 Divider().padding(.horizontal, 28)
@@ -70,21 +70,21 @@ public struct ProjectLibraryView: View {
         .onChange(of: isDirty, initial: true) { _, dirty in model.editorDirty = dirty }
         .onChange(of: model.saveRequests) { save(then: model.takeAfterRequestedSave()) }
         .onChange(of: model.discardRequests) { select(selection, force: true) }
-        .confirmationDialog("Delete “\(stored?.name ?? "")”?", isPresented: $confirmingDelete) {
-            Button("Delete Project", role: .destructive, action: delete)
+        .confirmationDialog(L("Delete “%@”?", stored?.name ?? ""), isPresented: $confirmingDelete) {
+            Button(L("Delete Project"), role: .destructive, action: delete)
         } message: {
-            Text("Only the project definition is removed. Its folders, repositories and open spaces are not changed.")
+            Text(L("Only the project definition is removed. Its folders, repositories and open spaces are not changed."))
         }
         .confirmationDialog(
-            "Save changes to “\(draft.name)”?", isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } })
+            L("Save changes to “%@”?", draft.name), isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } })
         ) {
-            Button("Save") {
+            Button(L("Save")) {
                 let change = pendingChange
                 save { apply(change) }
             }
-            Button("Discard Changes", role: .destructive) { apply(pendingChange) }
+            Button(L("Discard Changes"), role: .destructive) { apply(pendingChange) }
         } message: {
-            Text("The project has changes that aren't saved.")
+            Text(L("The project has changes that aren't saved."))
         }
     }
 
@@ -92,10 +92,10 @@ public struct ProjectLibraryView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("PROJECTS").font(.system(size: 11, weight: .semibold)).foregroundStyle(workspace.themeColor(.mutedForeground))
+            Text(L("PROJECTS")).font(.system(size: 11, weight: .semibold)).foregroundStyle(workspace.themeColor(.mutedForeground))
                 .padding(.horizontal, 12).padding(.top, 24).padding(.bottom, 6)
-            TextField("Search projects", text: $model.query).textFieldStyle(.roundedBorder).accessibilityLabel("Search projects")
-                .accessibilityHint("Matches names, notes and repository URLs").padding(.bottom, 6)
+            TextField(L("Search projects"), text: $model.query).textFieldStyle(.roundedBorder).accessibilityLabel(L("Search projects"))
+                .accessibilityHint(L("Matches names, notes and repository URLs")).padding(.bottom, 6)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) { ForEach(model.visibleProjects) { projectRow($0) } }
@@ -104,18 +104,18 @@ public struct ProjectLibraryView: View {
                 .onKeyPress(.upArrow) { moveSelection(-1, proxy) }
                 .onKeyPress(.downArrow) { moveSelection(1, proxy) }
             }
-            .accessibilityElement(children: .contain).accessibilityLabel("Projects")
+            .accessibilityElement(children: .contain).accessibilityLabel(L("Projects"))
             .overlay {
                 if model.visibleProjects.isEmpty {
-                    Text(model.projects.isEmpty ? "No projects yet" : "No matching projects").foregroundStyle(workspace.themeColor(.mutedForeground))
+                    Text(model.projects.isEmpty ? L("No projects yet") : L("No matching projects")).foregroundStyle(workspace.themeColor(.mutedForeground))
                 }
             }
-            sidebarAction("New Project", symbol: "plus") { select(nil) }
-            sidebarAction("New from Space…", symbol: "macwindow") { captureActiveSpace() }
-                .disabled(workspace.snapshot.activeSpaceID == nil).help("Make a project from the workspace's active space")
-            sidebarAction("Import JSON…", symbol: "square.and.arrow.down") { importJSON() }
-            sidebarAction("Export JSON…", symbol: "square.and.arrow.up") { exportJSON() }
-                .disabled(stored == nil).help(stored == nil ? "Save the project first" : "Save the selected project as a JSON file")
+            sidebarAction(L("New Project"), symbol: "plus") { select(nil) }
+            sidebarAction(L("New from Space…"), symbol: "macwindow") { captureActiveSpace() }
+                .disabled(workspace.snapshot.activeSpaceID == nil).help(L("Make a project from the workspace's active space"))
+            sidebarAction(L("Import JSON…"), symbol: "square.and.arrow.down") { importJSON() }
+            sidebarAction(L("Export JSON…"), symbol: "square.and.arrow.up") { exportJSON() }
+                .disabled(stored == nil).help(stored == nil ? L("Save the project first") : L("Save the selected project as a JSON file"))
         }
         .padding(.horizontal, 12).padding(.bottom, 12)
         .frame(width: 250)
@@ -137,7 +137,7 @@ public struct ProjectLibraryView: View {
             .background(selected ? workspace.themeColor(.activeTabBackground) : .clear, in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain).id(project.id)
-        .accessibilityElement(children: .combine).accessibilityLabel("Project \(project.name)").accessibilityValue(details.joined(separator: ", "))
+        .accessibilityElement(children: .combine).accessibilityLabel(L("Project %@", project.name)).accessibilityValue(details.joined(separator: ", "))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -168,18 +168,18 @@ public struct ProjectLibraryView: View {
         HStack(alignment: .top, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 4) {
-                    Text("Layout").font(.headline).fixedSize()
+                    Text(L("Layout")).font(.headline).fixedSize()
                     Spacer()
-                    toolButton("Add Tab", symbol: "plus.rectangle") { place = .tab(draft.addTab()) }.disabled(draft.tabs.count >= ProjectDefinition.maximumTabs)
-                    toolButton("Split Right", symbol: "rectangle.split.2x1") { split(.x) }.disabled(!selectionIsPane || draft.paneCount >= ProjectDefinition.maximumPanes)
-                    toolButton("Split Down", symbol: "rectangle.split.1x2") { split(.y) }.disabled(!selectionIsPane || draft.paneCount >= ProjectDefinition.maximumPanes)
-                    toolButton("Remove", symbol: "minus") { remove() }.disabled(!canRemove)
-                    toolButton("Move Up", symbol: "arrow.up") { moveTab(-1) }.disabled(!canMoveTab(-1))
-                    toolButton("Move Down", symbol: "arrow.down") { moveTab(1) }.disabled(!canMoveTab(1))
+                    toolButton(L("Add Tab"), symbol: "plus.rectangle") { place = .tab(draft.addTab()) }.disabled(draft.tabs.count >= ProjectDefinition.maximumTabs)
+                    toolButton(L("Split Right"), symbol: "rectangle.split.2x1") { split(.x) }.disabled(!selectionIsPane || draft.paneCount >= ProjectDefinition.maximumPanes)
+                    toolButton(L("Split Down"), symbol: "rectangle.split.1x2") { split(.y) }.disabled(!selectionIsPane || draft.paneCount >= ProjectDefinition.maximumPanes)
+                    toolButton(L("Remove"), symbol: "minus") { remove() }.disabled(!canRemove)
+                    toolButton(L("Move Up"), symbol: "arrow.up") { moveTab(-1) }.disabled(!canMoveTab(-1))
+                    toolButton(L("Move Down"), symbol: "arrow.down") { moveTab(1) }.disabled(!canMoveTab(1))
                 }
                 ScrollView { outline.frame(maxWidth: .infinity, alignment: .leading) }
                     .padding(6).background(workspace.themeColor(.sidebarBackground), in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityElement(children: .contain).accessibilityLabel("Project layout")
+                    .accessibilityElement(children: .contain).accessibilityLabel(L("Project layout"))
             }
             .frame(width: 330)
             ScrollView { detail.frame(maxWidth: .infinity, alignment: .leading) }
@@ -189,10 +189,10 @@ public struct ProjectLibraryView: View {
 
     private var outline: some View {
         VStack(alignment: .leading, spacing: 1) {
-            outlineRow("Project", detail: model.summary(draft.normalized), depth: 0, at: .project, symbol: "folder")
+            outlineRow(L("Project"), detail: model.summary(draft.normalized), depth: 0, at: .project, symbol: "folder")
             ForEach(Array(draft.tabs.enumerated()), id: \.offset) { index, tab in
                 outlineRow(
-                    tab.title.isEmpty ? "Untitled tab" : tab.title, detail: tab.repository.map { "⎇ " + GitRepository.shortName($0.url) }, depth: 1, at: .tab(index),
+                    tab.title.isEmpty ? L("Untitled tab") : tab.title, detail: tab.repository.map { "⎇ " + GitRepository.shortName($0.url) }, depth: 1, at: .tab(index),
                     symbol: "rectangle.on.rectangle", color: tab.color)
                 nodeRows(tab.root, tab: index, path: [], depth: 2)
             }
@@ -206,12 +206,12 @@ public struct ProjectLibraryView: View {
             let agentName = pane.agent.map { workspace.agentCatalog.definition($0)?.name ?? $0 }
             let detail = agentName ?? pane.command ?? pane.repository.map { "⎇ " + GitRepository.shortName($0.url) } ?? pane.directory
             return AnyView(
-                outlineRow(pane.title ?? agentName ?? "Pane", detail: detail, depth: depth, at: .node(tab: tab, path: path), symbol: pane.agent == nil ? "terminal" : "sparkles"))
+                outlineRow(pane.title ?? agentName ?? L("Pane"), detail: detail, depth: depth, at: .node(tab: tab, path: path), symbol: pane.agent == nil ? "terminal" : "sparkles"))
         case .split(let axis, _, let first, let second):
             return AnyView(
                 VStack(alignment: .leading, spacing: 1) {
                     outlineRow(
-                        axis == .x ? "Split right" : "Split down", detail: nil, depth: depth, at: .node(tab: tab, path: path),
+                        axis == .x ? L("Split right") : L("Split down"), detail: nil, depth: depth, at: .node(tab: tab, path: path),
                         symbol: axis == .x ? "rectangle.split.2x1" : "rectangle.split.1x2")
                     nodeRows(first, tab: tab, path: path + [0], depth: depth + 1)
                     nodeRows(second, tab: tab, path: path + [1], depth: depth + 1)
@@ -237,7 +237,7 @@ public struct ProjectLibraryView: View {
             .background(selected ? workspace.themeColor(.activeTabBackground) : .clear, in: RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(title).accessibilityValue([detail, flagged ? "has problems" : nil].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityLabel(title).accessibilityValue([detail, flagged ? L("has problems") : nil].compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -250,8 +250,8 @@ public struct ProjectLibraryView: View {
             if model.loadFailed {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(ProjectListModel.message(for: .readOnly)).font(.callout)
-                    Button("Reset Project Library") {
-                        Task { message = await model.resetUnreadable() ? "The unreadable file was kept beside the new library." : "The project library could not be reset." }
+                    Button(L("Reset Project Library")) {
+                        Task { message = await model.resetUnreadable() ? L("The unreadable file was kept beside the new library.") : L("The project library could not be reset.") }
                     }
                 }
             }
@@ -271,25 +271,25 @@ public struct ProjectLibraryView: View {
     }
 
     @ViewBuilder private var projectDetail: some View {
-        Text("Project").font(.headline)
-        field("Name", text: Binding(get: { draft.name }, set: { draft.name = $0 }), error: issue(.project, .name), prompt: "Shop")
+        Text(L("Project")).font(.headline)
+        field(L("Name"), text: Binding(get: { draft.name }, set: { draft.name = $0 }), error: issue(.project, .name), prompt: L("Shop"))
         VStack(alignment: .leading, spacing: 3) {
-            Text("Notes (optional)").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
+            Text(L("Notes (optional)")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
             TextEditor(text: Binding(get: { draft.notes ?? "" }, set: { draft.notes = $0 })).font(.body).frame(height: 70)
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(workspace.themeColor(.border))).accessibilityLabel("Notes")
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(workspace.themeColor(.border))).accessibilityLabel(L("Notes"))
             errorLabel(issue(.project, .notes))
         }
         repositoryFields(
-            "Project repository", note: "The project folder itself is a checkout.", repository: draft.repository, at: .project,
+            L("Project repository"), note: L("The project folder itself is a checkout."), repository: draft.repository, at: .project,
             set: { draft.repository = $0 })
     }
 
     @ViewBuilder private func tabDetail(_ index: Int) -> some View {
         let tab = draft.tabs[index]
-        Text("Tab").font(.headline)
-        field("Title", text: Binding(get: { tab.title }, set: { draft.tabs[index].title = $0 }), error: issue(.tab(index), .title), prompt: "API")
-        Picker("Color", selection: Binding(get: { tab.color }, set: { draft.tabs[index].color = $0 })) {
-            Text("None").tag(TabColor?.none)
+        Text(L("Tab")).font(.headline)
+        field(L("Title"), text: Binding(get: { tab.title }, set: { draft.tabs[index].title = $0 }), error: issue(.tab(index), .title), prompt: L("API"))
+        Picker(L("Color"), selection: Binding(get: { tab.color }, set: { draft.tabs[index].color = $0 })) {
+            Text(L("None")).tag(TabColor?.none)
             ForEach(TabColor.allCases, id: \.self) { color in
                 Label {
                     Text(color.displayName)
@@ -300,30 +300,30 @@ public struct ProjectLibraryView: View {
         }
         .frame(width: 240)
         field(
-            "Folder (optional)", text: optional(Binding(get: { tab.directory }, set: { draft.tabs[index].directory = $0 })), error: issue(.tab(index), .directory),
-            prompt: "api", note: "Where the tab's panes without a folder start, relative to the project folder.")
+            L("Folder (optional)"), text: optional(Binding(get: { tab.directory }, set: { draft.tabs[index].directory = $0 })), error: issue(.tab(index), .directory),
+            prompt: "api", note: L("Where the tab's panes without a folder start, relative to the project folder."))
         repositoryFields(
-            "Tab repository", note: "The tab's folder is a checkout.", repository: tab.repository, at: .tab(index), set: { draft.tabs[index].repository = $0 })
+            L("Tab repository"), note: L("The tab's folder is a checkout."), repository: tab.repository, at: .tab(index), set: { draft.tabs[index].repository = $0 })
     }
 
     @ViewBuilder private func paneDetail(_ pane: ProjectPane, tab: Int, path: [Int]) -> some View {
         let at = ProjectDefinition.Place.node(tab: tab, path: path)
-        Text("Pane").font(.headline)
-        field("Title (optional)", text: optional(Binding(get: { pane.title }, set: { value in draft.updatePane(tab: tab, path: path) { $0.title = value } })), error: issue(at, .title), prompt: "API server")
+        Text(L("Pane")).font(.headline)
+        field(L("Title (optional)"), text: optional(Binding(get: { pane.title }, set: { value in draft.updatePane(tab: tab, path: path) { $0.title = value } })), error: issue(at, .title), prompt: L("API server"))
         field(
-            "Folder (optional)", text: optional(Binding(get: { pane.directory }, set: { value in draft.updatePane(tab: tab, path: path) { $0.directory = value } })),
+            L("Folder (optional)"), text: optional(Binding(get: { pane.directory }, set: { value in draft.updatePane(tab: tab, path: path) { $0.directory = value } })),
             error: issue(at, .directory), prompt: draft.tabs[tab].directory ?? "api",
-            note: "Relative to the project folder chosen at launch. Empty uses the tab's folder.")
+            note: L("Relative to the project folder chosen at launch. Empty uses the tab's folder."))
         agentPicker(pane, tab: tab, path: path, at: at)
         if pane.agent == nil {
             field(
-                "Command (optional)", text: optional(Binding(get: { pane.command }, set: { value in draft.updatePane(tab: tab, path: path) { $0.command = value } })),
-                error: issue(at, .command), prompt: "make dev", monospaced: true, note: "Typed into the shell after its first prompt.")
+                L("Command (optional)"), text: optional(Binding(get: { pane.command }, set: { value in draft.updatePane(tab: tab, path: path) { $0.command = value } })),
+                error: issue(at, .command), prompt: "make dev", monospaced: true, note: L("Typed into the shell after its first prompt."))
         } else if let error = issue(at, .command) {
             Text(error).font(.caption).foregroundStyle(.red)
         }
         repositoryFields(
-            "Pane repository", note: "The pane's folder is a checkout.", repository: pane.repository, at: at,
+            L("Pane repository"), note: L("The pane's folder is a checkout."), repository: pane.repository, at: at,
             set: { value in draft.updatePane(tab: tab, path: path) { $0.repository = value } })
     }
 
@@ -332,7 +332,7 @@ public struct ProjectLibraryView: View {
         let catalog = workspace.agentCatalog.definitions
         VStack(alignment: .leading, spacing: 3) {
             Picker(
-                "Runs",
+                L("Runs"),
                 selection: Binding(
                     get: { pane.agent },
                     set: { value in
@@ -341,15 +341,15 @@ public struct ProjectLibraryView: View {
                         }
                     })
             ) {
-                Text("Shell").tag(String?.none)
+                Text(L("Shell")).tag(String?.none)
                 ForEach(catalog) { agent in Text(agent.name).tag(String?.some(agent.id)) }
-                if let id = pane.agent, !catalog.contains(where: { $0.id == id }) { Text("\(id) (not in Settings → Agents)").tag(String?.some(id)) }
+                if let id = pane.agent, !catalog.contains(where: { $0.id == id }) { Text(L("%@ (not in Settings → Agents)", id)).tag(String?.some(id)) }
             }
             .frame(width: 320)
             Text(
                 pane.agent == nil
-                    ? "A login shell; add a command to type into it."
-                    : "Opens the agent in this pane's folder, with its live state on the tab. A pane runs an agent or a command, not both."
+                    ? L("A login shell; add a command to type into it.")
+                    : L("Opens the agent in this pane's folder, with its live state on the tab. A pane runs an agent or a command, not both.")
             )
             .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
             if let error = issue(at, .agent) { Text(error).font(.caption).foregroundStyle(.red) }
@@ -357,13 +357,13 @@ public struct ProjectLibraryView: View {
     }
 
     @ViewBuilder private func splitDetail(axis: SplitAxis, ratio: Double, tab: Int, path: [Int]) -> some View {
-        Text("Split").font(.headline)
-        SegmentedPicker("Direction", selection: axis, options: [(.x, "Side by side"), (.y, "Top and bottom")]) { draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio) }
+        Text(L("Split")).font(.headline)
+        SegmentedPicker(L("Direction"), selection: axis, options: [(.x, L("Side by side")), (.y, L("Top and bottom"))]) { draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio) }
             .frame(width: 280)
         VStack(alignment: .leading, spacing: 3) {
-            Text("First pane's share: \(Int((ratio * 100).rounded()))%").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
+            Text(L("First pane's share: %d%%", Int((ratio * 100).rounded()))).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
             Slider(value: Binding(get: { ratio }, set: { draft.updateSplit(tab: tab, path: path, axis: axis, ratio: ($0 * 100).rounded() / 100) }), in: 0.1...0.9)
-                .frame(width: 280).accessibilityLabel("First pane's share")
+                .frame(width: 280).accessibilityLabel(L("First pane's share"))
         }
     }
 
@@ -375,12 +375,12 @@ public struct ProjectLibraryView: View {
                 Toggle(note, isOn: Binding(get: { repository != nil }, set: { set($0 ? ProjectRepository(url: "") : nil) }))
                 if let repository {
                     field(
-                        "URL", text: Binding(get: { repository.url }, set: { set(ProjectRepository(url: $0, branch: repository.branch)) }), error: issue(at, .repositoryURL),
+                        L("URL"), text: Binding(get: { repository.url }, set: { set(ProjectRepository(url: $0, branch: repository.branch)) }), error: issue(at, .repositoryURL),
                         prompt: "git@github.com:acme/api.git", monospaced: true)
                     field(
-                        "Branch (optional)", text: optional(Binding(get: { repository.branch }, set: { set(ProjectRepository(url: repository.url, branch: $0)) })),
-                        error: issue(at, .repositoryBranch), prompt: "The remote's default")
-                    Text("Cloned by Set Up when its folder is missing, with the target's own git and credentials.")
+                        L("Branch (optional)"), text: optional(Binding(get: { repository.branch }, set: { set(ProjectRepository(url: repository.url, branch: $0)) })),
+                        error: issue(at, .repositoryBranch), prompt: L("The remote's default"))
+                    Text(L("Cloned by Set Up when its folder is missing, with the target's own git and credentials."))
                         .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -396,13 +396,13 @@ public struct ProjectLibraryView: View {
         VStack(alignment: .leading, spacing: 10) {
             ScratchpadEditor(
                 text: $jsonText, language: .json, font: editorFont, palette: workspace.effectiveTheme.terminal, issueLines: [], focusRequest: 0,
-                commands: ScratchpadEditorCommands(validate: validateJSON, save: { save() }), accessibilityName: "Project JSON editor", contentNoun: "project",
+                commands: ScratchpadEditorCommands(validate: validateJSON, save: { save() }), accessibilityName: L("Project JSON editor"), contentNoun: L("project"),
                 maximumBytes: ProjectJSON.maximumBytes
             )
             .frame(maxHeight: .infinity)
             if let jsonProblems {
                 VStack(alignment: .leading, spacing: 4) {
-                    if jsonProblems.isEmpty { Label("The project is valid.", systemImage: "checkmark.circle").font(.callout) }
+                    if jsonProblems.isEmpty { Label(L("The project is valid."), systemImage: "checkmark.circle").font(.callout) }
                     ForEach(jsonProblems, id: \.self) { Label($0, systemImage: "xmark.octagon").font(.callout).fixedSize(horizontal: false, vertical: true) }
                 }
                 .accessibilityElement(children: .combine)
@@ -443,13 +443,13 @@ public struct ProjectLibraryView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let message { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("projects.result") }
             HStack {
-                if stored != nil { Button("Delete…", role: .destructive) { confirmingDelete = true }.disabled(saving || model.loadFailed) }
+                if stored != nil { Button(L("Delete…"), role: .destructive) { confirmingDelete = true }.disabled(saving || model.loadFailed) }
                 Spacer()
-                if isDirty, stored != nil { Text("Unsaved changes").font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)) }
-                Button(stored == nil ? "Add Project" : "Save") { save() }.keyboardShortcut("s", modifiers: .command)
+                if isDirty, stored != nil { Text(L("Unsaved changes")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)) }
+                Button(stored == nil ? L("Add Project") : L("Save")) { save() }.keyboardShortcut("s", modifiers: .command)
                     .disabled(saving || model.loadFailed || (!showsJSON && !issues.isEmpty))
-                Button("Launch…") { if let stored { model.onLaunch?(stored) } }.keyboardShortcut(.defaultAction)
-                    .disabled(stored == nil || isDirty || model.onLaunch == nil).help(isDirty ? "Save the project before launching it" : "Choose where to run the project")
+                Button(L("Launch…")) { if let stored { model.onLaunch?(stored) } }.keyboardShortcut(.defaultAction)
+                    .disabled(stored == nil || isDirty || model.onLaunch == nil).help(isDirty ? L("Save the project before launching it") : L("Choose where to run the project"))
             }
         }
     }
@@ -519,12 +519,12 @@ public struct ProjectLibraryView: View {
         selection = nil
         load(capture.project, clean: false)
         warnings = capture.warnings
-        message = "Not saved yet. Review the project, then add it."
+        message = L("Not saved yet. Review the project, then add it.")
     }
 
     private func captureActiveSpace() {
         guard let id = workspace.snapshot.activeSpaceID else { return }
-        guard let capture = workspace.captureProject(spaceID: id) else { message = "That space can't be captured."; return }
+        guard let capture = workspace.captureProject(spaceID: id) else { message = L("That space can't be captured."); return }
         model.pendingDraft = capture
     }
 
@@ -534,23 +534,23 @@ public struct ProjectLibraryView: View {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = ProjectListModel.exportFileName(stored)
-        panel.message = isDirty ? "Exports the saved project; your unsaved changes aren't included." : "Exports “\(stored.name)” for Import JSON… on another Mac."
+        panel.message = isDirty ? L("Exports the saved project; your unsaved changes aren't included.") : L("Exports “%@” for Import JSON… on another Mac.", stored.name)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try model.exportJSON(stored).write(to: url, options: .atomic)
-            message = "Exported to \(url.lastPathComponent)."
-        } catch { message = "The project could not be written there. Check the folder's permissions and try again." }
+            message = L("Exported to %@.", url.lastPathComponent)
+        } catch { message = L("The project could not be written there. Check the folder's permissions and try again.") }
     }
 
     private func importJSON() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
-        panel.message = "Choose a project exported as JSON."
+        panel.message = L("Choose a project exported as JSON.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let data = try? OwnerOnlyFile.read(url, limit: ProjectJSON.maximumBytes) ?? nil else { message = "The file could not be read."; return }
+        guard let data = try? OwnerOnlyFile.read(url, limit: ProjectJSON.maximumBytes) ?? nil else { message = L("The file could not be read."); return }
         switch model.importJSON(data) {
         case .success(let project): model.pendingDraft = ProjectCapture(project: project, warnings: [])
-        case .failure(let error): message = "The file isn't a valid project: " + error.problems.joined(separator: " ")
+        case .failure(let error): message = L("The file isn't a valid project: %@", error.problems.joined(separator: " "))
         }
     }
 
@@ -570,7 +570,7 @@ public struct ProjectLibraryView: View {
             switch result {
             case .success(let saved):
                 selection = saved.id; load(saved)
-                message = "Saved."
+                message = L("Saved.")
                 then?()
             case .failure(let error):
                 message = ProjectListModel.message(for: error)
@@ -603,7 +603,7 @@ public struct ProjectLibraryView: View {
             Text(title).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
             TextField(title, text: text, prompt: Text(prompt)).textFieldStyle(.roundedBorder).labelsHidden()
                 .font(monospaced ? .system(size: 12, design: .monospaced) : .body)
-                .accessibilityLabel(title).accessibilityValue(error.map { "\(text.wrappedValue). Error: \($0)" } ?? text.wrappedValue)
+                .accessibilityLabel(title).accessibilityValue(error.map { L("%1$@. Error: %2$@", text.wrappedValue, $0) } ?? text.wrappedValue)
             if let note { Text(note).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true) }
             errorLabel(error)
         }

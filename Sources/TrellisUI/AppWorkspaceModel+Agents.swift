@@ -215,14 +215,14 @@ extension AppWorkspaceModel {
         case .split:
             // A split hidden behind a maximized pane would hide the agent's first questions.
             guard maximizedPanes[tab.id] == nil else {
-                errorMessage = "Restore panes before opening an agent in a split."
+                errorMessage = L("Restore panes before opening an agent in a split.")
                 return
             }
             paneID = await splitPane(sourcePaneID, axis: .x, startSession: false)
         case .tab:
             paneID = await createTab(spaceID: space.id, startSessions: false).flatMap { snapshot.tabs[$0]?.activePaneID }
         case .currentTab:
-            paneID = await clearPaneForAgent(sourcePaneID, agentName: agentCatalog.definition(agentID)?.name ?? "the agent") ? sourcePaneID : nil
+            paneID = await clearPaneForAgent(sourcePaneID, agentName: agentCatalog.definition(agentID)?.name ?? L("the agent")) ? sourcePaneID : nil
         }
         guard let paneID, !isClosing(paneID: paneID) else { return }
         await configureAgent(paneID: paneID, launch: launch)
@@ -241,7 +241,7 @@ extension AppWorkspaceModel {
     /// don't report background or stopped jobs. Nothing is forced.
     private func clearPaneForAgent(_ paneID: UUID, agentName: String) async -> Bool {
         guard let pane = snapshot.panes[paneID], let terminal = terminals[paneID], !agentRunning(inTab: pane.tabID) else {
-            errorMessage = "An agent is already running in this tab. Open the agent in a new tab or a split."
+            errorMessage = L("An agent is already running in this tab. Open the agent in a new tab or a split.")
             return false
         }
         switch terminal.sessionState {
@@ -255,21 +255,21 @@ extension AppWorkspaceModel {
                 return state.origin == .authenticated && !state.commandRunning && !terminal.isReplaying && taskRuns[paneID]?.isActive != true
             }
             guard idle() else {
-                errorMessage = "This pane isn't at its shell prompt. Finish its command first, or open the agent in a new tab."
+                errorMessage = L("This pane isn't at its shell prompt. Finish its command first, or open the agent in a new tab.")
                 return false
             }
             guard confirmReplaceShell(agentName) else { return false }
             // Marks keep arriving while the alert is up; a command started meanwhile is never cut off.
             guard idle() else {
-                errorMessage = "This pane's shell started a command, so the agent wasn't opened there."
+                errorMessage = L("This pane's shell started a command, so the agent wasn't opened there.")
                 return false
             }
             guard await endRunningSession(terminal, paneID: paneID, force: false), [.exited, .failed].contains(terminal.sessionState) else {
-                errorMessage = "The shell in this pane didn't exit, so the agent wasn't opened there."
+                errorMessage = L("The shell in this pane didn't exit, so the agent wasn't opened there.")
                 return false
             }
         default:
-            errorMessage = "This pane's session is still starting or closing. Try again in a moment."
+            errorMessage = L("This pane's session is still starting or closing. Try again in a moment.")
             return false
         }
         await restartPane(paneID, startSession: false)
@@ -289,7 +289,7 @@ extension AppWorkspaceModel {
         do {
             publish(try await service.execute(.configureStoppedSession(paneID: paneID, launch: .agent(launch))).snapshot)
         } catch {
-            errorMessage = "The agent pane could not be prepared."
+            errorMessage = L("The agent pane could not be prepared.")
             return
         }
         await start(paneID: paneID)
@@ -323,7 +323,7 @@ extension AppWorkspaceModel {
             if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
                 terminal.useTransport(transport)
             } else if !quietly {
-                errorMessage = "The session broker could not start, so this session will end when Trellis quits."
+                errorMessage = L("The session broker could not start, so this session will end when Trellis quits.")
             }
         }
         await terminal.start(configuration: configuration)
@@ -378,7 +378,8 @@ extension AppWorkspaceModel {
         }
         agentStates[paneID] = AgentStateReducer(integration: definition.integration)
         return BrokerLoginRequest(
-            sessionID: sessionID, shell: nil, directory: agent.directory, environment: LocalLaunchValidator.terminalEnvironment, integration: nil, columns: 80, rows: 24,
+            sessionID: sessionID, shell: nil, directory: Self.hostPath(agent.directory, home: info.home), environment: LocalLaunchValidator.terminalEnvironment,
+            integration: nil, columns: 80, rows: 24,
             command: AgentShell.remoteCommand(shell: info.shell, line: line), agentHooks: hooks)
     }
 
@@ -415,15 +416,24 @@ extension AppWorkspaceModel {
     }
 
     func receiveAgentEvent(sessionID: UUID, event: String) {
-        guard let event = AgentEvent(rawValue: event), let pane = snapshot.panes.values.first(where: { $0.sessionID == sessionID }) else { return }
-        applyAgentSignal(.hook(event), paneID: pane.id)
+        guard let pane = snapshot.panes.values.first(where: { $0.sessionID == sessionID }) else { return }
+        if let settings = AgentSettings(infoEvent: event) {
+            // FR-AG19: settings only decorate a state the hooks already set.
+            guard agentStates[pane.id]?.hooked == true else { return }
+            applyAgentSignal(.settings(settings), paneID: pane.id)
+        } else if let event = AgentEvent(rawValue: event) {
+            applyAgentSignal(.hook(event), paneID: pane.id)
+        }
     }
 
-    /// A pane that adopted a kept session shows the last state its hooks reported, without notifying again.
-    func restoreAgentState(paneID: UUID, event: String?) {
+    /// A pane that adopted a kept session shows the last state and settings its hooks reported, without notifying again.
+    func restoreAgentState(paneID: UUID, event: String?, info: String? = nil) {
         guard let definition = agentDefinition(paneID: paneID) else { return }
         var reducer = AgentStateReducer(integration: definition.integration)
-        if let event = event.flatMap(AgentEvent.init(rawValue:)) { reducer.apply(.hook(event), visible: true) }
+        if let event = event.flatMap(AgentEvent.init(rawValue:)) {
+            reducer.apply(.hook(event), visible: true)
+            if let settings = info.flatMap(AgentSettings.init(infoEvent:)) { reducer.apply(.settings(settings), visible: true) }
+        }
         agentStates[paneID] = reducer
     }
 
@@ -468,8 +478,8 @@ extension AppWorkspaceModel {
             snapshot.panes[paneID] != nil, !agentPaneVisible(paneID), notificationLimiter.allow(paneID, at: activityNow())
         else { return }
         let needsYou = state == .needsInput
-        let title = needsYou ? "\(agent.name) needs you" : "\(agent.name) finished"
-        let body = needsYou ? "Waiting for your input" : "Finished its turn"
+        let title = needsYou ? L("%@ needs you", agent.name) : L("%@ finished", agent.name)
+        let body = needsYou ? L("Waiting for your input") : L("Finished its turn")
         desktopNotifier.post(DesktopNotification(paneID: paneID, title: title, subtitle: notificationContext(paneID: paneID), body: body))
     }
 
@@ -485,19 +495,26 @@ extension AppWorkspaceModel {
         let hooked = agentStates[paneID]?.hooked == true
         agentStates.removeValue(forKey: paneID)
         guard code == AgentCommand.notInstalledStatus, !hooked else { return }
-        let platform: String
-        var missing: [String] = []
-        if let host = launch.hostID {
-            remoteMissingAgents[host, default: []].insert(agent.id)
-            platform = remoteHostPlatforms[host] ?? "linux"
-        } else {
-            agentAvailability[agent.id] = .missing
-            platform = "darwin"
-            if let path = agentLoginPath { missing = agent.install[platform]?.requires.filter { AgentPathProbe.resolve($0, path: path) == nil } ?? [] }
-        }
+        if let host = launch.hostID { remoteMissingAgents[host, default: []].insert(agent.id) } else { agentAvailability[agent.id] = .missing }
+        let installer = agentInstaller(agent, hostID: launch.hostID)
         agentInstallOffer = AgentInstallOffer(
-            id: UUID(), paneID: paneID, agent: agent, hostID: launch.hostID, hostName: launch.hostID.map(remoteHostName) ?? "this Mac",
-            recipe: agent.install[platform], missingRequirements: missing, afterInstall: installed)
+            id: UUID(), paneID: paneID, agent: agent, hostID: launch.hostID, hostName: launch.hostID.map(remoteHostName) ?? L("this Mac"),
+            recipe: installer.recipe, missingRequirements: installer.missingRequirements, afterInstall: installed)
+    }
+
+    /// The installer offered for an agent on a machine (FR-AG12): the recipe for its platform (a host's from its helper,
+    /// else Linux), and the programs it needs that this Mac's login PATH lacks; a host's can't be checked first.
+    public func agentInstaller(_ agent: AgentDefinition, hostID: UUID?) -> (recipe: AgentInstallRecipe?, missingRequirements: [String]) {
+        guard hostID == nil else { return (agent.install[agentPlatform(hostID: hostID)], []) }
+        let recipe = agent.install["darwin"]
+        guard let path = agentLoginPath else { return (recipe, []) }
+        return (recipe, recipe?.requires.filter { AgentPathProbe.resolve($0, path: path) == nil } ?? [])
+    }
+
+    /// `darwin` for this Mac; a host's OS as its helper last reported it, else `linux`.
+    public func agentPlatform(hostID: UUID?) -> String {
+        guard let hostID else { return "darwin" }
+        return remoteHostPlatforms[hostID] ?? remoteHosts?.preferences[hostID]?.helper.map { $0.system.lowercased() } ?? "linux"
     }
 
     /// Runs the vendor's installer in the same pane, in the login shell, then the agent (FR-AG12).
@@ -505,7 +522,20 @@ extension AppWorkspaceModel {
         agentInstallOffer = nil
         guard offer.recipe != nil, agentLaunch(paneID: offer.paneID)?.agentID == offer.agent.id else { return }
         agentInstallPanes.insert(offer.paneID)
-        if let host = offer.hostID { remoteMissingAgents[host]?.remove(offer.agent.id) } else { agentAvailability.removeValue(forKey: offer.agent.id); agentPathCheckedAt = nil }
+        forgetMissingAgent(offer.agent.id, hostID: offer.hostID)
         await restartAgent(paneID: offer.paneID, resume: false)
+        // A launch refused before its command was built never took the mark; a later start must not run the installer.
+        agentInstallPanes.remove(offer.paneID)
+    }
+
+    /// The installer is about to change whether the agent is there, so a missing mark no longer holds.
+    func forgetMissingAgent(_ agentID: String, hostID: UUID?) {
+        if let hostID { remoteMissingAgents[hostID]?.remove(agentID) } else { agentAvailability.removeValue(forKey: agentID); agentPathCheckedAt = nil }
+    }
+
+    /// An agent run's `since` (API v2): when each pane's agent entered its current state.
+    func noteAgentStateTimes(from old: [UUID: AgentStateReducer]) {
+        for (id, reducer) in agentStates where old[id]?.state != reducer.state { agentStateSince[id] = activityNow() }
+        if agentStateSince.count > agentStates.count { agentStateSince = agentStateSince.filter { agentStates[$0.key] != nil } }
     }
 }

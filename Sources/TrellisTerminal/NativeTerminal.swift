@@ -100,7 +100,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         surface.optionAsMetaKey = false
         // Engine diagnostics can echo sequence contents; never print them, in any build.
         surface.getTerminal().silentLog = true
-        surface.setAccessibilityLabel("Terminal session")
+        surface.setAccessibilityLabel(L("Terminal session"))
         surface.terminalDelegate = self
         surface.onFocused = { [weak self] in self?.onFocused?() }
         surface.onPasteRequested = { [weak self] in self?.onPasteRequested?($0) }
@@ -114,8 +114,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             return TerminalLogicalLine.smartSelection(in: surface.getTerminal(), at: position)
         }
         surface.describeLink = { [weak self] in self?.describeLink($0) }
-        surface.onOpenLink = { [weak self] in self?.openLink($0) }
+        surface.onOpenLink = { [weak self] in self?.openLink($0, inEditor: false) }
         surface.onRevealLink = { [weak self] in self?.revealLink($0) }
+        surface.onEditLink = { [weak self] in self?.openLink($0, inEditor: true) }
         observeNotifications()
         observeInlineImages()
         session.onOutput = { [weak self] data in
@@ -285,12 +286,17 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if terminalView.getTerminal().isCurrentBufferAlternate { return "Current screen only · No scrollback" }
         return terminalView.scrollback.historyEvicted ? "Earlier output was evicted" : "Retained output only"
     }
+    /// `historyNotice` is returned by the automation API and stays English; the search bar shows this one.
+    private var historyNoticeText: String {
+        if terminalView.getTerminal().isCurrentBufferAlternate { return L("Current screen only · No scrollback") }
+        return terminalView.scrollback.historyEvicted ? L("Earlier output was evicted") : L("Retained output only")
+    }
     /// Clears the pane's scrollback and the screen above the prompt (FR-C07); the session is untouched.
     public func clear() { terminalView.clearTerminal(nil) }
     public func showSearch() {
         searchVisible = true
         searchFocusRequest = UUID()
-        searchStatus = searchQuery.isEmpty ? historyNotice : "Search again · \(historyNotice)"
+        searchStatus = searchQuery.isEmpty ? historyNoticeText : L("Search again") + " · " + historyNoticeText
     }
     public func closeSearch() {
         searchVisible = false
@@ -304,18 +310,18 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if reset { terminalView.clearSearch(); paneSearch.reset() }
         guard !searchQuery.isEmpty, searchQuery.utf8.count <= 8192 else {
             terminalView.clearSearch(); paneSearch.reset(); hasSearchMatch = false
-            searchStatus = searchQuery.isEmpty ? historyNotice : "Search is limited to 8 KiB · \(historyNotice)"
+            searchStatus = searchQuery.isEmpty ? historyNoticeText : L("Search is limited to 8 KiB") + " · " + historyNoticeText
             return false
         }
         let found = paneSearch.find(searchQuery, forward: forward, in: terminalView)
         hasSearchMatch = found
-        searchStatus = "\(found ? "Match found" : "No match") · \(historyNotice)"
+        searchStatus = (found ? L("Match found") : L("No match")) + " · " + historyNoticeText
         return found
     }
     private func invalidateSearchForOutput() {
         if hasSearchMatch { terminalView.clearSearch(); paneSearch.reset(); hasSearchMatch = false }
         if searchVisible {
-            let next = searchQuery.isEmpty ? historyNotice : "Output changed — search again · \(historyNotice)"
+            let next = searchQuery.isEmpty ? historyNoticeText : L("Output changed — search again") + " · " + historyNoticeText
             if searchStatus != next { searchStatus = next }
         }
     }
@@ -544,8 +550,13 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         if forward { terminalView.scrollTo(row: .max) }
         return false
     }
-    // OSC 52 clipboard access is denied; native selection copy/paste remains in the view.
-    public func clipboardCopy(source: TerminalView, content: Data) {}
+    /// FR-C09: asked when an OSC 52 write arrives, so a settings change or `ssh` starting in the shell applies at once.
+    public var allowsClipboardWrite: () -> Bool = { false }
+    /// OSC 52 writes reach the clipboard only when allowed, never from replayed output; reads are always denied.
+    public func clipboardCopy(source: TerminalView, content: Data) {
+        guard !isReplaying, allowsClipboardWrite(), let text = ClipboardWritePolicy.text(content) else { return }
+        terminalView.writeClipboard(text)
+    }
     public func clipboardRead(source: TerminalView) -> Data? { nil }
     /// Opens a vetted URL; injected by tests.
     public var openURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }
@@ -553,6 +564,10 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var revealURL: (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
     /// Where this pane's file links resolve, read at click time; nil refuses every file link (FR-L04).
     public var fileLinkContext: () -> FileLinkContext? = { nil }
+    /// Whether a file link may open in an editor tab (FR-ED07), read when the menu is built.
+    public var editorMayOpen: (String) -> Bool = { _ in false }
+    /// Opens a file link in an editor tab at its line and column; false hands it back to `openURL` or `revealURL`.
+    public var openInEditor: ((String, Int?, Int?) async -> Bool)?
     var fileProbe = FileProbe.live
     var now: () -> Date = { Date() }
 
@@ -563,7 +578,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         openLink(click)
     }
 
-    private enum ResolvedLink { case web(URL), file(path: String, action: FileLinkAction) }
+    private enum ResolvedLink { case web(URL), file(path: String, action: FileLinkAction, line: Int?, column: Int?) }
 
     /// SwiftTerm's detector lets paths contain spaces, so `a.txt b.txt` reads as one path.
     /// When its text names nothing, the smart-selection token under the click is tried.
@@ -574,7 +589,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         for candidate in candidates {
             switch TerminalLinkClassifier.classify(candidate, explicit: click.explicit, files: files) {
             case .web(let url): return (candidate, .web(url))
-            case .file(let path, _, _): if let action = FileLinkPolicy.action(path: path, probe: fileProbe) { return (candidate, .file(path: path, action: action)) }
+            case .file(let path, let line, let column):
+                if let action = FileLinkPolicy.action(path: path, probe: fileProbe) { return (candidate, .file(path: path, action: action, line: line, column: column)) }
             case nil: continue
             }
         }
@@ -588,14 +604,23 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         return String(Array(line.text)[match.range])
     }
 
-    func openLink(_ click: TerminalLinkClick) {
+    /// ⌘-click prefers an editor tab for a project file (FR-ED07); the menu's Open uses the default app, its Open in
+    /// Trellis Editor the editor. A file the editor refuses gets the usual open or reveal.
+    func openLink(_ click: TerminalLinkClick, inEditor: Bool = true) {
         guard LinkPolicy.gestureIsFresh(lastGesture: terminalView.lastUserGesture, now: now()), let resolved = resolve(click) else { return }
         terminalView.lastUserGesture = nil
-        switch resolved.link {
-        case .web(let url): _ = openURL(url)
-        case .file(_, .open(let url)): _ = openURL(url)
-        case .file(_, .reveal(let url)): revealURL(url)
+        guard case .file(let path, let action, let line, let column) = resolved.link else {
+            if case .web(let url) = resolved.link { _ = openURL(url) }
+            return
         }
+        let fallback = { [weak self] in
+            switch action {
+            case .open(let url): _ = self?.openURL(url)
+            case .reveal(let url): self?.revealURL(url)
+            }
+        }
+        guard inEditor, let openInEditor, editorMayOpen(path) else { fallback(); return }
+        Task { @MainActor in if await !openInEditor(path, line, column) { fallback() } }
     }
 
     func revealLink(_ click: TerminalLinkClick) {
@@ -603,7 +628,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.lastUserGesture = nil
         switch resolved.link {
         case .web: return
-        case .file(_, .open(let url)), .file(_, .reveal(let url)): revealURL(url)
+        case .file(_, .open(let url), _, _), .file(_, .reveal(let url), _, _): revealURL(url)
         }
     }
 
@@ -612,9 +637,13 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         guard let resolved = resolve(click) else { return nil }
         let frozen = TerminalLinkClick(link: resolved.candidate, explicit: click.explicit, position: nil)
         switch resolved.link {
-        case .web(let url): return TerminalLinkMenu(openTitle: "Open Link", copyTitle: "Copy Link", copyText: url.absoluteString, click: frozen)
-        case .file(let path, .open): return TerminalLinkMenu(openTitle: "Open", copyTitle: "Copy Path", copyText: path, click: frozen, canReveal: true)
-        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: "Show in Finder", copyTitle: "Copy Path", copyText: path, click: frozen)
+        case .web(let url): return TerminalLinkMenu(openTitle: L("Open Link"), copyTitle: L("Copy Link"), copyText: url.absoluteString, click: frozen)
+        case .file(let path, .open, _, _):
+            return TerminalLinkMenu(
+                openTitle: L("Open"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canReveal: true, canEdit: openInEditor != nil && editorMayOpen(path))
+        case .file(let path, .reveal, _, _):
+            return TerminalLinkMenu(
+                openTitle: L("Show in Finder"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canEdit: openInEditor != nil && editorMayOpen(path))
         }
     }
     public func bell(source: TerminalView) { if !isReplaying { playBell() } }

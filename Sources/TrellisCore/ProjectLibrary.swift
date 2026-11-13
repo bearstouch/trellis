@@ -63,6 +63,8 @@ public actor ProjectLibrary {
     public private(set) var loadFailed = false
     /// Writes wait for a load, so a change made before it can never replace the stored library.
     private var loaded = false
+    /// Read and usable: until then (or after a failed read) a project that isn't listed may still exist.
+    public var isLoaded: Bool { loaded && !loadFailed }
     private let storage: HostStorage
     private let makeID: @Sendable () -> UUID
 

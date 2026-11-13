@@ -303,8 +303,8 @@ public struct ShellIntegrationState: Equatable, Sendable {
     public static func durationText(_ duration: TimeInterval) -> String {
         let total = duration.isFinite ? Int(max(0, min(duration, 8_640_000))) : 0
         let (hours, minutes, seconds) = (total / 3600, total % 3600 / 60, total % 60)
-        if hours > 0 { return minutes > 0 ? "\(hours) h \(minutes) min" : "\(hours) h" }
-        if minutes > 0 { return seconds > 0 ? "\(minutes) min \(seconds) s" : "\(minutes) min" }
-        return "\(seconds) s"
+        if hours > 0 { return minutes > 0 ? L("%1$d h %2$d min", hours, minutes) : L("%d h", hours) }
+        if minutes > 0 { return seconds > 0 ? L("%1$d min %2$d s", minutes, seconds) : L("%d min", minutes) }
+        return L("%d s", seconds)
     }
 }

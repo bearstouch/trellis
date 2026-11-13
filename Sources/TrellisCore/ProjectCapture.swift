@@ -23,15 +23,16 @@ public struct ProjectCapture: Equatable, Sendable {
             case .pane(let id):
                 let title = snapshot.panes[id]?.title
                 switch snapshot.panes[id].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
-                case .host?: warnings.append("“\(title ?? "Untitled pane")” in “\(tab.title)” is an SSH pane; it becomes a shell in the project.")
+                case .host?: warnings.append(L("“%1$@” in “%2$@” is an SSH pane; it becomes a shell in the project.", title ?? L("Untitled pane"), tab.title))
                 case .process(let executable, let arguments, _)? where arguments != ["-l"]:
-                    warnings.append("“\(title ?? "Untitled pane")” in “\(tab.title)” runs \(URL(fileURLWithPath: executable).lastPathComponent); it becomes a shell in the project.")
+                    warnings.append(
+                        L("“%1$@” in “%2$@” runs %3$@; it becomes a shell in the project.", title ?? L("Untitled pane"), tab.title, URL(fileURLWithPath: executable).lastPathComponent))
                 default: break
                 }
                 var relative: String?
                 if let root, let folder = folders[id], folder != root { relative = String(folder.dropFirst(root == "/" ? 1 : root.count + 1)) }
                 if let candidate = relative, GitRepository.folder(candidate) == nil {
-                    warnings.append("The folder of “\(title ?? "Untitled pane")” in “\(tab.title)” can't be used in a project, so it starts in the project folder.")
+                    warnings.append(L("The folder of “%1$@” in “%2$@” can't be used in a project, so it starts in the project folder.", title ?? L("Untitled pane"), tab.title))
                     relative = nil
                 }
                 // FR-PL10: an agent pane stays one; its command line is rebuilt at launch, so only the ID is kept.
@@ -57,7 +58,7 @@ public struct ProjectCapture: Equatable, Sendable {
             }
         }
         if root == "/" || (root != nil && root == home) {
-            warnings.append("The panes have no project folder in common, so launching asks where the project goes; their folders are kept relative to \(root!).")
+            warnings.append(L("The panes have no project folder in common, so launching asks where the project goes; their folders are kept relative to %@.", root!))
         }
         let name = String(space.name.prefix(200)).trimmingCharacters(in: .whitespaces)
         return ProjectCapture(project: ProjectDefinition(name: name.isEmpty ? "Project" : name, tabs: tabs, lastFolders: lastFolders), warnings: warnings)

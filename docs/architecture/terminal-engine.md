@@ -48,7 +48,7 @@ Children get `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Trel
 | --- | --- | --- |
 | Per-pane scrollback | 10,000 lines by default (configurable from 0 to 50,000) **and** 16 MiB. The newest contiguous lines are kept. | `ScrollbackBudget`, `TerminalScrollback` |
 | Automation output journal | 8 MiB shared by all sessions, oldest evicted first, in memory only. Small reads are coalesced into 16 KiB chunks. | `OutputJournal` |
-| Event ring | 1,000 metadata events | `EventHub` |
+| Event ring | 2,000 events | `EventHubV2` |
 | Broker replay ring (FR-R03, FR-R07) | 4 MiB per kept session and 64 MiB per broker, largest trimmed first; in the broker's memory only. A truncated replay restarts at a line (or at the cut, with no line break in the first 64 KiB) after a reset and the modes in force there. | `OutputRing`, `OutputBudget`, `ModeTracker` |
 | Scrollback file (FR-R04, opt-in) | 1 MiB per pane and 64 MiB in all, redacted plain text, newest lines kept | `ScrollbackStore` |
 
@@ -62,7 +62,7 @@ Output must keep the PTY's byte order. The UI may coalesce frames, but it never 
 
 ## Output security
 
-- **OSC 52:** the engine's clipboard callbacks do nothing. Copy requests are ignored and read requests return nothing.
+- **OSC 52:** read requests return nothing and get no reply. A write reaches `AccessibleTerminalView.writeClipboard` only when `NativeTerminal.allowsClipboardWrite` says yes at that moment (the model asks `ClipboardWritePolicy` with the pane's setting and whether it is an SSH pane, FR-C09), the output isn't a replay, and the payload is UTF-8 text of 1 byte to 1 MiB.
 - **Links:** `LinkPolicy` allows `http`, `https` and `mailto` only, up to 2,048 bytes, with no control characters or spaces. Web links must include a host and must not include credentials, and `mailto` keeps only `subject` and `body`. A link opens only within 1.5 seconds of a user's click, and each click opens at most one link.
 - **File links:** `TerminalLinkClassifier` turns a clicked link into a web URL or a local path, and only when the pane supplies a `FileLinkContext` (local panes; never saved SSH hosts or panes started as `ssh`/`mosh`). `file://` hosts must be local, automount paths (`/net`, `/Network`) are refused, schemeless OSC 8 targets are refused, and relative paths need the authenticated shell-integration directory. `FileLinkPolicy` then probes the symlink-resolved file on the main thread at click time (a `stat`, bounded to the clicked path): packages, executables, scripts and other launchable types are revealed in Finder, other regular files and folders open, and anything else is ignored.
 - **Smart selection:** `SmartSelection` (Core) matches URLs, emails, paths, UUIDs, IP addresses, git hashes and quoted strings around a grapheme offset. `TerminalLogicalLine` supplies the soft-wrapped text around the double-clicked cell (at most 32 rows each way and 4,096 characters) and maps the match back to cells.

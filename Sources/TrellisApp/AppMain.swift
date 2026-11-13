@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var projectsWindow: NSWindow?
     private let control: ControlServer
     private let mcp: MCPServer
+    /// FR-RC06: Trellis's own `tailscale serve` entry, created only after the listener is up.
+    private var sharing: TailscaleSharing?
+    /// Chains Applies so the coordinator sees them in order; separate Tasks may reach the actor out of order.
+    private var sharingUpdate: Task<Void, Never>?
     private let grants: GrantListModel
     private var window: NSWindow!
     private var settingsWindow: NSWindow?
@@ -89,16 +93,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         buildMenus()
         model.onKeyboardSettingsChanged = { [weak self] in self?.buildMenus() }
+        model.onLanguageChanged = { [weak self] in
+            guard let self else { return }
+            buildMenus()
+            // FR-LN03: open panels keep their windows, so their titles follow here.
+            hostsWindow?.title = L("Hosts"); projectsWindow?.title = L("Projects"); settingsWindow?.title = L("Settings")
+        }
         model.openSettings = { [weak self] in self?.showSettings() }
         // Restored or applied settings (re)start the MCP server; fixture and --no-mcp launches never listen.
         let mcpBlocked = CommandLine.arguments.contains("--no-mcp") || CommandLine.arguments.contains("--fixture")
+        // Fixture and --no-mcp launches never touch Tailscale either.
+        if !mcpBlocked {
+            let tailscale = TailscaleController(runner: TailscaleCLI())
+            model.tailscaleStatus = { await tailscale.status() }
+            sharing = TailscaleSharing(controller: tailscale, server: mcp) { [weak model] state in
+                Task { @MainActor in model?.tailscaleShareState = state }
+            }
+        }
         model.onRemoteControlSettingsChanged = { [weak self] settings in
             guard let self else { return }
             if mcpBlocked, settings.mcpEnabled {
                 mcp.stop()
-                model.remoteControlStatus = .failed(reason: "Turned off for this launch (--no-mcp or --fixture).")
+                model.remoteControlStatus = .failed(reason: L("Turned off for this launch (--no-mcp or --fixture)."))
             } else {
                 model.remoteControlStatus = mcp.apply(settings)
+                // Never publish a port this app isn't listening on: another program could own it.
+                var shared = settings
+                if case .running = model.remoteControlStatus {} else { shared.tailscaleShare = false }
+                if let sharing {
+                    let previous = sharingUpdate
+                    sharingUpdate = Task {
+                        await previous?.value; await sharing.apply(shared)
+                    }
+                }
             }
         }
         model.openHosts = { [weak self] in self?.showHosts() }
@@ -192,7 +219,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles(); model.stopAgentHooks() }
+    func applicationWillTerminate(_ notification: Notification) {
+        control.stop(); mcp.stop(); model.askpass?.stop(); model.removeScratchpadRunFiles(); model.stopAgentHooks()
+        // While Trellis is closed another program could take the port, so the tailnet entry goes too.
+        if let sharing { Self.wait(seconds: 3) { await sharing.shutdown() } }
+    }
+
+    /// Runs `body` off the main thread and waits for it, at most `seconds`.
+    private static func wait(seconds: TimeInterval, _ body: @escaping @Sendable () async -> Void) {
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            await body()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + seconds)
+    }
 
     /// Bundled in Contents/Helpers; `swift run` builds it beside the app binary.
     static func helperPath(_ name: String) -> String? {
@@ -241,35 +282,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         let menu = NSMenu()
         let app = NSMenuItem(); app.submenu = NSMenu(title: "Trellis")
-        let about = app.submenu?.addItem(withTitle: "About Trellis", action: #selector(aboutAction), keyEquivalent: "")
+        let about = app.submenu?.addItem(withTitle: L("About Trellis"), action: #selector(aboutAction), keyEquivalent: "")
         about?.target = self
-        if updater != nil { app.submenu?.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesAction), keyEquivalent: "").target = self }
-        if cliInstall != nil { app.submenu?.addItem(withTitle: "Install Command Line Tool…", action: #selector(installCommandLineToolAction), keyEquivalent: "").target = self }
+        if updater != nil { app.submenu?.addItem(withTitle: L("Check for Updates…"), action: #selector(checkForUpdatesAction), keyEquivalent: "").target = self }
+        if cliInstall != nil { app.submenu?.addItem(withTitle: L("Install Command Line Tool…"), action: #selector(installCommandLineToolAction), keyEquivalent: "").target = self }
         app.submenu?.addItem(.separator())
-        app.submenu?.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
+        app.submenu?.addItem(withTitle: L("Settings…"), action: #selector(settingsAction), keyEquivalent: ",")
         app.submenu?.addItem(.separator())
-        app.submenu?.addItem(withTitle: "Hide Trellis", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        app.submenu?.addItem(withTitle: "Quit Trellis", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        app.submenu?.addItem(withTitle: L("Hide Trellis"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.submenu?.addItem(withTitle: L("Quit Trellis"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(app)
         menu.addItem(
-            submenu("File", [.newSpace, .newTab, nil, .renameTab, .renameSpace, nil, .closePane, .closeTab, .deleteSpace, nil, .showProjects, .showHosts, .saveWorkspace]))
+            submenu(L("File"), [.newSpace, .newTab, nil, .renameTab, .renameSpace, nil, .closePane, .closeTab, .deleteSpace, nil, .showProjects, .showHosts, .saveWorkspace]))
         if let file = menu.items.last?.submenu {
             file.addItem(.separator())
-            file.addItem(withTitle: "Export Projects & Hosts…", action: #selector(exportProjectsAndHosts), keyEquivalent: "")
-            file.addItem(withTitle: "Import Projects & Hosts…", action: #selector(importProjectsAndHosts), keyEquivalent: "")
+            file.addItem(withTitle: L("Export Projects & Hosts…"), action: #selector(exportProjectsAndHosts), keyEquivalent: "")
+            file.addItem(withTitle: L("Import Projects & Hosts…"), action: #selector(importProjectsAndHosts), keyEquivalent: "")
         }
-        let edit = NSMenuItem(); edit.submenu = NSMenu(title: "Edit")
+        let edit = NSMenuItem(); edit.submenu = NSMenu(title: L("Edit"))
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
         // the terminal does not implement them, so they stay disabled there.
-        edit.submenu?.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        edit.submenu?.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
+        edit.submenu?.addItem(withTitle: L("Undo"), action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+        edit.submenu?.addItem(withTitle: L("Redo"), action: NSSelectorFromString("redo:"), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
         edit.submenu?.addItem(.separator())
-        edit.submenu?.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.submenu?.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.submenu?.addItem(withTitle: "Copy All Retained Text", action: NSSelectorFromString("copyAllRetainedText:"), keyEquivalent: "")
-        edit.submenu?.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.submenu?.addItem(withTitle: "Paste Escaped Path", action: NSSelectorFromString("pasteEscapedPath:"), keyEquivalent: "")
-        edit.submenu?.addItem(withTitle: "Select All", action: #selector(selectAllText(_:)), keyEquivalent: "a")
+        edit.submenu?.addItem(withTitle: L("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.submenu?.addItem(withTitle: L("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.submenu?.addItem(withTitle: L("Copy All Retained Text"), action: NSSelectorFromString("copyAllRetainedText:"), keyEquivalent: "")
+        edit.submenu?.addItem(withTitle: L("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.submenu?.addItem(withTitle: L("Paste Escaped Path"), action: NSSelectorFromString("pasteEscapedPath:"), keyEquivalent: "")
+        edit.submenu?.addItem(withTitle: L("Select All"), action: #selector(selectAllText(_:)), keyEquivalent: "a")
         edit.submenu?.addItem(.separator())
         for action in [ShortcutAction.findInPane, .findNext, .findPrevious] { edit.submenu?.addItem(item(action)) }
         edit.submenu?.addItem(.separator())
@@ -277,7 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(item(.clearPane))
         menu.addItem(edit)
-        let view = submenu("View", [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, nil, .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents, nil, .zoomIn, .zoomOut, .actualSize])
+        let view = submenu(L("View"), [.commandPalette, .jumpToDirectory, nil, .toggleSidebar, nil, .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents, nil, .zoomIn, .zoomOut, .actualSize])
         // Also accept the unshifted key on keyboards where '+' shares '='.
         if shortcuts[.zoomIn] == KeyChord("+"), shortcuts.action(for: KeyChord("=")) == nil {
             let alias = item(.zoomIn)
@@ -289,24 +330,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.addItem(view)
         menu.addItem(
             submenu(
-                "Pane",
+                L("Pane"),
                 [
                     .splitLeftRight, .splitTopBottom, nil, .focusLeft, .focusRight, .focusUp, .focusDown, nil,
                     .resizeLeft, .resizeRight, .resizeUp, .resizeDown, nil, .maximizePane
                 ]))
         let windows = submenu(
-            "Window",
+            L("Window"),
             [
                 nil, .previousSpace, .nextSpace, .previousTab, .nextTab, nil,
                 .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectTab9
             ])
-        windows.submenu?.insertItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "", at: 0)
-        windows.submenu?.insertItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "", at: 0)
-        windows.submenu?.insertItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m", at: 0)
+        windows.submenu?.insertItem(withTitle: L("Enter Full Screen"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "", at: 0)
+        windows.submenu?.insertItem(withTitle: L("Zoom"), action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "", at: 0)
+        windows.submenu?.insertItem(withTitle: L("Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m", at: 0)
         menu.addItem(windows)
-        let help = NSMenuItem(); help.submenu = NSMenu(title: "Help")
-        help.submenu?.addItem(withTitle: "Welcome Tour", action: #selector(welcomeTourAction), keyEquivalent: "").target = self
-        help.submenu?.addItem(withTitle: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: "")
+        let help = NSMenuItem(); help.submenu = NSMenu(title: L("Help"))
+        help.submenu?.addItem(withTitle: L("Welcome Tour"), action: #selector(welcomeTourAction), keyEquivalent: "").target = self
+        help.submenu?.addItem(withTitle: L("Export Diagnostics…"), action: #selector(exportDiagnostics), keyEquivalent: "")
         menu.addItem(help)
         NSApp.helpMenu = help.submenu
         NSApp.windowsMenu = windows.submenu
@@ -338,6 +379,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .renameTab: model.tabRenameRequest = UUID()
         case .renameSpace: model.spaceRenameRequest = UUID()
         // The Review tab hides the terminals, so closing acts on what is shown, never on a pane out of sight (FR-GC05).
+        // An editor tab likewise (FR-ED05), and ⌘S saves it (FR-ED04).
+        case .closePane where model.editorVisible, .closeTab where model.editorVisible: Task { await model.closeShownEditor() }
+        case .saveWorkspace where model.editorVisible: Task { await model.saveShownEditor() }
+        case .findInPane where model.editorVisible, .findNext where model.editorVisible, .findPrevious where model.editorVisible:
+            findInEditor(action == .findInPane ? .showFindInterface : action == .findNext ? .nextMatch : .previousMatch)
         case .closePane where model.reviewVisible, .closeTab where model.reviewVisible: model.closeReview()
         case .closePane: if let pane { Task { await model.closePane(pane) } }
         case .closeTab: if let tab = presentation.selectedTab?.id { Task { await model.closeTab(tab) } }
@@ -371,10 +417,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .resizeDown: Task { await model.resizeFocusedPane(.down) }
         case .nextSpace: selectRelativeSpace(1)
         case .previousSpace: selectRelativeSpace(-1)
-        case .nextTab: selectRelativeTab(1)
-        case .previousTab: selectRelativeTab(-1)
+        case .nextTab: Task { await model.selectAdjacentTab(1) }
+        case .previousTab: Task { await model.selectAdjacentTab(-1) }
         default: break
         }
+    }
+
+    /// Find while an editor tab is shown searches the editor, giving it the keyboard first if needed.
+    private func findInEditor(_ action: NSTextFinder.Action) {
+        // Find searches the source, so a Markdown preview goes back to it first (FR-ED12).
+        if let tab = model.shownEditor, tab.showsPreview {
+            model.showEditorSource(tab.id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in _ = self?.performTextFinderAction(action) }
+            return
+        }
+        if performTextFinderAction(action) { return }
+        model.focusEditor()
+        DispatchQueue.main.async { [weak self] in _ = self?.performTextFinderAction(action) }
     }
 
     /// Find in a focused text view with its own find bar (the scratchpad editor) searches there, not in the pane.
@@ -412,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             return presentation.activePane != nil
         case .nextSpace, .previousSpace: return model.snapshot.spaces.count > 1
-        case .nextTab, .previousTab: return presentation.visibleTabs.count > 1
+        case .nextTab, .previousTab: return presentation.visibleTabs.count + model.currentEditors.count > 1
         default: return presentation.selectedSpace != nil || action == .newTab
         }
     }
@@ -427,11 +486,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: sender)
         }
     }
+    private static func sidebarToggleTitle(_ view: SidebarView, visible: Bool) -> String {
+        switch view {
+        case .files: visible ? L("Hide Files") : L("Show Files")
+        case .changes: visible ? L("Hide Changes") : L("Show Changes")
+        case .scratchpad: visible ? L("Hide Scratchpad") : L("Show Scratchpad")
+        case .tasks: visible ? L("Hide Tasks") : L("Show Tasks")
+        case .agents: visible ? L("Hide Agents") : L("Show Agents")
+        }
+    }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(performShortcut(_:)) {
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
-            if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar" }
-            if let view = SidebarView(shortcut: action) { menuItem.title = model.visibleSidebarView == view ? "Hide \(view.title)" : "Show \(view.title)" }
+            if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? L("Show Sidebar") : L("Hide Sidebar") }
+            if let view = SidebarView(shortcut: action) { menuItem.title = Self.sidebarToggleTitle(view, visible: model.visibleSidebarView == view) }
             return validateShortcut(action)
         }
         if menuItem.action == #selector(checkForUpdatesAction) { return updater?.canCheckForUpdates ?? false }
@@ -445,12 +513,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard let id = model.snapshot.activeSpaceID, let index = spaces.firstIndex(where: { $0.id == id }), !spaces.isEmpty else { return }
         let next = spaces[(index + offset + spaces.count) % spaces.count].id
         Task { await model.selectSpace(next) }
-    }
-    private func selectRelativeTab(_ offset: Int) {
-        let tabs = model.presentation.visibleTabs
-        guard let id = model.presentation.selectedTab?.id, let index = tabs.firstIndex(where: { $0.id == id }), !tabs.isEmpty else { return }
-        let next = tabs[(index + offset + tabs.count) % tabs.count].id
-        Task { await model.selectTab(next) }
     }
 
     private func setWindowTranslucent(_ translucent: Bool) {
@@ -470,24 +532,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             reduceTransparency: workspace.accessibilityDisplayShouldReduceTransparency)
     }
     @objc private func aboutAction() {
-        let credits = NSMutableAttributedString(string: "Released under the ", attributes: [.font: NSFont.systemFont(ofSize: 12)])
-        credits.append(
-            NSAttributedString(
-                string: "MIT License",
-                attributes: [
-                    .font: NSFont.systemFont(ofSize: 12),
-                    .link: URL(string: "https://github.com/bearstouch/trellis/blob/master/LICENSE")!
-                ]))
-        credits.append(NSAttributedString(string: ".\n\n© 2026 ", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        // One sentence for translators; the license and owner names are linked where they land in it.
+        let license = "MIT License", owner = "bearstouch"
+        let credits = NSMutableAttributedString(
+            string: L("Released under the %1$@.\n\n© 2026 %2$@ and Trellis contributors. All rights reserved.", license, owner), attributes: [.font: NSFont.systemFont(ofSize: 12)])
         // The standard Copyright option is plain text, so the linked copyright line lives in the credits.
-        credits.append(NSAttributedString(string: "bearstouch", attributes: [.font: NSFont.systemFont(ofSize: 12), .link: URL(string: "https://github.com/bearstouch")!]))
-        credits.append(NSAttributedString(string: " and Trellis contributors. All rights reserved.", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        for (name, link) in [(license, "https://github.com/bearstouch/trellis/blob/master/LICENSE"), (owner, "https://github.com/bearstouch")] {
+            let range = (credits.string as NSString).range(of: name)
+            if range.location != NSNotFound { credits.addAttribute(.link, value: URL(string: link)!, range: range) }
+        }
         let centered = NSMutableParagraphStyle(); centered.alignment = .center
         credits.addAttribute(.paragraphStyle, value: centered, range: NSRange(location: 0, length: credits.length))
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Trellis",
             .applicationIcon: NSApp.applicationIconImage!,
-            .applicationVersion: AppVersion.bundled ?? "Development",
+            .applicationVersion: AppVersion.bundled ?? L("Development"),
             .version: "",
             NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "",
             .credits: credits
@@ -546,7 +605,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func exportProjectsAndHosts() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Trellis Projects & Hosts.trellis.json"
-        panel.message = "Exports your projects and saved hosts. No output, passwords, keys, tokens, or open spaces are included."
+        panel.message = L("Exports your projects and saved hosts. No output, passwords, keys, tokens, or open spaces are included.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let transfer = PortableTransfer(hosts: hosts, projects: projects)
         Task {
@@ -555,19 +614,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 try data.write(to: url, options: .atomic)
                 // Exports hold no secrets, but stay owner-only like other Trellis files.
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            } catch { model.errorMessage = "The export could not be written. Check the location and try again." }
+            } catch { model.errorMessage = L("The export could not be written. Check the location and try again.") }
         }
     }
 
     @objc private func importProjectsAndHosts() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
-        panel.message = "Choose a Trellis export to review before importing."
+        panel.message = L("Choose a Trellis export to review before importing.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let transfer = PortableTransfer(hosts: hosts, projects: projects)
         let parent: NSWindow? = window
         Task { [weak parent] in
-            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { model.errorMessage = "The file could not be read."; return }
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { model.errorMessage = L("The file could not be read."); return }
             switch await transfer.preview(data) {
             case .failure(let error): model.errorMessage = error.message
             case .success(let (parsed, preview)):
@@ -586,7 +645,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func showHosts() {
         if hostsWindow == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            panel.title = "Hosts"
+            panel.title = L("Hosts")
             panel.isReleasedWhenClosed = false
             panel.contentView = NSHostingView(rootView: HostLibraryView(model: hosts, workspace: model))
             panel.center()
@@ -598,7 +657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func showProjects() {
         if projectsWindow == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 700), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            panel.title = "Projects"
+            panel.title = L("Projects")
             panel.contentMinSize = NSSize(width: 900, height: 600)
             panel.isReleasedWhenClosed = false
             panel.delegate = self
@@ -612,7 +671,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func showSettings() {
         if settingsWindow == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            panel.title = "Settings"
+            panel.title = L("Settings")
             panel.contentMinSize = NSSize(width: 860, height: 620)
             panel.isReleasedWhenClosed = false
             panel.contentView = NSHostingView(rootView: AppSettingsView(model: model, grants: grants, hosts: hosts, updates: updates))
@@ -648,11 +707,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if sender === projectsWindow {
             guard projects.editorDirty else { return true }
             let alert = NSAlert()
-            alert.messageText = "Save changes to the project?"
-            alert.informativeText = "Your changes to the project aren't saved."
-            alert.addButton(withTitle: "Save")
-            alert.addButton(withTitle: "Cancel")
-            alert.addButton(withTitle: "Discard Changes")
+            alert.messageText = L("Save changes to the project?")
+            alert.informativeText = L("Your changes to the project aren't saved.")
+            alert.addButton(withTitle: L("Save"))
+            alert.addButton(withTitle: L("Cancel"))
+            alert.addButton(withTitle: L("Discard Changes"))
             switch alert.runModal() {
             case .alertFirstButtonReturn: projects.requestSave { [weak sender] in sender?.close() }; return false
             case .alertThirdButtonReturn: projects.discardEditor(); return true
@@ -681,6 +740,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationPending else { return .terminateLater }
         guard !closingWindow else { return .terminateCancel }
+        // Unsaved editor tabs are asked about first (FR-ED05); saving them restarts the quit once they are written.
+        if model.hasUnsavedEditors {
+            switch model.confirmUnsavedEditors(model.unsavedEditorNames) {
+            case .cancel: return .terminateCancel
+            case .save:
+                Task { if await model.saveAllEditors() { NSApp.terminate(nil) } }
+                return .terminateCancel
+            case .discard: break
+            }
+        }
         let choice = model.confirmQuit()
         guard choice != .cancel else { return .terminateCancel }
         terminationPending = true
@@ -767,6 +836,11 @@ struct TrellisMain {
                 }
             }
             if model.rendererOverride == true { NativeTerminal.prepareGPURendering() }
+            // FR-LN01: System follows the Mac's language list; --language en|pt-PT|fr|es picks one for this launch only.
+            model.systemLanguages = { Locale.preferredLanguages }
+            if let index = CommandLine.arguments.firstIndex(of: "--language"), CommandLine.arguments.indices.contains(index + 1) {
+                model.languageOverride = AppLanguage.translated.first { $0.rawValue.lowercased() == CommandLine.arguments[index + 1].lowercased() }
+            }
             // FR-R03: a broker is started only when a session is started with Keep Running on; one left by an
             // earlier run is always looked for at launch.
             if let helper = AppDelegate.helperPath(BrokerSessionClient.helperName), let client = BrokerSessionClient.currentExecutable() {
@@ -785,26 +859,31 @@ struct TrellisMain {
                 clientID: try? RemoteClientIdentity.load(stateDirectory: directory))
             let grantStore = GrantStore(url: directory.appendingPathComponent("grants.json"), secrets: KeychainGrantSecretStore())
             let instanceID = UUID()
-            let events = EventHub(instanceID: instanceID, grants: grantStore)
+            // The typed event stream (docs/api/events.md): one sequence and a ring of 2,000 for the socket and MCP.
+            let events = EventHubV2(instanceID: instanceID, grants: grantStore)
+            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
             let handler = AuthorizingControlHandler(
-                grants: grantStore, domain: AutomationService(model: model, hosts: hosts, instanceID: instanceID), events: events)
+                grants: grantStore, domain: AutomationServiceV2(model: model, hosts: hosts, projects: projects, instanceID: instanceID), events: events)
             let control = ControlServer(endpoint: ControlEndpoint(stateDirectory: directory), handler: handler, instanceID: instanceID)
             let mcp = MCPServer(handler: handler, serverVersion: AppVersion.bundled ?? "development")
-            let forwarder = EventForwarder(hub: events, instanceID: instanceID)
-            model.onWorkspaceEvents = { forwarder.send(.metadata($0)) }
-            // Appearance is global; the hub gates it on theme.read, not window scope.
-            let appearanceResource = UUID(uuidString: "00000000-0000-0000-0000-00000000A99E")!
+            let forwarder = EventForwarder(
+                hub: events, instanceID: instanceID,
+                delivered: { closed in await grantStore.forgetCreatedSpaces(closed) })
+            model.onWorkspaceTransition = { forwarder.send(.transition($0, $1)) }
+            model.onLiveEvents = { forwarder.send(.live($0)) }
+            hosts.onHostsChanged = { forwarder.send(.live(EventDraftV2.hostChanges($0, $1))) }
+            hosts.remote?.onHelperChanged = { [weak hosts] id, record in
+                let host = EventHostV2(id: id, connectionRevision: hosts?.hosts.first { $0.id == id }?.connectionRevision)
+                forwarder.send(.live([.remoteHelper(host: host, status: record?.state.rawValue ?? "unknown")]))
+            }
             model.onAppearanceChanged = { [weak model] in
                 guard let model else { return }
                 let settings = model.appearance
                 forwarder.send(
-                    .metadata([
-                        WorkspaceEvent(
-                            type: "appearance.changed", resourceID: appearanceResource, spaceID: nil,
-                            data: [
-                                "mode": settings.chromeMode.rawValue, "lightThemeId": settings.lightThemeID, "darkThemeId": settings.darkThemeID,
-                                "effectiveThemeId": model.effectiveTheme.id, "revision": String(model.appearanceRevision)
-                            ])
+                    .live([
+                        .appearance(
+                            mode: settings.chromeMode.rawValue, lightThemeID: settings.lightThemeID, darkThemeID: settings.darkThemeID,
+                            effectiveThemeID: model.effectiveTheme.id, revision: model.appearanceRevision)
                     ]))
             }
             model.onSessionOutput = { [weak model] session, pane, data, next in
@@ -823,15 +902,25 @@ struct TrellisMain {
                         control.closeConnections(await handler.connections(for: grantID))
                     }
                 }
+                // Narrowing applies at once (permissions.md#editing-grants): subscriptions that lost access end, MCP sessions
+                // start again with the new tool list, and socket connections get AUTH_REQUIRED on their next call. Every edit
+                // (reapproval included) sends grant.changed to that grant's own subscribers and pollers first.
+                await grantStore.onEdit { edit in
+                    Task {
+                        await events.grantEdited(edit.new, narrowed: edit.change.narrows)
+                        guard edit.change.narrows else { return }
+                        await mcp.closeSessions(grantID: edit.new.id)
+                    }
+                }
             }
-            let projects = ProjectListModel(library: ProjectLibrary(storage: ProjectFileStorage(directory: directory)))
+            projects.onProjectsChanged = { forwarder.send(.live(EventDraftV2.projectChanges($0, $1))) }
             let delegate = AppDelegate(
                 model: model, hosts: hosts, projects: projects, control: control, mcp: mcp, grants: GrantListModel(store: grantStore), identity: identity)
             app.delegate = delegate
             app.run()
             withExtendedLifetime(delegate) {}
         } catch {
-            let alert = NSAlert(); alert.messageText = "Trellis could not initialize its workspace."
+            let alert = NSAlert(); alert.messageText = L("Trellis could not initialize its workspace.")
             alert.runModal()
         }
     }

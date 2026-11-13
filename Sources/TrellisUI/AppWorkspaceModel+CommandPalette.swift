@@ -141,6 +141,9 @@ extension AppWorkspaceModel {
         case .tab(let spaceID, let tabID):
             await selectSpaceTab(spaceID: spaceID, tabID: tabID)
             focusActiveTerminal()
+        case .editorTab(let id):
+            if let spaceID = editorTab(id)?.spaceID, presentation.selectedSpace?.id != spaceID { await selectSpace(spaceID) }
+            selectEditor(id)
         case .pane(let id):
             await revealPane(id)
             focusActiveTerminal()
@@ -211,16 +214,16 @@ extension AppWorkspaceModel {
         let ordered = spaces.filter { $0.id == snapshot.activeSpaceID } + spaces.filter { $0.id != snapshot.activeSpaceID }
         var actions = commandPaletteActions.map { action in
             CommandPaletteItem(
-                target: .action(action), kind: .action, title: commandPaletteTitle(action), subtitle: action.menu.rawValue.capitalized,
+                target: .action(action), kind: .action, title: commandPaletteTitle(action), subtitle: Self.menuTitle(action.menu),
                 keywords: action.paletteKeywords, shortcut: keyboard.shortcuts[action])
         }
         if openSettings != nil {
-            actions.append(CommandPaletteItem(target: .settings, kind: .action, title: "Settings…", subtitle: "Trellis", keywords: ["preferences"], shortcut: KeyChord(",")))
+            actions.append(CommandPaletteItem(target: .settings, kind: .action, title: L("Settings…"), subtitle: "Trellis", keywords: ["preferences"], shortcut: KeyChord(",")))
         }
-        actions.append(CommandPaletteItem(target: .welcomeTour, kind: .action, title: "Welcome Tour", subtitle: "Help", keywords: ["onboarding", "introduction", "getting started"]))
+        actions.append(CommandPaletteItem(target: .welcomeTour, kind: .action, title: L("Welcome Tour"), subtitle: L("Help"), keywords: ["onboarding", "introduction", "getting started"]))
         let spaceItems = spaces.map { space in
-            let current = space.id == snapshot.activeSpaceID ? " · current" : ""
-            return CommandPaletteItem(target: .space(space.id), kind: .space, title: space.name, subtitle: Self.count(space.tabIDs.count, "tab") + current)
+            let current = space.id == snapshot.activeSpaceID ? " · " + L("current") : ""
+            return CommandPaletteItem(target: .space(space.id), kind: .space, title: space.name, subtitle: Self.plural(space.tabIDs.count, L("1 tab"), L("%d tabs", space.tabIDs.count)) + current)
         }
         var tabItems: [CommandPaletteItem] = [], paneItems: [CommandPaletteItem] = []
         for space in ordered {
@@ -230,7 +233,7 @@ extension AppWorkspaceModel {
                 tabItems.append(
                     CommandPaletteItem(
                         target: .tab(spaceID: space.id, tabID: tab.id), kind: .tab, title: title,
-                        subtitle: "\(space.name) › \(index + 1) of \(tabs.count) · \(commandPaletteStatus(tab.activePaneID))",
+                        subtitle: "\(space.name) › " + L("%1$d of %2$d", index + 1, tabs.count) + " · \(commandPaletteStatus(tab.activePaneID))",
                         groupID: space.id.uuidString, groupTitle: space.name))
                 for paneID in tab.root.paneIDs {
                     paneItems.append(
@@ -239,23 +242,31 @@ extension AppWorkspaceModel {
                             groupID: space.id.uuidString, groupTitle: space.name))
                 }
             }
+            // Editor tabs after the space's tabs, as in the tab bar (FR-ED01).
+            for editor in editorTabs[space.id] ?? [] {
+                tabItems.append(
+                    CommandPaletteItem(
+                        target: .editorTab(editor.id), kind: .tab, title: editorTitle(editor),
+                        subtitle: "\(space.name) › " + L("Editor") + (editor.isDirty ? " · " + L("unsaved") : ""), keywords: [editor.displayPath],
+                        groupID: space.id.uuidString, groupTitle: space.name))
+            }
         }
         let hostItems = commandPaletteHosts().flatMap { host in
-            let destination = (host.user.map { "\($0)@" } ?? "") + host.destination + (host.port.map { " · port \($0)" } ?? "")
+            let destination = (host.user.map { "\($0)@" } ?? "") + host.destination + (host.port.map { " · " + L("port %d", $0) } ?? "")
             let connect = CommandPaletteItem(target: .host(host.id), kind: .host, title: host.name, subtitle: destination, keywords: host.tags + ["ssh"])
             // FR-RW01: each host can also open as a remote workspace whose sessions keep running there.
             guard remoteHosts != nil else { return [connect] }
             return [
                 connect,
                 CommandPaletteItem(
-                    target: .remoteWorkspace(host.id), kind: .host, title: "Open Remote Workspace: " + host.name, subtitle: destination,
+                    target: .remoteWorkspace(host.id), kind: .host, title: L("Open Remote Workspace: %@", host.name), subtitle: destination,
                     keywords: host.tags + ["ssh", "remote", "workspace"])
             ]
         }
         let projectItems = commandPaletteProjects().map { project in
             CommandPaletteItem(
-                target: .project(project.id), kind: .project, title: "Launch Project: " + project.name,
-                subtitle: "\(project.tabs.count) tab\(project.tabs.count == 1 ? "" : "s")" + (project.notes.map { " · " + $0.prefix(80) } ?? ""),
+                target: .project(project.id), kind: .project, title: L("Launch Project: %@", project.name),
+                subtitle: Self.plural(project.tabs.count, L("1 tab"), L("%d tabs", project.tabs.count)) + (project.notes.map { " · " + $0.prefix(80) } ?? ""),
                 keywords: ["project", "workspace", "launch"] + project.checkouts.map { GitRepository.shortName($0.repository.url) })
         }
         var taskItems: [CommandPaletteItem] = []
@@ -268,8 +279,8 @@ extension AppWorkspaceModel {
         let currentTheme = appearance.themeID(systemIsDark: systemIsDark)
         let themeItems = allThemes.map { theme in
             CommandPaletteItem(
-                target: .theme(theme.id), kind: .theme, title: "Theme: " + theme.name,
-                subtitle: theme.appearance.rawValue.capitalized + (theme.id == currentTheme ? " · current" : ""), keywords: ["appearance colors"])
+                target: .theme(theme.id), kind: .theme, title: L("Theme: %@", theme.name),
+                subtitle: (theme.appearance == .light ? L("Light") : L("Dark")) + (theme.id == currentTheme ? " · " + L("current") : ""), keywords: ["appearance colors"])
         }
         // FR-AG07: the same agents as the Agents view, opened beside the focused pane.
         let agentItems =
@@ -277,20 +288,32 @@ extension AppWorkspaceModel {
             ? []
             : agentCatalog.definitions.map { agent in
                 CommandPaletteItem(
-                    target: .agent(agent.id), kind: .agent, title: "Launch Agent: " + agent.name, subtitle: "In a new tab · ⌥↩ beside the focused pane",
+                    target: .agent(agent.id), kind: .agent, title: L("Launch Agent: %@", agent.name), subtitle: L("In a new tab · ⌥↩ beside the focused pane"),
                     keywords: ["agent", "ai", agent.executable])
             }
         let directoryItems = directoryPaletteItems
+        let tabsInSpaces =
+            switch (tabItems.count == 1, spaces.count == 1) {
+            case (true, true): L("1 tab in 1 space")
+            case (true, false): L("1 tab in %d spaces", spaces.count)
+            case (false, true): L("%d tabs in 1 space", tabItems.count)
+            case (false, false): L("%1$d tabs in %2$d spaces", tabItems.count, spaces.count)
+            }
+        let tasksInProject =
+            if let name = taskCatalog?.name { Self.plural(taskItems.count, L("1 task in %@", name), L("%1$d tasks in %2$@", taskItems.count, name)) } else {
+                Self.plural(taskItems.count, L("1 task in this project"), L("%d tasks in this project", taskItems.count))
+            }
+        let savedHosts = commandPaletteHosts().count
         let counts: [CommandPaletteScope: (Int, String)] = [
-            .spaces: (spaceItems.count, Self.count(spaceItems.count, "space")),
-            .tabs: (tabItems.count, Self.count(tabItems.count, "tab") + " in " + Self.count(spaces.count, "space")),
-            .panes: (paneItems.count, Self.count(paneItems.count, "pane")),
-            .hosts: (hostItems.count, Self.count(commandPaletteHosts().count, "saved host")),
-            .projects: (projectItems.count, Self.count(projectItems.count, "project")),
-            .tasks: (taskItems.count, Self.count(taskItems.count, "task") + " in " + (taskCatalog?.name ?? "this project")),
-            .themes: (themeItems.count, Self.count(themeItems.count, "theme")),
-            .agents: (agentItems.count, Self.count(agentItems.count, "agent")),
-            .directories: (directoryItems.count, directoryItems.count == 1 ? "1 recent directory" : "\(directoryItems.count) recent directories")
+            .spaces: (spaceItems.count, Self.plural(spaceItems.count, L("1 space"), L("%d spaces", spaceItems.count))),
+            .tabs: (tabItems.count, tabsInSpaces),
+            .panes: (paneItems.count, Self.plural(paneItems.count, L("1 pane"), L("%d panes", paneItems.count))),
+            .hosts: (hostItems.count, Self.plural(savedHosts, L("1 saved host"), L("%d saved hosts", savedHosts))),
+            .projects: (projectItems.count, Self.plural(projectItems.count, L("1 project"), L("%d projects", projectItems.count))),
+            .tasks: (taskItems.count, tasksInProject),
+            .themes: (themeItems.count, Self.plural(themeItems.count, L("1 theme"), L("%d themes", themeItems.count))),
+            .agents: (agentItems.count, Self.plural(agentItems.count, L("1 agent"), L("%d agents", agentItems.count))),
+            .directories: (directoryItems.count, Self.plural(directoryItems.count, L("1 recent directory"), L("%d recent directories", directoryItems.count)))
         ]
         let scopes = CommandPaletteScope.allCases.compactMap { scope -> CommandPaletteItem? in
             guard let (count, text) = counts[scope], count > 0 else { return nil }
@@ -304,16 +327,28 @@ extension AppWorkspaceModel {
     /// The menu's own title where it changes with state.
     private func commandPaletteTitle(_ action: ShortcutAction) -> String {
         switch action {
-        case .toggleSidebar: sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
-        case .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents: SidebarView(shortcut: action).map { visibleSidebarView == $0 ? "Hide \($0.title)" : "Show \($0.title)" } ?? action.title
+        case .toggleSidebar: sidebarCollapsed ? L("Show Sidebar") : L("Hide Sidebar")
+        case .toggleFiles, .toggleChanges, .toggleScratchpad, .toggleTasks, .toggleAgents: SidebarView(shortcut: action).map { visibleSidebarView == $0 ? L("Hide %@", $0.title) : L("Show %@", $0.title) } ?? action.title
         default: action.title
         }
     }
 
     private func commandPaletteStatus(_ paneID: UUID) -> String {
-        guard let terminal = terminals[paneID] else { return "Stopped" }
+        guard let terminal = terminals[paneID] else { return L("Stopped") }
         return SessionStatusText.describe(terminal.sessionState, exitCode: terminal.exitCode)
     }
 
-    private static func count(_ count: Int, _ noun: String) -> String { "\(count) \(noun)\(count == 1 ? "" : "s")" }
+    /// Each count has its own two whole phrases, so a translation never has to build a plural from a noun.
+    private static func plural(_ count: Int, _ one: String, _ many: String) -> String { count == 1 ? one : many }
+
+    /// The menu an action lives in, as its row's subtitle.
+    private static func menuTitle(_ menu: ShortcutMenu) -> String {
+        switch menu {
+        case .file: L("File")
+        case .edit: L("Edit")
+        case .view: L("View")
+        case .pane: L("Pane")
+        case .window: L("Window")
+        }
+    }
 }

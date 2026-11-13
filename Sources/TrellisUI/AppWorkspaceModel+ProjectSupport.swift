@@ -73,7 +73,7 @@ extension AppWorkspaceModel {
     func writeRepositoryFile(_ data: Data, to url: URL) -> Bool {
         let manager = FileManager.default
         guard ![url.deletingLastPathComponent(), url].contains(where: { (try? manager.destinationOfSymbolicLink(atPath: $0.path)) != nil }) else {
-            errorMessage = "\(url.path) or its folder is a symbolic link, so nothing was written."
+            errorMessage = L("%@ or its folder is a symbolic link, so nothing was written.", url.path)
             return false
         }
         do {
@@ -82,14 +82,17 @@ extension AppWorkspaceModel {
             try? manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
             return true
         } catch {
-            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
+            errorMessage = L("%@ could not be written. Check the folder's permissions and try again.", url.path)
             return false
         }
     }
 }
 
 struct ProjectSupportFailure: LocalizedError {
+    /// What failed, for protocol 2's error codes; the sheet shows only the message.
+    enum Reason: Equatable { case other, folder, disconnected, helperOutdated, unavailable, layout }
     let message: String
-    init(_ message: String) { self.message = message }
+    var reason: Reason = .other
+    init(_ message: String, reason: Reason = .other) { self.message = message; self.reason = reason }
     var errorDescription: String? { message }
 }

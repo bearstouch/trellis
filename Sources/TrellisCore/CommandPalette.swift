@@ -8,32 +8,32 @@ public enum CommandPaletteKind: Int, CaseIterable, Comparable, Sendable {
 
     public var sectionTitle: String {
         switch self {
-        case .action: "Actions"
-        case .tab: "Tabs"
-        case .space: "Spaces"
-        case .pane: "Panes"
-        case .host: "Hosts"
-        case .project: "Projects"
-        case .task: "Tasks"
-        case .theme: "Themes"
-        case .agent: "Agents"
-        case .directory: "Directories"
+        case .action: L("Actions")
+        case .tab: L("Tabs")
+        case .space: L("Spaces")
+        case .pane: L("Panes")
+        case .host: L("Hosts")
+        case .project: L("Projects")
+        case .task: L("Tasks")
+        case .theme: L("Themes")
+        case .agent: L("Agents")
+        case .directory: L("Directories")
         }
     }
 
     /// Spoken after the title, e.g. "Split Left/Right, Pane action".
     public var noun: String {
         switch self {
-        case .action: "action"
-        case .tab: "tab"
-        case .space: "space"
-        case .pane: "pane"
-        case .host: "host"
-        case .project: "project"
-        case .task: "task"
-        case .theme: "theme"
-        case .agent: "agent"
-        case .directory: "directory"
+        case .action: L("action")
+        case .tab: L("tab")
+        case .space: L("space")
+        case .pane: L("pane")
+        case .host: L("host")
+        case .project: L("project")
+        case .task: L("task")
+        case .theme: L("theme")
+        case .agent: L("agent")
+        case .directory: L("directory")
         }
     }
 }
@@ -58,15 +58,15 @@ public enum CommandPaletteScope: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .spaces: "Go to Space…"
-        case .tabs: "Go to Tab…"
-        case .panes: "Go to Pane…"
-        case .hosts: "Connect to Host…"
-        case .projects: "Launch Project…"
-        case .tasks: "Run Task…"
-        case .themes: "Use Theme…"
-        case .agents: "Launch Agent…"
-        case .directories: "Jump to Directory…"
+        case .spaces: L("Go to Space…")
+        case .tabs: L("Go to Tab…")
+        case .panes: L("Go to Pane…")
+        case .hosts: L("Connect to Host…")
+        case .projects: L("Launch Project…")
+        case .tasks: L("Run Task…")
+        case .themes: L("Use Theme…")
+        case .agents: L("Launch Agent…")
+        case .directories: L("Jump to Directory…")
         }
     }
 
@@ -83,6 +83,8 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     case scope(CommandPaletteScope)
     case space(UUID)
     case tab(spaceID: UUID, tabID: UUID)
+    /// An editor tab (FR-ED01), which lives outside the workspace.
+    case editorTab(UUID)
     case pane(UUID)
     case host(UUID)
     /// Opens the saved host as a remote workspace (FR-RW01).
@@ -104,6 +106,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .scope(let scope): "scope:" + scope.rawValue
         case .space(let id): "space:" + id.uuidString
         case .tab(_, let id): "tab:" + id.uuidString
+        case .editorTab(let id): "editor:" + id.uuidString
         case .pane(let id): "pane:" + id.uuidString
         case .host(let id): "host:" + id.uuidString
         case .remoteWorkspace(let id): "remote-workspace:" + id.uuidString
@@ -236,8 +239,8 @@ public enum CommandPaletteSearch {
             let shown = Set(recent.map(\.id))
             let suggested = pool.filter { ($0.isScope || $0.target == .action(.newTab)) && !shown.contains($0.id) }
             return [
-                CommandPaletteSection(id: "recent", title: "Recent", matches: recent.map(unranked)),
-                CommandPaletteSection(id: "suggested", title: "Suggested", matches: suggested.map(unranked))
+                CommandPaletteSection(id: "recent", title: L("Recent"), matches: recent.map(unranked)),
+                CommandPaletteSection(id: "suggested", title: L("Suggested"), matches: suggested.map(unranked))
             ].filter { !$0.matches.isEmpty }
         }
         let recency = Dictionary(recents.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })

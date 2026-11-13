@@ -17,11 +17,13 @@ public struct BrokerAdoption {
     public let transport: (any TerminalProcessTransport)?
     /// The last agent event the broker kept for this session (FR-AG08).
     public let agentEvent: String?
+    /// The last `info …` event (FR-AG19).
+    public let agentInfo: String?
     public init(
-        sessionID: UUID, processID: Int32?, exitCode: Int32?, nonce: String?, replay: Data, transport: (any TerminalProcessTransport)?, agentEvent: String? = nil
+        sessionID: UUID, processID: Int32?, exitCode: Int32?, nonce: String?, replay: Data, transport: (any TerminalProcessTransport)?, agentEvent: String? = nil, agentInfo: String? = nil
     ) {
         self.sessionID = sessionID; self.processID = processID; self.exitCode = exitCode; self.nonce = nonce; self.replay = replay; self.transport = transport
-        self.agentEvent = agentEvent
+        self.agentEvent = agentEvent; self.agentInfo = agentInfo
     }
 }
 
@@ -63,6 +65,8 @@ public protocol SessionBrokerClient: AnyObject {
     var agentSocketPath: String? { get }
     /// Agent events for any session this broker holds, on the main actor.
     func observeAgentEvents(_ handler: @escaping @MainActor (UUID, String) -> Void)
+    /// FR-R08: told to the broker now and on every later connection; nil (the setting isn't known) tells it nothing.
+    func setSessionIdleTimeout(seconds: Int?)
 }
 
 extension SessionBrokerClient {
@@ -70,6 +74,7 @@ extension SessionBrokerClient {
     public var hookHelperPath: String? { nil }
     public var agentSocketPath: String? { nil }
     public func observeAgentEvents(_ handler: @escaping @MainActor (UUID, String) -> Void) {}
+    public func setSessionIdleTimeout(seconds: Int?) {}
 }
 
 /// This state directory's session broker as Settings → Session Broker shows it.
@@ -247,6 +252,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
     private var connection: BrokerConnection?
     private var preparing: Task<Bool, Never>?
     private var agentEventHandler: (@MainActor (UUID, String) -> Void)?
+    private var sessionIdleTimeout: Int?
 
     public var hookHelperPath: String? { launcher.helperPath }
     public var agentSocketPath: String? {
@@ -259,6 +265,11 @@ public final class BrokerSessionClient: SessionBrokerClient {
     public func observeAgentEvents(_ handler: @escaping @MainActor (UUID, String) -> Void) {
         agentEventHandler = handler
         connection?.onAgentEvent = handler
+    }
+
+    public func setSessionIdleTimeout(seconds: Int?) {
+        sessionIdleTimeout = seconds
+        if let seconds { open?.configure(sessionIdleTimeout: seconds) }
     }
 
     public init(launcher: BrokerLauncher) { self.launcher = launcher }
@@ -308,6 +319,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
     private func adopt(_ connection: BrokerConnection) {
         self.connection = connection
         connection.onAgentEvent = agentEventHandler
+        if let sessionIdleTimeout { connection.configure(sessionIdleTimeout: sessionIdleTimeout) }
         connection.onClose = { [weak self, weak connection] in
             guard let self, self.connection === connection else { return }
             self.connection = nil
@@ -383,7 +395,7 @@ public final class BrokerSessionClient: SessionBrokerClient {
         let running = attachment.record.running
         return BrokerAdoption(
             sessionID: sessionID, processID: running ? attachment.record.processID : nil, exitCode: attachment.record.exitCode,
-            nonce: attachment.nonce, replay: replay, transport: running ? transport : nil, agentEvent: attachment.agentEvent)
+            nonce: attachment.nonce, replay: replay, transport: running ? transport : nil, agentEvent: attachment.agentEvent, agentInfo: attachment.agentInfo)
     }
 
     public func release(sessionID: UUID) { open?.post(.release(sessionID: sessionID)) }

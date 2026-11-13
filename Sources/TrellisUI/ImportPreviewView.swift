@@ -20,17 +20,17 @@ public struct ImportPreviewView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Import Projects & Hosts").font(.headline)
-            Text("\(preview.projects) project(s), \(preview.hosts) saved host(s)")
-            Text("Everything imports with new IDs. Nothing opens or runs until you launch a project.").font(.caption).foregroundStyle(.secondary)
+            Text(L("Import Projects & Hosts")).font(.headline)
+            Text(L("%1$d project(s), %2$d saved host(s)", Int(preview.projects), Int(preview.hosts)))
+            Text(L("Everything imports with new IDs. Nothing opens or runs until you launch a project.")).font(.caption).foregroundStyle(.secondary)
             if preview.skippedSpaces > 0 {
                 Label(
-                    "This file was made by an older Trellis; its \(preview.skippedSpaces) window(s) are not imported. Spaces now come from projects.",
+                    L("This file was made by an older Trellis; its %d window(s) are not imported. Spaces now come from projects.", Int(preview.skippedSpaces)),
                     systemImage: "info.circle"
                 ).font(.caption)
             }
             if !preview.projectCollisions.isEmpty {
-                Text("You already have project(s) named " + preview.projectCollisions.map { "“\($0)”" }.joined(separator: ", ") + "; they're added as copies named “… (imported)”.")
+                Text(L("You already have project(s) named %@; they're added as copies named “… (imported)”.", preview.projectCollisions.map { "“\($0)”" }.joined(separator: ", ")))
                     .font(.caption).lineLimit(4)
             }
             if !preview.errors.isEmpty {
@@ -39,20 +39,20 @@ public struct ImportPreviewView: View {
                 }
             }
             if !preview.collisions.isEmpty {
-                Text("\(preview.collisions.count) imported host(s) match hosts you already have (same destination or name).").font(.callout)
+                Text(L("%d imported host(s) match hosts you already have (same destination or name).", preview.collisions.count)).font(.callout)
                 Text(preview.collisionDetails.joined(separator: "\n")).font(.caption).lineLimit(6)
-                Picker("Matching hosts", selection: $policy) {
-                    Text("Choose…").tag(HostCollisionPolicy?.none)
+                Picker(L("Matching hosts"), selection: $policy) {
+                    Text(L("Choose…")).tag(HostCollisionPolicy?.none)
                     ForEach(HostCollisionPolicy.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
                 }
-                .accessibilityHint("Required before importing")
+                .accessibilityHint(L("Required before importing"))
             }
             if let message { Text(message).font(.caption).accessibilityIdentifier("import.result") }
             HStack {
                 Spacer()
-                Button(done ? "Done" : "Cancel") { close() }.keyboardShortcut(.cancelAction)
+                Button(done ? L("Done") : L("Cancel")) { close() }.keyboardShortcut(.cancelAction)
                 if !done {
-                    Button("Import") { run() }
+                    Button(L("Import")) { run() }
                         .keyboardShortcut(.defaultAction)
                         .disabled(importing || !preview.errors.isEmpty || (!preview.collisions.isEmpty && policy == nil))
                 }
@@ -66,7 +66,7 @@ public struct ImportPreviewView: View {
         Task {
             switch await transfer.commit(parsed, policy: policy) {
             case .success(let summary):
-                message = "Imported \(summary.projectsCreated) project(s); \(summary.hostsCreated) host(s) added, \(summary.hostsReplaced) replaced."
+                message = L("Imported %1$d project(s); %2$d host(s) added, %3$d replaced.", Int(summary.projectsCreated), summary.hostsCreated, summary.hostsReplaced)
                 done = true
             case .failure(let error): message = error.message
             }

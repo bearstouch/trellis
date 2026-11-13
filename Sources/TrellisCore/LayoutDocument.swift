@@ -1,7 +1,7 @@
 import Foundation
 
-/// Declarative layout v1: structure and safe launch references only, never
-/// commands. Parsed from JSON by the control layer.
+/// A declarative layout (docs/api/layouts.md): structure and safe launch references only, never commands. Parsed from
+/// JSON by the control layer.
 public struct LayoutDocument: Equatable, Sendable {
     public var spaces: [LayoutSpace]
     public init(spaces: [LayoutSpace]) { self.spaces = spaces }
@@ -9,10 +9,12 @@ public struct LayoutDocument: Equatable, Sendable {
 
 public struct LayoutSpace: Equatable, Sendable {
     public var key: String, name: String, tabs: [LayoutTab]
-    /// A remote workspace's saved host (FR-R02, FR-RW01); only exports carry it, never API layouts.
+    /// A remote workspace's saved host (FR-R02, FR-RW01): portable exports, and version 3's `machine`.
     public var remoteHostID: UUID?
-    public init(key: String, name: String, tabs: [LayoutTab], remoteHostID: UUID? = nil) {
-        self.key = key; self.name = name; self.tabs = tabs; self.remoteHostID = remoteHostID
+    /// A library project the space belongs to (FR-W08), from version 3's `projectId`; its declared tabs become project tabs.
+    public var projectID: UUID?
+    public init(key: String, name: String, tabs: [LayoutTab], remoteHostID: UUID? = nil, projectID: UUID? = nil) {
+        self.key = key; self.name = name; self.tabs = tabs; self.remoteHostID = remoteHostID; self.projectID = projectID
     }
 }
 
@@ -27,6 +29,8 @@ public enum LayoutLaunch: Equatable, Sendable {
     /// `directory` is as written: absolute, `~`, or `~/…`.
     case shell(directory: String?)
     case host(UUID)
+    /// An agent pane (FR-AG04), started in `directory` on the space's machine.
+    case agent(String, directory: String?)
 }
 
 public indirect enum LayoutNode: Equatable, Sendable {
@@ -128,7 +132,9 @@ public enum LayoutPlanner {
         var plan = LayoutPlan(baseRevision: snapshot.revision)
         // Structural validation first; nothing is reconciled on errors.
         var seen = Set<String>(), panes = 0
-        func check(_ node: LayoutNode, depth: Int) {
+        // A remote space's paths are the host's: `~` stays as written (its home is known once connected), and existence
+        // isn't checked on this Mac.
+        func check(_ node: LayoutNode, depth: Int, remote: Bool) {
             guard depth <= maxNesting else { plan.errors.append(LayoutIssue(key: node.key, "Split nesting exceeds \(maxNesting).")); return }
             checkKey(node.key)
             switch node {
@@ -136,19 +142,22 @@ public enum LayoutPlanner {
                 panes += 1
                 if let title, title.count > 200 { plan.errors.append(LayoutIssue(key: key, "Pane titles are limited to 200 characters.")) }
                 switch launch {
-                case .shell(let directory?):
+                case .shell(let directory?), .agent(_, let directory?):
                     if let path = expand(directory, home: home) {
-                        if !directoryExists(path) { plan.warnings.append(LayoutIssue(key: key, "Directory \(directory) does not exist yet; starting will fail until it does.")) }
+                        if !remote, !directoryExists(path) { plan.warnings.append(LayoutIssue(key: key, "Directory \(directory) does not exist yet; starting will fail until it does.")) }
                     } else {
                         plan.errors.append(LayoutIssue(key: key, "Use an absolute directory or one starting with ~/; relative paths and shell expansion are not allowed."))
                     }
-                case .shell(nil): break
-                case .host(let id): if !hostExists(id) { plan.errors.append(LayoutIssue(key: key, "Saved host \(id.uuidString) does not exist.")) }
+                case .shell(nil), .agent(_, nil): break
+                case .host(let id): if !hostExists(id) { plan.errors.append(LayoutIssue(key: key, "Saved host \(id.uuidString.lowercased()) does not exist.")) }
+                }
+                if case .agent(let agentID, _) = launch, agentID.isEmpty || agentID.utf8.count > 128 || agentID.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
+                    plan.errors.append(LayoutIssue(key: key, "Agent IDs need 1–128 characters."))
                 }
             case .split(let key, _, let ratio, let children):
                 if !(ratio.isFinite && (0.1...0.9).contains(ratio)) { plan.errors.append(LayoutIssue(key: key, "Ratios must be within 0.1–0.9.")) }
                 if children.count != 2 { plan.errors.append(LayoutIssue(key: key, "A split needs exactly two children.")) }
-                children.forEach { check($0, depth: depth + 1) }
+                children.forEach { check($0, depth: depth + 1, remote: remote) }
             }
         }
         func checkKey(_ key: String) {
@@ -158,12 +167,17 @@ public enum LayoutPlanner {
         if document.spaces.count > 10 { plan.errors.append(LayoutIssue(key: nil, "Use at most 10 spaces.")) }
         for space in document.spaces {
             checkKey(space.key)
+            if let host = space.remoteHostID, !hostExists(host) { plan.errors.append(LayoutIssue(key: space.key, "Saved host \(host.uuidString.lowercased()) does not exist.")) }
+            // A remote workspace runs only shells and agents on its host (FR-RW10); an ssh pane never opens in one.
+            if space.remoteHostID != nil, space.tabs.contains(where: { Self.launches($0.root).contains { if case .host = $0.launch { true } else { false } } }) {
+                plan.errors.append(LayoutIssue(key: space.key, "A remote workspace's panes run on its host; ssh panes can't be in it."))
+            }
             if space.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || space.name.count > 200 { plan.errors.append(LayoutIssue(key: space.key, "Space names need 1–200 characters.")) }
             if space.tabs.isEmpty || space.tabs.count > 50 { plan.errors.append(LayoutIssue(key: space.key, "Spaces need 1–50 tabs.")) }
             for tab in space.tabs {
                 checkKey(tab.key)
                 if tab.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || tab.title.count > 200 { plan.errors.append(LayoutIssue(key: tab.key, "Tab titles need 1–200 characters.")) }
-                check(tab.root, depth: 0)
+                check(tab.root, depth: 0, remote: space.remoteHostID != nil)
             }
         }
         if panes > maxPanes { plan.errors.append(LayoutIssue(key: nil, "Layouts are limited to \(maxPanes) panes.")) }
@@ -179,12 +193,18 @@ public enum LayoutPlanner {
             }
             return binding.id
         }
-        // A remote space's layout opens on its host (FR-RW10): every shell is that host's, in a path there.
-        func launch(_ value: LayoutLaunch, on host: UUID?) -> SessionLaunch {
+        // A remote space's layout opens on its host (FR-RW10): every shell is that host's, in a path there. A space whose
+        // document names its machine keeps `~` for the host to resolve; a plan for one host (a project launch) has its home.
+        func launch(_ value: LayoutLaunch, on host: UUID?, hostHome: Bool) -> SessionLaunch {
+            func path(_ directory: String?) -> String? {
+                guard let directory else { return nil }
+                return host != nil && !hostHome && (directory == "~" || directory.hasPrefix("~/")) ? directory : expand(directory, home: home)
+            }
             switch value {
-            case .shell(let directory) where host != nil: .remoteShell(hostID: host!, directory: directory.flatMap { expand($0, home: home) })
-            case .shell(let directory): .shell(directory: directory.flatMap { expand($0, home: home) })
-            case .host(let id): .host(id)
+            case .shell(let directory) where host != nil: return .remoteShell(hostID: host!, directory: path(directory))
+            case .shell(let directory): return .shell(directory: path(directory))
+            case .host(let id): return .host(id)
+            case .agent(let agentID, let directory): return .agent(AgentLaunch(agentID: agentID, directory: path(directory), hostID: host))
             }
         }
 
@@ -201,7 +221,13 @@ public enum LayoutPlanner {
             }
             bindings[declared.key] = LayoutBinding(kind: .space, id: spaceID)
             // An existing space keeps its own binding; a new one takes the document's, or the plan's.
-            let spaceHost = next.spaces.first { $0.id == spaceID }.map(\.remoteHostID) ?? declared.remoteHostID ?? remoteHostID
+            let existingSpace = next.spaces.first { $0.id == spaceID }
+            let spaceHost = existingSpace.map(\.remoteHostID) ?? declared.remoteHostID ?? remoteHostID
+            if let existingSpace, let declaredHost = declared.remoteHostID, existingSpace.remoteHostID != declaredHost {
+                plan.conflicts.append(LayoutIssue(key: declared.key, "This space runs on another machine; a space can't change machine. Close and recreate it instead."))
+                continue
+            }
+            let spaceProject = declared.projectID ?? projectID
             for tab in declared.tabs {
                 let tabID: UUID
                 let existingTab = bound(tab.key, .tab).flatMap { next.tabs[$0] }
@@ -215,7 +241,7 @@ public enum LayoutPlanner {
                 func build(_ node: LayoutNode) -> PaneLayout? {
                     switch node {
                     case .pane(let key, let title, let desired):
-                        let desiredLaunch = launch(desired, on: spaceHost)
+                        let desiredLaunch = launch(desired, on: spaceHost, hostHome: remoteHostID != nil)
                         if let id = bound(key, .pane), let pane = next.panes[id] {
                             guard pane.tabID == tabID else {
                                 plan.conflicts.append(LayoutIssue(key: key, "Panes cannot move between tabs; close and recreate it instead."))
@@ -272,7 +298,7 @@ public enum LayoutPlanner {
                         root = merged
                     }
                     var updated = existingTab
-                    let projectKey = projectID == nil ? updated.projectKey : tab.key
+                    let projectKey = spaceProject == nil ? updated.projectKey : tab.key
                     let changed =
                         updated.title != tab.title || updated.root != root || (tab.color != nil && updated.color != tab.color) || updated.projectKey != projectKey
                     updated.title = tab.title
@@ -284,7 +310,7 @@ public enum LayoutPlanner {
                     if changed { plan.updates.append((.tab, tab.key)) }
                 } else {
                     next.tabs[tabID] = WorkspaceTab(
-                        id: tabID, spaceID: spaceID, title: tab.title, color: tab.color, root: root, activePaneID: root.paneIDs[0], projectKey: projectID.map { _ in tab.key })
+                        id: tabID, spaceID: spaceID, title: tab.title, color: tab.color, root: root, activePaneID: root.paneIDs[0], projectKey: spaceProject.map { _ in tab.key })
                     plan.creates.append((.tab, tab.key))
                 }
                 managedTabs.append(tabID)
@@ -294,20 +320,20 @@ public enum LayoutPlanner {
                 let unmanaged = space.tabIDs.filter { !managedTabs.contains($0) }
                 plan.unmanaged += unmanaged
                 // A tab the project no longer declares stays where it is but becomes temporary (FR-W08).
-                if projectID != nil { for id in unmanaged where next.tabs[id]?.projectKey != nil { next.tabs[id]?.projectKey = nil } }
+                if spaceProject != nil { for id in unmanaged where next.tabs[id]?.projectKey != nil { next.tabs[id]?.projectKey = nil } }
                 // Managed tabs follow document order in the slots they occupied; new ones append.
                 var queue = managedTabs.filter { space.tabIDs.contains($0) }
                 space.tabIDs =
                     space.tabIDs.map { id in managedTabs.contains(id) && !queue.isEmpty ? queue.removeFirst() : id }
                     + managedTabs.filter { !space.tabIDs.contains($0) }
                 space.name = declared.name
-                if let projectID, space.projectID != projectID {
-                    space.projectID = projectID
+                if let spaceProject, space.projectID != spaceProject {
+                    space.projectID = spaceProject
                     if !plan.updates.contains(where: { $0.kind == .space && $0.key == declared.key }) { plan.updates.append((.space, declared.key)) }
                 }
                 next.spaces[index] = space
             } else if let first = managedTabs.first {
-                next.spaces.append(Space(id: spaceID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: spaceHost, projectID: projectID))
+                next.spaces.append(Space(id: spaceID, name: declared.name, tabIDs: managedTabs, activeTabID: first, remoteHostID: spaceHost, projectID: spaceProject))
             }
             managedSpaces.append(spaceID)
         }
@@ -350,6 +376,10 @@ public enum LayoutPlanner {
         if actual == desired { return true }
         switch (actual, desired) {
         case (.process(_, let arguments, let directory), .shell(let wanted)): return arguments == ["-l"] && (wanted == nil || directory == wanted)
+        // Resuming the agent's conversation (FR-AG06) doesn't change which agent the pane runs, or where.
+        case (.agent(var resumed), .agent(let wanted)):
+            resumed.resume = wanted.resume
+            return resumed == wanted
         default: return false
         }
     }
@@ -379,6 +409,14 @@ public enum LayoutPlanner {
         // Every pane once, and a reused split ID never doubles up with one kept around an omitted pane.
         guard Set(panes).count == panes.count, Set(panes) == livePanes.union(declared.paneIDs), Set(branches).count == branches.count else { return nil }
         return merged
+    }
+
+    /// Every pane's key and launch in a node, in document order.
+    public static func launches(_ node: LayoutNode) -> [(key: String, launch: LayoutLaunch)] {
+        switch node {
+        case .pane(let key, _, let launch): [(key, launch)]
+        case .split(_, _, _, let children): children.flatMap(launches)
+        }
     }
 
     static func branchIDs(_ layout: PaneLayout) -> [UUID] {

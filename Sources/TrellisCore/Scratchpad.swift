@@ -3,7 +3,8 @@ import Foundation
 /// A language the command scratchpad can highlight, check and run (FR-SP03). The selector lists `all`, so another
 /// language is one more entry here.
 public struct ScratchpadLanguage: Hashable, Identifiable, Sendable {
-    public enum Grammar: Sendable { case shell, javascript, markdown }
+    /// `code`, `markup`, `yaml`, `toml` and `plain` are used by editor tabs only (FR-ED09).
+    public enum Grammar: Hashable, Sendable { case shell, javascript, markdown, code(CodeSyntax), markup, yaml, toml, plain }
 
     public let id: String
     public let displayName: String
@@ -92,7 +93,7 @@ public struct ScratchpadDocument: Equatable, Sendable {
     public static func nameProblem(_ name: String) -> String? {
         let allowed = name.unicodeScalars.allSatisfy { $0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0) || "._-".unicodeScalars.contains($0)) }
         guard (1...maximumNameLength).contains(name.count), allowed, let first = name.first, first != ".", first != "-" else {
-            return "The name needs 1–\(maximumNameLength) letters, digits, “.”, “-” or “_”, and can't start with “.” or “-”."
+            return L("The name needs 1–%d letters, digits, “.”, “-” or “_”, and can't start with “.” or “-”.", maximumNameLength)
         }
         return nil
     }
@@ -102,8 +103,8 @@ public struct ScratchpadDocument: Equatable, Sendable {
     public var issues: [ScratchpadIssue] {
         var issues: [ScratchpadIssue] = []
         if let problem = Self.nameProblem(name) { issues.append(ScratchpadIssue(line: nil, problem)) }
-        if isEmpty { issues.append(ScratchpadIssue(line: nil, "Write a command or script first.")) }
-        if text.utf8.count > Self.maximumBytes { issues.append(ScratchpadIssue(line: nil, "The script is larger than 64 KB.")) }
+        if isEmpty { issues.append(ScratchpadIssue(line: nil, L("Write a command or script first."))) }
+        if text.utf8.count > Self.maximumBytes { issues.append(ScratchpadIssue(line: nil, L("The script is larger than 64 KB."))) }
         // Text that never runs may hold anything that renders, like emoji joined with zero-width joiners.
         guard language.isRunnable else { return issues }
         var line = 1, flagged = false
@@ -114,7 +115,7 @@ public struct ScratchpadDocument: Equatable, Sendable {
                 [.format, .control, .lineSeparator, .paragraphSeparator].contains(scalar.properties.generalCategory) || scalar.properties.isDefaultIgnorableCodePoint
             if hidden {
                 flagged = true
-                issues.append(ScratchpadIssue(line: line, scalar == "\r" ? "Use Unix line endings; this line ends with a carriage return." : "Remove the control or invisible formatting character."))
+                issues.append(ScratchpadIssue(line: line, scalar == "\r" ? L("Use Unix line endings; this line ends with a carriage return.") : L("Remove the control or invisible formatting character.")))
                 if issues.count >= ScratchpadValidator.maximumIssues { break }
             }
         }
@@ -181,10 +182,10 @@ public enum ScratchpadValidator {
         guard issues.isEmpty else { return ScratchpadCheck(.failed, issues: issues) }
         let language = document.language
         guard let interpreter = language.interpreter, let checker = language.checkDescription else {
-            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "\(language.displayName) has no syntax check.")])
+            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, L("%@ has no syntax check.", language.displayName))])
         }
         guard let executable = resolve(interpreter, searchPath: searchPath, isExecutable: isExecutable) else {
-            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "\(interpreter) wasn't found, so the syntax wasn't checked.")])
+            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, L("%@ wasn't found, so the syntax wasn't checked.", interpreter))])
         }
         let file = directory.appendingPathComponent("check-\(UUID().uuidString).\(language.fileExtension)")
         do {
@@ -193,7 +194,7 @@ public enum ScratchpadValidator {
                 throw CocoaError(.fileWriteUnknown)
             }
         } catch {
-            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "The script couldn't be written for checking.")])
+            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, L("The script couldn't be written for checking."))])
         }
         defer { try? FileManager.default.removeItem(at: file) }
         do {
@@ -202,14 +203,14 @@ public enum ScratchpadValidator {
             let output = result.output.replacingOccurrences(of: file.path, with: document.fileName)
             var found = parse(output, grammar: language.grammar)
             if found.isEmpty {
-                let first = output.split(whereSeparator: \.isNewline).first.map(String.init) ?? "\(checker) exited with status \(result.status)."
+                let first = output.split(whereSeparator: \.isNewline).first.map(String.init) ?? L("%1$@ exited with status %2$d.", checker, Int(result.status))
                 found = [ScratchpadIssue(line: nil, first)]
             }
             return ScratchpadCheck(.failed, issues: Array(found.prefix(maximumIssues)), checker: checker)
         } catch is ScratchpadCheckTimedOut {
-            return ScratchpadCheck(.failed, issues: [ScratchpadIssue(line: nil, "The syntax check didn't finish within \(Int(timeout)) seconds.")], checker: checker)
+            return ScratchpadCheck(.failed, issues: [ScratchpadIssue(line: nil, L("The syntax check didn't finish within %d seconds.", Int(timeout)))], checker: checker)
         } catch {
-            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, "\(executable) couldn't be started, so the syntax wasn't checked.")], checker: checker)
+            return ScratchpadCheck(.notChecked, issues: [ScratchpadIssue(line: nil, L("%@ couldn't be started, so the syntax wasn't checked.", executable))], checker: checker)
         }
     }
 
@@ -223,10 +224,10 @@ public enum ScratchpadValidator {
                 guard let match = text.firstMatch(of: #/: (?:line )?(\d+): (.+)$/#), let line = Int(match.1) else { return nil }
                 return ScratchpadIssue(line: line, String(match.2))
             }
-        case .markdown: return []
+        case .markdown, .code, .markup, .yaml, .toml, .plain: return []
         case .javascript:
             guard let first = lines.first, let match = first.firstMatch(of: /:(\d+)$/), let line = Int(match.1) else { return [] }
-            let message = lines.first { $0.firstMatch(of: #/^[A-Za-z]*Error: /#) != nil } ?? "Syntax error."
+            let message = lines.first { $0.firstMatch(of: #/^[A-Za-z]*Error: /#) != nil } ?? L("Syntax error.")
             return [ScratchpadIssue(line: line, message)]
         }
     }

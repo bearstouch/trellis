@@ -1,3 +1,4 @@
+import TrellisControl
 import TrellisCore
 import XCTest
 @testable import TrellisCLI
@@ -15,7 +16,8 @@ final class CLIHelpTests: XCTestCase {
     func testEveryHelpFormGoesToStdoutAndExitsZeroWithoutTouchingTheApp() {
         for arguments in [
             ["--help"], ["-h"], ["help"], ["--help", "--json"], ["--json", "--help"], ["help", "--help"], ["space", "--help"], ["space", "-h"], ["help", "space"], ["space", "--json", "--help"],
-            ["space", "create", "--help"], ["space", "create", "-h"], ["help", "space", "create"], ["layout", "apply", "--help"], ["space", "rename", "--space", "x", "--help"]
+            ["space", "create", "--help"], ["space", "create", "-h"], ["help", "space", "create"], ["layout", "apply", "--help"], ["space", "rename", "--space", "x", "--help"],
+            ["remote", "helper", "install", "--help"], ["help", "remote", "helper", "remove"], ["session", "execute", "--help"]
         ] {
             let h = CLIHarness()
             XCTAssertEqual(h.run(arguments), 0, "\(arguments)")
@@ -45,6 +47,14 @@ final class CLIHelpTests: XCTestCase {
         XCTAssertTrue(command.out[0].contains("trellis space rename --space SPACE --name NAME"))
         XCTAssertTrue(command.out[0].contains("--idempotency-key KEY"), "Flags the synopsis omits are still listed")
         XCTAssertTrue(command.out[0].contains("--token-stdin"))
+        XCTAssertTrue(command.out[0].contains("trellis space rename - Rename a space\n"), "The summary is the catalog's")
+        XCTAssertTrue(command.out[0].contains("Calls space.update. Needs: workspace.write."), "What it needs comes from the declaration")
+        XCTAssertTrue(command.out[0].contains("Errors: AUTH_REQUIRED, CONFLICT"))
+
+        let helper = CLIHarness()
+        XCTAssertEqual(helper.run(["remote", "helper", "remove", "--help"]), 0)
+        XCTAssertTrue(helper.out[0].contains("trellis remote helper remove --host HOST [--stop-sessions]"))
+        XCTAssertTrue(helper.out[0].contains("Calls remote.helper.remove. Needs: remote.manage (+session.close if"))
 
         let local = CLIHarness()
         XCTAssertEqual(local.run(["cli", "install-link", "--help"]), 0)
@@ -65,10 +75,12 @@ final class CLIHelpTests: XCTestCase {
             for (verb, spec) in verbs {
                 let name = "\(noun) \(verb)"
                 let doc = try XCTUnwrap(docs[verb], name)
-                XCTAssertFalse(doc.summary.isEmpty, name)
-                // The synopsis may leave out only --idempotency-key, which every mutating command takes.
+                XCTAssertFalse(CLIHelp.summary(noun, verb).isEmpty, name)
+                // The synopsis may leave out only the convention flags the declaration adds.
                 let flags = spec.options.union(spec.switches)
-                XCTAssertEqual(Set(CLIHelp.synopsisOptions(doc)), flags.subtracting(["idempotency-key"]), name)
+                let synopsis = Set(CLIHelp.synopsisOptions(doc))
+                XCTAssertTrue(synopsis.isSubset(of: flags), "\(name): \(synopsis.subtracting(flags))")
+                XCTAssertEqual(flags.subtracting(synopsis).subtracting(["idempotency-key", "expected-revision", "limit", "cursor"]), [], name)
                 XCTAssertEqual(CLIHelp.optionOrder(doc, spec).count, flags.count, name)
                 XCTAssertEqual(doc.usage.allSatisfy { $0.hasPrefix("FILE") }, spec.positionals == 1, name)
                 for flag in flags {
@@ -169,7 +181,7 @@ final class CLIHelpTests: XCTestCase {
     func testAnOptionValueThatLooksLikeHelpIsStillAValue() {
         let h = CLIHarness()
         let session = UUID().uuidString
-        XCTAssertEqual(h.run(["session", "execute", "--session", session, "--command", "--help", "--submit", "--token-stdin"]), 0)
+        XCTAssertEqual(h.run(["session", "execute", "--session", session, "--command", "--help", "--token-stdin"]), 0)
         XCTAssertEqual(h.transport.calls.last?.method, "session.execute")
         XCTAssertEqual(h.transport.calls.last?.params["command"], .string("--help"))
     }
@@ -190,5 +202,20 @@ final class CLIHelpTests: XCTestCase {
         let h = CLIHarness()
         XCTAssertEqual(h.run(["space", "list", "--help", "--token", secret]), 0, "Help is answered first; the rest is ignored")
         XCTAssertFalse((h.out + h.err).joined().contains(secret))
+    }
+
+    /// Every catalog method is reachable from a command, so the CLI can't fall behind the protocol.
+    func testEveryCatalogMethodHasACommand() {
+        let methods = Set(CLICommands.table.values.flatMap(\.values).map(\.method))
+        for spec in MethodCatalogV2.methods where CLICommands.uncovered[spec.name] == nil {
+            XCTAssertTrue(methods.contains(spec.name), "\(spec.name) has no CLI command")
+        }
+        for method in methods where !method.hasPrefix("local.") { XCTAssertNotNil(MethodCatalogV2.spec(method), "\(method) isn't in the catalog") }
+        XCTAssertEqual(Set(CLICommands.uncovered.keys).intersection(methods), [])
+        // Convention flags follow the declaration.
+        XCTAssertTrue(CLICommands.table["space"]?["close"]?.options.isSuperset(of: ["idempotency-key", "expected-revision"]) == true)
+        XCTAssertTrue(CLICommands.table["host"]?["list"]?.options.isSuperset(of: ["limit", "cursor"]) == true)
+        XCTAssertFalse(CLICommands.table["workspace"]?["save"]?.options.contains("expected-revision") == true, "workspace.save takes no expectedRevision")
+        XCTAssertFalse(CLICommands.table["events"]?["subscribe"]?.options.contains("idempotency-key") == true)
     }
 }

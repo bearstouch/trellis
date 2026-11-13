@@ -70,7 +70,7 @@ Extensions/pr-board/
     "description": "Open pull requests for the focused project",
     "icon": { "svg": "icon.svg" },
     "main": "main.js",
-    "permissions": ["metadata.read", "git.read", "terminal.open", "clipboard.write", "auth", "storage"],
+    "permissions": ["workspace.read", "git.read", "terminal.open", "clipboard.write", "auth", "storage"],
     "network": ["https://api.github.com"],
     "events": ["selection.pane", "session.state", "agent.state"],
     "oauth": [{ "id": "github", "flow": "device", "device": "https://github.com/login/device/code",
@@ -127,12 +127,12 @@ Every state read and every action then goes through the same `AuthorizingControl
 
 **Permissions**
 
-Permissions reuse the automation grant capabilities by name, so `docs/api/authorization.md` stays the single definition. A few extension-only permissions are added.
+Permissions reuse the automation grant capabilities by name, so `docs/api/permissions.md` stays the single definition. A few extension-only permissions are added.
 
 | Permission | Grants | Runtime prompt |
 | --- | --- | --- |
-| `metadata.read` | Read spaces, tabs, panes, sessions, agents and the focused context; subscribe to their events | — |
-| `layout.write` | Create, rename, split, focus and close stopped containers | — |
+| `workspace.read` | Read spaces, tabs, panes, sessions, agents and the focused context; subscribe to their events | — |
+| `workspace.write` | Create, rename, split, focus and close stopped containers | — |
 | `session.start` | Start a stopped session with its saved shell | — |
 | `session.input` | Type into a pane (equivalent to running commands there) | per pane, remembered until that pane closes |
 | `session.execute` | Start executables or submit commands in existing panes | per command line, remembered |
@@ -145,7 +145,7 @@ Permissions reuse the automation grant capabilities by name, so `docs/api/author
 | `notifications` | Desktop notifications and in-window toasts | — |
 | `auth` | OAuth sign-in and `auth.fetch` with declared providers | the sign-in is the consent |
 | `secrets` | Keychain items owned by the extension | — |
-| `terminal.open` (new) | Open a new terminal pane running a command. It gives no power over existing panes, so an extension doesn't need layout.write, session.start or session.execute for this | every time, with the exact command line; Always Allow is per command line |
+| `terminal.open` (new) | Open a new terminal pane running a command. It gives no power over existing panes, so an extension doesn't need workspace.write, session.start or session.execute for this | every time, with the exact command line; Always Allow is per command line |
 | `clipboard.write` (new) | Copy text to the clipboard, only within 5 s of a user action. Reading the clipboard is never available | — |
 
 The first `fetch` to each declared origin prompts once and is remembered. Badges, settings, logs, theme tokens and the extension's own views need no permission.
@@ -415,15 +415,15 @@ Both come from the same sources the automation API uses: `WorkspaceStore` snapsh
 
 | Path | Contents | Needs |
 | --- | --- | --- |
-| `focus` | `{spaceId, tabId, paneId, machine: "local"\|"remote"\|"ssh"\|null}` | `metadata.read` for IDs; `machine` always |
-| `spaces[]` | `id`, `name`, `kind` (project or temporary), `tabs[]` | `metadata.read` |
-| `spaces[].tabs[]` | `id`, `title`, `kind` (`terminal`, `review`, `extension`), `panes[]` | `metadata.read` |
-| `…panes[]` | `id`, `title`, `machine`, `session: {id, state, exitCode}`, `agent: {id, name, state}` | `metadata.read` |
+| `focus` | `{spaceId, tabId, paneId, machine: "local"\|"remote"\|"ssh"\|null}` | `workspace.read` for IDs; `machine` always |
+| `spaces[]` | `id`, `name`, `kind` (project or temporary), `tabs[]` | `workspace.read` |
+| `spaces[].tabs[]` | `id`, `title`, `kind` (`terminal`, `review`, `extension`), `panes[]` | `workspace.read` |
+| `…panes[]` | `id`, `title`, `machine`, `session: {id, state, exitCode}`, `agent: {id, name, state}` | `workspace.read` |
 | `…panes[].cwd` | Working directory | `session.execute`, as the API already requires for launch details |
 | `repository` | `{root, branch, head, ahead, behind, changed, remotes[{name, url, host, owner, repo}]}` for the focused pane, or `null`; local panes only in v1 | `git.read` |
 | `hosts[]` | Saved host metadata | `host.read` |
 | `appearance` | `{mode, themeId}` | `theme.read` |
-| `tasks[]` | Running task runs: `{paneId, name, state}` | `metadata.read` |
+| `tasks[]` | Running task runs: `{paneId, name, state}` | `workspace.read` |
 
 The snapshot is read-only, and changes go through `trellis.call`. IDs are the same stable UUIDs the control API uses, so an extension can pass them straight to `call`.
 
@@ -438,12 +438,12 @@ Extensions receive only the events their manifest lists.
 
 | Event | Source | Needs |
 | --- | --- | --- |
-| `space.*`, `tab.*`, `pane.*` (created, updated, closed, reordered) | EventHub `resources` | `metadata.read` |
-| `selection.space`, `selection.tab`, `selection.pane` | EventHub `selection` | `metadata.read` |
-| `session.state`, `session.exit` | EventHub `session` | `metadata.read` |
-| `session.output` | EventHub `output` (bounded) | `metadata.read` + `session.output.read` (prompted) |
-| `agent.state` *(new)* | Agent states shown in the Agents sidebar: `working`, `needsYou`, `ready`, `exited` | `metadata.read` |
-| `task.state` *(new)* | Task runs starting, running, finishing | `metadata.read` |
+| `space.*`, `tab.*`, `pane.*` (created, updated, closed, reordered) | event topic `workspace` | `workspace.read` |
+| `selection.space`, `selection.tab`, `selection.pane` | event topic `selection` | `workspace.read` |
+| `session.state`, `session.exit` | event topic `session` | `workspace.read` |
+| `session.output` | event topic `output` (bounded) | `workspace.read` + `session.output.read` (prompted) |
+| `agent.state` *(new)* | Agent states shown in the Agents sidebar: `working`, `needsYou`, `ready`, `exited` | `workspace.read` |
+| `task.state` *(new)* | Task runs starting, running, finishing | `workspace.read` |
 | `repository.changed` *(new)* | Branch or changed-file count of the focused repository | `git.read` |
 | `appearance.changed` | EventHub `appearance` | `theme.read` |
 | `command.<id>` | One of the extension's own commands ran | — |
@@ -455,11 +455,11 @@ Extensions receive only the events their manifest lists.
 - Replay and gaps work as they do for API clients: an extension that falls behind the 1,000-event ring gets `events.gap` and should re-read `state`.
 - Subscriptions end when the extension is disabled, reloaded or suspended.
 
-`agent.state`, `task.state` and `repository.changed` are new. They are added to `docs/api/output-events.md` for automation clients too, so extensions and the CLI stay in step.
+`agent.state`, `task.state` and `repository.changed` are new. They are added to `docs/api/events.md` for automation clients too, so extensions and the CLI stay in step.
 
 ## JavaScript API
 
-The only global is `trellis`. Calls that reach the app are async and return Promises. Errors reject with `{code, message}`, using the SCREAMING_SNAKE codes from `docs/api/errors.md` plus `PERMISSION_DENIED`, `PROMPT_DENIED`, `PROMPT_LIMIT`, `NETWORK_NOT_DECLARED`, `USER_GESTURE_REQUIRED`, `EXTENSION_SUSPENDED` and `NOT_SIGNED_IN`. Types ship as `trellis.d.ts`, with one typed component per UI schema entry.
+The only global is `trellis`. Calls that reach the app are async and return Promises. Errors reject with `{code, message}`, using the SCREAMING_SNAKE codes from the error table in `docs/api/index.md` plus `PERMISSION_DENIED`, `PROMPT_DENIED`, `PROMPT_LIMIT`, `NETWORK_NOT_DECLARED`, `USER_GESTURE_REQUIRED`, `EXTENSION_SUSPENDED` and `NOT_SIGNED_IN`. Types ship as `trellis.d.ts`, with one typed component per UI schema entry.
 
 | API | What it does | Needs |
 | --- | --- | --- |
@@ -594,8 +594,8 @@ An extension is in one of five states. Only **Enabled** runs code.
 | Command | What it does |
 | --- | --- |
 | `trellis extension check <dir>` | Offline: validates the manifest, loads `main.js` in a throwaway host, renders each declared view once with empty state, and prints every issue. Exits 0 when valid. No socket needed. |
-| `trellis extension list` | Lists installed extensions and their states, through a new read-only `extension.list` method (`metadata.read`). |
-| `trellis extension reload <name>` | Reloads one extension through `extension.reload` (all-spaces scope + `layout.write`). |
+| `trellis extension list` | Lists installed extensions and their states, through a new read-only `extension.list` method (`workspace.read`). |
+| `trellis extension reload <name>` | Reloads one extension through `extension.reload` (all-spaces scope + `workspace.write`). |
 
 Enabling, approving and installing extensions can't be done from the CLI or the API. Only the user, in Settings, can give an extension power.
 
@@ -705,7 +705,7 @@ Trellis bundles `trellis-github-prs`, built only on the public API and the v1 co
 - **Sign in.** The GitHub device flow through a **GitHub App** with read-only access to pull requests, checks and metadata. It needs no client secret and no redirect, and avoids the broad `repo` scope, which would grant write access to private repositories. The sidebar shows an `EmptyState` with a **Sign In** button until signed in.
 - **Settings:** "Include drafts" (on by default).
 
-**Manifest essentials:** permissions `metadata.read`, `git.read`, `terminal.open`, `clipboard.write`, `auth`, `storage`, `notifications`; network `https://api.github.com`; events `selection.pane`, `repository.changed`.
+**Manifest essentials:** permissions `workspace.read`, `git.read`, `terminal.open`, `clipboard.write`, `auth`, `storage`, `notifications`; network `https://api.github.com`; events `selection.pane`, `repository.changed`.
 
 **Prerequisite outside the code:** Bearstouch registers a GitHub App with the device flow enabled to get the client ID. Users install that app on the accounts or organizations whose repositories they want listed.
 
@@ -834,7 +834,7 @@ Total: 148 points.
 
 ### Definition of done (every story)
 
-- [ ] This page, and the contract and API pages it becomes, are updated first or alongside the code, including `docs/api/errors.md` for any new error code.
+- [ ] This page, and the contract and API pages it becomes, are updated first or alongside the code, including the error table in `docs/api/index.md` for any new error code.
 - [ ] Tests assert observable behaviour and failure safety, with time, the file system, the Keychain and transports injected.
 - [ ] `swift format`, `swift format lint --strict`, `swift build` and `swift test` are clean, with no warnings and no lint output.
 - [ ] An independent review agent has checked the change, and the gate was run again after its fixes.

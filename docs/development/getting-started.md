@@ -97,7 +97,7 @@ Sources/
   TrellisCore/       engine-independent domain: store, command service, persistence, themes
   TrellisPOSIX/      small C target for PTY and process-group spawning
   TrellisTerminal/   all SwiftTerm-specific code (the only place SwiftTerm is imported)
-  TrellisUI/         SwiftUI/AppKit views, AppWorkspaceModel, AutomationService
+  TrellisUI/         SwiftUI/AppKit views, AppWorkspaceModel, Automation/V2 (the API adapter)
   TrellisControl/    local JSON-RPC server, framing, grants, events
   TrellisMCP/        optional MCP server (HTTP) over the same authorizer
   TrellisApp/        app entry point, menus, launch arguments

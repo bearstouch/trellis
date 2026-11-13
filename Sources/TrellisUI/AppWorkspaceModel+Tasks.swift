@@ -42,6 +42,15 @@ public struct TaskCatalog: Equatable, Sendable {
 
     /// The file already has a task with this command and folder.
     public func contains(_ task: LaunchTask) -> Bool { tasks.contains { $0.command == task.command && $0.cwd == task.cwd } }
+
+    /// The Tasks view's filter (FR-TK02): every word of the query, ignoring case and accents, appears in the task's
+    /// name, command, group or detected source. An empty query matches everything.
+    public static func matches(_ task: LaunchTask, detail: String? = nil, query: String) -> Bool {
+        let words = query.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty else { return true }
+        let haystack = [task.name, task.command, task.group?.rawValue, detail].compactMap { $0 }.joined(separator: " ")
+        return words.allSatisfy { haystack.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
 }
 
 /// A file task waiting for the user to review the file's tasks (FR-TK06). Running uses this parsed copy, never a
@@ -68,11 +77,11 @@ public enum TaskRunAvailability: Equatable, Sendable {
     public var reason: String? {
         switch self {
         case .ready: nil
-        case .notRunning: "The pane's shell isn't running."
-        case .remote: "Tasks run in local shells and remote workspace shells, not in SSH panes."
-        case .noIntegration: "Run needs shell integration, so Trellis knows the shell is waiting at its prompt."
-        case .busy: "The shell is running a command. Wait for its prompt, or stop the command."
-        case .taskActive: "A task is already running in this pane."
+        case .notRunning: L("The pane's shell isn't running.")
+        case .remote: L("Tasks run in local shells and remote workspace shells, not in SSH panes.")
+        case .noIntegration: L("Run needs shell integration, so Trellis knows the shell is waiting at its prompt.")
+        case .busy: L("The shell is running a command. Wait for its prompt, or stop the command.")
+        case .taskActive: L("A task is already running in this pane.")
         }
     }
 }
@@ -88,27 +97,27 @@ extension AppWorkspaceModel {
         taskCatalogGeneration &+= 1
         let generation = taskCatalogGeneration
         let target = [paneID, taskCatalog?.paneID, presentation.activePane?.id].lazy.compactMap { $0 }.first { self.snapshot.panes[$0] != nil }
-        guard let pane = target.flatMap({ snapshot.panes[$0] }), let launch = snapshot.sessions[pane.sessionID]?.launch else {
+        guard let target else {
             taskCatalog = nil
             return
         }
-        // FR-RW11: a remote workspace pane's project is read on its host, from the shell's authenticated directory.
-        if let hostID = launch.remoteHostID {
-            var catalog: TaskCatalog?
-            if let directory = remoteWorkingDirectory(paneID: pane.id) { catalog = await loadRemoteTaskCatalog(directory: directory, hostID: hostID, paneID: pane.id) }
-            guard generation == taskCatalogGeneration else { return }
-            if taskCatalog != catalog { taskCatalog = catalog }
-            return
-        }
-        guard !Self.isRemote(launch), let directory = paneDirectory(pane.id) else {
-            taskCatalog = nil
-            return
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let paneID = pane.id
-        let catalog = await Task.detached(priority: .utility) { Self.loadTaskCatalog(directory: directory, home: home, paneID: paneID) }.value
+        let catalog = await loadTaskCatalog(paneID: target)
         guard generation == taskCatalogGeneration else { return }
         if taskCatalog != catalog { taskCatalog = catalog }
+    }
+
+    /// A pane's project and its tasks, read off the main actor (FR-TK02, FR-TK03); nil when the pane has none. Protocol 2's
+    /// task.* read it the same way, without touching the Tasks view's catalog.
+    func loadTaskCatalog(paneID: UUID) async -> TaskCatalog? {
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return nil }
+        // FR-RW11: a remote workspace pane's project is read on its host, from the shell's authenticated directory.
+        if let hostID = launch.remoteHostID {
+            guard let directory = remoteWorkingDirectory(paneID: pane.id) else { return nil }
+            return await loadRemoteTaskCatalog(directory: directory, hostID: hostID, paneID: pane.id)
+        }
+        guard !Self.isRemote(launch), let directory = paneDirectory(pane.id) else { return nil }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return await Task.detached(priority: .utility) { Self.loadTaskCatalog(directory: directory, home: home, paneID: paneID) }.value
     }
 
     nonisolated static func loadTaskCatalog(directory: String, home: String, paneID: UUID) -> TaskCatalog? {
@@ -126,7 +135,7 @@ extension AppWorkspaceModel {
             case .failure(let error)?: state = .invalid(LaunchFileJSON.describe(error))
             }
         } catch {
-            state = .invalid("launch.json must be a regular file you own, at most 64 KB, and not a symbolic link.")
+            state = .invalid(L("launch.json must be a regular file you own, at most 64 KB, and not a symbolic link."))
         }
         let rootURL = URL(fileURLWithPath: root, isDirectory: true)
         let detected = TaskDetector.detect(
@@ -219,31 +228,56 @@ extension AppWorkspaceModel {
     /// Ctrl-U to kill only what is left of the cursor.
     @discardableResult
     func typeTask(_ task: LaunchTask, file: LaunchFile?, root: String, paneID: UUID, taskID: String) -> Bool {
+        do { try startTask(task, file: file, root: root, paneID: paneID, taskID: taskID) } catch {
+            errorMessage = error.message
+            return false
+        }
+        return true
+    }
+
+    /// Why a task wasn't typed: the pane's availability, a line that can't be quoted, or a failed write.
+    enum TaskStartFailure: Error, Equatable {
+        case unavailable(TaskRunAvailability)
+        case unquotable(String)
+        case notSent
+
+        var message: String {
+            switch self {
+            case .unavailable(let availability): availability.reason ?? TaskRunAvailability.noIntegration.reason ?? ""
+            case .unquotable(let name): L("“%@” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long.", name)
+            case .notSent: L("The task could not be typed. The session may have stopped.")
+            }
+        }
+    }
+
+    /// Types a task into a pane that is ready for it, exactly as Run does; the Tasks view and protocol 2's task.run share
+    /// it, so both type the same line and follow the same run.
+    func startTask(_ task: LaunchTask, file: LaunchFile?, root: String, paneID: UUID, taskID: String) throws(TaskStartFailure) {
         let availability = taskAvailability(paneID: paneID)
         guard availability == .ready, let terminal = terminals[paneID], let shell = taskShell(paneID: paneID) else {
-            errorMessage = availability.reason ?? TaskRunAvailability.noIntegration.reason
-            return false
+            throw .unavailable(availability == .ready ? .noIntegration : availability)
         }
         guard
             let line = TaskCommand.compose(
                 command: task.command, directory: task.directory(projectRoot: root),
                 currentDirectory: taskCurrentDirectory(paneID: paneID, directory: task.directory(projectRoot: root)),
                 environment: file?.environment(for: task) ?? [], shell: shell.path, kind: shell.kind)
-        else {
-            errorMessage = "“\(task.name)” can't be typed safely: its folder or shell has characters that can't be quoted, or the line is too long."
-            return false
-        }
-        return sendTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: task.name)
+        else { throw .unquotable(task.name) }
+        try typeTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: task.name)
     }
 
     /// Types `line` after Ctrl-E Ctrl-U and follows it as a task run. Callers check `taskAvailability` first.
     func sendTaskLine(_ line: String, to terminal: NativeTerminal, paneID: UUID, taskID: String, name: String) -> Bool {
-        do { try terminal.adapter.send(Data(("\u{05}\u{15}" + line + "\r").utf8)) } catch {
-            errorMessage = "The task could not be typed. The session may have stopped."
+        do { try typeTaskLine(line, to: terminal, paneID: paneID, taskID: taskID, name: name) } catch {
+            errorMessage = error.message
             return false
         }
-        taskRuns[paneID] = TaskRun(taskID: taskID, name: name, at: activityNow())
         return true
+    }
+
+    private func typeTaskLine(_ line: String, to terminal: NativeTerminal, paneID: UUID, taskID: String, name: String) throws(TaskStartFailure) {
+        do { try terminal.adapter.send(Data(("\u{05}\u{15}" + line + "\r").utf8)) } catch { throw .notSent }
+        taskRuns[paneID] = TaskRun(taskID: taskID, name: name, at: activityNow())
     }
 
     // MARK: State and stopping (FR-TK07, FR-TK08)
@@ -269,7 +303,7 @@ extension AppWorkspaceModel {
     public func stopTask(paneID: UUID) {
         guard var run = taskRuns[paneID], run.isActive, let terminal = terminals[paneID] else { return }
         do { try terminal.adapter.send(Data([0x03])) } catch {
-            errorMessage = "Stop could not be sent. The session may have stopped."
+            errorMessage = L("Stop could not be sent. The session may have stopped.")
             return
         }
         if run.stopRequestedAt == nil {
@@ -287,7 +321,7 @@ extension AppWorkspaceModel {
     /// Ctrl-\: SIGQUIT to the foreground job, which most programs don't catch.
     public func forceStopTask(paneID: UUID) {
         guard canForceStop(paneID: paneID), let terminal = terminals[paneID] else { return }
-        do { try terminal.adapter.send(Data([0x1C])) } catch { errorMessage = "Force Stop could not be sent. The session may have stopped." }
+        do { try terminal.adapter.send(Data([0x1C])) } catch { errorMessage = L("Force Stop could not be sent. The session may have stopped.") }
     }
 
     // MARK: Editing launch.json (FR-TK04)
@@ -303,19 +337,19 @@ extension AppWorkspaceModel {
     func addTask(_ task: LaunchTask) async -> LaunchTask? {
         guard let catalog = taskCatalog else { return nil }
         // Trellis never writes a host's files in this version (FR-RW11).
-        guard catalog.hostID == nil else { errorMessage = "launch.json on a remote host is read-only in Trellis. Add the task on the host."; return nil }
+        guard catalog.hostID == nil else { errorMessage = L("launch.json on a remote host is read-only in Trellis. Add the task on the host."); return nil }
         if case .invalid(let reason) = catalog.file {
-            errorMessage = "launch.json wasn't changed. " + reason
+            errorMessage = L("launch.json wasn't changed. %@", reason)
             return nil
         }
         let url = LaunchFile.url(projectRoot: catalog.root)
         let current: Data?
         do { current = try OwnerOnlyFile.read(url, limit: LaunchFile.maximumBytes) } catch {
-            errorMessage = "launch.json wasn't changed. It must be a regular file you own, at most 64 KB, and not a symbolic link."
+            errorMessage = L("launch.json wasn't changed. It must be a regular file you own, at most 64 KB, and not a symbolic link.")
             return nil
         }
         guard current == catalog.data else {
-            errorMessage = "launch.json changed since the Tasks view read it. Nothing was written; check the file and try again."
+            errorMessage = L("launch.json changed since the Tasks view read it. Nothing was written; check the file and try again.")
             await refreshTaskCatalog()
             return nil
         }
@@ -326,7 +360,7 @@ extension AppWorkspaceModel {
         guard added else { return stored }
         let data = LaunchFileJSON.encode(updated)
         if case .failure(let error) = LaunchFileJSON.parse(data) {
-            errorMessage = "The task can't be added: " + LaunchFileJSON.describe(error)
+            errorMessage = L("The task can't be added: %@", LaunchFileJSON.describe(error))
             return nil
         }
         guard writeRepositoryFile(data, to: url) else { return nil }
@@ -341,7 +375,7 @@ extension AppWorkspaceModel {
     /// Opens launch.json in the user's editor, creating an empty one first when there is none.
     public func editLaunchFile() async {
         guard let catalog = taskCatalog else { return }
-        guard catalog.hostID == nil else { errorMessage = "launch.json on a remote host is read-only in Trellis. Edit it on the host."; return }
+        guard catalog.hostID == nil else { errorMessage = L("launch.json on a remote host is read-only in Trellis. Edit it on the host."); return }
         let url = LaunchFile.url(projectRoot: catalog.root)
         if case .missing = catalog.file, !FileManager.default.fileExists(atPath: url.path), !isSymbolicLink(url) {
             let data = LaunchFileJSON.encode(LaunchFile())
@@ -365,13 +399,13 @@ extension AppWorkspaceModel {
     /// One trusted digest per folder. An unreadable list fails closed: nothing is trusted and it is never overwritten.
     func launchTrustList() throws -> ProjectTrustList {
         if let launchTrust { return launchTrust }
-        let list = try Self.readTrustList(launchTrustURL, failure: "Trusted launch.json files could not be read, so launch.json tasks can't run.")
+        let list = try Self.readTrustList(launchTrustURL, failure: L("Trusted launch.json files could not be read, so launch.json tasks can't run."))
         launchTrust = list
         return list
     }
 
     private func saveLaunchTrust(_ list: ProjectTrustList) throws {
-        try Self.writeTrustList(list, to: launchTrustURL, failure: "Trusted launch.json files could not be saved.")
+        try Self.writeTrustList(list, to: launchTrustURL, failure: L("Trusted launch.json files could not be saved."))
         launchTrust = list
     }
 }

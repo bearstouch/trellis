@@ -39,13 +39,13 @@ extension AppWorkspaceModel {
 
     /// Why Run can't type into the focused pane now; nil when it can (FR-SP05).
     public var scratchpadRunBlocker: String? {
-        guard let paneID = scratchpadPaneID else { return "Select a pane to run in." }
-        if !scratchpad.language.isRunnable { return "\(scratchpad.language.displayName) isn't run." }
-        if scratchpad.isEmpty { return "Write a command or script first." }
+        guard let paneID = scratchpadPaneID else { return L("Select a pane to run in.") }
+        if !scratchpad.language.isRunnable { return L("%@ isn't run.", scratchpad.language.displayName) }
+        if scratchpad.isEmpty { return L("Write a command or script first.") }
         if let reason = taskAvailability(paneID: paneID).reason { return reason }
         if scratchpadCheck?.outcome == .failed {
             let count = scratchpadCheck?.issues.count ?? 0
-            return "Fix \(count == 1 ? "1 error" : "\(count) errors") to run."
+            return count == 1 ? L("Fix 1 error to run.") : L("Fix %d errors to run.", count)
         }
         return nil
     }
@@ -76,7 +76,7 @@ extension AppWorkspaceModel {
         guard await validateScratchpad().outcome != .failed else { return false }
         let url = scratchpadRunDirectory.appendingPathComponent(document.fileName)
         do { try OwnerOnlyFile.publish(Data(document.text.utf8), to: url) } catch {
-            errorMessage = "The script could not be written to \(url.path)."
+            errorMessage = L("The script could not be written to %@.", url.path)
             return false
         }
         let availability = taskAvailability(paneID: paneID)
@@ -85,7 +85,7 @@ extension AppWorkspaceModel {
             return false
         }
         guard let line = document.runLine(path: url.path, kind: shell.kind) else {
-            errorMessage = "The script's path can't be typed safely."
+            errorMessage = L("The script's path can't be typed safely.")
             return false
         }
         return sendTaskLine(line, to: terminal, paneID: paneID, taskID: "scratchpad:" + document.fileName, name: document.fileName)
@@ -98,7 +98,7 @@ extension AppWorkspaceModel {
         var document = scratchpad
         if let scriptName { document.name = scriptName }
         guard let command = document.taskCommand else {
-            errorMessage = "\(document.language.displayName) isn't run, so it can't be a task. Save it as a file instead."
+            errorMessage = L("%@ isn't run, so it can't be a task. Save it as a file instead.", document.language.displayName)
             return nil
         }
         if let problem = LaunchFile.taskNameProblem(name) {
@@ -108,7 +108,7 @@ extension AppWorkspaceModel {
         guard let written = await writeScratchpadFile(document) else { return nil }
         // The catalog may have moved to another pane while saving; the task must go next to this script.
         let sameProject = taskCatalog?.root == written.root
-        if !sameProject { errorMessage = "The project's tasks couldn't be read, so no task was added." }
+        if !sameProject { errorMessage = L("The project's tasks couldn't be read, so no task was added.") }
         guard sameProject, let task = await addTask(LaunchTask(name: name, command: command, group: group)) else {
             if let previous = written.previous { try? previous.write(to: written.url, options: .atomic) } else { try? FileManager.default.removeItem(at: written.url) }
             // Folders made for this save go too, so a failed save doesn't turn the folder into a project.
@@ -149,7 +149,7 @@ extension AppWorkspaceModel {
             guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch),
                 let directory = paneDirectory(paneID).map(Self.canonical), directory != "/", directory != Self.canonical(home)
             else {
-                errorMessage = "Saving needs a local pane in a project folder. Your home folder and / can't hold a project; cd into a folder first."
+                errorMessage = L("Saving needs a local pane in a project folder. Your home folder and / can't hold a project; cd into a folder first.")
                 return nil
             }
             rootPath = directory
@@ -159,14 +159,14 @@ extension AppWorkspaceModel {
         let url = folder.appendingPathComponent(document.fileName)
         let manager = FileManager.default
         guard !Self.scratchpadPathIsLinked(root: root, file: url) else {
-            errorMessage = "\(url.path) or one of its folders is a symbolic link, so nothing was saved."
+            errorMessage = L("%@ or one of its folders is a symbolic link, so nothing was saved.", url.path)
             return nil
         }
         // Only a file this scratchpad saved or opened, and can read back for restoring, is replaced.
         let exists = manager.fileExists(atPath: url.path)
         let previous = exists && scratchpadSavedPaths.contains(url.path) ? (try? OwnerOnlyFile.read(url, limit: ScratchpadDocument.maximumBytes)) ?? nil : nil
         guard !exists || previous != nil else {
-            errorMessage = "\(ScratchpadDocument.projectDirectory)/\(document.fileName) already exists. Rename the script to save it."
+            errorMessage = L("%@ already exists. Rename the script to save it.", "\(ScratchpadDocument.projectDirectory)/\(document.fileName)")
             return nil
         }
         let created = [root.appendingPathComponent(ProjectText.directoryName), folder].filter { !manager.fileExists(atPath: $0.path) }
@@ -177,7 +177,7 @@ extension AppWorkspaceModel {
             try? manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
         } catch {
             for folder in created.reversed() { rmdir(folder.path) }
-            errorMessage = "\(url.path) could not be written. Check the folder's permissions and try again."
+            errorMessage = L("%@ could not be written. Check the folder's permissions and try again.", url.path)
             return nil
         }
         // A new `.trellis` made the folder a project; tasks are added to its launch.json.
@@ -242,11 +242,11 @@ extension AppWorkspaceModel {
             guard !Self.scratchpadPathIsLinked(root: root) else { throw CocoaError(.fileReadNoPermission) }
             data = try OwnerOnlyFile.read(url, limit: ScratchpadDocument.maximumBytes)
         } catch {
-            errorMessage = "\(fileName) must be a regular file you own, at most 64 KB, in a folder that isn't a symbolic link."
+            errorMessage = L("%@ must be a regular file you own, at most 64 KB, in a folder that isn't a symbolic link.", fileName)
             return false
         }
         guard let data, let text = String(data: data, encoding: .utf8) else {
-            errorMessage = data == nil ? "\(fileName) no longer exists." : "\(fileName) isn't UTF-8 text."
+            errorMessage = data == nil ? L("%@ no longer exists.", fileName) : L("%@ isn't UTF-8 text.", fileName)
             await refreshScratchpadFiles()
             return false
         }

@@ -14,16 +14,19 @@ public enum InputWaitReason: String, Sendable {
     /// The program rang the bell or posted a notification while the pane was not in view.
     case attention
 
-    public var text: String { self == .password ? "Waiting for a password" : "Waiting for input" }
+    public var text: String { self == .password ? L("Waiting for a password") : L("Waiting for input") }
 }
 
 public enum SessionStatusText {
     /// Words, never color alone, describe each lifecycle state.
     public static func describe(_ state: SessionState, exitCode: Int32?) -> String {
         switch state {
-        case .exited: exitCode.map { "Exited (\($0))" } ?? "Exited"
-        case .failed: "Failed to start"
-        default: state.rawValue.capitalized
+        case .exited: exitCode.map { L("Exited (%d)", Int($0)) } ?? L("Exited")
+        case .failed: L("Failed to start")
+        case .stopped: L("Stopped")
+        case .starting: L("Starting")
+        case .running: L("Running")
+        case .closing: L("Closing")
         }
     }
 }
@@ -46,7 +49,7 @@ public struct WorkspaceAccessibility: Sendable {
         }
     }
 
-    public static func commandFailureText(_ code: Int32) -> String { "Last command failed (exit \(code))" }
+    public static func commandFailureText(_ code: Int32) -> String { L("Last command failed (exit %d)", Int(code)) }
     public let spaces: [AccessibilityDescriptor]
     public let tabs: [AccessibilityDescriptor]
     public let panes: [AccessibilityDescriptor]
@@ -64,32 +67,32 @@ public struct WorkspaceAccessibility: Sendable {
             live[pane.id] ?? snapshot.sessions[pane.sessionID].map { LiveSession(state: $0.state, exitCode: $0.exitCode) }
         }
         spaces = snapshot.spaces.map { space in
-            var parts = ["\(space.tabIDs.count) \(space.tabIDs.count == 1 ? "tab" : "tabs")"]
-            if spacesNeedingInput.contains(space.id) { parts.append("waiting for input") }
-            if spacesWithExit.contains(space.id) { parts.append("a session exited") } else if spacesWithOutput.contains(space.id) { parts.append("new output") }
-            return AccessibilityDescriptor(id: space.id, label: "Space \(space.name)", value: parts.joined(separator: ", "), isSelected: space.id == snapshot.activeSpaceID)
+            var parts = [space.tabIDs.count == 1 ? L("1 tab") : L("%d tabs", space.tabIDs.count)]
+            if spacesNeedingInput.contains(space.id) { parts.append(L("waiting for input")) }
+            if spacesWithExit.contains(space.id) { parts.append(L("a session exited")) } else if spacesWithOutput.contains(space.id) { parts.append(L("new output")) }
+            return AccessibilityDescriptor(id: space.id, label: L("Space %@", space.name), value: parts.joined(separator: ", "), isSelected: space.id == snapshot.activeSpaceID)
         }
         let visible = presentation.visibleTabs
         tabs = visible.enumerated().map { index, tab in
             AccessibilityDescriptor(
                 // The label is spoken too, so it never relies on color alone.
-                id: tab.id, label: "Tab \(titles[tab.id] ?? tab.title)",
-                value: "\(index + 1) of \(visible.count)" + (tab.color.map { ", \($0.displayName.lowercased()) label" } ?? ""),
+                id: tab.id, label: L("Tab %@", titles[tab.id] ?? tab.title),
+                value: L("%1$d of %2$d", index + 1, visible.count) + (tab.color.map { ", " + L("%@ label", $0.displayName.lowercased()) } ?? ""),
                 isSelected: tab.id == presentation.selectedTab?.id)
         }
         let paneIDs = presentation.selectedTab?.root.paneIDs ?? []
         panes = paneIDs.enumerated().compactMap { index, id in
             guard let pane = snapshot.panes[id] else { return nil }
-            var state = session(pane).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"
+            var state = session(pane).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? L("No session")
             if let code = live[pane.id]?.failedCommandExit { state += ", " + Self.commandFailureText(code) }
             if let wait = live[pane.id]?.inputWait { state += ", " + wait.text }
             if let progress = live[pane.id]?.progress { state += ", " + progress.spokenText }
             let focused = id == presentation.selectedTab?.activePaneID
             return AccessibilityDescriptor(
-                id: id, label: "Terminal \(pane.title ?? titles[id] ?? "pane \(index + 1)")",
-                value: focused && paneIDs.count > 1 ? "\(state), focused" : state, isSelected: focused)
+                id: id, label: (pane.title ?? titles[id]).map { L("Terminal %@", $0) } ?? L("Terminal pane %d", index + 1),
+                value: focused && paneIDs.count > 1 ? state + ", " + L("focused") : state, isSelected: focused)
         }
-        status = presentation.activePane.flatMap(session).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? "No session"
+        status = presentation.activePane.flatMap(session).map { SessionStatusText.describe($0.state, exitCode: $0.exitCode) } ?? L("No session")
     }
 }
 

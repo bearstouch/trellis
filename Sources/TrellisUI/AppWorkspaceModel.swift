@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import TrellisBroker
+import TrellisControl
 import TrellisCore
 import TrellisTerminal
 
@@ -47,7 +48,22 @@ public final class AppWorkspaceModel: ObservableObject {
         didSet { if errorMessage != nil { diagnosticCodes = Array((diagnosticCodes + ["UI_ERROR"]).suffix(20)) } }
     }
     public private(set) var diagnosticCodes: [String] = []
-    @Published public private(set) var appearance = AppearanceSettings()
+    @Published public private(set) var appearance = AppearanceSettings() { didSet { refreshLanguage() } }
+    /// The Mac's preferred languages, read for the System choice (FR-LN01). Empty until the app sets it, so tests read English.
+    public var systemLanguages: () -> [String] = { [] } { didSet { refreshLanguage() } }
+    /// The `--language` launch choice; overrides the saved language without saving it.
+    public var languageOverride: AppLanguage? { didSet { refreshLanguage() } }
+    /// The language on screen; never `system`. Views that show translated text are rebuilt when it changes.
+    @Published public private(set) var language: AppLanguage = .english
+    /// Called after the language on screen changes; the app rebuilds its menus.
+    public var onLanguageChanged: (() -> Void)?
+    private func refreshLanguage() {
+        let next = (languageOverride ?? appearance.language).resolved(preferredLanguages: systemLanguages())
+        guard next != language else { return }
+        Localization.shared.setLanguage(next)
+        language = next
+        onLanguageChanged?()
+    }
     /// Narrow initials rail instead of the full space list; a per-user UI preference, not workspace data.
     @Published public private(set) var sidebarCollapsed = false
     /// Advances once per committed settings change; API `expectedRevision` uses it.
@@ -99,7 +115,7 @@ public final class AppWorkspaceModel: ObservableObject {
             let builtIn = ResolvedTheme.builtIn(slot)
             if (BundledThemes.theme(id)?.appearance ?? themeCatalog.documents[id]?.appearance) != slot {
                 if slot == .light { appearance.lightThemeID = builtIn.id } else { appearance.darkThemeID = builtIn.id }
-                notices.append("Theme '\(id)' is unavailable. Using \(builtIn.name).")
+                notices.append(L("Theme '%1$@' is unavailable. Using %2$@.", id, builtIn.name))
             }
         }
         notices += themeCatalog.issues.map { "\($0.filename): \($0.message)" }
@@ -144,7 +160,7 @@ public final class AppWorkspaceModel: ObservableObject {
             var settings = appearance
             if document.appearance == .light { settings.lightThemeID = document.id; settings.chromeMode = .light } else { settings.darkThemeID = document.id; settings.chromeMode = .dark }
             commitThemeChoice(settings)
-            themeNotice = "Saved \(document.name)."
+            themeNotice = L("Saved %@.", document.name)
             return true
         } catch {
             if case ThemeLibraryError.duplicateID(let id) = error { themeReplacementID = id }
@@ -174,7 +190,7 @@ public final class AppWorkspaceModel: ObservableObject {
         guard let themeLibrary else { return }
         do {
             let directory = try await themeLibrary.ensureDirectory()
-            if !NSWorkspace.shared.open(directory) { themeNotice = "The Themes folder could not be opened." }
+            if !NSWorkspace.shared.open(directory) { themeNotice = L("The Themes folder could not be opened.") }
         } catch { themeNotice = error.localizedDescription }
     }
     private func commitThemeChoice(_ settings: AppearanceSettings) {
@@ -191,6 +207,21 @@ public final class AppWorkspaceModel: ObservableObject {
     public var onRemoteControlSettingsChanged: ((RemoteControlSettings) -> Void)?
     /// Injected so tests list fixed interfaces.
     public var networkInterfaces: () -> [NetworkInterfaceAddress] = NetworkInterfaceAddress.current
+    /// FR-RC06: sharing over Tailscale, reported by the app's coordinator.
+    @Published public var tailscaleShareState: TailscaleShareState = .off
+    /// FR-RC05: Tailscale's state and devices for Settings; the app injects the real CLI.
+    public var tailscaleStatus: () async -> Result<TailscaleStatus, TailscaleError> = { .success(TailscaleStatus(backend: .notInstalled)) }
+    /// The URL clients use: the tailnet one while shared, else the loopback one.
+    public var remoteControlClientURL: String {
+        if let url = tailscaleShareState.sharedURL, remoteControl.sharesOverTailscale { return url }
+        let address =
+            switch remoteControl.bindAddress {
+            case "0.0.0.0": "127.0.0.1"
+            case "::": "::1"
+            default: remoteControl.bindAddress
+            }
+        return RemoteControlSettings.endpointURL(address: address, port: remoteControl.port)
+    }
 
     /// Invalid settings keep the previous ones (and the running server) unchanged.
     @discardableResult
@@ -267,13 +298,13 @@ public final class AppWorkspaceModel: ObservableObject {
     private static func loadKeyboardSettings(_ preferences: UserDefaults) -> (KeyboardSettings, String?) {
         guard let data = preferences.data(forKey: keyboardKey) else { return (KeyboardSettings(), nil) }
         guard let saved = try? JSONDecoder().decode(KeyboardSettings.self, from: data) else {
-            return (KeyboardSettings(), "Saved keyboard shortcuts could not be read. Using the defaults.")
+            return (KeyboardSettings(), L("Saved keyboard shortcuts could not be read. Using the defaults."))
         }
         // A conflicting stored map could silently disable a command; never apply it.
         guard saved.shortcuts.issues().isEmpty else {
             var fallback = KeyboardSettings()
             fallback.optionAsMeta = saved.optionAsMeta
-            return (fallback, "Saved keyboard shortcuts conflict. Using the defaults.")
+            return (fallback, L("Saved keyboard shortcuts conflict. Using the defaults."))
         }
         return (saved, nil)
     }
@@ -328,12 +359,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var defaultDirectory: String
     @Published public private(set) var activity: [UUID: SpaceActivity] = [:]
     /// Tabs with a pane printing output right now (FR-T05).
-    @Published public private(set) var busyTabIDs: Set<UUID> = []
+    @Published public private(set) var busyTabIDs: Set<UUID> = [] { didSet { if onLiveEvents != nil, busyTabIDs != oldValue { liveBusyChanged(from: oldValue) } } }
     private var outputActivity = PaneOutputActivity()
     /// Panes whose program waits for the user (FR-T06); runtime-only, never persisted.
-    @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:]
+    @Published public private(set) var inputWaits: [UUID: InputWaitReason] = [:] { didSet { if onLiveEvents != nil, inputWaits != oldValue { liveInputWaitsChanged(from: oldValue) } } }
     /// Panes reporting OSC 9;4 progress (FR-T09); runtime-only, never persisted.
-    @Published public private(set) var progress: [UUID: TerminalProgress] = [:]
+    @Published public private(set) var progress: [UUID: TerminalProgress] = [:] { didSet { if onLiveEvents != nil, progress != oldValue { liveProgressChanged(from: oldValue) } } }
     private var progressTrackers: [UUID: PaneProgressTracker] = [:]
     private var progressExpiryTask: Task<Void, Never>?
     private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
@@ -345,13 +376,27 @@ public final class AppWorkspaceModel: ObservableObject {
     public var workspaceIsVisible: () -> Bool = { true }
     var notificationLimiter = NotificationRateLimiter()
     /// FR-AG01: the agents this Trellis can launch, bundled and from the Agents folder.
-    @Published public internal(set) var agentCatalog = AgentCatalogSnapshot(definitions: AgentCatalog.bundled())
+    @Published public internal(set) var agentCatalog = AgentCatalogSnapshot(definitions: AgentCatalog.bundled()) {
+        didSet { if agentCatalog.definitions != oldValue.definitions { automationRevisions.recordAgents(from: oldValue.definitions, to: agentCatalog.definitions) } }
+    }
     /// FR-AG10: each agent pane's state, by pane; runtime only, never persisted.
-    @Published public internal(set) var agentStates: [UUID: AgentStateReducer] = [:]
+    @Published public internal(set) var agentStates: [UUID: AgentStateReducer] = [:] {
+        didSet {
+            guard agentStates != oldValue else { return }
+            noteAgentStateTimes(from: oldValue)
+            if onLiveEvents != nil { liveAgentsChanged(from: oldValue) }
+        }
+    }
+    /// When each pane's agent entered its current state (an agent run's `since`); runtime only.
+    var agentStateSince: [UUID: Date] = [:]
     /// FR-AG07: whether each agent is on this Mac's login PATH, by agent ID; only ever from a check.
-    @Published public internal(set) var agentAvailability: [String: AgentAvailability] = [:]
+    @Published public internal(set) var agentAvailability: [String: AgentAvailability] = [:] {
+        didSet { if onLiveEvents != nil, agentAvailability != oldValue { liveAvailabilityChanged(from: oldValue) } }
+    }
     /// FR-AG12: agents a launch found missing on a host, by host.
-    @Published public internal(set) var remoteMissingAgents: [UUID: Set<String>] = [:]
+    @Published public internal(set) var remoteMissingAgents: [UUID: Set<String>] = [:] {
+        didSet { if onLiveEvents != nil, remoteMissingAgents != oldValue { liveRemoteMissingChanged(from: oldValue) } }
+    }
     /// FR-AG12: the install offer on screen.
     @Published public var agentInstallOffer: AgentInstallOffer?
     /// The user's Agents folder; nil offers only the bundled agents.
@@ -406,7 +451,13 @@ public final class AppWorkspaceModel: ObservableObject {
     var closingSpaceIDs = Set<UUID>()
     var closingTabIDs = Set<UUID>()
     var closingPaneIDs = Set<UUID>()
-    @Published public internal(set) var maximizedPanes: [UUID: UUID] = [:]
+    @Published public internal(set) var maximizedPanes: [UUID: UUID] = [:] {
+        didSet {
+            guard maximizedPanes != oldValue else { return }
+            automationRevisions.maximizedChanged(from: oldValue, to: maximizedPanes)
+            liveMaximizedChanged(from: oldValue)
+        }
+    }
     private var pendingDividerResize: (splitID: UUID, ratio: Double, tabID: UUID)?
     private var dividerResizeTask: Task<Void, Never>?
     var canvasSizes: [UUID: CanvasDimensions] = [:]
@@ -429,6 +480,8 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var unconfiguredPaneIDs = Set<UUID>()
     /// Sessions that received API input: their late write failures never raise an alert.
     var automationInputSessionIDs = Set<UUID>()
+    /// Pane and session revisions for automation v2, which the store doesn't version (runtime only).
+    var automationRevisions = AutomationRevisions()
     public private(set) var restoredWindowFrame: String?
     public var onRestoreWindowFrame: ((String) -> Void)?
     let persistence: WorkspacePersistence?
@@ -439,6 +492,13 @@ public final class AppWorkspaceModel: ObservableObject {
     var pendingProjectCommands: [UUID: String] = [:]
     /// The project being launched (FR-PL06, FR-PL07); its sheet shows while set.
     @Published public internal(set) var projectLaunch: ProjectLaunchSession?
+    /// Project setups protocol 2's project.launch runs, in no sheet and no pane (FR-PL07); a host's link stays wanted while
+    /// one runs there, as for the sheet's.
+    var automationSetupTerminals: [NativeTerminal] = []
+    /// How long an API-run setup may take before it is ended (it has no console to answer a prompt in).
+    var automationSetupLimit: Duration = .seconds(900)
+    /// session.execute calls waiting for their command's finish mark, by pane (methods.md#sessions); runtime only.
+    var commandWaits: [UUID: [CommandWait]] = [:]
     /// Remembers where a project was launched (FR-PL06); set by the app.
     public var onProjectLaunched: ((UUID, ProjectTarget, String) -> Void)?
     /// Each pane's git branch and counts (FR-PL09); runtime only, never persisted.
@@ -452,7 +512,7 @@ public final class AppWorkspaceModel: ObservableObject {
     /// The library's projects for the command palette (FR-PL08); set by the app.
     public var commandPaletteProjects: () -> [ProjectDefinition] = { [] }
     /// The task each pane was last asked to run (FR-TK07); runtime only, never persisted or logged.
-    @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:]
+    @Published public internal(set) var taskRuns: [UUID: TaskRun] = [:] { didSet { if onLiveEvents != nil, taskRuns != oldValue { liveTaskRunsChanged(from: oldValue) } } }
     /// The Tasks view's project, read when the view opens or focus moves (FR-TK02); nil when the active pane has none.
     @Published public internal(set) var taskCatalog: TaskCatalog?
     @Published public internal(set) var pendingTaskReview: TaskReview?
@@ -507,6 +567,21 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Each space's Review tab (FR-GC05), and the spaces showing it in place of their terminal tabs. Never saved.
     @Published public internal(set) var reviewTabs: [UUID: ReviewTab] = [:]
     @Published public internal(set) var reviewShownSpaces: Set<UUID> = []
+    /// Each space's editor tabs in tab-bar order, and the one shown in place of its terminal tabs (FR-ED01, FR-ED08). Never saved.
+    @Published public internal(set) var editorTabs: [UUID: [EditorTab]] = [:]
+    @Published public internal(set) var shownEditors: [UUID: UUID] = [:]
+    /// Bumped when the shown editor should take keyboard focus.
+    @Published public internal(set) var editorFocusRequest = 0
+    /// Spaces whose unsaved editor tabs the user chose not to save while closing them (FR-ED05).
+    var discardedEditorSpaces: Set<UUID> = []
+    /// Injected by tests: the file system editor tabs read and write.
+    var editorFileSystem = EditorFileSystem.live
+    /// The save running for each editor tab, so a second ⌘S waits for it instead of racing it (FR-ED04).
+    var editorSaves: [UUID: Task<Bool, Never>] = [:]
+    /// Asked before closing editor tabs with unsaved changes (FR-ED05), with their file names; the app shows an alert.
+    public var confirmUnsavedEditors: ([String]) -> UnsavedEditorsChoice = { _ in .cancel }
+    /// Asked before saving over a file that changed on disk (FR-ED06), with its name; the app shows an alert.
+    public var confirmOverwriteChangedFile: (String) -> Bool = { _ in false }
     /// Bumped when the Changes view's filter field should take keyboard focus.
     @Published public internal(set) var gitChangesFocusRequest = 0
     var gitChangesGeneration = 0
@@ -566,8 +641,13 @@ public final class AppWorkspaceModel: ObservableObject {
     public var openHosts: (() -> Void)?
     /// Shows the project library (FR-PL01); set by the app.
     public var openProjects: (() -> Void)?
-    /// Metadata events derived from each published snapshot, in order.
-    public var onWorkspaceEvents: (([WorkspaceEvent]) -> Void)?
+    /// Each published transition, in order; the app diffs it into workspace events off the main actor (`WorkspaceDiffV2`).
+    public var onWorkspaceTransition: ((WorkspaceSnapshot, WorkspaceSnapshot) -> Void)?
+    /// Protocol 2 live-state events (attention, shell marks, agents, remote links, task runs, project launches), emitted
+    /// when the state changes, never per output chunk. Nil (the default) skips building them.
+    public var onLiveEvents: (([EventDraftV2]) -> Void)?
+    /// The agent each pane's live state belongs to, so `agent.ended` can name it after the pane forgot it.
+    var liveAgentIDs: [UUID: String] = [:]
     /// Raw output appended to the journal: session, pane, bytes, next offset.
     public var onSessionOutput: ((UUID, UUID, Data, UInt64) -> Void)?
     /// Bounded raw output for automation readers; memory only.
@@ -584,21 +664,33 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Owns every session's PTY (FR-R07), so sessions survive quit and crashes; nil (tests, no helper) keeps every
     /// session a local PTY.
     public var sessionBroker: (any SessionBrokerClient)? {
-        didSet { sessionBroker?.observeAgentEvents { [weak self] sessionID, event in self?.receiveAgentEvent(sessionID: sessionID, event: event) } }
+        didSet {
+            sessionBroker?.observeAgentEvents { [weak self] sessionID, event in self?.receiveAgentEvent(sessionID: sessionID, event: event) }
+            sessionBroker?.setSessionIdleTimeout(seconds: brokerIdleTimeoutSeconds)
+        }
     }
     /// FR-R03: on by default; off means quitting and closing the window stop sessions. Saved per state directory.
     @Published public internal(set) var keepSessionsRunning = true
     /// This launch only (`--fixture`, never saved): quitting and closing the window end sessions whatever the setting, so
     /// scripted runs leave nothing behind. Sessions still run in the broker.
     public var endSessionsAtQuitForThisLaunch = false
+    /// FR-R08: hours a kept session may stay unwatched and silent before its broker ends it; 0 is never.
+    @Published public internal(set) var keptSessionIdleTimeoutHours = KeptSessionIdleTimeout.defaultHours
+    /// False until the saved setting was read (or there is none): a workspace in recovery tells the brokers nothing, so a
+    /// saved "No timeout" is never replaced by the default.
+    var keptSessionIdleTimeoutKnown = false
+    var brokerIdleTimeoutSeconds: Int? { keptSessionIdleTimeoutKnown ? KeptSessionIdleTimeout.seconds(hours: keptSessionIdleTimeoutHours) : nil }
     /// What quitting and closing the window do for this launch.
     public var keepsSessionsAtQuit: Bool { keepSessionsRunning && !endSessionsAtQuitForThisLaunch }
     /// Remote workspaces (FR-RW01): the helper and the shared link of each saved host; nil disables them.
     public var remoteHosts: RemoteHostsModel? {
-        didSet { remoteHosts?.onWorkspaceLinkChanged = { [weak self] host, state in self?.remoteLinkChanged(host, state) } }
+        didSet {
+            remoteHosts?.onWorkspaceLinkChanged = { [weak self] host, state in self?.remoteLinkChanged(host, state) }
+            remoteHosts?.sessionIdleTimeout = brokerIdleTimeoutSeconds
+        }
     }
     /// Each remote workspace host's link, for the sidebar and pane headers (FR-RW07, FR-RW16).
-    @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:]
+    @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:] { didSet { if onLiveEvents != nil, remoteLinks != oldValue { liveRemoteLinksChanged(from: oldValue) } } }
     /// Remote sessions closed while their host was unreachable, hung up once it is reachable again.
     var pendingRemoteHangups: [UUID: Set<UUID>] = [:]
     /// Automatic reconnects (FR-RW07); its clock, sleep and randomness are injectable for tests.
@@ -650,6 +742,8 @@ public final class AppWorkspaceModel: ObservableObject {
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
+        confirmUnsavedEditors = { Self.showUnsavedEditorsConfirmation($0) }
+        confirmOverwriteChangedFile = { Self.showOverwriteConfirmation($0) }
         confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
         confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
         confirmClearDirectoryHistory = { [weak self] in self?.showClearDirectoryHistoryConfirmation() ?? false }
@@ -660,20 +754,20 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Shell marks don't report jobs, so the alert names what ends with the shell.
     private static func showReplaceShellConfirmation(agent: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Replace this shell with \(agent)?"
-        alert.informativeText =
-            "The shell in this pane ends, along with any background or stopped jobs it started, such as a server run with & or a suspended editor. \(agent) starts in the same folder."
-        alert.addButton(withTitle: "Replace Shell")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Replace this shell with %@?", agent)
+        alert.informativeText = L(
+            "The shell in this pane ends, along with any background or stopped jobs it started, such as a server run with & or a suspended editor. %@ starts in the same folder.", agent)
+        alert.addButton(withTitle: L("Replace Shell"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
     private static func showStageConflictConfirmation(name: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Mark \(name) as resolved?"
-        alert.informativeText = "Staging a conflicted file tells git the conflict is resolved, with the file as it is now. Check that no conflict markers (<<<<<<<, =======, >>>>>>>) are left."
-        alert.addButton(withTitle: "Stage as Resolved")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Mark %@ as resolved?", name)
+        alert.informativeText = L("Staging a conflicted file tells git the conflict is resolved, with the file as it is now. Check that no conflict markers (<<<<<<<, =======, >>>>>>>) are left.")
+        alert.addButton(withTitle: L("Stage as Resolved"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -684,7 +778,7 @@ public final class AppWorkspaceModel: ObservableObject {
             reconcileThemeSelections()
             refreshEffectiveTheme()
         }
-        guard let persistence else { return false }
+        guard let persistence else { applyKeptSessionIdleTimeout(); return false }
         removeScratchpadRunFiles()
         isRestoring = true
         pendingOperations += 1
@@ -695,11 +789,12 @@ public final class AppWorkspaceModel: ObservableObject {
         // uninitialized empty snapshot.
         switch result {
         case .missing:
+            applyKeptSessionIdleTimeout()
             _ = await reattachBrokerSessions()
             return false
         case .loaded(let restored):
             do { try await applyRestored(restored) } catch {
-                recoveryMessage = "The saved workspace could not be restored."
+                recoveryMessage = L("The saved workspace could not be restored.")
                 _ = await reattachBrokerSessions()
                 return true
             }
@@ -712,9 +807,9 @@ public final class AppWorkspaceModel: ObservableObject {
         case .recovery(let reason, let backup):
             recoveryReason = reason; recoveryBackup = backup; backupAvailable = backup != nil
             if case .unsupportedVersion = reason {
-                recoveryMessage = "This workspace was saved by a newer application version. It will remain unchanged. Recovery opens a temporary workspace."
+                recoveryMessage = L("This workspace was saved by a newer application version. It will remain unchanged. Recovery opens a temporary workspace.")
             } else {
-                recoveryMessage = "The saved workspace could not be read. Recover the backup or start empty; the original file will be preserved."
+                recoveryMessage = L("The saved workspace could not be read. Recover the backup or start empty; the original file will be preserved.")
             }
             // No pane can claim a kept session here; the orphan alert still reports them, and Leave Running is safe.
             _ = await reattachBrokerSessions()
@@ -732,6 +827,8 @@ public final class AppWorkspaceModel: ObservableObject {
         restoreScrollback = restored.settings.restoreScrollback
         saveBudgetMegabytesPerHour = restored.settings.saveBudgetMegabytesPerHour
         writeBudget.megabytesPerHour = saveBudgetMegabytesPerHour
+        keptSessionIdleTimeoutHours = restored.settings.keptSessionIdleTimeoutHours
+        applyKeptSessionIdleTimeout()
         onRemoteControlSettingsChanged?(remoteControl)
         reconcileThemeSelections()
         refreshEffectiveTheme()
@@ -760,7 +857,7 @@ public final class AppWorkspaceModel: ObservableObject {
         do {
             if useBackup, let backup = recoveryBackup { try await applyRestored(backup) }
             recoveryMessage = nil; recoveryBackup = nil; backupAvailable = false
-        } catch { errorMessage = "The backup could not be restored." }
+        } catch { errorMessage = L("The backup could not be restored.") }
         isRestoring = false
         if !persistenceReadOnly, recoveryMessage == nil { _ = await flushWorkspaceSave() }
     }
@@ -778,7 +875,7 @@ public final class AppWorkspaceModel: ObservableObject {
             unconfiguredPaneIDs.remove(paneID)
             publish(result.snapshot)
             if !isClosing(paneID: paneID), !shuttingDown { await start(paneID: paneID) }
-        } catch { errorMessage = "A new shell could not be configured." }
+        } catch { errorMessage = L("A new shell could not be configured.") }
     }
 
     func scheduleWorkspaceSave() {
@@ -839,7 +936,8 @@ public final class AppWorkspaceModel: ObservableObject {
         var settings = WorkspaceSettings(
             shell: defaultShell, directory: defaultDirectory,
             windowFrame: preferences.string(forKey: "app.windowFrame"), appearance: appearance, remoteControl: remoteControl,
-            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback, saveBudgetMegabytesPerHour: saveBudgetMegabytesPerHour)
+            keepSessionsRunning: keepSessionsRunning, restoreScrollback: restoreScrollback, saveBudgetMegabytesPerHour: saveBudgetMegabytesPerHour,
+            keptSessionIdleTimeoutHours: keptSessionIdleTimeoutHours)
         settings.sessionDefaultNoticePending = sessionDefaultNoticePending
         do {
             let written = try await persistence.save(snapshotForSave(), settings: settings, sequence: saveGeneration)
@@ -848,7 +946,7 @@ public final class AppWorkspaceModel: ObservableObject {
             if savesThrottled != throttled { savesThrottled = throttled }
             return true
         } catch {
-            errorMessage = "The workspace could not be saved. Your current terminals are still available."; return false
+            errorMessage = L("The workspace could not be saved. Your current terminals are still available."); return false
         }
     }
 
@@ -863,15 +961,13 @@ public final class AppWorkspaceModel: ObservableObject {
         guard next.revision >= snapshot.revision else { return }
         let previous = snapshot
         snapshot = next
+        automationRevisions.record(previous, next)
         // Replaced or closed sessions drop their output; their cursors become invalid.
         for id in previous.sessions.keys where next.sessions[id] == nil { outputJournal.remove(session: id) }
         // A closed pane or space, or a restart, discards the saved text of the session it replaced (FR-R04).
         let removed = previous.sessions.keys.filter { next.sessions[$0] == nil }
         if restoreScrollback, !removed.isEmpty, let scrollbackStore { Task { await scrollbackStore.delete(sessionIDs: removed) } }
-        if let onWorkspaceEvents {
-            let events = WorkspaceEvents.diff(previous, next)
-            if !events.isEmpty { onWorkspaceEvents(events) }
-        }
+        onWorkspaceTransition?(previous, next)
         if let pendingPaste, pendingPaste.target != currentPasteTarget { cancelPaste() }
         maximizedPanes = maximizedPanes.filter { tabID, paneID in next.tabs[tabID]?.root.paneIDs.contains(paneID) == true }
         canvasSizes = canvasSizes.filter { next.tabs[$0.key] != nil }
@@ -889,6 +985,7 @@ public final class AppWorkspaceModel: ObservableObject {
         lastRecordedDirectories = lastRecordedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if !reviewTabs.isEmpty || !reviewShownSpaces.isEmpty { pruneReviews(previous: previous, next: next) }
+        if !editorTabs.isEmpty { pruneEditors(previous: previous, next: next) }
         if let selected = next.activeSpaceID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
         refreshTerminalAccessibility()
@@ -911,14 +1008,14 @@ public final class AppWorkspaceModel: ObservableObject {
             publish(result.snapshot)
             if startSession { await start(paneID: pane.id, fixture: fixture) }
             return id
-        } catch { errorMessage = "The space could not be created."; return nil }
+        } catch { errorMessage = L("The space could not be created."); return nil }
     }
 
     public func selectSpace(_ id: UUID) async {
         if id != snapshot.activeSpaceID { cancelPaste(); notePasteFocus(nil) }
         do {
             publish(try await service.execute(.selectSpace(id: id)).snapshot)
-        } catch { errorMessage = "The space could not be selected." }
+        } catch { errorMessage = L("The space could not be selected.") }
     }
 
     /// `quietly` (automation) reports failure through session state, never an alert.
@@ -1031,7 +1128,7 @@ public final class AppWorkspaceModel: ObservableObject {
                     if ready, let transport = sessionBroker.makeTransport(sessionID: request.sessionID) {
                         terminal.useTransport(transport)
                     } else if !quietly {
-                        errorMessage = "The session broker could not start, so this session will end when Trellis quits."
+                        errorMessage = L("The session broker could not start, so this session will end when Trellis quits.")
                     }
                 }
                 // Synchronous and without new locals: Swift 6.3's task allocator aborts when this frame grows (see `startAgent`).
@@ -1041,7 +1138,7 @@ public final class AppWorkspaceModel: ObservableObject {
                 // A launch refused before spawning never reports an exit, so drop its nonce here.
                 if terminal.processID == nil, let registration = askpassRegistrations.removeValue(forKey: request.sessionID) { askpass?.unregister(registration) }
             }
-        } catch { if !quietly { errorMessage = "The terminal session could not be started." } }
+        } catch { if !quietly { errorMessage = L("The terminal session could not be started.") } }
     }
 
     /// Feeds a session's state changes and exit back to the store. `attemptID` is nil for a session
@@ -1054,10 +1151,10 @@ public final class AppWorkspaceModel: ObservableObject {
                 // Never queued, so nothing is typed later by surprise (FR-RW07). Mouse and focus reports land here too, so
                 // the modal is raised once per outage or it would come back with every move; the tab shows the rest.
                 guard self.remoteInputNoticeShown.insert(remote.hostID).inserted else { return }
-                self.errorMessage = "Not sent: reconnecting to \(self.remoteHostName(remote.hostID)). Nothing you type is kept for later."
+                self.errorMessage = L("Not sent: reconnecting to %@. Nothing you type is kept for later.", self.remoteHostName(remote.hostID))
                 return
             }
-            self.errorMessage = "Terminal input could not be sent. Check the session or try a smaller paste."
+            self.errorMessage = L("Terminal input could not be sent. Check the session or try a smaller paste.")
         }
         var launchCompleted = attemptID == nil
         terminal.onStateChanged = { [weak self, weak terminal] state in
@@ -1133,10 +1230,26 @@ public final class AppWorkspaceModel: ObservableObject {
         }
     }
 
+    /// FR-C09: whether a program in this pane may set the clipboard (OSC 52), read when the write arrives.
+    func clipboardWriteAllowed(paneID: UUID) -> Bool {
+        ClipboardWritePolicy.allows(appearance.clipboardWriteAccess, sshPane: isSSHPane(paneID: paneID))
+    }
+
+    /// A saved host's or remote workspace's pane, one started as `ssh`/`mosh`/`autossh`, or a local shell whose authenticated
+    /// marks (FR-SI02) say it is running one of them now, alone on its line. Output can't forge the last: it needs the session's nonce.
+    func isSSHPane(paneID: UUID) -> Bool {
+        guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch else { return false }
+        if Self.isRemote(launch) { return true }
+        return shellStates[paneID].map(ClipboardWritePolicy.runsSSH) ?? false
+    }
+
     /// File links resolve only in local panes, read at click time so a restart is seen (FR-L04).
     func fileLinkContext(paneID: UUID) -> FileLinkContext? {
         guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch) else { return nil }
-        return FileLinkContext(currentDirectory: currentDirectory(paneID: paneID), homeDirectory: NSHomeDirectory())
+        let directory = currentDirectory(paneID: paneID)
+        // The project, as Files roots it (FR-FB02), so a link can open in an editor tab (FR-ED07).
+        let root = (directory ?? paneDirectory(paneID)).map { Self.filesRoot(directory: $0, home: NSHomeDirectory()) }
+        return FileLinkContext(currentDirectory: directory, homeDirectory: NSHomeDirectory(), projectRoot: root)
     }
 
     /// A renamed tab keeps its title; the default title follows the active pane (FR-SI05).
@@ -1264,9 +1377,9 @@ public final class AppWorkspaceModel: ObservableObject {
         else { return }
         guard !workspaceIsFrontmost() || presentation.activePane?.id != paneID else { return }
         guard notificationLimiter.allow(paneID, at: activityNow()) else { return }
-        let title = state.lastCommandFailed ? "Command failed (exit \(state.lastExitCode ?? 0))" : "Command finished"
+        let title = state.lastCommandFailed ? L("Command failed (exit %d)", Int(state.lastExitCode ?? 0)) : L("Command finished")
         // The program name is untrusted output, so it gets the same cleaning as OSC notification text.
-        guard let text = TerminalNotification(title: title, body: "\(state.lastCommandName ?? paneTitle(paneID)) ran for \(durationText)") else { return }
+        guard let text = TerminalNotification(title: title, body: L("%1$@ ran for %2$@", state.lastCommandName ?? paneTitle(paneID), durationText)) else { return }
         desktopNotifier.post(DesktopNotification(paneID: paneID, title: text.title, subtitle: notificationContext(paneID: paneID), body: text.body))
     }
 
@@ -1359,11 +1472,14 @@ public final class AppWorkspaceModel: ObservableObject {
             submitProjectCommand(paneID: paneID)
         }
         updateTaskRun(paneID: paneID, event: event)
-        var state = shellStates[paneID] ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
+        updateCommandWaits(paneID: paneID, event: event)
+        let before = shellStates[paneID]
+        var state = before ?? ShellIntegrationState(origin: terminals[paneID]?.shellMarkOrigin ?? .authenticated)
         let wasRunning = state.commandRunning
         state.apply(event, at: activityNow())
         guard state != shellStates[paneID] else { return }
         shellStates[paneID] = state
+        liveShellChanged(paneID: paneID, event: event, from: before, to: state)
         clearTypedAgentState(paneID: paneID, event: event, state: state)
         // Replayed marks (FR-R03) describe commands that finished while Trellis was closed; they never notify.
         if wasRunning, !state.commandRunning, terminals[paneID]?.isReplaying != true { postCommandFinished(state, paneID: paneID) }
@@ -1395,7 +1511,7 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     /// New panes start in the source pane's reported directory when it is still accessible.
-    private func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
+    func inheritDirectory(from sourcePaneID: UUID?, into paneID: UUID) async {
         // A remote workspace pane starts where the source pane's shell is on the host, or where that pane started; the
         // helper falls back to home when the directory is gone, so nothing is checked here (FR-RW04).
         if let pane = snapshot.panes[paneID], case .remoteShell(let host, nil)? = snapshot.sessions[pane.sessionID]?.launch {
@@ -1458,14 +1574,14 @@ public final class AppWorkspaceModel: ObservableObject {
     }
 
     public func renameSpace(_ id: UUID, name: String) async {
-        do { publish(try await service.execute(.renameSpace(id: id, name: name)).snapshot) } catch { errorMessage = "Use a space name between 1 and 200 characters." }
+        do { publish(try await service.execute(.renameSpace(id: id, name: name)).snapshot) } catch { errorMessage = L("Use a space name between 1 and 200 characters.") }
     }
 
     public func moveSpace(_ id: UUID, offset: Int) async {
         var order = snapshot.spaces.map(\.id)
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = "The space order could not be changed." }
+        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = L("The space order could not be changed.") }
     }
 
     /// Drag reordering (FR-W07): the space takes the target's place, so dragging down lands below it and up above it.
@@ -1473,7 +1589,7 @@ public final class AppWorkspaceModel: ObservableObject {
         var order = snapshot.spaces.map(\.id)
         guard id != targetID, order.contains(id), let destination = order.firstIndex(of: targetID) else { return }
         order.removeAll { $0 == id }; order.insert(id, at: destination)
-        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = "The space order could not be changed." }
+        do { publish(try await service.execute(.reorderSpaces(ids: order)).snapshot) } catch { errorMessage = L("The space order could not be changed.") }
     }
 
     func attachTerminal(_ pane: WorkspacePane) {
@@ -1481,6 +1597,7 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.applyAppearance(terminalAppearance)
         terminal.optionAsMeta = keyboard.optionAsMeta
         terminal.searchShortcut = keyboard.shortcuts[.findInPane]
+        terminal.allowsClipboardWrite = { [weak self] in self?.clipboardWriteAllowed(paneID: pane.id) ?? false }
         terminal.inputSuspended = terminalInputBlocked
         terminal.applyPalette(effectiveTheme.terminal)
         terminal.view.setAccessibilityIdentifier("terminal.\(pane.id.uuidString)")
@@ -1523,6 +1640,13 @@ public final class AppWorkspaceModel: ObservableObject {
             self.applyShellEvent(event, paneID: pane.id)
         }
         terminal.fileLinkContext = { [weak self] in self?.fileLinkContext(paneID: pane.id) }
+        terminal.editorMayOpen = { [weak self] path in
+            guard let self, let context = self.fileLinkContext(paneID: pane.id) else { return false }
+            return self.editorMayOpenLink(path, context: context)
+        }
+        terminal.openInEditor = { [weak self] path, line, column in
+            await self?.openLinkInEditor(paneID: pane.id, path: path, line: line, column: column) ?? false
+        }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.
             guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }
@@ -1601,7 +1725,9 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func resizeSplit(_ splitID: UUID, ratio: Double, tabID: UUID, quietly: Bool = false) async {
         guard !shuttingDown, maximizedPanes[tabID] == nil, let canvas = canvasSizes[tabID] else { return }
-        do { publish(try await service.execute(.resizeSplit(tabID: tabID, splitID: splitID, ratio: ratio, canvas: canvas)).snapshot) } catch { if !quietly { errorMessage = "This divider would make a pane too small." } }
+        do { publish(try await service.execute(.resizeSplit(tabID: tabID, splitID: splitID, ratio: ratio, canvas: canvas)).snapshot) } catch {
+            if !quietly { errorMessage = L("This divider would make a pane too small.") }
+        }
     }
 
     public func resizeFocusedPane(_ direction: PaneDirection) async {
@@ -1627,7 +1753,7 @@ public final class AppWorkspaceModel: ObservableObject {
             attachTerminal(pane)
             publish(result.snapshot)
             if startSession { await start(paneID: id) }
-        } catch { errorMessage = "The session could not be restarted." }
+        } catch { errorMessage = L("The session could not be restarted.") }
     }
 
     public func selectPane(_ id: UUID) async -> Bool {
@@ -1638,7 +1764,7 @@ public final class AppWorkspaceModel: ObservableObject {
             guard let pane = snapshot.panes[id], !isClosing(paneID: id) else { return false }
             return snapshot.tabs[pane.tabID]?.activePaneID == id
         } catch {
-            if snapshot.panes[id] != nil, !isClosing(paneID: id) { errorMessage = "The pane could not be selected." }
+            if snapshot.panes[id] != nil, !isClosing(paneID: id) { errorMessage = L("The pane could not be selected.") }
             return false
         }
     }
@@ -1649,7 +1775,7 @@ public final class AppWorkspaceModel: ObservableObject {
         if let canvas = availableCanvas {
             let minimum = CanvasDimensions.minimum(for: .split(id: UUID(), axis: axis, ratio: 0.5, children: [.pane(UUID()), .pane(UUID())]))
             guard canvas.width >= minimum.width, canvas.height >= minimum.height else {
-                errorMessage = "Enlarge this pane before splitting it."
+                errorMessage = L("Enlarge this pane before splitting it.")
                 return nil
             }
         }
@@ -1671,7 +1797,7 @@ public final class AppWorkspaceModel: ObservableObject {
             }
             return newID
         } catch {
-            errorMessage = "This pane cannot be split further. Check its size and the layout limits."
+            errorMessage = L("This pane cannot be split further. Check its size and the layout limits.")
             return nil
         }
     }
@@ -1700,7 +1826,7 @@ public final class AppWorkspaceModel: ObservableObject {
         case .split(let axis):
             // Match the pane split controls: a hidden split would hide ssh prompts.
             guard let tab = presentation.selectedTab, let focused = presentation.activePane?.id, maximizedPanes[tab.id] == nil else {
-                errorMessage = presentation.selectedTab == nil ? "Open a space before connecting in a split." : "Restore panes before connecting in a split."
+                errorMessage = presentation.selectedTab == nil ? L("Open a space before connecting in a split.") : L("Restore panes before connecting in a split.")
                 return nil
             }
             paneID = await splitPane(focused, axis: axis, startSession: false)
@@ -1709,7 +1835,7 @@ public final class AppWorkspaceModel: ObservableObject {
         do {
             publish(try await service.execute(.configureStoppedSession(paneID: paneID, launch: .host(host.id))).snapshot)
         } catch {
-            errorMessage = "The connection pane could not be prepared."
+            errorMessage = L("The connection pane could not be prepared.")
             return nil
         }
         await start(paneID: paneID)
@@ -1756,16 +1882,19 @@ public final class AppWorkspaceModel: ObservableObject {
             }
             return tabID
         } catch {
-            errorMessage = "The tab could not be created."
+            errorMessage = L("The tab could not be created.")
             return nil
         }
     }
 
     public func selectTab(_ id: UUID) async {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
-        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID) }
+        // An editor tab hidden here gives the keyboard back to the terminals, which stayed mounted under it (FR-ED01).
+        let editorHidden = snapshot.tabs[id].flatMap { shownEditors[$0.spaceID] } != nil
+        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID); shownEditors[spaceID] = nil }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
-        do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = "The tab could not be selected." }
+        do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = L("The tab could not be selected.") }
+        if editorHidden { focusActiveTerminal() }
     }
 
     /// Native text editing of a tab title. Terminals stop receiving key input until
@@ -1792,11 +1921,11 @@ public final class AppWorkspaceModel: ObservableObject {
     public func renameTab(_ id: UUID, title: String) async {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) } catch { errorMessage = "Use a tab name between 1 and 200 characters." }
+        do { publish(try await service.execute(.renameTab(id: id, title: trimmed)).snapshot) } catch { errorMessage = L("Use a tab name between 1 and 200 characters.") }
     }
 
     public func setTabColor(_ id: UUID, color: TabColor?) async {
-        do { publish(try await service.execute(.setTabColor(id: id, color: color)).snapshot) } catch { errorMessage = "The tab color could not be changed." }
+        do { publish(try await service.execute(.setTabColor(id: id, color: color)).snapshot) } catch { errorMessage = L("The tab color could not be changed.") }
     }
 
     public func moveTab(_ id: UUID, offset: Int) async {
@@ -1804,7 +1933,7 @@ public final class AppWorkspaceModel: ObservableObject {
         var order = space.tabIDs
         guard let index = order.firstIndex(of: id), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
-        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = L("The tab order could not be changed.") }
     }
 
     /// Drag reordering (FR-T10): the tab takes the target's place, so dragging right lands after it and left before it.
@@ -1814,7 +1943,7 @@ public final class AppWorkspaceModel: ObservableObject {
         else { return }
         var order = space.tabIDs
         order.removeAll { $0 == id }; order.insert(id, at: destination)
-        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = "The tab order could not be changed." }
+        do { publish(try await service.execute(.reorderTabs(spaceID: tab.spaceID, ids: order)).snapshot) } catch { errorMessage = L("The tab order could not be changed.") }
     }
 
     public func deleteSpace(_ id: UUID) async {
@@ -1851,21 +1980,21 @@ public final class AppWorkspaceModel: ObservableObject {
             guard terminals[id]?.isRunning == true, let pane = snapshot.panes[id], let tab = snapshot.tabs[pane.tabID],
                 let space = snapshot.spaces.first(where: { $0.id == tab.spaceID })
             else { return nil }
-            return "\(space.name) / \(tab.title) / \(pane.title ?? "Terminal")"
+            return "\(space.name) / \(tab.title) / \(pane.title ?? L("Terminal"))"
         }
     }
 
     private func showClosureConfirmation(count: Int, force: Bool) -> Bool {
         guard count > 0 else { return true }
         let alert = NSAlert()
-        alert.messageText = force ? "Force stop \(count) session(s)?" : "Close \(count) terminal session(s)?"
+        alert.messageText = force ? L("Force stop %d session(s)?", count) : L("Close %d terminal session(s)?", count)
         let summary = closeSummary.prefix(8).joined(separator: "\n")
-        let more = closeSummary.count > 8 ? "\n…and \(closeSummary.count - 8) more" : ""
+        let more = closeSummary.count > 8 ? "\n" + L("…and %d more", closeSummary.count - 8) : ""
         alert.informativeText =
-            (force ? "These sessions have not finished closing after two seconds.\n\n" : "Their owned local processes will stop.\n\n")
-            + summary + more + "\n\nDetached or remote processes may continue running."
-        alert.addButton(withTitle: force ? "Force Stop" : "Close Sessions")
-        alert.addButton(withTitle: force ? "Keep Waiting" : "Cancel")
+            (force ? L("These sessions have not finished closing after two seconds.") : L("Their owned local processes will stop.")) + "\n\n"
+            + summary + more + "\n\n" + L("Detached or remote processes may continue running.")
+        alert.addButton(withTitle: force ? L("Force Stop") : L("Close Sessions"))
+        alert.addButton(withTitle: force ? L("Keep Waiting") : L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -1897,13 +2026,13 @@ public final class AppWorkspaceModel: ObservableObject {
                 result = await closureCoordinator.close(affected, allowRunning: true, force: true)
             }
         }
-        guard result == .closed else { errorMessage = "Some sessions are still closing. Try Close again when they are ready."; return false }
+        guard result == .closed else { errorMessage = L("Some sessions are still closing. Try Close again when they are ready."); return false }
         // Pending store/start work must complete before deleting its hierarchy.
         let deadline = ProcessInfo.processInfo.systemUptime + 2
         while pendingOperations > 0, ProcessInfo.processInfo.systemUptime < deadline, !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(10))
         }
-        guard pendingOperations == 0 else { errorMessage = "A session launch is still finishing. Try Close again shortly."; return false }
+        guard pendingOperations == 0 else { errorMessage = L("A session launch is still finishing. Try Close again shortly."); return false }
         await waitForUpdates()
         return !Task.isCancelled
     }
@@ -1916,7 +2045,7 @@ public final class AppWorkspaceModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(10))
         }
         guard pendingOperations == 0, !Task.isCancelled else {
-            errorMessage = "A session launch is still finishing. Try Close again shortly."
+            errorMessage = L("A session launch is still finishing. Try Close again shortly.")
             return
         }
         await waitForUpdates()
@@ -1927,6 +2056,11 @@ public final class AppWorkspaceModel: ObservableObject {
         case .deleteTab(let id): panes = Set(snapshot.tabs[id]?.root.paneIDs ?? [])
         default: panes = initialPanes
         }
+        // A space that loses all its panes goes away with its editor tabs: their unsaved changes are asked about first (FR-ED05).
+        let leaving = snapshot.spaces.filter { space in !space.tabIDs.isEmpty && space.tabIDs.allSatisfy { panes.isSuperset(of: snapshot.tabs[$0]?.root.paneIDs ?? []) } }
+        let leavingIDs = Set(leaving.map(\.id))
+        defer { discardedEditorSpaces.subtract(leavingIDs) }
+        guard await resolveUnsavedEditors(in: leavingIDs) else { return }
         prepareCloseSummary(panes)
         let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
         guard live.isEmpty || confirmCloseSessions(live.count) else { return }
@@ -1934,7 +2068,7 @@ public final class AppWorkspaceModel: ObservableObject {
         do {
             publish(try await service.execute(command).snapshot)
             terminals = terminals.filter { snapshot.panes[$0.key] != nil }
-        } catch { errorMessage = "The sessions could not be closed." }
+        } catch { errorMessage = L("The sessions could not be closed.") }
     }
 
     /// Preserve callback order across async store calls, including fast exits.
@@ -1943,7 +2077,7 @@ public final class AppWorkspaceModel: ObservableObject {
         updates = Task { @MainActor [weak self] in
             await previous?.value
             guard let self else { return }
-            do { self.publish(try await self.service.execute(command).snapshot) } catch { self.errorMessage = "The terminal state could not be updated." }
+            do { self.publish(try await self.service.execute(command).snapshot) } catch { self.errorMessage = L("The terminal state could not be updated.") }
         }
     }
 
@@ -1989,13 +2123,13 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         let plan = TerminalPastePlan(input: input, shell: shell)
         let paneNumber = (presentation.selectedTab?.root.paneIDs.firstIndex(of: paneID) ?? 0) + 1
-        let paneName = "Pane \(paneNumber) — \(presentation.activePane?.title ?? "Terminal")"
+        let paneName = L("Pane %1$d — %2$@", paneNumber, presentation.activePane?.title ?? L("Terminal"))
         let name = [presentation.selectedSpace?.name, presentation.selectedTab?.title, paneName]
             .compactMap { $0 }.joined(separator: " / ")
         defer { pendingPaste = pasteReview.pending }
         do {
             try pasteReview.request(plan, target: target, name: name) { try terminal.paste($0) }
-        } catch { errorMessage = "The paste could not be sent. The session may have stopped or the input may be too large." }
+        } catch { errorMessage = L("The paste could not be sent. The session may have stopped or the input may be too large.") }
     }
 
     public func confirmPaste(_ id: UUID) {
@@ -2006,7 +2140,7 @@ public final class AppWorkspaceModel: ObservableObject {
                 guard let target, let terminal = terminals[target.paneID] else { return }
                 try terminal.paste(plan)
             }
-        } catch { errorMessage = "The paste could not be sent. The session may have stopped or the input may be too large." }
+        } catch { errorMessage = L("The paste could not be sent. The session may have stopped or the input may be too large.") }
     }
 
     private func notePasteFocus(_ paneID: UUID?) {
@@ -2037,7 +2171,7 @@ public final class AppWorkspaceModel: ObservableObject {
             remoteReconnector.cancelAll()
             remoteHosts?.closeWorkspaceLinks()
             // Closed without a state callback: the sidebar must not keep saying Connected, and Reconnect must stay possible.
-            for host in remoteLinks.keys { remoteLinks[host] = .disconnected(nil) }
+            for host in remoteLinks.keys { remoteLinks[host] = .disconnected(nil, reason: .closed) }
         }
         return closed
     }
@@ -2065,6 +2199,6 @@ public final class AppWorkspaceModel: ObservableObject {
             activity.removeAll()
             shuttingDown = false
             return await flushWorkspaceSave()
-        } catch { errorMessage = "The workspaces could not be closed."; shuttingDown = false; return false }
+        } catch { errorMessage = L("The workspaces could not be closed."); shuttingDown = false; return false }
     }
 }

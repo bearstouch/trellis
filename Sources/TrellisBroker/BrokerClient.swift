@@ -76,7 +76,7 @@ public final class BrokerConnection {
     /// v2 and name their client ID.
     public func hello(minimumVersion: Int = BrokerProtocol.minimumVersion, clientID: String? = nil) async throws {
         let message = BrokerMessage.hello(
-            protocolVersion: minimumVersion, features: [BrokerProtocol.inputRejectedFeature, BrokerProtocol.agentEventsFeature], maximumVersion: BrokerProtocol.version,
+            protocolVersion: minimumVersion, features: [BrokerProtocol.inputRejectedFeature, BrokerProtocol.agentEventsFeature, BrokerProtocol.agentInfoFeature], maximumVersion: BrokerProtocol.version,
             clientID: clientID)
         switch try await request(message) {
         case .welcome(let version, let pid, let info) where version >= minimumVersion && version <= BrokerProtocol.version:
@@ -103,6 +103,15 @@ public final class BrokerConnection {
     public func post(_ message: BrokerMessage) {
         guard let frame = try? BrokerFrame.control(BrokerEnvelope(requestID: nil, message: message)) else { return }
         try? send(frame)
+    }
+
+    /// FR-R08: how long the broker keeps a running session nobody shows and that prints nothing; 0 means for good.
+    /// False for a broker older than v4, which ends nothing by itself.
+    @discardableResult
+    public func configure(sessionIdleTimeout seconds: Int) -> Bool {
+        guard isOpen, protocolVersion >= 4 else { return false }
+        post(.configure(sessionIdleTimeout: seconds))
+        return true
     }
 
     public func sendInput(_ data: Data, sessionID: UUID) throws {

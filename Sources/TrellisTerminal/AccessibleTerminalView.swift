@@ -1,4 +1,5 @@
 import AppKit
+import MetalKit
 import SwiftTerm
 import TrellisCore
 
@@ -11,6 +12,8 @@ struct TerminalLinkMenu: Equatable {
     var click: TerminalLinkClick
     /// Adds Show in Finder beside Open; false when Open already reveals (FR-L03) or the link isn't a file.
     var canReveal = false
+    /// Adds Open in Trellis Editor first: a file inside the pane's project (FR-ED07).
+    var canEdit = false
 }
 
 /// A clicked link: the engine's text (nil if it found none), whether it is an OSC 8
@@ -36,6 +39,8 @@ final class AccessibleTerminalView: TerminalView {
     var onOpenLink: ((TerminalLinkClick) -> Void)?
     /// Shows a file link chosen from the context menu in Finder.
     var onRevealLink: ((TerminalLinkClick) -> Void)?
+    /// Opens a file link chosen from the context menu in an editor tab (FR-ED07).
+    var onEditLink: ((TerminalLinkClick) -> Void)?
     var scrollback = TerminalScrollback(budget: .standard)
     /// The configurable Find chord; other ⌘ chords reach the menu bar.
     var searchChord: KeyChord? = ShortcutMap.defaults[.findInPane]
@@ -97,8 +102,11 @@ final class AccessibleTerminalView: TerminalView {
     }
 
     /// The overlay scroller covers the last columns; while it's faded out, clicks there belong to the terminal.
+    /// The Metal view covers the whole grid and won't take first responder, so a click on it would reach `mouseDown`
+    /// through the responder chain and leave the keyboard where it was (a sidebar field, say); the grid takes it instead.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
+        if let hit, hit is MTKView, hit.isDescendant(of: self) { return self }
         guard let scroller = terminalScroller, scroller.alphaValue == 0, let hit, hit === scroller || hit.isDescendant(of: scroller) else { return hit }
         return self
     }
@@ -298,9 +306,9 @@ final class AccessibleTerminalView: TerminalView {
 
     var copyAllTitle: String {
         let terminal = getTerminal()
-        if terminal.isCurrentBufferAlternate { return "Copy All Current Screen (No Scrollback)" }
+        if terminal.isCurrentBufferAlternate { return L("Copy All Current Screen (No Scrollback)") }
         return scrollback.historyEvicted || terminal.buffer.totalLinesTrimmed > 0
-            ? "Copy All Retained Text (Older Lines Evicted)" : "Copy All Retained Text"
+            ? L("Copy All Retained Text (Older Lines Evicted)") : L("Copy All Retained Text")
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
@@ -311,7 +319,9 @@ final class AccessibleTerminalView: TerminalView {
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
         if item.action == #selector(pasteEscapedPath(_:)) { return true }
         if item.action == #selector(showPaneSearch(_:)) || item.action == #selector(clearTerminal(_:)) { return true }
-        if item.action == #selector(openContextLink(_:)) || item.action == #selector(revealContextLink(_:)) || item.action == #selector(copyContextLink(_:)) { return contextLink != nil }
+        if [#selector(openContextLink(_:)), #selector(revealContextLink(_:)), #selector(copyContextLink(_:)), #selector(editContextLink(_:))].contains(item.action) {
+            return contextLink != nil
+        }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
     }
@@ -327,8 +337,9 @@ final class AccessibleTerminalView: TerminalView {
         contextLink = nil
         if let described = selectionLinkClick(at: position).flatMap({ describeLink?($0) }) ?? describeLink?(click) {
             contextLink = (described.click, described.copyText)
-            var actions = [(described.openTitle, #selector(openContextLink(_:)))]
-            if described.canReveal { actions.append(("Show in Finder", #selector(revealContextLink(_:)))) }
+            var actions = described.canEdit ? [(L("Open in Trellis Editor"), #selector(editContextLink(_:)))] : []
+            actions.append((described.openTitle, #selector(openContextLink(_:))))
+            if described.canReveal { actions.append((L("Show in Finder"), #selector(revealContextLink(_:)))) }
             actions.append((described.copyTitle, #selector(copyContextLink(_:))))
             for (title, action) in actions {
                 let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -338,13 +349,13 @@ final class AccessibleTerminalView: TerminalView {
             menu.addItem(.separator())
         }
         for (title, action) in [
-            ("Copy", #selector(copy(_:))),
+            (L("Copy"), #selector(copy(_:))),
             (copyAllTitle, #selector(copyAllRetainedText(_:))),
-            ("Select All", #selector(selectAllTerminalText(_:))),
-            ("Paste", #selector(paste(_:))),
-            ("Paste Escaped Path", #selector(pasteEscapedPath(_:))),
-            ("Find…", #selector(showPaneSearch(_:))),
-            ("Clear", #selector(clearTerminal(_:)))
+            (L("Select All"), #selector(selectAllTerminalText(_:))),
+            (L("Paste"), #selector(paste(_:))),
+            (L("Paste Escaped Path"), #selector(pasteEscapedPath(_:))),
+            (L("Find…"), #selector(showPaneSearch(_:))),
+            (L("Clear"), #selector(clearTerminal(_:)))
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
@@ -374,6 +385,13 @@ final class AccessibleTerminalView: TerminalView {
         onOpenLink?(contextLink.click)
     }
 
+    @objc func editContextLink(_ sender: Any?) {
+        guard let contextLink else { return }
+        lastUserGesture = Date()
+        defer { lastUserGesture = nil }
+        onEditLink?(contextLink.click)
+    }
+
     @objc func revealContextLink(_ sender: Any?) {
         guard let contextLink else { return }
         lastUserGesture = Date()
@@ -387,6 +405,8 @@ final class AccessibleTerminalView: TerminalView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // A click that reached the grid through the responder chain (from a subview that won't take focus) still moves the keyboard here.
+        if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         onFocused?()
         super.mouseDown(with: event)
     }

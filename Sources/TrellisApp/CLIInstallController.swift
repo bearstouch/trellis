@@ -33,11 +33,13 @@ final class CLIInstallController {
         }
         guard let window, window.isVisible, window.attachedSheet == nil else { return }
         let alert = NSAlert()
-        alert.messageText = "Install the trellis command?"
+        alert.messageText = L("Install the trellis command?")
         alert.informativeText =
-            "This lets you control Trellis from any terminal. It creates one link at ~/.local/bin/trellis and doesn't change your shell's startup files.\n\nYou can do this later with Trellis → Install Command Line Tool…"
-        alert.addButton(withTitle: "Install")
-        alert.addButton(withTitle: "Not Now").keyEquivalent = "\u{1b}"
+            L(
+                "This lets you control Trellis from any terminal. It creates one link at ~/.local/bin/trellis and doesn't change your shell's startup files.\n\nYou can do this later with Trellis → Install Command Line Tool…"
+            )
+        alert.addButton(withTitle: L("Install"))
+        alert.addButton(withTitle: L("Not Now")).keyEquivalent = "\u{1b}"
         let response = await alert.beginSheetModal(for: window)
         defaults.set(true, forKey: Self.answeredKey)
         if response == .alertFirstButtonReturn { await install(window: window) }
@@ -62,8 +64,8 @@ final class CLIInstallController {
         working = true; defer { working = false }
         guard CLILinkInstaller.location(bundlePath: bundlePath, home: home, isReadOnlyVolume: isReadOnlyVolume) != .transient else {
             await show(
-                "Move Trellis to Applications first",
-                "Trellis is running from the disk image or a temporary location, so a link to it would stop working. Drag Trellis to Applications, open it from there, and try again.", window)
+                L("Move Trellis to Applications first"),
+                L("Trellis is running from the disk image or a temporary location, so a link to it would stop working. Drag Trellis to Applications, open it from there, and try again."), window)
             return
         }
         defaults.set(true, forKey: Self.answeredKey)
@@ -73,28 +75,30 @@ final class CLIInstallController {
             case .installed(let path), .replaced(let path): link = path; already = false
             case .alreadyInstalled(let path): link = path; already = true
             case .invalidDirectory(let reason), .conflict(let reason):
-                await show("The trellis command wasn't installed", reason, window)
+                await show(L("The trellis command wasn't installed"), reason, window)
                 return
             }
         } catch {
-            await show("The trellis command wasn't installed", error.localizedDescription, window)
+            await show(L("The trellis command wasn't installed"), error.localizedDescription, window)
             return
         }
         let shell = shell()
         let searchPath = await Task.detached { LoginShellPath.query(shell: shell) }.value
-        let title = already ? "The trellis command is already installed" : "The trellis command is installed"
+        let title = already ? L("The trellis command is already installed") : L("The trellis command is installed")
         let setup = CLILinkInstaller.pathSetupCommand(shell: shell)
         switch CLILinkInstaller.pathStatus(link: link, searchPath: searchPath, effects: .live) {
-        case .onPath: await show(title, "Open a new terminal to use it.\n\n\(link)", window)
+        case .onPath: await show(title, L("Open a new terminal to use it.\n\n%@", link), window)
         case .notOnPath:
             await show(
                 title,
-                "~/.local/bin isn't on your PATH yet, and Trellis doesn't change your shell's startup files. To add it, run this or add the equivalent to your shell's startup file, then open a new terminal:\n\n\(setup)",
+                L(
+                    "~/.local/bin isn't on your PATH yet, and Trellis doesn't change your shell's startup files. To add it, run this or add the equivalent to your shell's startup file, then open a new terminal:\n\n%@",
+                    setup),
                 window, copy: setup)
         case .shadowed(let other):
-            await show(title, "Typing trellis in a terminal runs a different program, because your PATH finds it first:\n\n\(other)\n\nThe Trellis command is at \(link).", window)
+            await show(title, L("Typing trellis in a terminal runs a different program, because your PATH finds it first:\n\n%1$@\n\nThe Trellis command is at %2$@.", other, link), window)
         case .unknown:
-            await show(title, "Trellis couldn't read the PATH from your shell. If trellis isn't found in a new terminal, run this or add the equivalent to your shell's startup file:\n\n\(setup)", window, copy: setup)
+            await show(title, L("Trellis couldn't read the PATH from your shell. If trellis isn't found in a new terminal, run this or add the equivalent to your shell's startup file:\n\n%@", setup), window, copy: setup)
         }
     }
 
@@ -103,8 +107,8 @@ final class CLIInstallController {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = text
-        if copy != nil { alert.addButton(withTitle: "Copy Command") }
-        let done = alert.addButton(withTitle: "Done")
+        if copy != nil { alert.addButton(withTitle: L("Copy Command")) }
+        let done = alert.addButton(withTitle: L("Done"))
         if copy != nil { done.keyEquivalent = "\u{1b}" }
         let response: NSApplication.ModalResponse
         if let window, window.isVisible, window.attachedSheet == nil {

@@ -10,6 +10,21 @@ extension AppWorkspaceModel {
         scheduleWorkspaceSave()
     }
 
+    /// FR-R08: one of `KeptSessionIdleTimeout.choices`; anything else keeps the current one. Running brokers are told at once.
+    public func setKeptSessionIdleTimeout(hours: Int) {
+        guard KeptSessionIdleTimeout.choices.contains(hours), hours != keptSessionIdleTimeoutHours else { return }
+        keptSessionIdleTimeoutHours = hours
+        applyKeptSessionIdleTimeout()
+        scheduleWorkspaceSave()
+    }
+
+    /// The setting is known from here on: the local broker and every remote host's are told now and whenever they connect.
+    func applyKeptSessionIdleTimeout() {
+        keptSessionIdleTimeoutKnown = true
+        sessionBroker?.setSessionIdleTimeout(seconds: brokerIdleTimeoutSeconds)
+        remoteHosts?.sessionIdleTimeout = brokerIdleTimeoutSeconds
+    }
+
     /// Settings showed the note about the new default (FR-R07).
     public func dismissSessionDefaultNotice() {
         guard sessionDefaultNoticePending else { return }
@@ -67,7 +82,7 @@ extension AppWorkspaceModel {
             enqueue(.recordSessionExit(sessionID: record.sessionID, code: nil))
             return false
         }
-        restoreAgentState(paneID: paneID, event: adoption.agentEvent)
+        restoreAgentState(paneID: paneID, event: adoption.agentEvent, info: adoption.agentInfo)
         return true
     }
 
@@ -144,13 +159,13 @@ extension AppWorkspaceModel {
 
     func showKeepRunningConfirmation(kept: Int, stopping: Int) -> QuitChoice {
         let alert = NSAlert()
-        alert.messageText = "Keep \(kept) session(s) running after Trellis quits?"
+        alert.messageText = L("Keep %d session(s) running after Trellis quits?", kept)
         alert.informativeText =
-            "Kept sessions continue in the background and reconnect when Trellis opens again. They end if you log out or restart your Mac."
-            + (stopping > 0 ? "\n\n\(stopping) session(s) started before Keep Running was turned on will stop." : "")
-        alert.addButton(withTitle: "Keep Running")
-        alert.addButton(withTitle: "Stop Sessions")
-        alert.addButton(withTitle: "Cancel")
+            L("Kept sessions continue in the background and reconnect when Trellis opens again. They end if you log out or restart your Mac.")
+            + (stopping > 0 ? "\n\n" + L("%d session(s) started before Keep Running was turned on will stop.", stopping) : "")
+        alert.addButton(withTitle: L("Keep Running"))
+        alert.addButton(withTitle: L("Stop Sessions"))
+        alert.addButton(withTitle: L("Cancel"))
         switch alert.runModal() {
         case .alertFirstButtonReturn: return .keepRunning
         case .alertSecondButtonReturn: return .stopSessions
@@ -161,14 +176,14 @@ extension AppWorkspaceModel {
     func showOrphanConfirmation(count: Int) -> Bool {
         let alert = NSAlert()
         if count == 0 {
-            alert.messageText = "A session broker from another Trellis version is still running."
-            alert.informativeText = "Its sessions can't be reconnected. Stop them, or leave them running in the background."
+            alert.messageText = L("A session broker from another Trellis version is still running.")
+            alert.informativeText = L("Its sessions can't be reconnected. Stop them, or leave them running in the background.")
         } else {
-            alert.messageText = "\(count) session(s) from an earlier run are still running."
-            alert.informativeText = "They aren't part of the restored workspace. Stop them, or leave them running in the background; Trellis asks again next time."
+            alert.messageText = L("%d session(s) from an earlier run are still running.", count)
+            alert.informativeText = L("They aren't part of the restored workspace. Stop them, or leave them running in the background; Trellis asks again next time.")
         }
-        alert.addButton(withTitle: "Stop Them")
-        alert.addButton(withTitle: "Leave Running")
+        alert.addButton(withTitle: L("Stop Them"))
+        alert.addButton(withTitle: L("Leave Running"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 }

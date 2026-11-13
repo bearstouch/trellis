@@ -15,14 +15,14 @@ struct SidebarDock: View {
         .padding(.top, 6).frame(width: 40).frame(maxHeight: .infinity)
         .background(model.chromeFill(.sidebarBackground))
         .overlay(alignment: .leading) { model.themeColor(.border).frame(width: 1).accessibilityHidden(true) }
-        .accessibilityElement(children: .contain).accessibilityLabel("Sidebar views")
+        .accessibilityElement(children: .contain).accessibilityLabel(L("Sidebar views"))
     }
 
     private func icon(_ view: SidebarView) -> some View {
         let shown = model.visibleSidebarView == view
         let reason = model.sidebarUnavailableReason(view)
         let badge = badge(view)
-        let title = shown ? "Hide \(view.title)" : view.title
+        let title = shown ? L("Hide %@", view.title) : view.title
         return Button {
             model.toggleSidebarView(view)
         } label: {
@@ -51,13 +51,13 @@ struct SidebarDock: View {
         case .files, .scratchpad: return nil
         case .changes:
             let count = model.changedFileCount
-            return count > 0 ? (count, "\(count) changed", model.themeColor(.accent), model.accentForeground) : nil
+            return count > 0 ? (count, L("%@ changed", "\(count)"), model.themeColor(.accent), model.accentForeground) : nil
         case .tasks:
             let count = model.activeTaskCount
-            return count > 0 ? (count, "\(count) running", model.themeColor(.accent), model.accentForeground) : nil
+            return count > 0 ? (count, L("%d running", count), model.themeColor(.accent), model.accentForeground) : nil
         case .agents:
             let count = model.agentsNeedingYouCount
-            return count > 0 ? (count, "\(count) needs you", model.themeColor(.warning), .black) : nil
+            return count > 0 ? (count, L("%d needs you", count), model.themeColor(.warning), .black) : nil
         }
     }
 
@@ -104,13 +104,13 @@ struct SidebarHeader<Accessory: View>: View {
                 Image(systemName: "xmark")
             }
             .help(closeHelp)
-            .accessibilityLabel("Close \(view.title)")
+            .accessibilityLabel(L("Close %@", view.title))
         }
         .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(model.themeColor(.mutedForeground))
         .padding(.leading, 12).padding(.trailing, 10).frame(height: 40)
     }
 
-    private var closeHelp: String { model.keyboard.shortcuts[view.shortcut].map { "Close \(view.title) (\($0))" } ?? "Close \(view.title)" }
+    private var closeHelp: String { model.keyboard.shortcuts[view.shortcut].map { L("Close %1$@ (%2$@)", view.title, $0.description) } ?? L("Close %@", view.title) }
 }
 
 /// The sidebar's Agents view (FR-AG07, FR-AG16): where agents open for the focused pane, each agent with its status and
@@ -126,23 +126,23 @@ struct AgentsSidebarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     target
-                    Text("Launch").font(.subheadline.weight(.semibold)).padding(.top, 4)
+                    Text(L("Launch")).font(.subheadline.weight(.semibold)).padding(.top, 4)
                     ForEach(model.agentCatalog.definitions) { agent in launchRow(agent) }
                     Divider().padding(.vertical, 2)
-                    Text("Running").font(.subheadline.weight(.semibold))
+                    Text(L("Running")).font(.subheadline.weight(.semibold))
                     let rows = model.agentSessionRows
-                    if rows.isEmpty { Text("No agents are open.").font(.caption).foregroundStyle(muted) }
+                    if rows.isEmpty { Text(L("No agents are open.")).font(.caption).foregroundStyle(muted) }
                     ForEach(rows) { row in runningRow(row) }
                 }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider().overlay(model.separatorOverlay)
             HStack {
-                Button("Add Agent Definition…") { model.revealAgentsFolder() }.disabled(model.agentsDirectory == nil)
+                Button(L("Add Agent Definition…")) { model.revealAgentsFolder() }.disabled(model.agentsDirectory == nil)
                 Spacer()
             }.controlSize(.small).padding(.horizontal, 12).padding(.vertical, 8)
         }
         .background(model.chromeFill(.surface))
-        .accessibilityElement(children: .contain).accessibilityLabel("Agents")
+        .accessibilityElement(children: .contain).accessibilityLabel(L("Agents"))
         // The install status is for the focused pane's machine; a host's is learned when a launch finds it missing.
         .task(id: model.presentation.activePane?.id) {
             if let pane = model.presentation.activePane?.id, !model.isRemoteWorkspace(paneID: pane) { model.refreshAgentAvailability() }
@@ -152,28 +152,28 @@ struct AgentsSidebarView: View {
     @ViewBuilder private var target: some View {
         let muted = model.themeColor(.mutedForeground)
         VStack(alignment: .leading, spacing: 6) {
-            Text("Opens in").font(.caption).foregroundStyle(muted)
+            Text(L("Opens in")).font(.caption).foregroundStyle(muted)
             if let target = model.agentTarget {
                 HStack(spacing: 6) {
                     Image(systemName: "folder").accessibilityHidden(true)
-                    Text(target.directory ?? "Home folder").font(.system(size: 12, design: .monospaced)).lineLimit(1).truncationMode(.head)
+                    Text(target.directory ?? L("Home folder")).font(.system(size: 12, design: .monospaced)).lineLimit(1).truncationMode(.head)
                     Text("· \(target.machine)").font(.system(size: 12)).foregroundStyle(muted).lineLimit(1).fixedSize()
                 }.accessibilityElement(children: .combine)
             }
             // This Tab (FR-AG17) only while the focused tab has no agent; New Tab stands in for it meanwhile.
-            let thisTab: [(value: AppWorkspaceModel.AgentPlacement, label: String)] = model.canLaunchAgentInFocusedTab ? [(.currentTab, "This Tab")] : []
-            SegmentedPicker("Open agent in", selection: model.effectiveAgentPlacement, options: [(.tab, "New Tab")] + thisTab + [(.split, "Split")]) { [weak model] in
+            let thisTab: [(value: AppWorkspaceModel.AgentPlacement, label: String)] = model.canLaunchAgentInFocusedTab ? [(.currentTab, L("This Tab"))] : []
+            SegmentedPicker(L("Open agent in"), selection: model.effectiveAgentPlacement, options: [(.tab, L("New Tab"))] + thisTab + [(.split, L("Split"))]) { [weak model] in
                 model?.agentPlacement = $0
             }
             .labelsHidden().controlSize(.small)
             .help(
-                "Where ▶ starts the agent: a new tab, this tab's focused pane in place of its idle shell, or a split beside it. ⌥-click ▶ for a split, or a new tab from Split")
+                L("Where ▶ starts the agent: a new tab, this tab's focused pane in place of its idle shell, or a split beside it. ⌥-click ▶ for a split, or a new tab from Split"))
         }
     }
 
     private func launchRow(_ agent: AgentDefinition) -> some View {
         let status = model.agentStatusText(agent)
-        let missing = status?.hasPrefix("Not installed") == true
+        let missing = model.agentIsMissing(agent)
         return HStack(spacing: 10) {
             AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id], size: 13)
                 .frame(width: 26, height: 26).background(RoundedRectangle(cornerRadius: 6).fill(model.themeColor(.accent).opacity(0.12)))
@@ -187,17 +187,17 @@ struct AgentsSidebarView: View {
                 launch(agent.id, resume: false)
             } label: {
                 // A missing agent keeps the word: a lone download icon wouldn't say an installer is offered.
-                if missing { Text("Install…") } else { Image(systemName: "play.fill") }
+                if missing { Text(L("Install…")) } else { Image(systemName: "play.fill") }
             }
-            .buttonStyle(.borderless).help(missing ? "Offer \(agent.name)'s installer" : "Open \(agent.name) (⌥-click for the other placement)")
-            .accessibilityLabel(missing ? "Install \(agent.name)" : "Open \(agent.name)")
+            .buttonStyle(.borderless).help(missing ? L("Offer %@'s installer", agent.name) : L("Open %@ (⌥-click for the other placement)", agent.name))
+            .accessibilityLabel(missing ? L("Install %@", agent.name) : L("Open %@", agent.name))
             if !agent.resumeArguments.isEmpty {
                 Button {
                     launch(agent.id, resume: true)
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
-                .buttonStyle(.borderless).help("Resume \(agent.name)'s last conversation").accessibilityLabel("Resume \(agent.name)")
+                .buttonStyle(.borderless).help(L("Resume %@'s last conversation", agent.name)).accessibilityLabel(L("Resume %@", agent.name))
             }
         }
     }
@@ -209,8 +209,17 @@ struct AgentsSidebarView: View {
             HStack(spacing: 10) {
                 AgentIconView(icon: row.agent.icon, directory: model.agentCatalog.iconDirectories[row.agent.id], size: 12).frame(width: 18).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))
-                    Text("\(row.spaceName) · \(row.agent.name)\(row.typed ? " · in a shell" : "")").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
+                    HStack(spacing: 5) {
+                        Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))
+                        // FR-AG19: the agent's own word for its effort, so it reads the same as `/effort`.
+                        if let effort = row.settings.effort {
+                            Text(effort).font(.system(size: 9.5, weight: .medium, design: .monospaced)).lineLimit(1).fixedSize()
+                                .foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 4).padding(.vertical, 0.5)
+                                .background(RoundedRectangle(cornerRadius: 3.5).fill(model.themeColor(.mutedForeground).opacity(0.16)))
+                                .help(L("Reasoning effort: %@", effort))
+                        }
+                    }
+                    Text(row.typed ? L("%1$@ · %2$@ · in a shell", row.spaceName, row.agentLabel) : "\(row.spaceName) · \(row.agentLabel)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -225,10 +234,11 @@ struct AgentsSidebarView: View {
             .padding(.vertical, 4).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Show this agent's pane")
+        .help(L("Show this agent's pane"))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(row.agent.name)\(row.typed ? " in a shell" : ""), \(row.tabTitle), \(row.spaceName)")
-        .accessibilityValue(row.status).accessibilityHint("Shows this pane").accessibilityAddTraits(.isButton)
+        .accessibilityLabel(row.typed ? L("%1$@ in a shell, %2$@, %3$@", row.agent.name, row.tabTitle, row.spaceName) : "\(row.agent.name), \(row.tabTitle), \(row.spaceName)")
+        .accessibilityValue(([row.status] + [row.settings.modelName, row.settings.effort.map { L("%@ effort", $0) }].compactMap { $0 }).joined(separator: ", ")).accessibilityHint(L("Shows this pane"))
+        .accessibilityAddTraits(.isButton)
     }
 
     private func launch(_ id: String, resume: Bool) {

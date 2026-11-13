@@ -4,7 +4,7 @@ Part of the [Extensions specification](SPEC.md#stories). **Epic:** 3, Tier 0 · 
 
 **Definition.** As a Trellis user, I want an extension to open a terminal pane running a command only after I see and allow the exact command line, so that extensions can start useful work without power over my existing panes.
 
-`trellis.terminal.open({command, args, cwd, placement, title})` opens a normal Trellis terminal pane in the focused space, as a new tab or a split. It needs the `terminal.open` permission, which gives no power over existing panes, so the extension doesn't need `layout.write`, `session.start` or `session.execute`. It always prompts with the exact command line.
+`trellis.terminal.open({command, args, cwd, placement, title})` opens a normal Trellis terminal pane in the focused space, as a new tab or a split. It needs the `terminal.open` permission, which gives no power over existing panes, so the extension doesn't need `workspace.write`, `session.start` or `session.execute`. It always prompts with the exact command line.
 
 ## Scope
 

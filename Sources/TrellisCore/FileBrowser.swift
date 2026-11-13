@@ -164,20 +164,33 @@ public struct FileSearchResult: Equatable, Sendable {
 }
 
 /// An app the Files view can open a file in (FR-FB05). Finder reveals a file and opens a folder; `defaultApp` opens with
-/// whatever the Mac uses for that file; `newTab` opens a Trellis tab in the folder.
+/// whatever the Mac uses for that file; `newTab` opens a Trellis tab in the folder; `trellisEditor` an editor tab.
 public struct EditorApp: Equatable, Identifiable, Sendable {
     public let id: String
-    public let name: String
+    private let englishName: String
+    /// App names are proper names; only the two entries that aren't apps are translated.
+    public var name: String {
+        switch id {
+        case "default": L("Default App")
+        case "trellis-tab": L("New Tab Here")
+        case "trellis-editor": L("Trellis Editor")
+        default: englishName
+        }
+    }
     /// Tried in order; the first installed one is used.
     public let bundleIDs: [String]
+
+    public init(id: String, name: String, bundleIDs: [String]) { self.id = id; englishName = name; self.bundleIDs = bundleIDs }
 
     public static let finder = EditorApp(id: "finder", name: "Finder", bundleIDs: ["com.apple.finder"])
     public static let defaultApp = EditorApp(id: "default", name: "Default App", bundleIDs: [])
     public static let newTab = EditorApp(id: "trellis-tab", name: "New Tab Here", bundleIDs: [])
+    /// An editor tab in the current space (FR-ED09); the default until another app is chosen.
+    public static let trellisEditor = EditorApp(id: "trellis-editor", name: "Trellis Editor", bundleIDs: [])
 
     /// The catalog, in menu order. Editors not installed aren't offered.
     public static let catalog: [EditorApp] = [
-        .finder,
+        .trellisEditor, .finder,
         EditorApp(id: "cursor", name: "Cursor", bundleIDs: ["com.todesktop.230313mzl4w4u92"]),
         EditorApp(id: "vscode", name: "VS Code", bundleIDs: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium"]),
         EditorApp(id: "zed", name: "Zed", bundleIDs: ["dev.zed.Zed", "dev.zed.Zed-Preview"]),

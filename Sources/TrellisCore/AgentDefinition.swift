@@ -14,10 +14,10 @@ public enum AgentIntegration: String, Codable, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .claudeHooks: "Hooks"
-        case .codexNotify: "Notify + bell"
-        case .piExtension: "Extension"
-        case .none: "Bell and notifications"
+        case .claudeHooks: L("Hooks")
+        case .codexNotify: L("Notify + bell")
+        case .piExtension: L("Extension")
+        case .none: L("Bell and notifications")
         }
     }
     /// Whether the agent itself says when a prompt starts; without that, submitting input counts as working.
@@ -129,10 +129,10 @@ public enum AgentDefinitionError: Error, Equatable, Sendable, LocalizedError {
     case tooLarge, malformed, unsupportedVersion(Int), invalid(String)
     public var errorDescription: String? {
         switch self {
-        case .tooLarge: "The agent definition is larger than 16 KB."
-        case .malformed: "The agent definition isn’t valid JSON in the agent schema."
-        case .unsupportedVersion(let version): "Agent definition version \(version) isn’t supported by this Trellis."
-        case .invalid(let field): "The agent definition’s \(field) isn’t valid."
+        case .tooLarge: L("The agent definition is larger than 16 KB.")
+        case .malformed: L("The agent definition isn’t valid JSON in the agent schema.")
+        case .unsupportedVersion(let version): L("Agent definition version %d isn’t supported by this Trellis.", version)
+        case .invalid(let field): L("The agent definition’s %@ isn’t valid.", field)
         }
     }
 }
@@ -275,12 +275,12 @@ public enum AgentCatalog {
             func issue(_ message: String) { snapshot.issues.append(AgentCatalogIssue(filename: filename, message: message)) }
             let definition: AgentDefinition
             do { definition = try AgentDefinitionValidator.validate(files.read(userDirectory.appendingPathComponent(filename))) } catch {
-                issue((error as? LocalizedError)?.errorDescription ?? "The file couldn’t be read.")
+                issue((error as? LocalizedError)?.errorDescription ?? L("The file couldn’t be read."))
                 continue
             }
-            guard filename == definition.id + fileSuffix else { issue("The filename must match the agent ID: \(definition.id)\(fileSuffix)."); continue }
-            guard !definition.isBuiltIn else { issue("The trellis- namespace is reserved for built-in agents."); continue }
-            guard !user.contains(where: { $0.id == definition.id }) else { issue("Another file already defines \(definition.id)."); continue }
+            guard filename == definition.id + fileSuffix else { issue(L("The filename must match the agent ID: %1$@%2$@.", definition.id, fileSuffix)); continue }
+            guard !definition.isBuiltIn else { issue(L("The trellis- namespace is reserved for built-in agents.")); continue }
+            guard !user.contains(where: { $0.id == definition.id }) else { issue(L("Another file already defines %@.", definition.id)); continue }
             user.append(definition)
             snapshot.iconDirectories[definition.id] = userDirectory
         }

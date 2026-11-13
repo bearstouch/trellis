@@ -161,6 +161,7 @@ By default your sessions run in a small background helper, so they keep going wh
 - A session that ended while Trellis was closed comes back stopped, with its output and a line saying "Session ended while Trellis was closed" and its exit code. This works as long as the helper is still running; it exits 30 seconds after its last session ends, and that output goes with it.
 - If kept sessions are found that no pane claims, Trellis asks whether to **Stop Them** or **Leave Running**. Nothing is ended without asking.
 - Kept sessions end when you log out or restart your Mac.
+- A kept session that sits idle is ended after 24 hours. Idle means Trellis isn't showing it (Trellis is closed or disconnected) and it has printed nothing in that time; a session open in a pane is never ended, and neither is one that keeps printing. Change the time, or pick **No timeout**, under **Settings → Session Broker → End idle kept sessions after**. Time your Mac spends asleep counts.
 
 To have quitting end every session instead, turn on **Settings → Sessions → Stop sessions when Trellis quits**. Quitting then asks for confirmation when sessions are running.
 

@@ -193,6 +193,27 @@ final class RemoteReconnectPolicyTests: XCTestCase {
         guard case .needsInput = RemoteSSHDiagnosis.classify(exitCode: 255, output: "") else { return XCTFail("An unexplained ssh failure must ask, not loop") }
     }
 
+    /// Phase 6: what a credential failure needs, as a stable code for protocol 2, from ssh's own wording.
+    func testNeedsInputCarriesAReasonCode() {
+        let cases: [(String, RemoteLinkReason)] = [
+            ("@@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@@\r\nHost key verification failed.", .hostKeyChanged),
+            ("Host key verification failed.", .hostKeyUnverified),
+            ("The authenticity of host 'build-box (10.0.0.2)' can't be established.", .hostKeyUnverified),
+            ("dev@build-box: Permission denied (publickey,password).", .authFailed),
+            ("Received disconnect: Too many authentication failures\r\nConnection closed by 10.0.0.2 port 22", .authFailed),
+            ("Enter passphrase for key '/Users/dev/.ssh/id_ed25519':", .needsPassphrase),
+            ("dev@build-box's password:", .needsPassword),
+            ("(dev@build-box) keyboard-interactive authentication", .needsPassword),
+            ("", .needsInput)
+        ]
+        for (output, expected) in cases {
+            guard case .needsInput(_, let reason) = RemoteSSHDiagnosis.classify(exitCode: 255, output: output) else { XCTFail(output); continue }
+            XCTAssertEqual(reason, expected, output)
+        }
+        XCTAssertEqual(Set(RemoteLinkReason.allCases.map(\.rawValue)).count, RemoteLinkReason.allCases.count, "Codes are distinct")
+        XCTAssertTrue(RemoteLinkReason.allCases.allSatisfy { $0.rawValue.wholeMatch(of: /[a-z][a-zA-Z]*/) != nil }, "lowerCamelCase codes")
+    }
+
     func testBackoffGrowsToAMinuteWithJitter() {
         XCTAssertEqual((1...8).map { RemoteBackoff.delay(attempt: $0, random: 0.5) }, [1, 2, 4, 8, 16, 32, 60, 60])
         XCTAssertEqual(RemoteBackoff.delay(attempt: 1, random: 0), 0.8, accuracy: 0.0001)

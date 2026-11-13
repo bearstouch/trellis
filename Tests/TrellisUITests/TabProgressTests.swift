@@ -57,15 +57,18 @@ final class TabProgressTests: XCTestCase {
         let spaceID = try XCTUnwrap(h.model.snapshot.activeSpaceID)
         XCTAssertEqual(h.model.tabPreviews(spaceID: spaceID).map(\.progress), [nil, TerminalProgress(state: .normal, percent: 50)])
 
-        let session = try XCTUnwrap(h.model.terminals[t.paneB]?.sessionID)
-        let reported = try result(try await h.call("session.get", ["id": session.uuidString]))
+        func attention() async throws -> [String: Any] {
+            let pane: [String: Any] = try await h.value("pane", "pane.get", ["id": t.paneB.uuidString])
+            return try XCTUnwrap(pane["attention"] as? [String: Any])
+        }
+        let reported = try await attention()
         let progress = try XCTUnwrap(reported["progress"] as? [String: Any])
         XCTAssertEqual(progress["state"] as? String, "normal")
         XCTAssertEqual(progress["percent"] as? Double, 50)
-        XCTAssertNil(reported["waitingForInput"])
+        XCTAssertNil(reported["needsInput"])
 
         try report(h, t.paneB, .indeterminate)
-        let indeterminate = try result(try await h.call("session.get", ["id": session.uuidString]))
+        let indeterminate = try await attention()
         let unknown = try XCTUnwrap(indeterminate["progress"] as? [String: Any])
         XCTAssertEqual(unknown["state"] as? String, "indeterminate")
         XCTAssertNil(unknown["percent"], "Indeterminate progress has no percentage")
@@ -76,7 +79,7 @@ final class TabProgressTests: XCTestCase {
         XCTAssertTrue(h.model.accessibility.panes.first { $0.id == t.paneB }?.value.contains("progress paused at 50 percent") == true)
         try report(h, t.paneB, .remove)
         XCTAssertNil(h.model.progress(tabID: t.b))
-        let removed = try result(try await h.call("session.get", ["id": session.uuidString]))
+        let removed = try await attention()
         XCTAssertNil(removed["progress"])
     }
 

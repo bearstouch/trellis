@@ -9,9 +9,9 @@ public enum HostCollisionPolicy: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .useExisting: "Use my existing hosts"
-        case .keepBoth: "Keep both (import as new hosts)"
-        case .replaceExisting: "Replace my existing hosts"
+        case .useExisting: L("Use my existing hosts")
+        case .keepBoth: L("Keep both (import as new hosts)")
+        case .replaceExisting: L("Replace my existing hosts")
         }
     }
 }
@@ -25,7 +25,7 @@ public enum PortableImportError: Error, Equatable, Sendable {
     public var message: String {
         switch self {
         case .invalid(let issues): issues.map(\.message).joined(separator: " ")
-        case .decisionRequired: "Some imported hosts match hosts you already have. Choose how to handle them."
+        case .decisionRequired: L("Some imported hosts match hosts you already have. Choose how to handle them.")
         case .hosts(let reason), .workspace(let reason): reason
         }
     }
@@ -57,7 +57,7 @@ public final class PortableTransfer {
 
     public func preview(_ data: Data) async -> Result<(PortableDocument.Parsed, PortableDocument.Preview), PortableImportError> {
         guard data.count <= 4_194_304, let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {
-            return .failure(.invalid([LayoutIssue(key: nil, "The file is not valid JSON or is larger than 4 MB.")]))
+            return .failure(.invalid([LayoutIssue(key: nil, L("The file is not valid JSON or is larger than 4 MB."))]))
         }
         switch PortableDocument.parse(value) {
         case .failure(let error): return .failure(.invalid(error.issues))
@@ -68,7 +68,7 @@ public final class PortableTransfer {
                 let path = host.draft.identityFile.trimmingCharacters(in: .whitespacesAndNewlines)
                 var isDirectory: ObjCBool = false
                 if !path.isEmpty, !(FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && !isDirectory.boolValue) {
-                    preview.errors.append(LayoutIssue(key: nil, "“\(host.draft.name)” uses identity file \(path), which does not exist on this Mac."))
+                    preview.errors.append(LayoutIssue(key: nil, L("“%1$@” uses identity file %2$@, which does not exist on this Mac.", host.draft.name, path)))
                 }
             }
             return .success((parsed, preview))
@@ -89,7 +89,7 @@ public final class PortableTransfer {
                 case .useExisting?: continue
                 case .replaceExisting?:
                     guard !changes.replacements.contains(where: { $0.id == current.id }) else {
-                        return .failure(.invalid([LayoutIssue(key: nil, "Several imported hosts match your “\(current.name)”; choose another option or keep one of them in the file.")]))
+                        return .failure(.invalid([LayoutIssue(key: nil, L("Several imported hosts match your “%@”; choose another option or keep one of them in the file.", current.name))]))
                     }
                     changes.replacements.append((current.id, host.draft, current.revision))
                 default: changes.creates.append((UUID(), host.draft))
@@ -102,9 +102,9 @@ public final class PortableTransfer {
         do { undo = try await hosts.library.applyImport(changes) } catch {
             switch error {
             case .invalid(let validation):
-                return .failure(.hosts("An imported host is invalid: " + validation.fields.values.sorted().joined(separator: " ") + " Nothing was imported."))
-            case .conflict: return .failure(.hosts("Your hosts changed while importing. Nothing was imported; try again."))
-            default: return .failure(.hosts("Saved hosts could not be updated. Nothing was imported."))
+                return .failure(.hosts(L("An imported host is invalid: %@ Nothing was imported.", validation.fields.values.sorted().joined(separator: " "))))
+            case .conflict: return .failure(.hosts(L("Your hosts changed while importing. Nothing was imported; try again.")))
+            default: return .failure(.hosts(L("Saved hosts could not be updated. Nothing was imported.")))
             }
         }
         var summary = PortableImportSummary(hostsCreated: changes.creates.count, hostsReplaced: changes.replacements.count, skippedSpaces: parsed.skippedSpaces)
@@ -124,8 +124,8 @@ public final class PortableTransfer {
                 return .failure(
                     .workspace(
                         reverted
-                            ? "The project library could not be written. Nothing was imported."
-                            : "The project library could not be written, and the imported hosts could not be removed. Review Saved Hosts."))
+                            ? L("The project library could not be written. Nothing was imported.")
+                            : L("The project library could not be written, and the imported hosts could not be removed. Review Saved Hosts.")))
             }
             await projects.load()
             summary.projectsCreated = created.count

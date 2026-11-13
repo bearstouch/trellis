@@ -22,19 +22,19 @@ struct FilesSidebarView: View {
                     Image(systemName: model.files.showHidden ? "eye" : "eye.slash")
                 }
                 .toggleStyle(.button).buttonStyle(.plain)
-                .help(model.files.showHidden ? "Hide hidden files" : "Show hidden files").accessibilityLabel("Show hidden files")
+                .help(model.files.showHidden ? L("Hide hidden files") : L("Show hidden files")).accessibilityLabel(L("Show hidden files"))
                 Button {
                     model.collapseAllFilesFolders()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right").rotationEffect(.degrees(90))
                 }
-                .help("Collapse all folders").accessibilityLabel("Collapse All Folders")
+                .help(L("Collapse all folders")).accessibilityLabel(L("Collapse All Folders"))
                 Button {
                     Task { await model.refreshFiles(paneID: paneID) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Read the folder again").accessibilityLabel("Reload Files")
+                .help(L("Read the folder again")).accessibilityLabel(L("Reload Files"))
             }
             Divider().overlay(model.separatorOverlay)
             if let root = model.files.root {
@@ -48,19 +48,19 @@ struct FilesSidebarView: View {
                         .padding(.horizontal, 12).padding(.bottom, 6).transition(.opacity)
                 }
                 Divider().overlay(model.separatorOverlay)
-                Text("↩ Open in \(model.files.editor.name) · ⇧⌘C Copy Path · ⌥↩ Insert in terminal")
+                Text(L("↩ Open in %@ · ⇧⌘C Copy Path · ⌥↩ Insert in terminal", model.files.editor.name))
                     .font(.caption).foregroundStyle(muted).lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 8)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("No folder").font(.headline)
-                    Text("The focused pane has no folder on this Mac yet. Its shell reports one after its first prompt.")
+                    Text(L("No folder")).font(.headline)
+                    Text(L("The focused pane has no folder on this Mac yet. Its shell reports one after its first prompt."))
                         .font(.callout).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true)
                 }.padding(12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .background(model.chromeFill(.surface))
-        .accessibilityElement(children: .contain).accessibilityLabel("Files")
+        .accessibilityElement(children: .contain).accessibilityLabel(L("Files"))
         .animation(.easeOut(duration: 0.15), value: model.files.status)
         .task(id: refreshKey) { await model.refreshFiles(paneID: paneID) }
         .onChange(of: model.filesFocusRequest, initial: true) { DispatchQueue.main.async { searchFocused = true } }
@@ -76,11 +76,11 @@ struct FilesSidebarView: View {
             HStack(spacing: 6) {
                 Text(AppWorkspaceModel.abbreviatingHome(root)).font(.system(size: 11, design: .monospaced)).foregroundStyle(model.themeColor(.foreground))
                     .lineLimit(1).truncationMode(.head).help(root)
-                Text("· follows the focused pane").font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1).fixedSize()
+                Text(L("· follows the focused pane")).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1).fixedSize()
             }.accessibilityElement(children: .combine)
             HStack(spacing: 8) {
-                TextField("Search files…", text: Binding(get: { model.files.query }, set: { model.setFilesQuery($0) }))
-                    .textFieldStyle(.roundedBorder).focused($searchFocused).accessibilityLabel("Search files")
+                TextField(L("Search files…"), text: Binding(get: { model.files.query }, set: { model.setFilesQuery($0) }))
+                    .textFieldStyle(.roundedBorder).focused($searchFocused).accessibilityLabel(L("Search files"))
                     .onKeyPress(phases: .down) { handleKey($0) }
                 openInMenu
             }
@@ -99,15 +99,15 @@ struct FilesSidebarView: View {
                 }
             }
             Divider()
-            Button("Other App…") { chooseOtherApp(for: target) }
+            Button(L("Other App…")) { chooseOtherApp(for: target) }
         } label: {
-            editorLabel(editor, checked: false, title: "Open in")
+            editorLabel(editor, checked: false, title: L("Open in"))
         } primaryAction: {
             Task { await model.openFile(target) }
         }
         .menuStyle(.button).fixedSize().controlSize(.regular)
-        .help("Open \(target?.name ?? "the project folder") in \(editor.name); the arrow chooses another app")
-        .accessibilityLabel("Open in \(editor.name)")
+        .help(target.map { L("Open %1$@ in %2$@; the arrow chooses another app", $0.name, editor.name) } ?? L("Open the project folder in %@; the arrow chooses another app", editor.name))
+        .accessibilityLabel(L("Open in %@", editor.name))
     }
 
     @ViewBuilder private func editorLabel(_ app: EditorApp, checked: Bool, title: String? = nil) -> some View {
@@ -138,7 +138,7 @@ struct FilesSidebarView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.application]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.prompt = "Open"
+        panel.prompt = L("Open")
         guard panel.runModal() == .OK, let app = panel.url else { return }
         model.openFile(entry, withApp: app)
     }
@@ -151,7 +151,7 @@ struct FilesSidebarView: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(model.files.rows) { row in
                         if row.unreadable {
-                            Label("Can't read this folder", systemImage: "exclamationmark.triangle").font(.caption)
+                            Label(L("Can't read this folder"), systemImage: "exclamationmark.triangle").font(.caption)
                                 .foregroundStyle(model.themeColor(.mutedForeground)).padding(.leading, CGFloat(row.depth) * 16 + 26).frame(height: 24)
                         } else {
                             FileRow(model: model, entry: row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil)
@@ -162,7 +162,7 @@ struct FilesSidebarView: View {
             .focusable().focused($listFocused).focusEffectDisabled()
             .onKeyPress(phases: .down) { handleKey($0) }
             .onChange(of: model.files.selection) { _, path in if let path { proxy.scrollTo(path) } }
-            .accessibilityLabel("Project files")
+            .accessibilityLabel(L("Project files"))
         }
     }
 
@@ -184,14 +184,15 @@ struct FilesSidebarView: View {
                 }.padding(.horizontal, 6).padding(.vertical, 2)
             }
             .onChange(of: model.files.selection) { _, path in if let path { proxy.scrollTo(path) } }
-            .accessibilityLabel("Matching files")
+            .accessibilityLabel(L("Matching files"))
         }
     }
 
     private func summary(_ result: FileSearchResult) -> String {
         let count = result.matches.count
-        let words = count == 0 ? "No files match" : count == 1 ? "1 match" : "\(count) matches"
-        return result.truncated ? "\(words) in the first \(FileBrowser.searchFileLimit.formatted()) files" : words
+        guard result.truncated else { return count == 0 ? L("No files match") : count == 1 ? L("1 match") : L("%d matches", count) }
+        let limit = FileBrowser.searchFileLimit.formatted()
+        return count == 0 ? L("No files match in the first %@ files", limit) : count == 1 ? L("1 match in the first %@ files", limit) : L("%1$d matches in the first %2$@ files", count, limit)
     }
 
     private func highlighted(_ match: FileSearchMatch) -> AttributedString {
@@ -273,13 +274,13 @@ private struct FileRow: View {
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
-                .help("Copy Path (⇧⌘C)").accessibilityLabel("Copy path of \(entry.name)")
+                .help(L("Copy Path (⇧⌘C)")).accessibilityLabel(L("Copy path of %@", entry.name))
                 Button {
                     Task { await model.openFile(entry) }
                 } label: {
                     Image(systemName: "arrow.up.forward.app")
                 }
-                .help("Open in \(model.files.editor.name)").accessibilityLabel("Open \(entry.name) in \(model.files.editor.name)")
+                .help(L("Open in %@", model.files.editor.name)).accessibilityLabel(L("Open %1$@ in %2$@", entry.name, model.files.editor.name))
             }
         }
         .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(model.themeColor(.foreground))
@@ -298,8 +299,8 @@ private struct FileRow: View {
         .accessibilityValue(spokenValue(expanded: expanded))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { activate() }
-        .accessibilityAction(named: "Copy Path") { model.copyFilePath(entry) }
-        .accessibilityAction(named: "Insert Path in Terminal") { model.insertFilePath(entry) }
+        .accessibilityAction(named: L("Copy Path")) { model.copyFilePath(entry) }
+        .accessibilityAction(named: L("Insert Path in Terminal")) { model.insertFilePath(entry) }
     }
 
     private var isTreeFolder: Bool { entry.isDirectory && subtitle == nil }
@@ -310,8 +311,8 @@ private struct FileRow: View {
     }
 
     private func spokenValue(expanded: Bool) -> String {
-        let kind = entry.isDirectory ? (expanded ? "folder, expanded" : "folder, collapsed") : "file"
-        return subtitle.map { "\(kind), in \($0)" } ?? kind
+        guard let subtitle else { return entry.isDirectory ? (expanded ? L("folder, expanded") : L("folder, collapsed")) : L("file") }
+        return entry.isDirectory ? (expanded ? L("folder, expanded, in %@", subtitle) : L("folder, collapsed, in %@", subtitle)) : L("file, in %@", subtitle)
     }
 
     /// A click selects; on a tree folder it opens or closes it too.
@@ -331,17 +332,21 @@ private struct FileRow: View {
 
     @ViewBuilder private var menu: some View {
         let editor = model.files.editor
-        Button("Open in \(editor.name)") { Task { await model.openFile(entry) } }
-        Menu("Open With") {
+        Button(L("Open in %@", editor.name)) { Task { await model.openFile(entry) } }
+        // An editor tab is one click away whichever app is remembered; choosing it here isn't remembered (FR-ED09).
+        if editor != .trellisEditor, !entry.isDirectory {
+            Button(L("Open in %@", EditorApp.trellisEditor.name)) { Task { await model.openFile(entry, in: .trellisEditor, remember: false) } }
+        }
+        Menu(L("Open With")) {
             ForEach(model.files.editors) { app in Button(app.name) { Task { await model.openFile(entry, in: app) } } }
         }
-        Button("Reveal in Finder") { model.revealFile(entry) }
+        Button(L("Reveal in Finder")) { model.revealFile(entry) }
         Divider()
-        Button("Copy Path") { model.copyFilePath(entry) }
-        Button("Copy Relative Path") { model.copyFilePath(entry, style: .relative) }
-        Button("Copy Name") { model.copyFilePath(entry, style: .name) }
+        Button(L("Copy Path")) { model.copyFilePath(entry) }
+        Button(L("Copy Relative Path")) { model.copyFilePath(entry, style: .relative) }
+        Button(L("Copy Name")) { model.copyFilePath(entry, style: .name) }
         Divider()
-        Button("Insert Path in Terminal") { model.insertFilePath(entry) }
-        Button(entry.isDirectory ? "Type cd to This Folder" : "Type cd to Its Folder") { model.typeChangeDirectory(entry) }
+        Button(L("Insert Path in Terminal")) { model.insertFilePath(entry) }
+        Button(entry.isDirectory ? L("Type cd to This Folder") : L("Type cd to Its Folder")) { model.typeChangeDirectory(entry) }
     }
 }

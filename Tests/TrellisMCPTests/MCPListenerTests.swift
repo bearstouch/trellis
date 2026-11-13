@@ -5,7 +5,7 @@ import TrellisCore
 @testable import TrellisMCP
 
 /// Minimal blocking TCP client for loopback tests.
-final class TCPClient {
+final class TCPClient: @unchecked Sendable {
     let fd: Int32
 
     init?(port: UInt16, address: String = "127.0.0.1") {
@@ -156,7 +156,7 @@ final class MCPListenerTests: XCTestCase {
     func testServerAppliesSettingsAndServesMCP() async throws {
         let store = GrantStore(url: nil, secrets: MCPSecrets())
         let handler = AuthorizingControlHandler(grants: store, domain: MCPFakeDomain())
-        let token = try await store.create(name: "e2e", capabilities: [.metadataRead], spaceScope: .all, hostScope: .all, lifetime: 3600).token
+        let token = try await store.create(name: "e2e", capabilities: [.workspaceRead], spaceScope: .all, hostScope: .all, lifetime: 3600).token
         let server = MCPServer(handler: handler, serverVersion: "test")
         XCTAssertEqual(server.apply(RemoteControlSettings(mcpEnabled: false)), .stopped)
         // Port 0 is not a valid setting; find a free port first.
@@ -182,5 +182,67 @@ final class MCPListenerTests: XCTestCase {
         guard case .failed(let reason) = server.apply(RemoteControlSettings(mcpEnabled: true, port: busy)) else { return XCTFail("Expected a failure status") }
         XCTAssertTrue(reason.contains("already in use"))
         XCTAssertNil(TCPClient(port: port), "Applying new settings stops the previous listener")
+    }
+
+    /// events_poll over the real listener: a waiting poll holds its keep-alive connection for its timeout (well inside the
+    /// listener's 30 s limit, which counts only time spent reading a request), then the connection serves the next call;
+    /// an event answers a waiting poll early.
+    func testEventsPollLongPollsOverHTTPOnAKeepAliveConnection() async throws {
+        let store = GrantStore(url: nil, secrets: MCPSecrets())
+        let hub = EventHubV2(instanceID: UUID(), grants: store)
+        let handler = AuthorizingControlHandler(grants: store, domain: MCPFakeDomain(), events: hub)
+        let token = try await store.create(name: "poller", capabilities: [.workspaceRead, .themeRead], spaceScope: .all, hostScope: .all, lifetime: 3600).token
+        let endpoint = MCPEndpoint(handler: handler, serverVersion: "test", loopbackOnly: true)
+        let listener = MCPListener { request in await endpoint.handle(request) }
+        let port = try listener.start(address: "127.0.0.1", port: 0)
+        defer { listener.stop() }
+        XCTAssertGreaterThan(MCPListener.timeout, Double(EventHubV2.maximumTimeoutMs) / 1_000, "The longest poll fits the listener's limit")
+        let request: @Sendable (String, String?) -> String = { body, session in
+            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(token)\r\nContent-Type: application/json\r\n"
+                + (session.map { "Mcp-Session-Id: \($0)\r\n" } ?? "") + "Content-Length: \(body.utf8.count)\r\n\r\n\(body)"
+        }
+        let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}"#
+        let poll: @Sendable (Int) -> String = { timeout in
+            #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"events_poll","arguments":{"topics":["appearance"],"timeoutMs":\#(timeout)}}}"#
+        }
+        let client = try XCTUnwrap(TCPClient(port: port))
+        let opened = try await Task.detached {
+            client.send(request(initialize, nil))
+            return try XCTUnwrap(client.response())
+        }.value
+        let session = try XCTUnwrap(opened.headers["mcp-session-id"])
+
+        // No event: the poll answers after its timeout, on the same connection.
+        let (waited, elapsed) = try await Task.detached {
+            let start = ContinuousClock.now
+            client.send(request(poll(1_500), session))
+            let response = try XCTUnwrap(client.response())
+            return (response, ContinuousClock.now - start)
+        }.value
+        XCTAssertEqual(waited.status, 200)
+        XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(1_400))
+        XCTAssertLessThan(elapsed, .seconds(4))
+        XCTAssertTrue(waited.body.contains(#""events":[]"#), waited.body)
+        let pinged = try await Task.detached {
+            client.send(request(#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#, session))
+            return try XCTUnwrap(client.response())
+        }.value
+        XCTAssertEqual(pinged.status, 200, "The kept-alive connection serves the next call")
+
+        // An event published while the poll waits answers it early.
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            await hub.publish([.appearance(mode: "light", lightThemeID: "l", darkThemeID: "d", effectiveThemeID: "l", revision: 3)])
+        }
+        let (answered, early) = try await Task.detached {
+            let start = ContinuousClock.now
+            client.send(request(poll(20_000), session))
+            let response = try XCTUnwrap(client.response())
+            return (response, ContinuousClock.now - start)
+        }.value
+        XCTAssertEqual(answered.status, 200)
+        XCTAssertLessThan(early, .seconds(4), "The event ended the wait")
+        XCTAssertTrue(answered.body.contains("appearance.changed"), answered.body)
+        XCTAssertTrue(answered.body.contains(MCPTools.untrustedNotice), "Poll results carry the untrusted-data notice")
     }
 }

@@ -54,14 +54,14 @@ struct WelcomeTourView: View {
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(model.themeColor(.border), lineWidth: model.increaseContrast ? 1.5 : 0.5))
                 .shadow(color: .black.opacity(0.35), radius: 32, y: 16)
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Welcome Tour")
+                .accessibilityLabel(L("Welcome Tour"))
                 .accessibilityAddTraits(.isModal)
             }
             .animation(model.reduceMotion ? nil : .easeOut(duration: 0.15), value: step)
             .onChange(of: step) { _, value in
                 NSAccessibility.post(
                     element: NSApp as Any, notification: .announcementRequested,
-                    userInfo: [.announcement: "Step \(value.counter): \(value.title)", .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+                    userInfo: [.announcement: L("Step %1$d of %2$d: %3$@", value.rawValue + 1, WelcomeTourStep.allCases.count, value.title), .priority: NSAccessibilityPriorityLevel.medium.rawValue])
             }
         }
         .background(WelcomeTourKeyMonitor(model: model))
@@ -71,10 +71,10 @@ struct WelcomeTourView: View {
         VStack(spacing: 0) {
             HStack {
                 Text(step.counter).font(.system(size: 12, weight: .semibold)).monospacedDigit().foregroundStyle(model.themeColor(.accent))
-                    .accessibilityLabel("Step \(step.counter)")
+                    .accessibilityLabel(L("Step %1$d of %2$d", step.rawValue + 1, WelcomeTourStep.allCases.count))
                 Spacer()
                 if step.next != nil {
-                    Button("Skip Tour") { model.closeWelcomeTour() }
+                    Button(L("Skip Tour")) { model.closeWelcomeTour() }
                         .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(model.themeColor(.mutedForeground))
                         .accessibilityIdentifier("welcomeTour.skip")
                 }
@@ -90,9 +90,9 @@ struct WelcomeTourView: View {
                 if showsDots { dots(step) }
                 Spacer(minLength: 0)
                 if step.previous != nil {
-                    Button("Back") { model.retreatWelcomeTour() }.controlSize(.large).accessibilityIdentifier("welcomeTour.back")
+                    Button(L("Back")) { model.retreatWelcomeTour() }.controlSize(.large).accessibilityIdentifier("welcomeTour.back")
                 }
-                Button(step == .welcome ? "Start Tour" : step.next == nil ? "Start Using Trellis" : "Next") { model.advanceWelcomeTour() }
+                Button(step == .welcome ? L("Start Tour") : step.next == nil ? L("Start Using Trellis") : L("Next")) { model.advanceWelcomeTour() }
                     .buttonStyle(WelcomeTourPrimaryStyle(fill: model.themeColor(.accent), text: model.accentForeground))
                     .fixedSize().accessibilityIdentifier("welcomeTour.primary")
             }
@@ -113,7 +113,7 @@ struct WelcomeTourView: View {
                         .frame(width: 17, height: 24).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Go to step \(step.rawValue + 1): \(step.title)")
+                .accessibilityLabel(L("Go to step %1$d: %2$@", step.rawValue + 1, step.title))
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
@@ -178,53 +178,52 @@ private struct WelcomeTourCopy: View {
 
     private var intro: String {
         switch step {
-        case .welcome: "A native Mac terminal that keeps your work organized and your sessions alive. This short tour shows you around and sets up the essentials."
-        case .workspace: "Give each piece of work its own place. Everything lives in one Mac window, and the layout comes back after you relaunch."
-        case .sessions: "Quit Trellis, or lose it to a crash, and your long builds and servers carry on. They’re back in their panes at the next launch."
-        case .projects: "Save the layout and commands a project needs, then open it all together, ready to work."
-        case .remote: "Save your SSH hosts, then open one as a whole workspace. When the network drops, your remote sessions keep going."
-        case .agents: "Run Claude Code, pi or Codex from the Agents view in the right sidebar, here or on a remote host. Your agent, your account: Trellis adds no AI of its own."
-        case .keyboard: "Three shortcuts are worth learning first. You can rebind all of them in Settings → Keyboard."
-        case .setup: "A few choices to finish. You can change them later."
+        case .welcome: L("A native Mac terminal that keeps your work organized and your sessions alive. This short tour shows you around and sets up the essentials.")
+        case .workspace: L("Give each piece of work its own place. Everything lives in one Mac window, and the layout comes back after you relaunch.")
+        case .sessions: L("Quit Trellis, or lose it to a crash, and your long builds and servers carry on. They’re back in their panes at the next launch.")
+        case .projects: L("Save the layout and commands a project needs, then open it all together, ready to work.")
+        case .remote: L("Save your SSH hosts, then open one as a whole workspace. When the network drops, your remote sessions keep going.")
+        case .agents: L("Run Claude Code, pi or Codex from the Agents view in the right sidebar, here or on a remote host. Your agent, your account: Trellis adds no AI of its own.")
+        case .keyboard: L("Three shortcuts are worth learning first. You can rebind all of them in Settings → Keyboard.")
+        case .setup: L("A few choices to finish. You can change them later.")
         }
     }
 
     private var splitDetail: String {
-        let nest = "Nest them to build the layout you need."
         guard let leftRight = model.welcomeTourChord(.splitLeftRight), let topBottom = model.welcomeTourChord(.splitTopBottom) else {
-            return "The Pane menu splits left and right, or top and bottom. \(nest)"
+            return L("The Pane menu splits left and right, or top and bottom. Nest them to build the layout you need.")
         }
-        return "\(leftRight) splits left and right, \(topBottom) top and bottom. \(nest)"
+        return L("%1$@ splits left and right, %2$@ top and bottom. Nest them to build the layout you need.", leftRight, topBottom)
     }
 
     @ViewBuilder private var rows: some View {
         VStack(alignment: .leading, spacing: 16) {
             switch step {
             case .welcome:
-                row("slider.horizontal.3", "Set up the essentials", "Choose an appearance and how sessions behave at quit.")
-                row("sparkles", "See what makes it different", "Sessions that outlive the app, coding agents and remote workspaces.")
-                row("clock", "About a minute", "Skip whenever you like. Replay it from the Help menu or the command palette.")
+                row("slider.horizontal.3", L("Set up the essentials"), L("Choose an appearance and how sessions behave at quit."))
+                row("sparkles", L("See what makes it different"), L("Sessions that outlive the app, coding agents and remote workspaces."))
+                row("clock", L("About a minute"), L("Skip whenever you like. Replay it from the Help menu or the command palette."))
             case .workspace:
-                row(chord: .newSpace, "macwindow", "Spaces in the sidebar", "Rename and reorder them. Sessions keep running when you switch away.")
-                row(chord: .newTab, "plus.square", "Tabs in each space", "Double-click a tab to name it. Each tab keeps its own layout.")
-                row(chord: .splitLeftRight, "rectangle.split.2x1", "Splits inside a tab", splitDetail)
-                row("sidebar.right", "A sidebar on the right", "The dock on the window’s edge opens files, the scratchpad, tasks and agents beside your panes.")
+                row(chord: .newSpace, "macwindow", L("Spaces in the sidebar"), L("Rename and reorder them. Sessions keep running when you switch away."))
+                row(chord: .newTab, "plus.square", L("Tabs in each space"), L("Double-click a tab to name it. Each tab keeps its own layout."))
+                row(chord: .splitLeftRight, "rectangle.split.2x1", L("Splits inside a tab"), splitDetail)
+                row("sidebar.right", L("A sidebar on the right"), L("The dock on the window’s edge opens files, the scratchpad, tasks and agents beside your panes."))
             case .sessions:
-                row("waveform.path.ecg", "On by default", "Prefer sessions to end at quit? You can choose that at the end of this tour.")
-                row("checkmark.shield", "Nothing replays by itself", "Sessions that ended come back stopped, and typed commands are never rerun.")
+                row("waveform.path.ecg", L("On by default"), L("Prefer sessions to end at quit? You can choose that at the end of this tour."))
+                row("checkmark.shield", L("Nothing replays by itself"), L("Sessions that ended come back stopped, and typed commands are never rerun."))
             case .projects:
-                row(chord: .showProjects, "folder", "Your project library", "Open it from the sidebar, above Hosts and Settings.")
-                row("desktopcomputer", "Launch it anywhere", "Choose This Mac or a saved host each time. Trellis remembers the last folder.")
+                row(chord: .showProjects, "folder", L("Your project library"), L("Open it from the sidebar, above Hosts and Settings."))
+                row("desktopcomputer", L("Launch it anywhere"), L("Choose This Mac or a saved host each time. Trellis remembers the last folder."))
             case .remote:
-                row("server.rack", "Saved hosts", "Connect in a new tab, a new space or a split. Uses your own ssh and config.")
-                row("arrow.clockwise", "Remote workspaces", "Trellis reconnects by itself when it can and shows what you missed, without repeating output.")
+                row("server.rack", L("Saved hosts"), L("Connect in a new tab, a new space or a split. Uses your own ssh and config."))
+                row("arrow.clockwise", L("Remote workspaces"), L("Trellis reconnects by itself when it can and shows what you missed, without repeating output."))
             case .agents:
-                row("bell", "Know when you’re needed", "Tabs say Needs you, Done or Error, and the dock counts agents waiting on you, so you can leave them to work.")
-                row("play", "Pick up where you left off", "Stopped agent panes offer to resume the last conversation.")
+                row("bell", L("Know when you’re needed"), L("Tabs say Needs you, Done or Error, and the dock counts agents waiting on you, so you can leave them to work."))
+                row("play", L("Pick up where you left off"), L("Stopped agent panes offer to resume the last conversation."))
             case .keyboard:
-                row(chord: .commandPalette, "command", "Command palette", "Search actions, spaces, hosts, projects and themes in one list.")
-                row(chord: .jumpToDirectory, "arrow.turn.down.right", "Jump to a directory", "Return to folders you visit often, on this Mac or a host.")
-                row(chord: .toggleFiles, "folder", "Files", model.welcomeTourSidebarDetail)
+                row(chord: .commandPalette, "command", L("Command palette"), L("Search actions, spaces, hosts, projects and themes in one list."))
+                row(chord: .jumpToDirectory, "arrow.turn.down.right", L("Jump to a directory"), L("Return to folders you visit often, on this Mac or a host."))
+                row(chord: .toggleFiles, "folder", L("Files"), model.welcomeTourSidebarDetail)
             case .setup: setup
             }
         }
@@ -253,7 +252,7 @@ private struct WelcomeTourCopy: View {
             HStack(alignment: .top, spacing: 12) {
                 Text(chord).font(.system(size: 12, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7).foregroundStyle(model.themeColor(.foreground))
                     .frame(width: 48, height: 28).background(model.welcomeTourFill, in: RoundedRectangle(cornerRadius: 6))
-                    .accessibilityLabel("Shortcut \(chord)")
+                    .accessibilityLabel(L("Shortcut %@", chord))
                 text(title, detail)
             }
         } else {
@@ -263,8 +262,8 @@ private struct WelcomeTourCopy: View {
 
     @ViewBuilder private var setup: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Appearance").font(.system(size: 13, weight: .semibold)).foregroundStyle(model.themeColor(.foreground))
-            SegmentedPicker("Appearance", selection: model.appearance.chromeMode, options: [(.system, "System"), (.dark, "Dark"), (.light, "Light")]) { [weak model] in
+            Text(L("Appearance")).font(.system(size: 13, weight: .semibold)).foregroundStyle(model.themeColor(.foreground))
+            SegmentedPicker(L("Appearance"), selection: model.appearance.chromeMode, options: [(.system, L("System")), (.dark, L("Dark")), (.light, L("Light"))]) { [weak model] in
                 model?.setChromeModeFromWelcomeTour($0)
             }
             .labelsHidden().frame(maxWidth: .infinity).accessibilityIdentifier("welcomeTour.appearance")
@@ -272,22 +271,22 @@ private struct WelcomeTourCopy: View {
         if model.welcomeTourCLIStatus != .unavailable {
             Divider().overlay(model.separatorOverlay)
             HStack(spacing: 16) {
-                text("Command line tool", "Adds one link at ~/.local/bin/trellis. Your shell files aren’t touched. It’s also in the Trellis menu.")
+                text(L("Command line tool"), L("Adds one link at ~/.local/bin/trellis. Your shell files aren’t touched. It’s also in the Trellis menu."))
                 Spacer(minLength: 0)
                 if model.welcomeTourCLIStatus == .installed {
-                    Label("Installed", systemImage: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(model.themeColor(.success))
+                    Label(L("Installed"), systemImage: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(model.themeColor(.success))
                 } else {
-                    Button("Install") { model.installCLIFromWelcomeTour() }.disabled(model.welcomeTourCLIInstalling).accessibilityIdentifier("welcomeTour.installCLI")
+                    Button(L("Install")) { model.installCLIFromWelcomeTour() }.disabled(model.welcomeTourCLIInstalling).accessibilityIdentifier("welcomeTour.installCLI")
                 }
             }
         }
         Divider().overlay(model.separatorOverlay)
         HStack(spacing: 16) {
             text(
-                "Keep sessions running after quit",
-                model.keepSessionsRunning ? "Builds and servers carry on after you quit." : "Quitting Trellis ends your sessions.")
+                L("Keep sessions running after quit"),
+                model.keepSessionsRunning ? L("Builds and servers carry on after you quit.") : L("Quitting Trellis ends your sessions."))
             Spacer(minLength: 0)
-            Toggle("Keep sessions running after quit", isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) }))
+            Toggle(L("Keep sessions running after quit"), isOn: Binding(get: { model.keepSessionsRunning }, set: { model.setKeepSessionsRunning($0) }))
                 .toggleStyle(.switch).labelsHidden().accessibilityIdentifier("welcomeTour.keepSessions")
         }
     }
@@ -471,9 +470,9 @@ private struct WelcomeTourStage: View {
                 output("✓ built in 4m 12s", green)
             }
             VStack(alignment: .leading, spacing: 0) {
-                timeline(dim, "You quit Trellis", "The window closes. The build doesn’t notice.", last: false)
-                timeline(model.themeColor(.accent), "Still running", "A small helper keeps the session alive.", last: false)
-                timeline(green, "You come back", "Same process, with its output caught up.", last: true)
+                timeline(dim, L("You quit Trellis"), L("The window closes. The build doesn’t notice."), last: false)
+                timeline(model.themeColor(.accent), L("Still running"), L("A small helper keeps the session alive."), last: false)
+                timeline(green, L("You come back"), L("Same process, with its output caught up."), last: true)
             }
             .frame(width: 346, alignment: .leading)
         }
@@ -504,7 +503,7 @@ private struct WelcomeTourStage: View {
             }
             Spacer()
             if launch {
-                Text("Launch…").font(.system(size: 11, weight: .semibold)).foregroundStyle(model.accentForeground).padding(.horizontal, 10).padding(.vertical, 5)
+                Text(L("Launch…")).font(.system(size: 11, weight: .semibold)).foregroundStyle(model.accentForeground).padding(.horizontal, 10).padding(.vertical, 5)
                     .background(model.themeColor(.accent), in: RoundedRectangle(cornerRadius: 6))
             }
         }
@@ -512,10 +511,10 @@ private struct WelcomeTourStage: View {
     }
 
     private var projects: some View {
-        list("Projects") {
-            projectRow("storefront", "3 panes · npm run dev, tests, claude", last: "Last: This Mac", launch: true)
-            projectRow("billing-api", "2 panes · docker compose up, logs", last: "Last: build-box, This Mac")
-            projectRow("docs-site", "1 pane · mkdocs serve", last: nil)
+        list(L("Projects")) {
+            projectRow("storefront", L("%d panes", 3) + " · npm run dev, tests, claude", last: L("Last: %@", L("This Mac")), launch: true)
+            projectRow("billing-api", L("%d panes", 2) + " · docker compose up, logs", last: L("Last: %@", "build-box, " + L("This Mac")))
+            projectRow("docs-site", L("1 pane") + " · mkdocs serve", last: nil)
         }
     }
 
@@ -533,10 +532,10 @@ private struct WelcomeTourStage: View {
 
     private var remote: some View {
         VStack(spacing: 20) {
-            list("Hosts") {
-                hostRow("build-box", "dev@build.internal", "✓ Connected", green)
-                hostRow("staging", "deploy@staging.internal", "↻ Reconnecting", yellow)
-                hostRow("nas", "admin@nas.local", "– Offline", muted)
+            list(L("Hosts")) {
+                hostRow("build-box", "dev@build.internal", L("✓ Connected"), green)
+                hostRow("staging", "deploy@staging.internal", L("↻ Reconnecting"), yellow)
+                hostRow("nas", "admin@nas.local", L("– Offline"), muted)
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 0) {
@@ -569,7 +568,7 @@ private struct WelcomeTourStage: View {
     }
 
     private func launchRow(_ name: String) -> some View {
-        agentRow(name) { Text("Open").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(model.themeColor(.accent)) }
+        agentRow(name) { Text(L("Open")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(model.themeColor(.accent)) }
     }
 
     /// A tab bar over the panes and the Agents view, with the dock on the right edge (FR-SB01–FR-SB03, FR-SB05).
@@ -579,13 +578,13 @@ private struct WelcomeTourStage: View {
                 HStack(spacing: 0) {
                     HStack(spacing: 6) {
                         Text("checkout").fontWeight(.semibold).foregroundStyle(fg)
-                        capsule("! Needs you", yellow)
+                        capsule(L("! Needs you"), yellow)
                     }
                     .padding(.horizontal, 10).frame(maxHeight: .infinity).background(model.terminalBackground)
                     .overlay(alignment: .top) { model.themeColor(.accent).frame(height: 2) }
                     HStack(spacing: 6) {
                         Text("docs").foregroundStyle(muted)
-                        capsule("✓ Done", green)
+                        capsule(L("✓ Done"), green)
                     }
                     .padding(.horizontal, 10)
                     Spacer(minLength: 0)
@@ -603,13 +602,13 @@ private struct WelcomeTourStage: View {
                     .font(mono(10)).padding(10).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(model.terminalBackground)
                     Rectangle().fill(border.opacity(0.6)).frame(width: 0.5)
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Agents").font(.system(size: 11, weight: .semibold)).foregroundStyle(fg).padding(.bottom, 8)
-                        Text("Launch").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
+                        Text(L("Agents")).font(.system(size: 11, weight: .semibold)).foregroundStyle(fg).padding(.bottom, 8)
+                        Text(L("Launch")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
                         launchRow("Claude Code"); launchRow("pi"); launchRow("Codex")
                         Rectangle().fill(border.opacity(0.6)).frame(height: 0.5).padding(.vertical, 6)
-                        Text("Running").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
-                        agentRow("checkout", "api · Claude Code") { capsule("! Needs you", yellow) }
-                        agentRow("docs", "web · pi") { capsule("✓ Done", green) }
+                        Text(L("Running")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
+                        agentRow("checkout", "api · Claude Code") { capsule(L("! Needs you"), yellow) }
+                        agentRow("docs", "web · pi") { capsule(L("✓ Done"), green) }
                         Spacer(minLength: 0)
                     }
                     .padding(10).frame(width: 150).frame(maxHeight: .infinity, alignment: .top)
@@ -642,12 +641,12 @@ private struct WelcomeTourStage: View {
             }
             .padding(.horizontal, 14).frame(height: 44)
             Rectangle().fill(border.opacity(0.6)).frame(height: 0.5)
-            paletteRow("Split Left/Right", model.welcomeTourChord(.splitLeftRight) ?? "", selected: true)
-            paletteRow("Split Top/Bottom", model.welcomeTourChord(.splitTopBottom) ?? "")
-            paletteRow("Theme: Tokyo Dark", "Theme")
-            paletteRow("~/code/splash-page", "Directory")
+            paletteRow(L("Split Left/Right"), model.welcomeTourChord(.splitLeftRight) ?? "", selected: true)
+            paletteRow(L("Split Top/Bottom"), model.welcomeTourChord(.splitTopBottom) ?? "")
+            paletteRow(L("Theme: %@", "Tokyo Dark"), L("Theme"))
+            paletteRow("~/code/splash-page", L("Directory"))
             Rectangle().fill(border.opacity(0.6)).frame(height: 0.5)
-            Text("↩ Run · esc Close").font(.system(size: 11)).foregroundStyle(muted).padding(.horizontal, 14).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+            Text(L("↩ Run · esc Close")).font(.system(size: 11)).foregroundStyle(muted).padding(.horizontal, 14).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.system(size: 12)).frame(width: 366)
         .background(card, in: RoundedRectangle(cornerRadius: 12)).clipShape(RoundedRectangle(cornerRadius: 12))

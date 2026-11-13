@@ -49,7 +49,10 @@ public struct ControlError: Error, Equatable, Sendable {
     public static let authenticationFailed = application("AUTH_REQUIRED", "Authentication failed.")
     public static let permissionDenied = application("PERMISSION_DENIED", "This grant does not allow that operation.")
     public static let notFound = application("NOT_FOUND", "No such resource is available to this grant.")
-    public static let unsupportedVersion = application("UNSUPPORTED_VERSION", "Use protocolVersion 1.")
+    /// Protocol 2 is the only protocol (API2-01); the reply names it, so an outdated client knows what to speak.
+    public static let unsupportedVersion = application(
+        "UNSUPPORTED_VERSION", "Use protocolVersion 2. An older trellis CLI needs re-linking: trellis cli install-link.",
+        details: .object(["supported": .array([.number(Double(ControlDiscovery.currentProtocolVersion))])]))
     public static let rateLimited = application("LIMIT_EXCEEDED", "Too many failed authentication attempts. Wait and try again.", retryable: true)
 }
 
@@ -76,8 +79,11 @@ public struct ControlIdentity: Equatable, Sendable {
     public let connectionID: UUID
     public let peerUID: uid_t
     public let grantID: UUID?
-    public init(connectionID: UUID, peerUID: uid_t, grantID: UUID? = nil) {
-        self.connectionID = connectionID; self.peerUID = peerUID; self.grantID = grantID
+    /// The grant's revision when this connection authenticated; an edit that narrows the grant past it ends the
+    /// authentication (`AUTH_REQUIRED`).
+    public let grantRevision: UInt64?
+    public init(connectionID: UUID, peerUID: uid_t, grantID: UUID? = nil, grantRevision: UInt64? = nil) {
+        self.connectionID = connectionID; self.peerUID = peerUID; self.grantID = grantID; self.grantRevision = grantRevision
     }
 }
 
@@ -106,28 +112,6 @@ public struct RejectingControlHandler: ControlHandler {
     }
 }
 
-public enum ControlMethods {
-    /// Methods that never change state. Anything else is treated as mutating,
-    /// so a new method is safe by default.
-    public static let readOnly: Set<String> = [
-        "system.info", "space.list", "space.get", "tab.list", "tab.get", "session.get", "session.readOutput",
-        "host.list", "host.get", "theme.list", "theme.get", "theme.validate", "theme.export", "appearance.get", "layout.export", "layout.plan", "layout.validate"
-    ]
-    public static func isMutating(_ method: String) -> Bool { !readOnly.contains(canonical(method, params: nil).method) }
-
-    /// Deprecated names from before windows were renamed spaces (`window.*`, `windowId`, `windowIds`) mapped to the
-    /// current ones. A param already given under its new name wins; replies always use the new names.
-    public static func canonical(_ method: String, params: JSONValue?) -> (method: String, params: JSONValue?) {
-        let method = method.hasPrefix("window.") ? "space." + method.dropFirst("window.".count) : method
-        guard case .object(var object)? = params else { return (method, params) }
-        for (old, new) in [("windowId", "spaceId"), ("windowIds", "spaceIds")] {
-            guard let value = object.removeValue(forKey: old) else { continue }
-            if object[new] == nil { object[new] = value }
-        }
-        return (method, .object(object))
-    }
-}
-
 /// Socket-independent protocol state for one connection: framing, JSON-RPC
 /// validation, peer check, and the authentication gate. Frames are handled
 /// strictly in order.
@@ -139,9 +123,13 @@ public actor ControlSession {
     private var framer = ControlFramer()
     private var identity: ControlIdentity?
     private var closed = false
+    /// Writes a reply out of order (the server's outbox). With it, a waiting `events.poll` is answered when it
+    /// returns while the frames after it are handled meanwhile; without it (tests), it is answered in order.
+    private let reply: (@Sendable (Data) -> Bool)?
+    private var waiting: [UUID: Task<Void, Never>] = [:]
 
-    public init(peerUID: uid_t, expectedUID: uid_t = geteuid(), handler: any ControlHandler) {
-        self.peerUID = peerUID; self.expectedUID = expectedUID; self.handler = handler
+    public init(peerUID: uid_t, expectedUID: uid_t = geteuid(), handler: any ControlHandler, reply: (@Sendable (Data) -> Bool)? = nil) {
+        self.peerUID = peerUID; self.expectedUID = expectedUID; self.handler = handler; self.reply = reply
     }
 
     /// Returns the bytes to write and whether the connection must close.
@@ -166,7 +154,47 @@ public actor ControlSession {
 
     public func connectionClosed() async {
         closed = true
+        for task in waiting.values { task.cancel() }
+        waiting.removeAll()
         await handler.disconnected(connectionID: connectionID)
+    }
+
+    /// A poll that may wait, and a method that may wait on a remote host or the person (`MethodSpecV2.waits`), run beside
+    /// later frames. JSON-RPC replies carry their request's id, so order doesn't matter. At most `maximumWaiting` do at
+    /// once per connection; more are answered in order, which only delays the connection, never refuses a call.
+    private func waitsOutOfOrder(_ request: ControlRequest) -> Bool {
+        guard reply != nil, identity != nil, waiting.count < Self.maximumWaiting else { return false }
+        var params: [String: JSONValue] = [:]
+        if case .object(let object)? = request.params { params = object }
+        if MethodCatalogV2.spec(request.method)?.waits(for: params) == true { return true }
+        guard request.method == "events.poll", case .number(let timeout)? = request.params?["timeoutMs"] else { return false }
+        return timeout > 0
+    }
+
+    static let maximumWaiting = 16
+
+    private func answerLater(_ request: ControlRequest, id: ControlRequestID, identity: ControlIdentity) {
+        let key = UUID()
+        waiting[key] = Task { [handler] in
+            let result = await handler.dispatch(request.method, params: request.params, identity: identity)
+            self.finishWaiting(key, result: result, id: id, identity: identity)
+        }
+    }
+
+    private func finishWaiting(_ key: UUID, result: Result<JSONValue, ControlError>, id: ControlRequestID, identity finished: ControlIdentity) {
+        waiting.removeValue(forKey: key)
+        guard !closed, let reply else { return }
+        if case .failure(let error) = result, error.appCode == "AUTH_REQUIRED", identity == finished { identity = nil }
+        _ = reply(encoded(result, id: id))
+    }
+
+    private func encoded(_ result: Result<JSONValue, ControlError>, id: ControlRequestID) -> Data {
+        switch result {
+        case .success(let value):
+            let encoded = Self.encode(result: value, id: id)
+            return encoded.count <= ControlFramer.maximumFrame ? encoded : Self.encode(error: .responseTooLarge, id: id)
+        case .failure(let error): return Self.encode(error: error, id: id)
+        }
     }
 
     private func finish(_ output: Data) -> (output: Data, close: Bool) {
@@ -182,7 +210,7 @@ public actor ControlSession {
         }
         guard let id = request.id else {
             // Notifications get no reply and are never dispatched; mutations are refused.
-            return ControlMethods.isMutating(request.method) ? Self.encode(error: .notificationMutation, id: nil) : nil
+            return MethodCatalogV2.isMutating(request.method) ? Self.encode(error: .notificationMutation, id: nil) : nil
         }
         let result: Result<JSONValue, ControlError>
         if request.method == "auth.authenticate" {
@@ -194,6 +222,9 @@ public actor ControlSession {
                 identity = nil
                 result = .failure(error)
             }
+        } else if let identity, waitsOutOfOrder(request) {
+            answerLater(request, id: id, identity: identity)
+            return nil
         } else if let identity {
             result = await handler.dispatch(request.method, params: request.params, identity: identity)
             // An expired or revoked grant ends this connection's authentication.
@@ -201,12 +232,7 @@ public actor ControlSession {
         } else {
             result = .failure(.unauthenticated)
         }
-        switch result {
-        case .success(let value):
-            let encoded = Self.encode(result: value, id: id)
-            return encoded.count <= ControlFramer.maximumFrame ? encoded : Self.encode(error: .responseTooLarge, id: id)
-        case .failure(let error): return Self.encode(error: error, id: id)
-        }
+        return encoded(result, id: id)
     }
 
     /// Bounds the recursive `JSONValue` decoder: a 1 MiB frame of `[` would
@@ -255,12 +281,17 @@ public actor ControlSession {
         line(.object(["jsonrpc": .string("2.0"), "id": id.json, "result": result]))
     }
 
+    /// Application errors (API2-03) send `data: {code, message, retryable, details?}`; JSON-RPC errors carry their details
+    /// (such as `fields`) directly in `data`.
     static func encode(error: ControlError, id: ControlRequestID?) -> Data {
         var body: [String: JSONValue] = ["code": .number(Double(error.code)), "message": .string(error.message)]
-        var data: [String: JSONValue] = [:]
-        if let appCode = error.appCode { data = ["code": .string(appCode), "retryable": .bool(error.retryable)] }
-        if case .object(let details)? = error.details { data.merge(details) { current, _ in current } }
-        if !data.isEmpty { body["data"] = .object(data) }
+        if let appCode = error.appCode {
+            var data: [String: JSONValue] = ["code": .string(appCode), "message": .string(error.message), "retryable": .bool(error.retryable)]
+            if let details = error.details { data["details"] = details }
+            body["data"] = .object(data)
+        } else if let details = error.details {
+            body["data"] = details
+        }
         return line(.object(["jsonrpc": .string("2.0"), "id": id?.json ?? .null, "error": .object(body)]))
     }
 

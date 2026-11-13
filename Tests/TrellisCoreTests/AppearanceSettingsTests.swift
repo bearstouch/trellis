@@ -30,6 +30,35 @@ final class AppearanceSettingsTests: XCTestCase {
         legacy["bellStyle"] = "chime"
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy)).bellStyle, .sound)
     }
+    func testClipboardWritesAreOffByDefaultAndForOlderOrUnknownSettings() throws {
+        XCTAssertEqual(AppearanceSettings().clipboardWriteAccess, .off)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
+        legacy["clipboardWriteAccess"] = nil; legacy["chromeMode"] = "light"
+        let older = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(older.clipboardWriteAccess, .off, "Settings saved before FR-C09 keep clipboard writes off")
+        XCTAssertEqual(older.chromeMode, .light)
+        legacy["clipboardWriteAccess"] = "always"
+        let unknown = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(unknown.clipboardWriteAccess, .off, "A choice from a newer build never widens access")
+        XCTAssertEqual(unknown.chromeMode, .light)
+        for access in ClipboardWriteAccess.allCases {
+            var settings = AppearanceSettings(); settings.clipboardWriteAccess = access
+            XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)).clipboardWriteAccess, access)
+            XCTAssertFalse(settings.terminalRenderingDiffers(from: AppearanceSettings()), "Changing it doesn't redraw terminals")
+        }
+    }
+    func testClipboardWritePolicyAllowsOnlyWhatTheSettingSays() {
+        XCTAssertFalse(ClipboardWritePolicy.allows(.off, sshPane: true))
+        XCTAssertFalse(ClipboardWritePolicy.allows(.off, sshPane: false))
+        XCTAssertTrue(ClipboardWritePolicy.allows(.ssh, sshPane: true))
+        XCTAssertFalse(ClipboardWritePolicy.allows(.ssh, sshPane: false))
+        XCTAssertTrue(ClipboardWritePolicy.allows(.everywhere, sshPane: false))
+        XCTAssertEqual(ClipboardWritePolicy.text(Data("héllo\nworld".utf8)), "héllo\nworld")
+        XCTAssertNil(ClipboardWritePolicy.text(Data()), "An empty write (xterm's clear) leaves the clipboard alone")
+        XCTAssertNil(ClipboardWritePolicy.text(Data([0xff, 0xfe, 0x00])), "Not UTF-8")
+        XCTAssertNotNil(ClipboardWritePolicy.text(Data(repeating: 0x61, count: ClipboardWritePolicy.maximumBytes)))
+        XCTAssertNil(ClipboardWritePolicy.text(Data(repeating: 0x61, count: ClipboardWritePolicy.maximumBytes + 1)), "Over 1 MiB")
+    }
     func testSettingsSavedWithRobotoMonoKeepItAfterTheDefaultChange() throws {
         var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
         legacy["fontName"] = "RobotoMono-Regular"

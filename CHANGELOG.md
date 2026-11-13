@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0-beta.1] - 2026-11-13
+
+The first 1.3 beta.
+
+### Breaking
+
+- **Automation API protocol 2 replaces protocol 1** on the control socket, the `trellis` CLI and the MCP server, in one clean break. Read [Migration from v1](docs/api/migration.md) before upgrading scripts and agents:
+  - `auth.authenticate` takes `protocolVersion: 2`; any other version gets `UNSUPPORTED_VERSION` (`details.supported: [2]`), and `control.json` reports `protocolVersion: 2`. An older `trellis` binary installed elsewhere stops working: re-link it with `trellis cli install-link`.
+  - Protocol 1's methods, result shapes and events are gone, and so are the deprecated `window.*` methods and `windowId`/`windowIds` parameters. Results are wrapped by type (`{"space": …}`), IDs are lowercase, absent values are omitted, lists are paginated, revisions and event data are numbers; event topics are new (`resources` is now `workspace`) and typed.
+  - Capabilities are renamed: `metadata.read` is `workspace.read` and `layout.write` is `workspace.write`. Existing grants keep their tokens and can do exactly what they could before, nothing more.
+  - CLI: the `window` noun, `--window` and `space focus --activate` are removed; pane verbs take `--pane`; `session start --host-launch` is `--ssh`; `host connect` splits with `--split` (was `--pane`); `session execute` drops `--submit`; exit codes come from the error registry (`UNSUPPORTED_VERSION` and `INVALID_CURSOR` exit 2, `INVALID_STATE` and `CLOSE_PENDING` exit 5; `session execute --wait` exits with the command's code, 124 on timeout, 125 when the session ended).
+  - MCP: the tool list changes to the protocol 2 tools on the next `tools/list` (for example `workspace_get`, `agent_respond`, `project_launch`, `events_poll`); clients keep their URL and token.
+  - Layout documents are version 3; versions 1 and 2 are still read, except a list named `windows`, which must be renamed `spaces`.
+
+### Added
+
+- **Editor tabs:** edit a project file without leaving Trellis. Double-click a file in **Files** (Trellis Editor is the new default in **Open in**), or ⌘-click a path the terminal printed inside your project, such as a compiler's `Sources/App.swift:12:5`, and it opens in an editor tab of the current space at that line. The editor has line numbers, the current line highlighted, syntax highlighting for Swift, Python, JavaScript/TypeScript, JSON, Go, Rust, C/C++/Objective-C, Java/Kotlin, shell, Markdown, YAML, TOML, HTML/XML and CSS in your theme's colors, find, Go to Line (⌘L) and ⌘S. It keeps the file's line endings and permissions, warns when the file changes on disk, and asks before closing or quitting with unsaved changes. Editor tabs are temporary: they aren't saved with the workspace or restored after relaunch. Binary files and files over 2 MB still open in their default app. A Markdown tab has a **Preview** button (⇧⌘V) that renders the file in your theme's colors, with working project and web links; it never loads images or runs anything. See [Editor tabs](docs/features/editor.md).
+
+- **Automation API v2:** one call (`workspace.get`) returns everything in scope; panes are resources with their machine, shell state and attention; agents can be listed, started, restarted, answered (`agent.respond`) and installed; remote workspaces opened and reconnected and their helper installed or removed; projects created, captured, checked and launched (with setup); tasks listed, run and stopped; `session.execute` can wait for the command's exit code; `events.poll` waits for live-state events (agent needs you, command finished, task done, link changes) on the socket and through MCP's `events_poll`; layouts can place remote spaces, bind a project and start agents. See [Automation API](docs/api/index.md).
+- **CLI nouns:** `workspace`, `grant`, `agent`, `remote`, `project` and `task`, `pane list`/`pane get`, `events poll`, and `session execute --wait`, which exits with the command's exit code. `--space`, `--tab`, `--project`, `--host` and `--agent` resolve names on the server.
+- **MCP tools from the method catalog:** every method is a tool with a schema generated from its declaration, `destructiveHint` on closing, stopping, restarting, deleting, input, execute, answering agents, running tasks, launching projects and changing the remote helper, and an untrusted-data notice before output, program titles, task commands and agent settings.
+- **Copy from programs over SSH:** Claude Code, tmux, Neovim and other programs on a remote host can now put text on your Mac's clipboard (OSC 52) if you allow it. **Settings → Sessions → Programs can copy to the clipboard** is **Off** by default and offers **From SSH sessions** (saved hosts, remote workspaces, and `ssh`/`mosh`, including one you type in a shell with integration) or **From any program**, which shows a risk warning. Programs can never read the clipboard. Holding ⇧ while dragging still selects text inside programs that capture the mouse.
+- **Languages:** Trellis is now available in Portuguese (Portugal), French and Spanish as well as English. It follows your Mac's language; **Settings → Appearance → Language** picks another one for Trellis alone, with no relaunch. Terminal output, names you chose, the `trellis` command and the automation API stay as they are. `--language en|pt-PT|fr|es` picks a language for one launch.
+- **Model and effort for Claude Code:** the Agents view's Running list shows the model a Claude Code session uses ("Ardaven · Opus 5.5") and its reasoning effort as a small label next to the tab name, once Claude Code reports them. Trellis reads only these two settings from Claude Code's hooks.
+- **Find tasks and stop from the status:** the Tasks view has a **Find tasks** field that filters launch.json and detected tasks by name, command or group, and the stop symbol beside a running task's status is now a button that stops it (then force stops it after 2 seconds).
+- **Command Palette hint:** the status bar shows the Command Palette shortcut (⇧⌘P by default, or your custom binding) next to the version; clicking it opens the palette.
+- **Share the MCP server over Tailscale:** **Settings → Remote Control → Share over Tailscale** publishes the MCP server to your tailnet over HTTPS with `tailscale serve`, so Claude Code, Codex or your own bots on other machines can drive Trellis without an open port or plain-HTTP tokens. Choose which tailnet devices may connect, and copy a ready setup for Claude Code, Codex or any MCP client. Trellis never uses Funnel and removes its entry when sharing stops or Trellis quits.
+- **Idle timeout for kept sessions:** a session left running with Trellis closed or disconnected is now ended once it has printed nothing for 24 hours. **Settings → Session Broker → End idle kept sessions after** offers No timeout, 1, 2, 4, 12, 24, 48 and 96 hours. Sessions shown in a pane are never ended. Applies to remote workspace hosts too, once their helper is updated.
+- **Grant presets and editable grants:** **Settings → Automation** now starts a grant from a preset (Observer, Operator, Agent orchestrator, Full control or Custom), lists every capability by area in plain language, and limits a grant to all spaces, only the spaces it creates, or chosen spaces, as well as to chosen projects, hosts and agents. **Edit…** changes an existing grant without a new token: removing access applies at once (connected clients sign in again), and giving more access asks first.
+
+### Changed
+
+- **Simpler grant sheet:** **Settings → Automation → New Grant** asks for a name, a role (Observer, Operator, Agent orchestrator or Full control), which spaces and an expiry. Individual capabilities and the projects, hosts and agents scopes move under **Advanced**, which opens by itself when you edit a grant that uses them. New grants last 7 days by default (was 1 day).
+- **Grants file format:** `grants.json` is converted to a new format the first time this version starts; the old file is kept as `grants.json.v1.bak`. Existing grants keep their tokens and can do exactly what they could before. An earlier version of Trellis can't read the new file; restore the backup there.
+- **Kept sessions no longer run forever by default:** before, a session kept after quit ran until it ended by itself. Pick **No timeout** to keep that behavior.
+
+### Fixed
+
+- **Agent panes in a project's JSON:** the project editor's JSON view, **Import JSON…**, **Export JSON…** and project exports now keep a pane's `agent`. Before, the JSON view didn't show it and refused it as an unknown field, so switching to JSON and back, or exporting and importing a project, dropped its agent panes.
+- **Clicking a terminal takes the keyboard again with GPU rendering on:** after typing in a sidebar field (the Changes filter, the Files search, the scratchpad), clicking a terminal left your typing in that field. The click now moves the keyboard to the terminal, as it does with GPU rendering off.
+
 ## [1.2.0] - 2026-11-10
 
 The stable 1.2 release. Coming from 1.1.0, you also get everything listed under the 1.2 betas: windows renamed to spaces, temporary tabs in project spaces, a right sidebar with Files, Changes, Tasks, Agents and the scratchpad, agents typed in a shell with live state, the welcome tour, translucent panes, the white Trellis Light terminal, and export and import of projects and hosts.
@@ -28,7 +69,7 @@ The third 1.2 beta.
 
 ### Changed
 
-- **Windows are now Spaces.** The sidebar's managed windows are called spaces everywhere: **New Space** (⌘N), Rename, Delete, Next and Previous Space, the command palette, VoiceOver and the docs. Your workspace, customized shortcuts, automation grants and launched projects carry over; the workspace file is saved as schema 4, which older Trellis builds open read-only. The API methods are now `space.*` with `spaceId`/`spaceIds`, the CLI is `trellis space` with `--space`, and MCP tools are `space_*`. `window.*`, `windowId(s)`, `trellis window` and `--window` still work for now and are deprecated; events (`space.created`, `selection.space`…), the authentication reply's `spaceScope` and MCP tool names change outright. Layout documents are version 2 (`spaces`); version 1 (`windows`) is still accepted. The macOS **Window** menu keeps its name. See [Methods](docs/api/methods.md#deprecated-names).
+- **Windows are now Spaces.** The sidebar's managed windows are called spaces everywhere: **New Space** (⌘N), Rename, Delete, Next and Previous Space, the command palette, VoiceOver and the docs. Your workspace, customized shortcuts, automation grants and launched projects carry over; the workspace file is saved as schema 4, which older Trellis builds open read-only. The API methods are now `space.*` with `spaceId`/`spaceIds`, the CLI is `trellis space` with `--space`, and MCP tools are `space_*`. `window.*`, `windowId(s)`, `trellis window` and `--window` still work for now and are deprecated; events (`space.created`, `selection.space`…), the authentication reply's `spaceScope` and MCP tool names change outright. Layout documents are version 2 (`spaces`); version 1 (`windows`) is still accepted. The macOS **Window** menu keeps its name. See [Migration](docs/api/migration.md#methods) for how protocol 2 later removed the old names.
 - **Export and import carry projects and hosts.** **File → Export Projects & Hosts…** replaces Export Windows & Hosts: the file (version 2) holds your project library and saved hosts, not spaces, which are what projects become once launched. **Import Projects & Hosts…** adds projects under new identities, never over yours (a name already in use gets " (imported)"), and opens nothing. Older exports still import their hosts and projects; their windows are skipped and the review says so. See FR-R02 and [Integrations](docs/integrations.md#configuration-import-and-export).
 - **Desktop notifications:** each notification now says where it came from. Its subtitle names the space and tab ("api › Build"), followed by the agent or running program when known ("api › Build · make"); the command line itself is never shown. Agent notifications read "Waiting for your input" or "Finished its turn". See [Workspace](docs/features/workspace.md) (FR-T08), FR-SI08 and FR-AG14.
 
@@ -382,7 +423,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.1...HEAD
+[1.3.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.2.0...v1.3.0-beta.1
 [1.2.0]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.3...v1.2.0
 [1.2.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.2...v1.2.0-beta.3
 [1.2.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.1...v1.2.0-beta.2

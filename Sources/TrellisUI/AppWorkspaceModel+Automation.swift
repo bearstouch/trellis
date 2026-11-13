@@ -277,7 +277,10 @@ extension AppWorkspaceModel {
     /// Records the namespace bindings durably, then commits the planned layout
     /// atomically against its base revision, so a committed layout always has
     /// its bindings. Bindings to resources that no longer exist are pruned.
-    public func automationApplyLayout(_ plan: LayoutPlan, namespace: String) async throws(AutomationModelError) -> WorkspaceCommandResult {
+    /// `then` runs inside the store transaction (a project launch records a space it creates for a `created` grant).
+    public func automationApplyLayout(
+        _ plan: LayoutPlan, namespace: String, then follow: (@Sendable (WorkspaceCommandResult) -> WorkspaceCommand?)? = nil
+    ) async throws(AutomationModelError) -> WorkspaceCommandResult {
         guard let target = plan.target else { throw .store(.invalidState("The layout plan cannot be applied")) }
         // One apply at a time, so pruning never drops another apply's uncommitted bindings.
         guard !layoutApplyInFlight else { throw .unavailable }
@@ -289,7 +292,7 @@ extension AppWorkspaceModel {
         defer { layoutApplyInFlight = false }
         let previous = try layoutBindings(namespace)
         try saveLayoutBindings(namespace, plan.bindings)
-        do { return try await automationExecute(.applyLayout(target: target), expecting: .workspace(revision: plan.baseRevision)) } catch {
+        do { return try await automationExecute(.applyLayout(target: target), expecting: .workspace(revision: plan.baseRevision), then: follow) } catch {
             try? saveLayoutBindings(namespace, previous)
             throw error
         }

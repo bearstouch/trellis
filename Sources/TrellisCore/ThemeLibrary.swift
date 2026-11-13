@@ -5,12 +5,12 @@ public enum ThemeLibraryError: Error, Equatable, Sendable, LocalizedError {
     case reservedID, duplicateID(String), notFound, filenameMismatch, unsafeFile, io(Int32)
     public var errorDescription: String? {
         switch self {
-        case .reservedID: "The trellis- namespace is reserved. Built-in themes cannot be replaced or deleted."
-        case .duplicateID(let id): "A theme with ID '\(id)' already exists. Choose Replace Theme to replace it."
-        case .notFound: "The theme is no longer available. Reload the theme library."
-        case .filenameMismatch: "The filename must match the theme ID: <id>.theme.json."
-        case .unsafeFile: "Use a regular theme file in a real Themes directory; symbolic links are not supported."
-        case .io(let code): "The theme file operation failed (system error \(code))."
+        case .reservedID: L("The trellis- namespace is reserved. Built-in themes cannot be replaced or deleted.")
+        case .duplicateID(let id): L("A theme with ID '%@' already exists. Choose Replace Theme to replace it.", id)
+        case .notFound: L("The theme is no longer available. Reload the theme library.")
+        case .filenameMismatch: L("The filename must match the theme ID: <id>.theme.json.")
+        case .unsafeFile: L("Use a regular theme file in a real Themes directory; symbolic links are not supported.")
+        case .io(let code): L("The theme file operation failed (system error %d).", Int(code))
         }
     }
 }

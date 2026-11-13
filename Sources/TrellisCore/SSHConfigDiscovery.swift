@@ -17,10 +17,10 @@ public enum SSHConfigDiscovery {
         public var description: String {
             switch self {
             case .include(let line, let pattern):
-                "Line \(line): Include \(pattern) was not followed. Aliases in included files are not listed; add them manually."
-            case .match(let line): "Line \(line): Match blocks are not listed and their commands are never run."
-            case .pattern(let line, let value): "Line \(line): \(value) is a pattern, not a single host, so it is not listed."
-            case .invalidName(let line, let value): "Line \(line): \(value) cannot be used as a saved destination."
+                L("Line %1$d: Include %2$@ was not followed. Aliases in included files are not listed; add them manually.", line, pattern)
+            case .match(let line): L("Line %d: Match blocks are not listed and their commands are never run.", line)
+            case .pattern(let line, let value): L("Line %1$d: %2$@ is a pattern, not a single host, so it is not listed.", line, value)
+            case .invalidName(let line, let value): L("Line %1$d: %2$@ cannot be used as a saved destination.", line, value)
             }
         }
     }
@@ -69,7 +69,7 @@ public enum SSHConfigDiscovery {
         let data: Data?
         do { data = try read(url) } catch { return .failure(.unreadable(error.localizedDescription)) }
         guard let data else { return .failure(.missing) }
-        guard data.count <= byteLimit else { return .failure(.unreadable("The file is larger than 1 MiB.")) }
+        guard data.count <= byteLimit else { return .failure(.unreadable(L("The file is larger than 1 MiB."))) }
         return .success(parse(String(decoding: data, as: UTF8.self)))
     }
 

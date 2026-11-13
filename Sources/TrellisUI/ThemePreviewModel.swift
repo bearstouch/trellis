@@ -13,7 +13,7 @@ public final class ThemePreviewModel: ObservableObject {
     private var loadGeneration = UUID()
     var contentGeneration: UUID { loadGeneration }
     public init() {
-        terminal.view.setAccessibilityLabel("Theme preview terminal — sample output only")
+        terminal.view.setAccessibilityLabel(L("Theme preview terminal — sample output only"))
         var sample = "Trellis color preview\r\ncafé e\u{301} 漢字 👩‍💻\r\n"
         for row in 0..<2 {
             for index in (row * 8)..<(row * 8 + 8) {
@@ -43,11 +43,11 @@ public final class ThemePreviewModel: ObservableObject {
         }
     }
     public func example(_ example: ThemeExample) {
-        do { _ = preview(try ThemeExamples.data(example)) } catch { validationMessage = "The bundled example could not be loaded." }
+        do { _ = preview(try ThemeExamples.data(example)) } catch { validationMessage = L("The bundled example could not be loaded.") }
     }
     public func chooseFile() {
         let panel = NSOpenPanel()
-        panel.title = "Preview a JSON Theme"
+        panel.title = L("Preview a JSON Theme")
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -72,7 +72,7 @@ public final class ThemePreviewModel: ObservableObject {
             } catch {
                 guard generation == loadGeneration else { return }
                 loading = false
-                validationMessage = "The theme file could not be read. Choose a readable local JSON file."
+                validationMessage = L("The theme file could not be read. Choose a readable local JSON file.")
             }
         }
     }
