@@ -82,8 +82,10 @@ extension AppWorkspaceModel {
     /// the file isn't text the editor can keep intact (FR-ED02), so the caller can hand it elsewhere; other failures
     /// are shown and return true.
     @discardableResult
-    public func openInEditor(path: String, line: Int? = nil, column: Int? = nil, projectRoot: String? = nil) async -> Bool {
+    public func openInEditor(path rawPath: String, line: Int? = nil, column: Int? = nil, projectRoot: String? = nil) async -> Bool {
         guard let spaceID = presentation.selectedSpace?.id else { return true }
+        // `a/./b` and `a/x/../b` name one file, so they share one tab.
+        let path = URL(fileURLWithPath: rawPath).standardizedFileURL.path
         let jump = line.map { EditorJump(line: $0, column: column) }
         if let open = editorTabs[spaceID]?.first(where: { $0.document.path == path }) {
             if let jump { updateEditor(open.id) { $0.jump = jump } }
@@ -120,7 +122,8 @@ extension AppWorkspaceModel {
 
     /// Opens a file from the Files view; anything the editor refuses goes to the default app under FR-L03.
     func openFileInEditor(_ entry: FileEntry) async {
-        if entry.isDirectory {
+        // A symbolic link to a folder is listed as a file; it is shown in Finder like the folder.
+        if entry.isDirectory || isDirectory(entry.path) {
             revealFiles([URL(fileURLWithPath: entry.path, isDirectory: true)])
             return
         }
@@ -132,9 +135,19 @@ extension AppWorkspaceModel {
 
     /// Opens a terminal link in an editor tab (FR-ED07); false hands it back to the terminal's usual open.
     func openLinkInEditor(paneID: UUID, path: String, line: Int?, column: Int?) async -> Bool {
-        guard let context = fileLinkContext(paneID: paneID), context.editorMayOpen(path) else { return false }
+        guard let context = fileLinkContext(paneID: paneID), editorMayOpenLink(path, context: context) else { return false }
         if let tabID = snapshot.panes[paneID]?.tabID, let spaceID = snapshot.tabs[tabID]?.spaceID, presentation.selectedSpace?.id != spaceID { return false }
         return await openInEditor(path: path, line: line, column: column, projectRoot: context.projectRoot)
+    }
+
+    /// A link to a regular file inside the pane's project or current folder; a folder keeps FR-L02 (opens in Finder).
+    func editorMayOpenLink(_ path: String, context: FileLinkContext) -> Bool {
+        context.editorMayOpen(path) && editorFileSystem.isRegularFile(path)
+    }
+
+    private func isDirectory(_ path: String) -> Bool {
+        var directory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &directory) && directory.boolValue
     }
 
     // MARK: Showing
@@ -203,6 +216,11 @@ extension AppWorkspaceModel {
         guard let tab = editorTab(id) else { return }
         let fs = editorFileSystem, path = tab.document.path
         let loaded = await Task.detached { EditorDocument.loadResult(path: path, fs: fs) }.value
+        // Typing (or a save) while the file was read wins: the read is dropped and the disk is checked again.
+        guard let current = editorTab(id), current.text == tab.text, current.document == tab.document else {
+            checkEditorOnDisk(id)
+            return
+        }
         switch loaded {
         case .success(let document):
             updateEditor(id) {
@@ -226,6 +244,19 @@ extension AppWorkspaceModel {
     /// Saves the tab; false when it wasn't saved (cancelled or failed), with the tab's text and unsaved mark kept.
     @discardableResult
     public func saveEditor(_ id: UUID) async -> Bool {
+        // One save at a time per tab: a second one waits, then saves what is newer, without a false "changed on disk".
+        let previous = editorSaves[id]
+        let save = Task {
+            _ = await previous?.value
+            return await performSave(id)
+        }
+        editorSaves[id] = save
+        let saved = await save.value
+        if editorSaves[id] == save { editorSaves[id] = nil }
+        return saved
+    }
+
+    private func performSave(_ id: UUID) async -> Bool {
         guard let tab = editorTab(id) else { return false }
         let fs = editorFileSystem, document = tab.document, text = tab.text
         let state = await Task.detached { document.diskState(fs: fs) }.value
@@ -253,7 +284,8 @@ extension AppWorkspaceModel {
         if tab.isDirty {
             switch confirmUnsavedEditors([tab.fileName]) {
             case .cancel: return
-            case .save: guard await saveEditor(id) else { return }
+            // Typing while it saved makes it unsaved again: it stays open.
+            case .save: guard await saveEditor(id), editorTab(id)?.isDirty == false else { return }
             case .discard: break
             }
         }
@@ -289,7 +321,7 @@ extension AppWorkspaceModel {
             return true
         case .save:
             for tab in dirty { guard await saveEditor(tab.id) else { return false } }
-            return true
+            return !dirty.contains { editorTab($0.id)?.isDirty == true }
         }
     }
 

@@ -104,6 +104,9 @@ struct ScratchpadEditor: NSViewRepresentable {
         private var focusRequest: Int
         private var jumpID: UUID?
         private var pendingHighlight: DispatchWorkItem?
+        /// Each editor's own undo history: with the window's, ⌘Z in one editor tab would undo typing in another one,
+        /// mounted but hidden (FR-ED03).
+        let undo = UndoManager()
 
         init(_ parent: ScratchpadEditor) { self.parent = parent; focusRequest = parent.focusRequest - 1 }
 
@@ -145,6 +148,13 @@ struct ScratchpadEditor: NSViewRepresentable {
                     guard let self, let textView else { return }
                     Self.move(textView, toLine: jump.line, column: jump.column)
                     self.parent.onJumped()
+                }
+            }
+            if !editor.acceptsFocus, textView.window?.firstResponder === textView {
+                // Hidden (another tab or space is shown): keys must never reach text out of sight.
+                DispatchQueue.main.async { [weak textView] in
+                    guard let textView, let window = textView.window, window.firstResponder === textView else { return }
+                    window.makeFirstResponder(nil)
                 }
             }
             if editor.focusRequest != focusRequest {
@@ -237,6 +247,8 @@ struct ScratchpadEditor: NSViewRepresentable {
             return NSColor(rgb: palette.ansi.indices.contains(index) ? palette.ansi[index] : palette.foreground)
         }
 
+        func undoManager(for view: NSTextView) -> UndoManager? { undo }
+
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
             parent.text = textView.string
@@ -292,6 +304,17 @@ final class ScratchpadTextView: NSTextView {
         line.size.width = bounds.width
         currentLineColor.setFill()
         line.intersection(rect).fill(using: .sourceOver)
+    }
+
+    // Edit › Undo and Redo reach the window's undo manager unless the text view answers them, and this view's history
+    // is its own (see `Coordinator.undo`).
+    @objc func undo(_ sender: Any?) { undoManager?.undo() }
+    @objc func redo(_ sender: Any?) { undoManager?.redo() }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(undo(_:)) { return isEditable && undoManager?.canUndo == true }
+        if item.action == #selector(redo(_:)) { return isEditable && undoManager?.canRedo == true }
+        return super.validateUserInterfaceItem(item)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

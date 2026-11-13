@@ -35,6 +35,21 @@ struct EditorTabView: View {
         .accessibilityLabel(L("Editor tab, %@", tab.fileName))
         // Back from another app, the file may have changed (FR-ED06).
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in if shown { model.checkEditorOnDisk(tab.id) } }
+        // A banner is announced, as it appears without focus moving to it (FR-ED10).
+        .onChange(of: tab.banner) { _, banner in
+            guard shown, let banner else { return }
+            NSAccessibility.post(
+                element: NSApp as Any, notification: .announcementRequested,
+                userInfo: [.announcement: bannerText(banner), .priority: NSAccessibilityPriorityLevel.high.rawValue])
+        }
+    }
+
+    private func bannerText(_ banner: EditorTab.Banner) -> String {
+        switch banner {
+        case .changedOnDisk: L("%@ changed on disk while you had unsaved edits.", tab.fileName)
+        case .deleted: L("%@ was deleted. Save creates it again.", tab.fileName)
+        case .saveFailed(let message): L("%1$@ wasn't saved. %2$@", tab.fileName, message)
+        }
     }
 
     private var editorFont: NSFont {
@@ -127,15 +142,15 @@ struct EditorTabView: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(tint).accessibilityHidden(true)
             switch banner {
             case .changedOnDisk:
-                Text(L("%@ changed on disk while you had unsaved edits.", tab.fileName))
+                Text(bannerText(banner))
                 Spacer(minLength: 8)
                 Button(L("Reload from Disk")) { Task { await model.reloadEditor(tab.id) } }.controlSize(.small)
                 Button(L("Keep Mine")) { model.keepEditorChanges(tab.id) }.controlSize(.small)
             case .deleted:
-                Text(L("%@ was deleted. Save creates it again.", tab.fileName))
+                Text(bannerText(banner))
                 Spacer(minLength: 8)
-            case .saveFailed(let message):
-                Text(L("%1$@ wasn't saved. %2$@", tab.fileName, message))
+            case .saveFailed:
+                Text(bannerText(banner))
                 Spacer(minLength: 8)
                 Button(L("Try Again")) { Task { await model.saveEditor(tab.id) } }.controlSize(.small)
             }

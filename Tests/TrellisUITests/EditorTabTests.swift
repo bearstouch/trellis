@@ -310,4 +310,117 @@ final class EditorTabTests: XCTestCase {
         XCTAssertEqual(model.editorTabs[second]?.first?.text, "# Unsaved\n")
         XCTAssertNil(model.editorTabs[first])
     }
+
+    // MARK: Review fixes
+
+    @MainActor
+    func testALinkToAFolderInTheProjectKeepsTheUsualOpen() async throws {
+        let (model, pane, _) = try await makeModel()
+        defer { cleanUp(model) }
+        let context = try XCTUnwrap(model.fileLinkContext(paneID: pane))
+        XCTAssertFalse(model.editorMayOpenLink(project + "/Sources", context: context), "No Open in Trellis Editor for a folder")
+        let opened = await model.openLinkInEditor(paneID: pane, path: project + "/Sources", line: nil, column: nil)
+        XCTAssertFalse(opened, "A folder opens in Finder as before (FR-L02), not as an error")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertTrue(model.currentEditors.isEmpty)
+    }
+
+    @MainActor
+    func testOneFileNamedTwoWaysSharesATab() async throws {
+        let (model, _, _) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.openInEditor(path: project + "/README.md")
+        await model.openInEditor(path: project + "/Sources/../README.md", line: 1)
+        await model.openInEditor(path: project + "/./README.md")
+        XCTAssertEqual(model.currentEditors.count, 1)
+        XCTAssertEqual(model.shownEditor?.document.path, project + "/README.md")
+    }
+
+    @MainActor
+    func testTypingWhileAReloadReadsTheFileKeepsTheText() async throws {
+        let (model, _, _) = try await makeModel()
+        defer { cleanUp(model) }
+        let path = project + "/README.md"
+        await model.openInEditor(path: path)
+        let id = try XCTUnwrap(model.shownEditor?.id)
+        try "# Elsewhere, longer\n".write(toFile: path, atomically: true, encoding: .utf8)
+        var slow = EditorFileSystem.live
+        slow.read = { path, limit in
+            Thread.sleep(forTimeInterval: 0.3)
+            return try EditorFileSystem.live.read(path, limit)
+        }
+        model.editorFileSystem = slow
+        let reload = Task { await model.reloadEditor(id) }
+        try await Task.sleep(for: .milliseconds(100))
+        model.updateEditorText(id, "# Typed\n")
+        await reload.value
+        XCTAssertEqual(model.shownEditor?.text, "# Typed\n", "What was typed while the file was read is kept")
+        try await waitFor { model.shownEditor?.banner != nil }
+        XCTAssertEqual(model.shownEditor?.banner, .changedOnDisk, "…and the change on disk is shown instead")
+    }
+
+    @MainActor
+    func testASecondSaveWaitsForTheFirstAndDoesNotAskAboutItsWrite() async throws {
+        let (model, _, _) = try await makeModel()
+        defer { cleanUp(model) }
+        let path = project + "/Sources/App.swift"
+        await model.openInEditor(path: path)
+        let id = try XCTUnwrap(model.shownEditor?.id)
+        var asked = 0
+        model.confirmOverwriteChangedFile = { _ in
+            asked += 1; return false
+        }
+        var slow = EditorFileSystem.live
+        slow.write = { data, path in
+            try EditorFileSystem.live.write(data, path)
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        model.editorFileSystem = slow
+        model.updateEditorText(id, "let a = 10\n")
+        let first = Task { await model.saveEditor(id) }
+        try await Task.sleep(for: .milliseconds(100))
+        model.updateEditorText(id, "let a = 100\n")
+        let second = await model.saveEditor(id)
+        let firstSaved = await first.value
+        XCTAssertTrue(firstSaved)
+        XCTAssertTrue(second)
+        XCTAssertEqual(asked, 0, "Its own first write isn't a change on disk")
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "let a = 100\n")
+        XCTAssertFalse(try XCTUnwrap(model.shownEditor).isDirty)
+        XCTAssertTrue(model.editorSaves.isEmpty)
+    }
+
+    @MainActor
+    func testEachEditorHasItsOwnUndoHistory() throws {
+        // With the window's undo manager, ⌘Z in the shown editor undid typing in a hidden one.
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        var coordinators: [ScratchpadEditor.Coordinator] = []
+        let views = (0..<2).map { index -> ScratchpadTextView in
+            let textView = ScratchpadTextView(frame: NSRect(x: index * 200, y: 0, width: 200, height: 300))
+            textView.allowsUndo = true
+            window.contentView?.addSubview(textView)
+            let editor = ScratchpadEditor(
+                text: .constant(""), language: .markdown, font: .systemFont(ofSize: 12), palette: .builtIn, issueLines: [], focusRequest: 0,
+                commands: ScratchpadEditorCommands())
+            let coordinator = ScratchpadEditor.Coordinator(editor)
+            coordinator.textView = textView
+            textView.delegate = coordinator
+            coordinators.append(coordinator)
+            return textView
+        }
+        for (view, text) in zip(views, ["first", "second"]) {
+            window.makeFirstResponder(view)
+            view.insertText(text, replacementRange: NSRange(location: 0, length: 0))
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertFalse(views[0].undoManager === views[1].undoManager)
+        window.makeFirstResponder(views[0])
+        XCTAssertTrue(views[0].validateUserInterfaceItem(NSMenuItem(title: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z")))
+        views[0].undo(nil)
+        XCTAssertEqual(views[0].string, "", "Undo acts on the editor with the keyboard")
+        XCTAssertEqual(views[1].string, "second", "…never on another one")
+        withExtendedLifetime(coordinators) {}
+    }
 }

@@ -190,11 +190,14 @@ public enum EditorLinkScope {
     /// unresolved, which would let `project/link-out/new.txt` pass as inside.
     static func canonical(_ path: String) -> String {
         var existing = URL(fileURLWithPath: path).standardizedFileURL.path, rest: [String] = []
-        while existing != "/", realpath(existing, nil) == nil {
+        // `realpath` allocates its result, so each one found is freed.
+        var real = realpath(existing, nil)
+        while real == nil, existing != "/" {
             rest.insert((existing as NSString).lastPathComponent, at: 0)
             existing = (existing as NSString).deletingLastPathComponent
+            real = realpath(existing, nil)
         }
-        guard let real = realpath(existing, nil) else { return existing }
+        guard let real else { return existing }
         defer { free(real) }
         return ([String(cString: real)] + rest).joined(separator: "/").replacingOccurrences(of: "//", with: "/")
     }

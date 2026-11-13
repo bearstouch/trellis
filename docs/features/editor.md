@@ -23,7 +23,7 @@ is only revealed), and Trellis says why.
 ## Editing and saving
 
 The editor keeps the file's line endings (LF or CRLF), its byte-order mark and whether it ends with a newline. Typing never
-substitutes quotes, dashes or spelling. ⌘S saves: the text is written to a temporary file in the same folder, which then
+substitutes quotes, dashes or spelling. Each editor tab has its own undo history. ⌘S saves: the text is written to a temporary file in the same folder, which then
 replaces the file and keeps its permissions. If saving fails the tab keeps the text and its unsaved mark and shows why.
 
 A tab with unsaved changes shows a dot before its close button and says "unsaved" to VoiceOver. Closing it, closing its
@@ -81,6 +81,6 @@ then from a `#!` line. Other files are plain text. Files over 512 KB are shown w
 | Area | How it's checked |
 | --- | --- |
 | Reading, encoding, saving, disk changes (FR-ED02–FR-ED04, FR-ED06) | `EditorDocumentTests`: BOM, CRLF and final newline round-trip, binary/invalid/too-large refusals, permissions kept, failed write keeps the file, change and deletion detection. |
-| Languages and highlighting (FR-ED03) | `EditorLanguageTests`, `CodeHighlighterTests`: detection by name and `#!` line, tokens per language, linear time on hostile input, the scratchpad grammars unchanged. |
+| Languages and highlighting (FR-ED03) | `CodeHighlighterTests`: detection by name and `#!` line, tokens per language, linear time on hostile input, the scratchpad grammars unchanged. |
 | Tabs, saving, closing, links, Files, theme (FR-ED01, FR-ED05, FR-ED07–FR-ED09, FR-ED11) | `EditorTabTests`: open and reuse, not in the snapshot, dirty close asks, space close and quit ask, tab selection, Review coexisting, fallback to the default app, Files default and remembered choice, link inside and outside the project with line and column, theme change repaints. |
 | The editor in the app, VoiceOver, IME (FR-ED03, FR-ED10) | Manual: **pending** (typing and IME input, find bar, Go to Line, theme switching by eye, VoiceOver walk of the tab and text area). |

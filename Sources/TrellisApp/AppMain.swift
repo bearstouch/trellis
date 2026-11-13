@@ -302,8 +302,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let edit = NSMenuItem(); edit.submenu = NSMenu(title: L("Edit"))
         // Undo/Cut/Redo exist for native text fields (tab names, search, settings);
         // the terminal does not implement them, so they stay disabled there.
-        edit.submenu?.addItem(withTitle: L("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
-        edit.submenu?.addItem(withTitle: L("Redo"), action: Selector(("redo:")), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
+        edit.submenu?.addItem(withTitle: L("Undo"), action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+        edit.submenu?.addItem(withTitle: L("Redo"), action: NSSelectorFromString("redo:"), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
         edit.submenu?.addItem(.separator())
         edit.submenu?.addItem(withTitle: L("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         edit.submenu?.addItem(withTitle: L("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")

@@ -576,6 +576,8 @@ public final class AppWorkspaceModel: ObservableObject {
     var discardedEditorSpaces: Set<UUID> = []
     /// Injected by tests: the file system editor tabs read and write.
     var editorFileSystem = EditorFileSystem.live
+    /// The save running for each editor tab, so a second ⌘S waits for it instead of racing it (FR-ED04).
+    var editorSaves: [UUID: Task<Bool, Never>] = [:]
     /// Asked before closing editor tabs with unsaved changes (FR-ED05), with their file names; the app shows an alert.
     public var confirmUnsavedEditors: ([String]) -> UnsavedEditorsChoice = { _ in .cancel }
     /// Asked before saving over a file that changed on disk (FR-ED06), with its name; the app shows an alert.
@@ -1638,7 +1640,10 @@ public final class AppWorkspaceModel: ObservableObject {
             self.applyShellEvent(event, paneID: pane.id)
         }
         terminal.fileLinkContext = { [weak self] in self?.fileLinkContext(paneID: pane.id) }
-        terminal.editorMayOpen = { [weak self] path in self?.fileLinkContext(paneID: pane.id)?.editorMayOpen(path) ?? false }
+        terminal.editorMayOpen = { [weak self] path in
+            guard let self, let context = self.fileLinkContext(paneID: pane.id) else { return false }
+            return self.editorMayOpenLink(path, context: context)
+        }
         terminal.openInEditor = { [weak self] path, line, column in
             await self?.openLinkInEditor(paneID: pane.id, path: path, line: line, column: column) ?? false
         }
@@ -1884,9 +1889,12 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func selectTab(_ id: UUID) async {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
+        // An editor tab hidden here gives the keyboard back to the terminals, which stayed mounted under it (FR-ED01).
+        let editorHidden = snapshot.tabs[id].flatMap { shownEditors[$0.spaceID] } != nil
         if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID); shownEditors[spaceID] = nil }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = L("The tab could not be selected.") }
+        if editorHidden { focusActiveTerminal() }
     }
 
     /// Native text editing of a tab title. Terminals stop receiving key input until
