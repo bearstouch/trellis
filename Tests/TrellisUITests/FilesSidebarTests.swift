@@ -171,11 +171,14 @@ final class FilesSidebarTests: XCTestCase {
         let (model, pane, recorder, preferences) = try await makeModel()
         defer { cleanUp(model) }
         await model.refreshFiles(paneID: pane)
-        XCTAssertEqual(model.files.editors.map(\.id), ["finder", "vscode", "default", "trellis-tab"], "Only installed editors are offered")
-        XCTAssertEqual(model.files.editor, .finder, "Finder until another is chosen")
+        XCTAssertEqual(model.files.editors.map(\.id), ["trellis-editor", "finder", "vscode", "default", "trellis-tab"], "Only installed editors are offered")
+        XCTAssertEqual(model.files.editor, .trellisEditor, "Trellis Editor until another is chosen (FR-ED09)")
         let readme = FileEntry(path: project + "/README.md", isDirectory: false)
 
         await model.openFile(readme)
+        XCTAssertEqual(model.shownEditor?.document.path, readme.path, "The default opens an editor tab")
+        XCTAssertTrue(recorder.opened.isEmpty && recorder.revealed.isEmpty, "Nothing leaves Trellis")
+        await model.openFile(readme, in: .finder)
         XCTAssertEqual(recorder.revealed, [[URL(fileURLWithPath: readme.path)]], "Finder reveals a file")
         await model.openFile(nil)
         XCTAssertEqual(recorder.opened.last?.0.path, project, "No selection opens the project folder")

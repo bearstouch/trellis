@@ -71,6 +71,7 @@ nav:
   - Sidebar tools:
       - Right sidebar and dock: features/sidebar.md
       - Files: features/files.md
+      - Editor tabs: features/editor.md
       - Changes: features/changes.md
       - Directory jump: features/directory-jump.md
       - Shell integration: features/shell-integration.md

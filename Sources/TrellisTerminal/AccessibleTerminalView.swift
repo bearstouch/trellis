@@ -12,6 +12,8 @@ struct TerminalLinkMenu: Equatable {
     var click: TerminalLinkClick
     /// Adds Show in Finder beside Open; false when Open already reveals (FR-L03) or the link isn't a file.
     var canReveal = false
+    /// Adds Open in Trellis Editor first: a file inside the pane's project (FR-ED07).
+    var canEdit = false
 }
 
 /// A clicked link: the engine's text (nil if it found none), whether it is an OSC 8
@@ -37,6 +39,8 @@ final class AccessibleTerminalView: TerminalView {
     var onOpenLink: ((TerminalLinkClick) -> Void)?
     /// Shows a file link chosen from the context menu in Finder.
     var onRevealLink: ((TerminalLinkClick) -> Void)?
+    /// Opens a file link chosen from the context menu in an editor tab (FR-ED07).
+    var onEditLink: ((TerminalLinkClick) -> Void)?
     var scrollback = TerminalScrollback(budget: .standard)
     /// The configurable Find chord; other ⌘ chords reach the menu bar.
     var searchChord: KeyChord? = ShortcutMap.defaults[.findInPane]
@@ -315,7 +319,9 @@ final class AccessibleTerminalView: TerminalView {
         if item.action == #selector(selectAllTerminalText(_:)) { return true }
         if item.action == #selector(pasteEscapedPath(_:)) { return true }
         if item.action == #selector(showPaneSearch(_:)) || item.action == #selector(clearTerminal(_:)) { return true }
-        if item.action == #selector(openContextLink(_:)) || item.action == #selector(revealContextLink(_:)) || item.action == #selector(copyContextLink(_:)) { return contextLink != nil }
+        if [#selector(openContextLink(_:)), #selector(revealContextLink(_:)), #selector(copyContextLink(_:)), #selector(editContextLink(_:))].contains(item.action) {
+            return contextLink != nil
+        }
         if item.action == #selector(copy(_:)) { return !selectedText.isEmpty }
         return super.validateUserInterfaceItem(item)
     }
@@ -331,7 +337,8 @@ final class AccessibleTerminalView: TerminalView {
         contextLink = nil
         if let described = selectionLinkClick(at: position).flatMap({ describeLink?($0) }) ?? describeLink?(click) {
             contextLink = (described.click, described.copyText)
-            var actions = [(described.openTitle, #selector(openContextLink(_:)))]
+            var actions = described.canEdit ? [(L("Open in Trellis Editor"), #selector(editContextLink(_:)))] : []
+            actions.append((described.openTitle, #selector(openContextLink(_:))))
             if described.canReveal { actions.append((L("Show in Finder"), #selector(revealContextLink(_:)))) }
             actions.append((described.copyTitle, #selector(copyContextLink(_:))))
             for (title, action) in actions {
@@ -376,6 +383,13 @@ final class AccessibleTerminalView: TerminalView {
         lastUserGesture = Date()
         defer { lastUserGesture = nil }
         onOpenLink?(contextLink.click)
+    }
+
+    @objc func editContextLink(_ sender: Any?) {
+        guard let contextLink else { return }
+        lastUserGesture = Date()
+        defer { lastUserGesture = nil }
+        onEditLink?(contextLink.click)
     }
 
     @objc func revealContextLink(_ sender: Any?) {

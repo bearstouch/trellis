@@ -115,7 +115,7 @@ final class FileBrowserTests: XCTestCase {
     }
 
     func testTheEditorCatalog() {
-        XCTAssertEqual(EditorApp.catalog.first, .finder)
+        XCTAssertEqual(EditorApp.catalog.prefix(2), [.trellisEditor, .finder])
         XCTAssertEqual(Set(EditorApp.catalog.map(\.id)).count, EditorApp.catalog.count, "Ids are unique")
         XCTAssertEqual(EditorApp.with(id: "cursor")?.name, "Cursor")
         XCTAssertNil(EditorApp.with(id: "nope"))

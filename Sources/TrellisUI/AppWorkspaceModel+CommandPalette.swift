@@ -141,6 +141,9 @@ extension AppWorkspaceModel {
         case .tab(let spaceID, let tabID):
             await selectSpaceTab(spaceID: spaceID, tabID: tabID)
             focusActiveTerminal()
+        case .editorTab(let id):
+            if let spaceID = editorTab(id)?.spaceID, presentation.selectedSpace?.id != spaceID { await selectSpace(spaceID) }
+            selectEditor(id)
         case .pane(let id):
             await revealPane(id)
             focusActiveTerminal()
@@ -238,6 +241,14 @@ extension AppWorkspaceModel {
                             target: .pane(paneID), kind: .pane, title: paneTitle(paneID), subtitle: "\(space.name) › \(title) · \(commandPaletteStatus(paneID))",
                             groupID: space.id.uuidString, groupTitle: space.name))
                 }
+            }
+            // Editor tabs after the space's tabs, as in the tab bar (FR-ED01).
+            for editor in editorTabs[space.id] ?? [] {
+                tabItems.append(
+                    CommandPaletteItem(
+                        target: .editorTab(editor.id), kind: .tab, title: editorTitle(editor),
+                        subtitle: "\(space.name) › " + L("Editor") + (editor.isDirty ? " · " + L("unsaved") : ""), keywords: [editor.displayPath],
+                        groupID: space.id.uuidString, groupTitle: space.name))
             }
         }
         let hostItems = commandPaletteHosts().flatMap { host in

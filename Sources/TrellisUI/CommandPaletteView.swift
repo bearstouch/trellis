@@ -208,7 +208,7 @@ struct CommandPaletteView: View {
         case .action, .settings, .welcomeTour: item.title
         case .scope(let scope): scope.title
         case .space: L("Go to Space")
-        case .tab: L("Go to Tab")
+        case .tab, .editorTab: L("Go to Tab")
         case .pane: L("Go to Pane")
         case .host: L("Connect")
         case .remoteWorkspace: L("Open Remote Workspace")
@@ -228,6 +228,7 @@ struct CommandPaletteView: View {
         case .scope: "arrow.forward.square"
         case .space: "macwindow"
         case .tab: "menubar.rectangle"
+        case .editorTab: "doc.text"
         case .pane: "rectangle.split.2x1"
         case .host: "server.rack"
         case .remoteWorkspace: "rectangle.connected.to.line.below"

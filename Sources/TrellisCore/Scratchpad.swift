@@ -3,7 +3,8 @@ import Foundation
 /// A language the command scratchpad can highlight, check and run (FR-SP03). The selector lists `all`, so another
 /// language is one more entry here.
 public struct ScratchpadLanguage: Hashable, Identifiable, Sendable {
-    public enum Grammar: Sendable { case shell, javascript, markdown }
+    /// `code`, `markup`, `yaml`, `toml` and `plain` are used by editor tabs only (FR-ED09).
+    public enum Grammar: Hashable, Sendable { case shell, javascript, markdown, code(CodeSyntax), markup, yaml, toml, plain }
 
     public let id: String
     public let displayName: String
@@ -223,7 +224,7 @@ public enum ScratchpadValidator {
                 guard let match = text.firstMatch(of: #/: (?:line )?(\d+): (.+)$/#), let line = Int(match.1) else { return nil }
                 return ScratchpadIssue(line: line, String(match.2))
             }
-        case .markdown: return []
+        case .markdown, .code, .markup, .yaml, .toml, .plain: return []
         case .javascript:
             guard let first = lines.first, let match = first.firstMatch(of: /:(\d+)$/), let line = Int(match.1) else { return [] }
             let message = lines.first { $0.firstMatch(of: #/^[A-Za-z]*Error: /#) != nil } ?? L("Syntax error.")

@@ -9,10 +9,15 @@ public struct FileLinkContext: Equatable, Sendable {
     public var homeDirectory: String
     /// Lowercased names a `file://` host may use; empty and `localhost` are always local.
     public var localHostNames: Set<String>
+    /// The pane's project (FR-FB02); with `currentDirectory`, where a link may open in an editor tab (FR-ED07).
+    public var projectRoot: String?
 
-    public init(currentDirectory: String?, homeDirectory: String, localHostNames: Set<String> = FileLinkContext.systemHostNames) {
-        self.currentDirectory = currentDirectory; self.homeDirectory = homeDirectory; self.localHostNames = localHostNames
+    public init(currentDirectory: String?, homeDirectory: String, localHostNames: Set<String> = FileLinkContext.systemHostNames, projectRoot: String? = nil) {
+        self.currentDirectory = currentDirectory; self.homeDirectory = homeDirectory; self.localHostNames = localHostNames; self.projectRoot = projectRoot
     }
+
+    /// Whether `path` may open in an editor tab: inside the project or the current folder (FR-ED07).
+    public func editorMayOpen(_ path: String) -> Bool { EditorLinkScope.contains(path, roots: [projectRoot, currentDirectory].compactMap { $0 }) }
 
     /// From `gethostname`, which never blocks on DNS (unlike `ProcessInfo.hostName`).
     public static var systemHostNames: Set<String> {

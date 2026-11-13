@@ -31,7 +31,7 @@ public struct FilesBrowserState: Equatable, Sendable {
     public internal(set) var status: String?
     /// The editors installed on this Mac, in menu order, read when the view loads.
     public internal(set) var editors: [EditorApp] = []
-    public internal(set) var editorID = EditorApp.finder.id
+    public internal(set) var editorID = EditorApp.trellisEditor.id
     /// Each installed editor's app, for its menu icon.
     var editorAppURLs: [String: URL] = [:]
     var ignore = IgnorePatterns.none
@@ -40,7 +40,7 @@ public struct FilesBrowserState: Equatable, Sendable {
 
     public init() {}
 
-    public var editor: EditorApp { editors.first { $0.id == editorID } ?? .finder }
+    public var editor: EditorApp { editors.first { $0.id == editorID } ?? .trellisEditor }
 
     /// The tree flattened in display order, through open folders only.
     public var rows: [Row] {
@@ -117,7 +117,7 @@ extension AppWorkspaceModel {
     func loadEditorChoices() {
         files.editorAppURLs = Dictionary(uniqueKeysWithValues: EditorApp.catalog.compactMap { app in appURL(for: app).map { (app.id, $0) } })
         files.editors = EditorApp.catalog.filter { $0.bundleIDs.isEmpty || $0 == .finder || files.editorAppURLs[$0.id] != nil }
-        files.editorID = preferences.string(forKey: Self.filesEditorKey) ?? EditorApp.finder.id
+        files.editorID = preferences.string(forKey: Self.filesEditorKey) ?? EditorApp.trellisEditor.id
     }
 
     private func resetFiles(paneID: UUID, root: String?) {
@@ -217,8 +217,8 @@ extension AppWorkspaceModel {
     public func filesEditorAppURL(_ editor: EditorApp) -> URL? { files.editorAppURLs[editor.id] }
 
     /// Opens a file or folder (the root when nil) in `editor`, or in the remembered one. Choosing an editor remembers it.
-    public func openFile(_ entry: FileEntry?, in editor: EditorApp? = nil) async {
-        if let editor {
+    public func openFile(_ entry: FileEntry?, in editor: EditorApp? = nil, remember: Bool = true) async {
+        if let editor, remember {
             files.editorID = editor.id
             preferences.set(editor.id, forKey: Self.filesEditorKey)
         }
@@ -235,6 +235,7 @@ extension AppWorkspaceModel {
             case .open(let target)?, .reveal(let target)?: revealFiles([target])
             case nil: errorMessage = L("%@ can't be opened.", entry.name)
             }
+        case EditorApp.trellisEditor.id: await openFileInEditor(entry)
         case EditorApp.newTab.id: await openTabForDirectory(entry.isDirectory ? entry.path : (entry.path as NSString).deletingLastPathComponent, target: .local)
         default:
             guard let app = appURL(for: editor) else {

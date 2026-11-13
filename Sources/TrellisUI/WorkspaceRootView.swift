@@ -12,6 +12,7 @@ public struct WorkspaceRootView: View {
     @State private var sidebarDragStart: CGFloat?
     /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
     @State private var sidebarCursorPushed = false
+    @State private var hoveredEditorTab: UUID?
     static let sidebarWidths: ClosedRange<CGFloat> = 280...640
     @State private var spaceName = ""
     @FocusState private var tabNameFocused: Bool
@@ -382,10 +383,18 @@ public struct WorkspaceRootView: View {
                     tabBar
                     Divider().overlay(model.separatorOverlay).background(model.translucentChromeBackground)
                     HStack(spacing: 0) {
-                        if model.reviewVisible, let review = model.currentReview {
-                            ReviewTabView(model: model, review: review).frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
-                            terminalCanvas
+                        ZStack {
+                            if model.reviewVisible, let review = model.currentReview {
+                                ReviewTabView(model: model, review: review).frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else {
+                                terminalCanvas
+                            }
+                            // Every editor tab stays mounted, hidden unless shown, so its undo and scroll survive (FR-ED01).
+                            ForEach(model.allEditorTabs) { tab in
+                                let shown = model.shownEditor?.id == tab.id
+                                EditorTabView(model: model, tab: tab, shown: shown).frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .opacity(shown ? 1 : 0).allowsHitTesting(shown).accessibilityHidden(!shown)
+                            }
                         }
                         if let view = model.visibleSidebarView {
                             sidebarResizeHandle
@@ -410,6 +419,10 @@ public struct WorkspaceRootView: View {
                     }
                     if let review = model.currentReview {
                         reviewTabLabel(review)
+                        Divider().overlay(model.separatorOverlay).frame(height: 20)
+                    }
+                    ForEach(model.currentEditors) { tab in
+                        editorTabLabel(tab)
                         Divider().overlay(model.separatorOverlay).frame(height: 20)
                     }
                 }.accessibilityElement(children: .contain).accessibilityLabel(L("Tabs"))
@@ -474,8 +487,39 @@ public struct WorkspaceRootView: View {
         .accessibilityAction { model.showReview() }
     }
 
+    /// An editor tab (FR-ED01, FR-ED05, FR-ED10): after the terminal tabs, never saved, not reorderable.
+    private func editorTabLabel(_ tab: EditorTab) -> some View {
+        let selected = model.shownEditor?.id == tab.id
+        let title = model.editorTitle(tab)
+        return HStack(spacing: 8) {
+            Image(systemName: "doc.text").font(.system(size: 10)).foregroundStyle(selected ? model.themeColor(.accent) : model.themeColor(.mutedForeground))
+                .accessibilityHidden(true)
+            Text(title).lineLimit(1).truncationMode(.middle)
+            Button {
+                Task { await model.closeEditor(tab.id) }
+            } label: {
+                // The unsaved dot stands where the close button is until the pointer is over it, as in document apps.
+                Image(systemName: tab.isDirty && hoveredEditorTab != tab.id ? "circle.fill" : "xmark").font(.system(size: tab.isDirty && hoveredEditorTab != tab.id ? 7 : 9))
+            }
+            .buttonStyle(.plain).help(L("Close %@", tab.fileName)).accessibilityLabel(L("Close %@", tab.fileName))
+        }
+        .foregroundStyle(selected ? model.themeColor(.activeTabForeground) : model.themeColor(.foreground))
+        .font(.system(size: 12, weight: selected ? .semibold : .regular)).padding(.horizontal, 14).frame(minWidth: 110, maxWidth: 240).frame(height: 40)
+        .background(selected ? model.themeColor(.activeTabBackground) : .clear)
+        .overlay(alignment: .bottom) { if selected { Rectangle().fill(model.themeColor(.accent)).frame(height: model.increaseContrast ? 3 : 2) } }
+        .contentShape(Rectangle())
+        .onHover { hoveredEditorTab = $0 ? tab.id : (hoveredEditorTab == tab.id ? nil : hoveredEditorTab) }
+        .onTapGesture { model.selectEditor(tab.id) }
+        .help(tab.document.path)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L("Editor tab, %@", title))
+        .accessibilityValue(tab.isDirty ? L("unsaved") : "")
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
+        .accessibilityAction { model.selectEditor(tab.id) }
+    }
+
     private func tabLabel(_ tab: WorkspaceTab, descriptor: AccessibilityDescriptor?) -> some View {
-        let selected = tab.id == model.presentation.selectedTab?.id && !model.reviewVisible
+        let selected = tab.id == model.presentation.selectedTab?.id && !model.reviewVisible && !model.editorVisible
         let busy = model.busyTabIDs.contains(tab.id)
         let wait = model.inputWait(tabID: tab.id)
         let progress = model.progress(tabID: tab.id)

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ScratchpadTokenKind: Sendable { case keyword, command, string, comment, variable, number, `operator` }
+public enum ScratchpadTokenKind: Sendable { case keyword, command, string, comment, variable, number, `operator`, type }
 
 public struct ScratchpadToken: Equatable, Sendable {
     /// UTF-16 offsets, as `NSString` and the text view count them.
@@ -19,6 +19,11 @@ public enum ScratchpadHighlighter {
         case .shell: return shell(units)
         case .javascript: return javascript(units)
         case .markdown: return markdown(units)
+        case .code(let syntax): return CodeHighlighter.code(units, syntax)
+        case .markup: return CodeHighlighter.markup(units)
+        case .yaml: return CodeHighlighter.keyValue(units, separator: unit(":"))
+        case .toml: return CodeHighlighter.keyValue(units, separator: unit("="))
+        case .plain: return []
         }
     }
 

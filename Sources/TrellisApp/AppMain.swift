@@ -379,6 +379,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .renameTab: model.tabRenameRequest = UUID()
         case .renameSpace: model.spaceRenameRequest = UUID()
         // The Review tab hides the terminals, so closing acts on what is shown, never on a pane out of sight (FR-GC05).
+        // An editor tab likewise (FR-ED05), and ⌘S saves it (FR-ED04).
+        case .closePane where model.editorVisible, .closeTab where model.editorVisible: Task { await model.closeShownEditor() }
+        case .saveWorkspace where model.editorVisible: Task { await model.saveShownEditor() }
+        case .findInPane where model.editorVisible, .findNext where model.editorVisible, .findPrevious where model.editorVisible:
+            findInEditor(action == .findInPane ? .showFindInterface : action == .findNext ? .nextMatch : .previousMatch)
         case .closePane where model.reviewVisible, .closeTab where model.reviewVisible: model.closeReview()
         case .closePane: if let pane { Task { await model.closePane(pane) } }
         case .closeTab: if let tab = presentation.selectedTab?.id { Task { await model.closeTab(tab) } }
@@ -412,10 +417,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .resizeDown: Task { await model.resizeFocusedPane(.down) }
         case .nextSpace: selectRelativeSpace(1)
         case .previousSpace: selectRelativeSpace(-1)
-        case .nextTab: selectRelativeTab(1)
-        case .previousTab: selectRelativeTab(-1)
+        case .nextTab: Task { await model.selectAdjacentTab(1) }
+        case .previousTab: Task { await model.selectAdjacentTab(-1) }
         default: break
         }
+    }
+
+    /// Find while an editor tab is shown searches the editor, giving it the keyboard first if needed.
+    private func findInEditor(_ action: NSTextFinder.Action) {
+        if performTextFinderAction(action) { return }
+        model.focusEditor()
+        DispatchQueue.main.async { [weak self] in _ = self?.performTextFinderAction(action) }
     }
 
     /// Find in a focused text view with its own find bar (the scratchpad editor) searches there, not in the pane.
@@ -453,7 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .resizeLeft, .resizeRight, .resizeUp, .resizeDown:
             return presentation.activePane != nil
         case .nextSpace, .previousSpace: return model.snapshot.spaces.count > 1
-        case .nextTab, .previousTab: return presentation.visibleTabs.count > 1
+        case .nextTab, .previousTab: return presentation.visibleTabs.count + model.currentEditors.count > 1
         default: return presentation.selectedSpace != nil || action == .newTab
         }
     }
@@ -495,12 +507,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard let id = model.snapshot.activeSpaceID, let index = spaces.firstIndex(where: { $0.id == id }), !spaces.isEmpty else { return }
         let next = spaces[(index + offset + spaces.count) % spaces.count].id
         Task { await model.selectSpace(next) }
-    }
-    private func selectRelativeTab(_ offset: Int) {
-        let tabs = model.presentation.visibleTabs
-        guard let id = model.presentation.selectedTab?.id, let index = tabs.firstIndex(where: { $0.id == id }), !tabs.isEmpty else { return }
-        let next = tabs[(index + offset + tabs.count) % tabs.count].id
-        Task { await model.selectTab(next) }
     }
 
     private func setWindowTranslucent(_ translucent: Bool) {
@@ -728,6 +734,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationPending else { return .terminateLater }
         guard !closingWindow else { return .terminateCancel }
+        // Unsaved editor tabs are asked about first (FR-ED05); saving them restarts the quit once they are written.
+        if model.hasUnsavedEditors {
+            switch model.confirmUnsavedEditors(model.unsavedEditorNames) {
+            case .cancel: return .terminateCancel
+            case .save:
+                Task { if await model.saveAllEditors() { NSApp.terminate(nil) } }
+                return .terminateCancel
+            case .discard: break
+            }
+        }
         let choice = model.confirmQuit()
         guard choice != .cancel else { return .terminateCancel }
         terminationPending = true
