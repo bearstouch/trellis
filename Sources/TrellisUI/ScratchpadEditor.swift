@@ -10,6 +10,8 @@ struct ScratchpadEditorCommands {
     /// ⌘S and ⌘L, for editor tabs (FR-ED03, FR-ED04); nil leaves the chords to the menus.
     var saveFile: (() -> Void)?
     var goToLine: (() -> Void)?
+    /// ⇧⌘V: a Markdown tab's preview (FR-ED12).
+    var togglePreview: (() -> Void)?
 }
 
 /// A plain-text code editor (FR-SP02): TextKit 1, so highlighting can use temporary attributes that never enter the
@@ -324,6 +326,7 @@ final class ScratchpadTextView: NSTextView {
         switch (flags, isReturn, event.charactersIgnoringModifiers?.lowercased()) {
         case ([.command], false, "s") where commands.saveFile != nil: commands.saveFile?()
         case ([.command], false, "l") where commands.goToLine != nil: commands.goToLine?()
+        case ([.command, .shift], false, "v") where commands.togglePreview != nil: commands.togglePreview?()
         case ([.command], true, _): commands.run()
         case ([.command, .option], false, "v"): commands.validate()
         case ([.command, .option], false, "s"): commands.save()

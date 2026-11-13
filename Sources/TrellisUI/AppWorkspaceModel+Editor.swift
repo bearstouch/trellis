@@ -27,8 +27,13 @@ public struct EditorTab: Identifiable, Equatable, Sendable {
     public internal(set) var jump: EditorJump?
     /// The project the file was opened from, for the path shown in the header.
     public let projectRoot: String?
+    /// A Markdown tab showing its rendered preview instead of its source (FR-ED12); never saved.
+    public internal(set) var showsPreview = false
+    /// A `#heading` the preview should scroll to; a new `id` repeats it.
+    public internal(set) var previewAnchor: EditorPreviewAnchor?
 
     public var isDirty: Bool { text != document.text }
+    public var isMarkdown: Bool { language.id == EditorLanguage.markdown.id }
     public var fileName: String { document.fileName }
     public var language: ScratchpadLanguage { document.language }
     /// The path below the project, else with `~` for the home folder.
@@ -37,6 +42,11 @@ public struct EditorTab: Identifiable, Equatable, Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return document.path.hasPrefix(home + "/") ? "~" + document.path.dropFirst(home.count) : document.path
     }
+}
+
+public struct EditorPreviewAnchor: Equatable, Sendable {
+    public let id = UUID()
+    public let slug: String
 }
 
 public enum UnsavedEditorsChoice: Sendable { case save, discard, cancel }
@@ -187,6 +197,33 @@ extension AppWorkspaceModel {
     }
 
     public func clearEditorJump(_ id: UUID) { updateEditor(id) { $0.jump = nil } }
+
+    // MARK: Markdown preview (FR-ED12)
+
+    /// Switches a Markdown tab between its source and its preview; going back to the source gives it the keyboard.
+    public func toggleEditorPreview(_ id: UUID) {
+        guard let tab = editorTab(id), tab.isMarkdown else { return }
+        updateEditor(id) {
+            $0.showsPreview.toggle(); $0.previewAnchor = nil
+        }
+        if tab.showsPreview, shownEditor?.id == id { editorFocusRequest += 1 }
+    }
+
+    /// Back to the source, as Find does while the preview is shown.
+    public func showEditorSource(_ id: UUID) { if editorTab(id)?.showsPreview == true { toggleEditorPreview(id) } }
+
+    /// A click on a link in the preview. The file is untrusted: web and mail links open in the default app, project files
+    /// in an editor tab, `#heading` scrolls, and anything else does nothing.
+    public func openMarkdownLink(_ destination: String, in id: UUID) async {
+        guard let tab = editorTab(id) else { return }
+        let fs = editorFileSystem
+        switch MarkdownLink.action(destination, documentPath: tab.document.path, projectRoot: tab.projectRoot, isRegularFile: { fs.isRegularFile($0) }) {
+        case .web(let url): openFileInApp(url, nil)
+        case .file(let path): await openInEditor(path: path, projectRoot: tab.projectRoot)
+        case .anchor(let slug): updateEditor(id) { $0.previewAnchor = EditorPreviewAnchor(slug: slug) }
+        case .none: break
+        }
+    }
     public func goToLine(_ id: UUID, line: Int) { updateEditor(id) { $0.jump = EditorJump(line: line, column: nil) } }
 
     // MARK: Disk (FR-ED06)

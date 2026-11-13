@@ -423,4 +423,56 @@ final class EditorTabTests: XCTestCase {
         XCTAssertEqual(views[1].string, "second", "…never on another one")
         withExtendedLifetime(coordinators) {}
     }
+
+    @MainActor
+    func testMarkdownTabsToggleAPreviewThatKeepsEditingWorking() async throws {
+        let (model, _, _) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.openInEditor(path: project + "/Sources/App.swift")
+        let swift = try XCTUnwrap(model.shownEditor?.id)
+        model.toggleEditorPreview(swift)
+        XCTAssertFalse(try XCTUnwrap(model.editorTab(swift)).showsPreview, "Only Markdown has a preview")
+
+        await model.openInEditor(path: project + "/README.md", projectRoot: project)
+        let readme = try XCTUnwrap(model.shownEditor?.id)
+        XCTAssertTrue(try XCTUnwrap(model.shownEditor).isMarkdown)
+        model.toggleEditorPreview(readme)
+        XCTAssertTrue(try XCTUnwrap(model.shownEditor).showsPreview)
+        model.updateEditorText(readme, "# Draft\n")
+        let saved = await model.saveEditor(readme)
+        XCTAssertTrue(saved, "⌘S still saves while previewing")
+        XCTAssertEqual(try String(contentsOfFile: project + "/README.md", encoding: .utf8), "# Draft\n")
+
+        model.selectEditor(swift)
+        model.selectEditor(readme)
+        XCTAssertTrue(try XCTUnwrap(model.editorTab(readme)).showsPreview, "The choice belongs to the tab")
+        XCTAssertFalse(try XCTUnwrap(model.editorTab(swift)).showsPreview)
+        let focus = model.editorFocusRequest
+        model.showEditorSource(readme)
+        XCTAssertFalse(try XCTUnwrap(model.editorTab(readme)).showsPreview)
+        XCTAssertGreaterThan(model.editorFocusRequest, focus, "Back to the source gives it the keyboard")
+    }
+
+    @MainActor
+    func testPreviewLinksOpenWebPagesProjectFilesAndHeadingsOnly() async throws {
+        let (model, _, recorder) = try await makeModel()
+        defer { cleanUp(model) }
+        try "# Docs\n".write(toFile: project + "/lib/guide.md", atomically: true, encoding: .utf8)
+        await model.openInEditor(path: project + "/README.md", projectRoot: project)
+        let readme = try XCTUnwrap(model.shownEditor?.id)
+
+        await model.openMarkdownLink("https://example.com/docs", in: readme)
+        XCTAssertEqual(recorder.opened.map(\.0.absoluteString), ["https://example.com/docs"])
+        XCTAssertNil(recorder.opened.first?.1, "In the default app")
+        await model.openMarkdownLink("javascript:alert(1)", in: readme)
+        await model.openMarkdownLink("file:///etc/passwd", in: readme)
+        await model.openMarkdownLink("../other/x.txt", in: readme)
+        XCTAssertEqual(recorder.opened.count, 1, "Other schemes and paths outside the project do nothing")
+        XCTAssertEqual(model.currentEditors.count, 1)
+
+        await model.openMarkdownLink("#editing", in: readme)
+        XCTAssertEqual(model.editorTab(readme)?.previewAnchor?.slug, "editing")
+        await model.openMarkdownLink("lib/guide.md#docs", in: readme)
+        XCTAssertEqual(model.shownEditor?.document.path, project + "/lib/guide.md", "A project file opens in an editor tab")
+    }
 }

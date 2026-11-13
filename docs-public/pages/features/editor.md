@@ -27,6 +27,7 @@ app instead, and Trellis tells you why. Paths outside the project, and files in 
 | <kbd>⌘</kbd><kbd>S</kbd> or **Save** | Save the file |
 | <kbd>⌘</kbd><kbd>L</kbd>, or click **Ln, Col** in the header | Go to a line |
 | <kbd>⌘</kbd><kbd>F</kbd>, <kbd>⌘</kbd><kbd>G</kbd>, <kbd>⇧</kbd><kbd>⌘</kbd><kbd>G</kbd> | Find, next, previous |
+| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>V</kbd> | Markdown: switch between Preview and Edit |
 | <kbd>⌘</kbd><kbd>W</kbd> | Close the editor tab |
 | **Open With** in the header | Open the file in another editor |
 
@@ -42,6 +43,29 @@ When you come back to Trellis or switch to the tab, it checks the file. If you h
 the new version. If you have, a banner says the file changed on disk: **Reload from Disk** takes the new version and
 drops your changes, **Keep Mine** keeps yours, and the next save replaces the file. If the file was deleted, saving
 creates it again.
+
+## Preview Markdown
+
+A Markdown file's tab has a **Preview** button in its header. Click it, or press <kbd>⇧</kbd><kbd>⌘</kbd><kbd>V</kbd>, to
+see the file rendered in your theme's colors; **Edit** (or the same shortcut) takes you back to the source. Each tab
+remembers its own choice while Trellis is open.
+
+The preview shows your current text, unsaved changes included, and keeps up as you type in the source. While
+previewing, <kbd>⌘</kbd><kbd>S</kbd> still saves, and going back to Edit puts you where you were, with your undo history
+intact. Find takes you back to Edit to search the source.
+
+It renders headings, paragraphs, bold, italic, strikethrough, inline code, links, bullet, numbered and task lists, quotes,
+code blocks (colored like the editor when they name a language it knows), tables and horizontal rules. HTML in the
+file is shown as text.
+
+Links work by clicking:
+
+- Web and email links open in your browser or mail app.
+- A link to another file in the project, such as `docs/setup.md`, opens it in an editor tab.
+- A link to a heading, such as `#install`, scrolls to it.
+- Anything else does nothing.
+
+Images are never loaded, from the web or from disk: each one shows as its description instead.
 
 ## Colors and languages
 

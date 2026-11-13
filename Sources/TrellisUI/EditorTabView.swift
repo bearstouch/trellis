@@ -20,15 +20,23 @@ struct EditorTabView: View {
             header
             Divider().overlay(model.separatorOverlay)
             if let banner = tab.banner { bannerView(banner) }
-            ScratchpadEditor(
-                text: Binding(get: { model.editorTab(tab.id)?.text ?? "" }, set: { model.updateEditorText(tab.id, $0) }), language: tab.language,
-                font: editorFont, palette: model.effectiveTheme.terminal, issueLines: [], focusRequest: model.editorFocusRequest,
-                commands: ScratchpadEditorCommands(saveFile: { Task { await model.saveEditor(tab.id) } }, goToLine: { beginGoToLine() }),
-                accessibilityName: L("Editor, %@", tab.fileName), contentNoun: L("file"), maximumBytes: EditorDocument.maximumBytes,
-                highlightsCurrentLine: true, jump: tab.jump, onJumped: { model.clearEditorJump(tab.id) },
-                onCursor: {
-                    line = $0; column = $1
-                }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown)
+            ZStack {
+                ScratchpadEditor(
+                    text: Binding(get: { model.editorTab(tab.id)?.text ?? "" }, set: { model.updateEditorText(tab.id, $0) }), language: tab.language,
+                    font: editorFont, palette: model.effectiveTheme.terminal, issueLines: [], focusRequest: model.editorFocusRequest,
+                    commands: ScratchpadEditorCommands(
+                        saveFile: { Task { await model.saveEditor(tab.id) } }, goToLine: { beginGoToLine() },
+                        togglePreview: tab.isMarkdown ? { model.toggleEditorPreview(tab.id) } : nil),
+                    accessibilityName: L("Editor, %@", tab.fileName), contentNoun: L("file"), maximumBytes: EditorDocument.maximumBytes,
+                    highlightsCurrentLine: true, jump: tab.jump, onJumped: { model.clearEditorJump(tab.id) },
+                    onCursor: {
+                        line = $0; column = $1
+                    }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview
+                )
+                // The source stays mounted under the preview, so its undo, cursor and scroll survive (FR-ED12).
+                .opacity(tab.showsPreview ? 0 : 1).allowsHitTesting(!tab.showsPreview).accessibilityHidden(tab.showsPreview)
+                if tab.isMarkdown, tab.showsPreview { MarkdownPreviewView(model: model, tab: tab, visible: shown) }
+            }
         }
         .background(Color(nsColor: NSColor(rgb: model.effectiveTheme.terminal.background)))
         .accessibilityElement(children: .contain)
@@ -70,9 +78,12 @@ struct EditorTabView: View {
             Text(tab.language.displayName).font(.caption).foregroundStyle(muted)
                 .padding(.horizontal, 7).padding(.vertical, 2).overlay(RoundedRectangle(cornerRadius: 4).stroke(model.themeColor(.border).opacity(0.6)))
                 .accessibilityLabel(L("Language: %@", tab.language.displayName))
-            Button(L("Ln %1$d, Col %2$d", line, column)) { beginGoToLine() }
-                .buttonStyle(.borderless).font(.caption.monospacedDigit()).foregroundStyle(muted).help(L("Go to Line (⌘L)"))
-                .popover(isPresented: $goToLineShown, arrowEdge: .bottom) { goToLinePopover }
+            if tab.isMarkdown { previewToggle }
+            if !tab.showsPreview {
+                Button(L("Ln %1$d, Col %2$d", line, column)) { beginGoToLine() }
+                    .buttonStyle(.borderless).font(.caption.monospacedDigit()).foregroundStyle(muted).help(L("Go to Line (⌘L)"))
+                    .popover(isPresented: $goToLineShown, arrowEdge: .bottom) { goToLinePopover }
+            }
             openWithMenu
             Button {
                 model.revealFiles([URL(fileURLWithPath: tab.document.path)])
@@ -113,6 +124,18 @@ struct EditorTabView: View {
         }
         .menuStyle(.borderlessButton).fixedSize().controlSize(.small).help(L("Open %@ in another app", tab.fileName))
         .onAppear { if model.files.editors.isEmpty { model.loadEditorChoices() } }
+    }
+
+    /// Preview / Edit for a Markdown tab (FR-ED12); ⇧⌘V also works while the source has the keyboard.
+    private var previewToggle: some View {
+        Button {
+            model.toggleEditorPreview(tab.id)
+        } label: {
+            Label(tab.showsPreview ? L("Edit") : L("Preview"), systemImage: tab.showsPreview ? "pencil" : "eye")
+        }
+        .controlSize(.small).keyboardShortcut("v", modifiers: [.command, .shift]).disabled(!shown)
+        .help(tab.showsPreview ? L("Edit the source (⇧⌘V)") : L("Preview the Markdown (⇧⌘V)"))
+        .accessibilityValue(tab.showsPreview ? L("showing the preview") : L("showing the source"))
     }
 
     // MARK: Go to line

@@ -50,12 +50,33 @@ Highlighting is a fast, single-pass tokenizer for: Swift, Python, JavaScript and
 Objective-C, Java, Kotlin, Ruby, shell scripts, Markdown, YAML, TOML, HTML/XML and CSS. The language comes from the file name,
 then from a `#!` line. Other files are plain text. Files over 512 KB are shown without highlighting.
 
+## Markdown preview
+
+A Markdown tab has a **Preview** button in its header (⇧⌘V) that shows the file rendered in place of its source; **Edit**
+(the same button and chord) goes back. The choice belongs to the tab and is never saved. The preview shows the tab's
+current text, unsaved changes included, and follows it as it changes. While previewing, ⌘S still saves, the unsaved mark
+stays, and the source keeps its undo history, cursor and scroll position; Find goes back to Edit first.
+
+The preview is drawn by Trellis in the theme's colors and fonts, with no web view and no scripts. It shows ATX and setext
+headings, paragraphs and hard line breaks, emphasis, strong, strikethrough, inline code and links, bullet, ordered and
+task lists (nested), block quotes, fenced and indented code (fenced code highlighted when its language is one the editor
+knows), GitHub tables with column alignment, and thematic breaks. Raw HTML is shown as text and never interpreted.
+
+The file is untrusted, so the preview never reaches out by itself:
+
+- Clicking a `http`, `https` or `mailto` link opens it in the default app. A relative link to a file inside the project
+  opens it in an editor tab (for a file opened outside a project, inside its own folder; a leading `/` names that root,
+  and a symbolic link is judged by its target), and a `#heading` link scrolls to that heading. A link with any other
+  scheme is drawn as plain text, not a link; any other link, or a path outside the project, does nothing.
+- Images are never loaded, local or remote: each shows as its alt text beside an image symbol.
+
 ## Shortcuts
 
 | Do this | To |
 | --- | --- |
 | ⌘S | Save |
 | ⌘L | Go to line |
+| ⇧⌘V | Markdown: switch between Preview and Edit |
 | ⌘F, ⌘G, ⇧⌘G | Find, next, previous (the standard find bar) |
 | ⌘W | Close the editor tab (asks when unsaved) |
 | ⌘Z, ⇧⌘Z | Undo, redo |
@@ -75,12 +96,14 @@ then from a `#!` line. Other files are plain text. Files over 512 KB are shown w
 | FR-ED09 | Choose Trellis Editor in Files. | **Open in** lists Trellis Editor first; it is used when no app has been chosen, and a remembered choice is kept. The row context menu offers **Open in Trellis Editor**. |
 | FR-ED10 | Make editor tabs accessible and localized. | The tab is named "Editor tab, <file>" with the value "unsaved" when it is; the text area is named after the file and its language; every header button has a label and a tooltip; banners are announced. All text on screen is localized. |
 | FR-ED11 | Follow the theme. | Editor colors, syntax colors and font come from the active theme and terminal font settings. Changing the theme, previewing one in Settings (and cancelling), or switching appearance repaints open editor tabs at once; their text, selection, undo and scroll position are kept. |
+| FR-ED12 | Preview Markdown. | A Markdown tab, and only a Markdown tab, shows **Preview**/**Edit** (⇧⌘V); the choice is per tab, kept while switching tabs and never saved. The preview renders the tab's current text including unsaved changes, and the elements listed above; raw HTML appears as text. ⌘S saves while previewing, and going back to Edit keeps undo and the cursor. Web links open only by a click and only for `http`, `https` and `mailto`; a relative link inside the project opens an editor tab; `#heading` scrolls; any other link does nothing; images are never loaded. Headings are announced as headings and task items as done or not done. |
 
 ## Verification
 
 | Area | How it's checked |
 | --- | --- |
 | Reading, encoding, saving, disk changes (FR-ED02–FR-ED04, FR-ED06) | `EditorDocumentTests`: BOM, CRLF and final newline round-trip, binary/invalid/too-large refusals, permissions kept, failed write keeps the file, change and deletion detection. |
+| Markdown preview (FR-ED12) | `MarkdownDocumentTests`: each block kind, nesting, task items, fences, tables, setext headings, HTML as text, the nesting cap and linear time on hostile input, link actions (schemes, project scope, `..` and link escapes, anchors) and heading slugs. `EditorTabTests`: the toggle only for Markdown and per tab, saving while previewing, project, web and refused links. |
 | Languages and highlighting (FR-ED03) | `CodeHighlighterTests`: detection by name and `#!` line, tokens per language, linear time on hostile input, the scratchpad grammars unchanged. |
 | Tabs, saving, closing, links, Files, theme (FR-ED01, FR-ED05, FR-ED07–FR-ED09, FR-ED11) | `EditorTabTests`: open and reuse, not in the snapshot, dirty close asks, space close and quit ask, tab selection, Review coexisting, fallback to the default app, Files default and remembered choice, link inside and outside the project with line and column, theme change repaints. |
 | The editor in the app, VoiceOver, IME (FR-ED03, FR-ED10) | Manual: **pending** (typing and IME input, find bar, Go to Line, theme switching by eye, VoiceOver walk of the tab and text area). |

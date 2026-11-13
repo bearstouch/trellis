@@ -62,6 +62,17 @@ public enum EditorLanguage {
         ".gitignore": shell, ".gitattributes": shell, ".editorconfig": toml, ".swift-format": json, ".prettierrc": json, ".eslintrc": json
     ]
 
+    private static let fenceAliases: [String: String] = [
+        "javascript": "js", "typescript": "ts", "python": "py", "ruby": "rb", "rust": "rs", "shell": "sh", "console": "sh", "shellscript": "sh",
+        "c++": "cpp", "objective-c": "m", "objc": "m", "kotlin": "kt", "markdown": "md", "golang": "go", "jsonc": "json", "dockerfile": "sh"
+    ]
+
+    /// The language a fenced code block names (```` ```swift ````), for the Markdown preview (FR-ED12); plain text when unknown.
+    public static func forFence(_ info: String?) -> ScratchpadLanguage {
+        guard let name = info?.lowercased(), !name.isEmpty else { return plainText }
+        return detect(fileName: "code." + (fenceAliases[name] ?? name), firstLine: "")
+    }
+
     /// The language of `fileName`: by full name, then extension, then (for a file with no extension) its `#!` line.
     public static func detect(fileName: String, firstLine: String) -> ScratchpadLanguage {
         if let known = byName[fileName] { return known }

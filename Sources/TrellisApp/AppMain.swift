@@ -425,6 +425,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Find while an editor tab is shown searches the editor, giving it the keyboard first if needed.
     private func findInEditor(_ action: NSTextFinder.Action) {
+        // Find searches the source, so a Markdown preview goes back to it first (FR-ED12).
+        if let tab = model.shownEditor, tab.showsPreview {
+            model.showEditorSource(tab.id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in _ = self?.performTextFinderAction(action) }
+            return
+        }
         if performTextFinderAction(action) { return }
         model.focusEditor()
         DispatchQueue.main.async { [weak self] in _ = self?.performTextFinderAction(action) }
