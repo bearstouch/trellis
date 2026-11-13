@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Pane headers have no background of their own**: they sit on the terminal's background, so a pane reads as one surface. The focused pane keeps its focus line and semibold title; the accent tint is gone. The header's Maximize, Split and Close icons brighten under the pointer.
+
 ## [1.3.0-beta.1] - 2026-11-13
 
 The first 1.3 beta.

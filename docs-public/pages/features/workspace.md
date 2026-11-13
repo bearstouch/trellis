@@ -127,7 +127,7 @@ Click a pane, or use **Pane → Focus Left**, **Focus Right**, **Focus Up** and 
 !!! note "New in 1.2"
     With more than one pane showing, the focused pane is easier to spot.
 
-The focused pane's header gets an accent line along its bottom edge and a tint, and the other panes are slightly dimmed. Dimmed panes still take clicks, selection and scrolling. Nothing is dimmed while the Trellis window is inactive or with Increase Contrast on.
+Pane headers sit on the terminal's own background. The focused pane's header gets an accent line along its bottom edge and a bold title, and the other panes are slightly dimmed. Dimmed panes still take clicks, selection and scrolling. Nothing is dimmed while the Trellis window is inactive or with Increase Contrast on.
 
 ### Resize panes
 

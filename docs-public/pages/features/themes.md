@@ -27,8 +27,8 @@ The font isn't part of a theme. Choose it with **Terminal font** on the same pag
 
 **Settings → Appearance → Background opacity** (30–100 %, default 100 %) lets the desktop show through the window. Turn on **Blur behind background** (on by default) to frost what shows through.
 
-- The terminal panes' background takes the opacity exactly as you set it.
-- The sidebar, dock, tab bar, pane headers, side panels and status bar follow it but never go below 60 %, so their labels stay readable.
+- The terminal panes' background, and the pane headers that sit on it, take the opacity exactly as you set it.
+- The sidebar, dock, tab bar, side panels and status bar follow it but never go below 60 %, so their labels stay readable.
 - Text, icons, the cursor, selections, cells with their own background color, sheets, popovers, the command palette and the find bar stay opaque.
 - The window stays opaque while **Reduce Transparency** or **Increase Contrast** is on in macOS's Accessibility settings.
 
@@ -143,7 +143,7 @@ A theme is a UTF-8 JSON file of at most 64 KiB. Here is a complete one, [`exampl
 | Key | Colors |
 | --- | --- |
 | `background` | The window background. |
-| `surface` | Panels and pane headers. |
+| `surface` | Panels. |
 | `sidebarBackground` | The sidebar. |
 | `foreground`, `mutedForeground` | Normal and secondary text. |
 | `accent` | The accent color for highlights. |
