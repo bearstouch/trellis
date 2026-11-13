@@ -83,6 +83,8 @@ public enum CommandPaletteTarget: Hashable, Sendable {
     case scope(CommandPaletteScope)
     case space(UUID)
     case tab(spaceID: UUID, tabID: UUID)
+    /// An editor tab (FR-ED01), which lives outside the workspace.
+    case editorTab(UUID)
     case pane(UUID)
     case host(UUID)
     /// Opens the saved host as a remote workspace (FR-RW01).
@@ -104,6 +106,7 @@ public enum CommandPaletteTarget: Hashable, Sendable {
         case .scope(let scope): "scope:" + scope.rawValue
         case .space(let id): "space:" + id.uuidString
         case .tab(_, let id): "tab:" + id.uuidString
+        case .editorTab(let id): "editor:" + id.uuidString
         case .pane(let id): "pane:" + id.uuidString
         case .host(let id): "host:" + id.uuidString
         case .remoteWorkspace(let id): "remote-workspace:" + id.uuidString

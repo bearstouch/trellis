@@ -444,7 +444,7 @@ final class ChangesSidebarTests: XCTestCase {
         await model.reviewGitChange("Sources/UI/Right.swift")
         let review = try XCTUnwrap(model.currentReview)
         await model.openGitChange(review.root, review.file)
-        XCTAssertEqual(recorder.revealed.first?.first?.resolvingSymlinksInPath().path.hasSuffix("/repo/Sources/UI/Right.swift"), true, "Finder, the default editor, reveals the file")
+        XCTAssertEqual(model.shownEditor?.document.path.hasSuffix("/repo/Sources/UI/Right.swift"), true, "Trellis Editor, the default (FR-ED09), opens the file in an editor tab")
         model.copyGitChangePath(review.root, review.file, relative: true)
         model.copyGitChangePath(review.root, review.file)
         XCTAssertEqual(recorder.copied, ["Sources/UI/Right.swift", repo + "/Sources/UI/Right.swift"])

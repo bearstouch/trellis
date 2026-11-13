@@ -41,7 +41,7 @@ None of these are part of the MVP. Before starting one, write its requirements i
 | P2 | Agent registry: a signed, hosted index of agent definitions in the same schema, browsed and installed from Settings → Agents; per-agent extra arguments | [Coding agents](../features/agents.md#known-limits) |
 | P2 | tmux awareness, richer terminal protocols, plugins | |
 | P2 | Command palette: saved scratchpads as items (with the unsaved-changes confirmation), recents kept across launches | `FR-CP03`, `FR-CP05`, [Command palette](../features/command-palette.md#not-included) |
-| P2 | Links: open `file:line:column` in a configured editor, a pointing-hand cursor over links, detecting `ssh` typed inside a local shell | `FR-L02`, `FR-L04`, [Links](../features/terminal.md#links) |
+| P2 | Links: open `file:line:column` in a configured external editor (editor tabs already do, FR-ED07), a pointing-hand cursor over links, detecting `ssh` typed inside a local shell | `FR-L02`, `FR-L04`, [Links](../features/terminal.md#links) |
 
 **Not planned:** Spaces, Linux and iOS as platforms for the app (Linux is supported only as a remote workspace host, and iOS only as the proposed Mobile connect companion to a paired Mac); cloud sync; a web UI; a remote API server beyond the optional MCP server and the proposed Mobile connect link; an embedded AI provider; an embedded SSH implementation; general file transfer (the remote helper install and bounded project-file reads are the only transfers); serial ports; full iTerm2 preference import.
 

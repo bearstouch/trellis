@@ -244,6 +244,7 @@ extension AppWorkspaceModel {
         reviewTabs[spaceID] = ReviewTab(root: root, file: file, hasCommits: hasCommits, diff: nil)
         if !keepShown {
             reviewShownSpaces.insert(spaceID)
+            shownEditors[spaceID] = nil
             cancelPaste()
         }
         let client = gitChangesClient
@@ -261,6 +262,8 @@ extension AppWorkspaceModel {
 
     /// Before a pane action: shows the terminals when the Review tab hides them, so nothing acts on a pane out of sight.
     public func revealTerminalsForPaneAction(_ action: ShortcutAction) {
+        // Find searches a shown editor tab instead (FR-ED03).
+        if editorVisible, Self.reviewRevealingActions.contains(action), ![.findInPane, .findNext, .findPrevious].contains(action) { hideEditor() }
         guard reviewVisible, Self.reviewRevealingActions.contains(action) else { return }
         hideReview()
     }
@@ -280,6 +283,7 @@ extension AppWorkspaceModel {
     public func showReview() {
         guard let spaceID = presentation.selectedSpace?.id, reviewTabs[spaceID] != nil else { return }
         reviewShownSpaces.insert(spaceID)
+        shownEditors[spaceID] = nil
     }
 
     /// Back to the terminal tabs, keeping the Review tab.

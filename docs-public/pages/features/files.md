@@ -38,7 +38,8 @@ Press <kbd>Return</kbd>, double-click a row, or click **Open in** to open the se
 
 Click the arrow beside **Open in** to choose another app. Trellis remembers your choice for next time, and the [Changes](changes.md) view uses the same app. The list has:
 
-- **Finder**, the default. It reveals a file and opens a folder.
+- **Trellis Editor**, the default. It opens a text file in an [editor tab](editor.md) of the current space; a folder is shown in Finder.
+- **Finder**. It reveals a file and opens a folder.
 - Each of these editors that is installed: Cursor, VS Code (or VS Code Insiders or VSCodium), Zed, Xcode, Sublime Text, Nova, IntelliJ IDEA, WebStorm and PyCharm.
 - **Default App**: whatever macOS normally opens the file with.
 - **New Tab Here**: a Trellis tab in the file's folder.

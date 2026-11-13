@@ -333,6 +333,10 @@ private struct FileRow: View {
     @ViewBuilder private var menu: some View {
         let editor = model.files.editor
         Button(L("Open in %@", editor.name)) { Task { await model.openFile(entry) } }
+        // An editor tab is one click away whichever app is remembered; choosing it here isn't remembered (FR-ED09).
+        if editor != .trellisEditor, !entry.isDirectory {
+            Button(L("Open in %@", EditorApp.trellisEditor.name)) { Task { await model.openFile(entry, in: .trellisEditor, remember: false) } }
+        }
         Menu(L("Open With")) {
             ForEach(model.files.editors) { app in Button(app.name) { Task { await model.openFile(entry, in: app) } } }
         }

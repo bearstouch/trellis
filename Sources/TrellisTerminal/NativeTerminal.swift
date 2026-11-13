@@ -114,8 +114,9 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             return TerminalLogicalLine.smartSelection(in: surface.getTerminal(), at: position)
         }
         surface.describeLink = { [weak self] in self?.describeLink($0) }
-        surface.onOpenLink = { [weak self] in self?.openLink($0) }
+        surface.onOpenLink = { [weak self] in self?.openLink($0, inEditor: false) }
         surface.onRevealLink = { [weak self] in self?.revealLink($0) }
+        surface.onEditLink = { [weak self] in self?.openLink($0, inEditor: true) }
         observeNotifications()
         observeInlineImages()
         session.onOutput = { [weak self] data in
@@ -563,6 +564,10 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var revealURL: (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
     /// Where this pane's file links resolve, read at click time; nil refuses every file link (FR-L04).
     public var fileLinkContext: () -> FileLinkContext? = { nil }
+    /// Whether a file link may open in an editor tab (FR-ED07), read when the menu is built.
+    public var editorMayOpen: (String) -> Bool = { _ in false }
+    /// Opens a file link in an editor tab at its line and column; false hands it back to `openURL` or `revealURL`.
+    public var openInEditor: ((String, Int?, Int?) async -> Bool)?
     var fileProbe = FileProbe.live
     var now: () -> Date = { Date() }
 
@@ -573,7 +578,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         openLink(click)
     }
 
-    private enum ResolvedLink { case web(URL), file(path: String, action: FileLinkAction) }
+    private enum ResolvedLink { case web(URL), file(path: String, action: FileLinkAction, line: Int?, column: Int?) }
 
     /// SwiftTerm's detector lets paths contain spaces, so `a.txt b.txt` reads as one path.
     /// When its text names nothing, the smart-selection token under the click is tried.
@@ -584,7 +589,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         for candidate in candidates {
             switch TerminalLinkClassifier.classify(candidate, explicit: click.explicit, files: files) {
             case .web(let url): return (candidate, .web(url))
-            case .file(let path, _, _): if let action = FileLinkPolicy.action(path: path, probe: fileProbe) { return (candidate, .file(path: path, action: action)) }
+            case .file(let path, let line, let column):
+                if let action = FileLinkPolicy.action(path: path, probe: fileProbe) { return (candidate, .file(path: path, action: action, line: line, column: column)) }
             case nil: continue
             }
         }
@@ -598,14 +604,23 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         return String(Array(line.text)[match.range])
     }
 
-    func openLink(_ click: TerminalLinkClick) {
+    /// ⌘-click prefers an editor tab for a project file (FR-ED07); the menu's Open uses the default app, its Open in
+    /// Trellis Editor the editor. A file the editor refuses gets the usual open or reveal.
+    func openLink(_ click: TerminalLinkClick, inEditor: Bool = true) {
         guard LinkPolicy.gestureIsFresh(lastGesture: terminalView.lastUserGesture, now: now()), let resolved = resolve(click) else { return }
         terminalView.lastUserGesture = nil
-        switch resolved.link {
-        case .web(let url): _ = openURL(url)
-        case .file(_, .open(let url)): _ = openURL(url)
-        case .file(_, .reveal(let url)): revealURL(url)
+        guard case .file(let path, let action, let line, let column) = resolved.link else {
+            if case .web(let url) = resolved.link { _ = openURL(url) }
+            return
         }
+        let fallback = { [weak self] in
+            switch action {
+            case .open(let url): _ = self?.openURL(url)
+            case .reveal(let url): self?.revealURL(url)
+            }
+        }
+        guard inEditor, let openInEditor, editorMayOpen(path) else { fallback(); return }
+        Task { @MainActor in if await !openInEditor(path, line, column) { fallback() } }
     }
 
     func revealLink(_ click: TerminalLinkClick) {
@@ -613,7 +628,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         terminalView.lastUserGesture = nil
         switch resolved.link {
         case .web: return
-        case .file(_, .open(let url)), .file(_, .reveal(let url)): revealURL(url)
+        case .file(_, .open(let url), _, _), .file(_, .reveal(let url), _, _): revealURL(url)
         }
     }
 
@@ -623,8 +638,12 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         let frozen = TerminalLinkClick(link: resolved.candidate, explicit: click.explicit, position: nil)
         switch resolved.link {
         case .web(let url): return TerminalLinkMenu(openTitle: L("Open Link"), copyTitle: L("Copy Link"), copyText: url.absoluteString, click: frozen)
-        case .file(let path, .open): return TerminalLinkMenu(openTitle: L("Open"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canReveal: true)
-        case .file(let path, .reveal): return TerminalLinkMenu(openTitle: L("Show in Finder"), copyTitle: L("Copy Path"), copyText: path, click: frozen)
+        case .file(let path, .open, _, _):
+            return TerminalLinkMenu(
+                openTitle: L("Open"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canReveal: true, canEdit: openInEditor != nil && editorMayOpen(path))
+        case .file(let path, .reveal, _, _):
+            return TerminalLinkMenu(
+                openTitle: L("Show in Finder"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canEdit: openInEditor != nil && editorMayOpen(path))
         }
     }
     public func bell(source: TerminalView) { if !isReplaying { playBell() } }

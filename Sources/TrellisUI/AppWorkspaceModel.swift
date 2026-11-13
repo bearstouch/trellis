@@ -567,6 +567,21 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Each space's Review tab (FR-GC05), and the spaces showing it in place of their terminal tabs. Never saved.
     @Published public internal(set) var reviewTabs: [UUID: ReviewTab] = [:]
     @Published public internal(set) var reviewShownSpaces: Set<UUID> = []
+    /// Each space's editor tabs in tab-bar order, and the one shown in place of its terminal tabs (FR-ED01, FR-ED08). Never saved.
+    @Published public internal(set) var editorTabs: [UUID: [EditorTab]] = [:]
+    @Published public internal(set) var shownEditors: [UUID: UUID] = [:]
+    /// Bumped when the shown editor should take keyboard focus.
+    @Published public internal(set) var editorFocusRequest = 0
+    /// Spaces whose unsaved editor tabs the user chose not to save while closing them (FR-ED05).
+    var discardedEditorSpaces: Set<UUID> = []
+    /// Injected by tests: the file system editor tabs read and write.
+    var editorFileSystem = EditorFileSystem.live
+    /// The save running for each editor tab, so a second ⌘S waits for it instead of racing it (FR-ED04).
+    var editorSaves: [UUID: Task<Bool, Never>] = [:]
+    /// Asked before closing editor tabs with unsaved changes (FR-ED05), with their file names; the app shows an alert.
+    public var confirmUnsavedEditors: ([String]) -> UnsavedEditorsChoice = { _ in .cancel }
+    /// Asked before saving over a file that changed on disk (FR-ED06), with its name; the app shows an alert.
+    public var confirmOverwriteChangedFile: (String) -> Bool = { _ in false }
     /// Bumped when the Changes view's filter field should take keyboard focus.
     @Published public internal(set) var gitChangesFocusRequest = 0
     var gitChangesGeneration = 0
@@ -727,6 +742,8 @@ public final class AppWorkspaceModel: ObservableObject {
         (keyboard, keyboardNotice) = Self.loadKeyboardSettings(preferences)
         confirmCloseSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: false) ?? false }
         confirmForceSessions = { [weak self] in self?.showClosureConfirmation(count: $0, force: true) ?? false }
+        confirmUnsavedEditors = { Self.showUnsavedEditorsConfirmation($0) }
+        confirmOverwriteChangedFile = { Self.showOverwriteConfirmation($0) }
         confirmKeepRunning = { [weak self] in self?.showKeepRunningConfirmation(kept: $0, stopping: $1) ?? .cancel }
         confirmStopOrphans = { [weak self] in self?.showOrphanConfirmation(count: $0) ?? false }
         confirmClearDirectoryHistory = { [weak self] in self?.showClearDirectoryHistoryConfirmation() ?? false }
@@ -968,6 +985,7 @@ public final class AppWorkspaceModel: ObservableObject {
         lastRecordedDirectories = lastRecordedDirectories.filter { next.sessions[$0.key] != nil }
         unconfiguredPaneIDs = unconfiguredPaneIDs.filter { next.panes[$0] != nil }
         if !reviewTabs.isEmpty || !reviewShownSpaces.isEmpty { pruneReviews(previous: previous, next: next) }
+        if !editorTabs.isEmpty { pruneEditors(previous: previous, next: next) }
         if let selected = next.activeSpaceID { activity.removeValue(forKey: selected) }
         if let editingTabID, next.tabs[editingTabID] == nil || presentation.selectedTab?.id != editingTabID { endTabRenameEditing() }
         refreshTerminalAccessibility()
@@ -1228,7 +1246,10 @@ public final class AppWorkspaceModel: ObservableObject {
     /// File links resolve only in local panes, read at click time so a restart is seen (FR-L04).
     func fileLinkContext(paneID: UUID) -> FileLinkContext? {
         guard let pane = snapshot.panes[paneID], let launch = snapshot.sessions[pane.sessionID]?.launch, !Self.isRemote(launch) else { return nil }
-        return FileLinkContext(currentDirectory: currentDirectory(paneID: paneID), homeDirectory: NSHomeDirectory())
+        let directory = currentDirectory(paneID: paneID)
+        // The project, as Files roots it (FR-FB02), so a link can open in an editor tab (FR-ED07).
+        let root = (directory ?? paneDirectory(paneID)).map { Self.filesRoot(directory: $0, home: NSHomeDirectory()) }
+        return FileLinkContext(currentDirectory: directory, homeDirectory: NSHomeDirectory(), projectRoot: root)
     }
 
     /// A renamed tab keeps its title; the default title follows the active pane (FR-SI05).
@@ -1619,6 +1640,13 @@ public final class AppWorkspaceModel: ObservableObject {
             self.applyShellEvent(event, paneID: pane.id)
         }
         terminal.fileLinkContext = { [weak self] in self?.fileLinkContext(paneID: pane.id) }
+        terminal.editorMayOpen = { [weak self] path in
+            guard let self, let context = self.fileLinkContext(paneID: pane.id) else { return false }
+            return self.editorMayOpenLink(path, context: context)
+        }
+        terminal.openInEditor = { [weak self] path, line, column in
+            await self?.openLinkInEditor(paneID: pane.id, path: path, line: line, column: column) ?? false
+        }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.
             guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }
@@ -1861,9 +1889,12 @@ public final class AppWorkspaceModel: ObservableObject {
 
     public func selectTab(_ id: UUID) async {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
-        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID) }
+        // An editor tab hidden here gives the keyboard back to the terminals, which stayed mounted under it (FR-ED01).
+        let editorHidden = snapshot.tabs[id].flatMap { shownEditors[$0.spaceID] } != nil
+        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID); shownEditors[spaceID] = nil }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = L("The tab could not be selected.") }
+        if editorHidden { focusActiveTerminal() }
     }
 
     /// Native text editing of a tab title. Terminals stop receiving key input until
@@ -2025,6 +2056,11 @@ public final class AppWorkspaceModel: ObservableObject {
         case .deleteTab(let id): panes = Set(snapshot.tabs[id]?.root.paneIDs ?? [])
         default: panes = initialPanes
         }
+        // A space that loses all its panes goes away with its editor tabs: their unsaved changes are asked about first (FR-ED05).
+        let leaving = snapshot.spaces.filter { space in !space.tabIDs.isEmpty && space.tabIDs.allSatisfy { panes.isSuperset(of: snapshot.tabs[$0]?.root.paneIDs ?? []) } }
+        let leavingIDs = Set(leaving.map(\.id))
+        defer { discardedEditorSpaces.subtract(leavingIDs) }
+        guard await resolveUnsavedEditors(in: leavingIDs) else { return }
         prepareCloseSummary(panes)
         let live = panes.compactMap { terminals[$0] }.filter(\.isRunning)
         guard live.isEmpty || confirmCloseSessions(live.count) else { return }
