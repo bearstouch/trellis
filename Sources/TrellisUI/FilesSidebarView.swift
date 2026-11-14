@@ -30,7 +30,7 @@ struct FilesSidebarView: View {
                 }
                 .help(L("Collapse all folders")).accessibilityLabel(L("Collapse All Folders"))
                 Button {
-                    Task { await model.refreshFiles(paneID: paneID) }
+                    Task { await model.refreshFiles(paneID: paneID, reloadEditors: true) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -291,7 +291,9 @@ private struct FileRow: View {
         .contentShape(Rectangle())
         .id(entry.path)
         .onHover { hovering = $0 }
-        .gesture(TapGesture(count: 2).onEnded { activate() }.exclusively(before: TapGesture().onEnded { click() }))
+        // A single tap answering every click: one that waited to rule out a double click (`exclusively(before:)`) held each
+        // click back for the system's double-click interval. The second click of a double click is told apart by its count.
+        .onTapGesture { clicked(count: Self.currentClickCount) }
         .onDrag { NSItemProvider(object: URL(fileURLWithPath: entry.path) as NSURL) }
         .contextMenu { menu }
         .accessibilityElement(children: .ignore)
@@ -315,12 +317,23 @@ private struct FileRow: View {
         return entry.isDirectory ? (expanded ? L("folder, expanded, in %@", subtitle) : L("folder, collapsed, in %@", subtitle)) : L("file, in %@", subtitle)
     }
 
-    /// A click selects; on a tree folder it opens or closes it too.
-    private func click() {
-        if isTreeFolder { Task { await model.toggleFilesFolder(entry.path) } } else { model.selectFile(entry.path) }
+    /// The click count of the mouse event being handled, 1 when there is none: `clickCount` raises on any other event.
+    private static var currentClickCount: Int {
+        guard let event = NSApp.currentEvent, [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp].contains(event.type) else { return 1 }
+        return event.clickCount
     }
 
-    /// A double click (or VoiceOver's default action) opens a file in the editor; a tree folder opens or closes.
+    /// A click selects at once; on a tree folder it opens or closes it too. The second click of a double click opens a file;
+    /// on a tree folder it does nothing more, since the first click already opened or closed it.
+    private func clicked(count: Int) {
+        switch count {
+        case ...1: if isTreeFolder { Task { await model.toggleFilesFolder(entry.path) } } else { model.selectFile(entry.path) }
+        case 2 where !isTreeFolder: activate()
+        default: break
+        }
+    }
+
+    /// VoiceOver's default action (and a double click on a file) opens a file in the editor; a tree folder opens or closes.
     private func activate() {
         if isTreeFolder {
             Task { await model.toggleFilesFolder(entry.path) }
