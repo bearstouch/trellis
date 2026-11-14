@@ -149,7 +149,7 @@ struct ScratchpadEditor: NSViewRepresentable {
                 ruler?.style(font: editor.font, palette: editor.palette)
                 restyle = true
             }
-            if restyle { highlight(); ruler?.fitLineNumbers(in: textView.string as NSString); ruler?.needsDisplay = true; textView.needsDisplay = true }
+            if restyle { highlightNowOrInBackground(); ruler?.fitLineNumbers(in: textView.string as NSString); ruler?.needsDisplay = true; textView.needsDisplay = true }
             if ruler?.issueLines != editor.issueLines { ruler?.issueLines = editor.issueLines }
             if let jump = editor.jump, jump.id != jumpID {
                 jumpID = jump.id
@@ -217,23 +217,60 @@ struct ScratchpadEditor: NSViewRepresentable {
             }
         }
 
-        /// Large texts are highlighted a moment after typing stops, so each key stays quick.
+        /// Texts up to this many UTF-16 units are highlighted at once, on each key: tokenizing them takes well under a
+        /// millisecond. Larger ones are tokenized off the main thread, so a key in a long file never waits for the whole
+        /// file to be read again.
+        static let immediateHighlightLimit = 8_192
+        private var highlightGeneration = 0
+
+        /// Highlights after a key: small texts at once, larger ones a moment after typing pauses, off the main thread.
         func scheduleHighlight() {
             pendingHighlight?.cancel()
-            guard let textView, (textView.string as NSString).length > 65_536 else { highlight(); return }
-            let work = DispatchWorkItem { [weak self] in self?.highlight() }
+            highlightGeneration &+= 1
+            guard let textView else { return }
+            let length = (textView.string as NSString).length
+            guard length > Self.immediateHighlightLimit else { highlight(); return }
+            let work = DispatchWorkItem { [weak self] in self?.highlightInBackground() }
             pendingHighlight = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (length > 65_536 ? 0.15 : 0.05), execute: work)
+        }
+
+        /// A new text, font or theme: small texts at once, larger ones off the main thread (opening a long file).
+        func highlightNowOrInBackground() {
+            pendingHighlight?.cancel()
+            highlightGeneration &+= 1
+            guard let textView else { return }
+            if (textView.string as NSString).length > Self.immediateHighlightLimit { highlightInBackground() } else { highlight() }
         }
 
         func highlight() {
-            guard let textView, let layout = textView.layoutManager else { return }
-            let length = (textView.string as NSString).length
+            guard let textView else { return }
+            let text = synced ?? textView.string
+            guard text.utf8.count <= parent.highlightLimit else { applyTokens([], length: (textView.string as NSString).length); return }
+            applyTokens(ScratchpadHighlighter.tokens(in: text, grammar: parent.language.grammar), length: (textView.string as NSString).length)
+        }
+
+        /// Tokenizes a copy of the text on another thread; the tokens are applied only if no key, new text or restyle came
+        /// in meanwhile (each starts a new generation).
+        private func highlightInBackground() {
+            guard let textView else { return }
+            let text = synced ?? textView.string, generation = highlightGeneration, grammar = parent.language.grammar
+            guard text.utf8.count <= parent.highlightLimit else { applyTokens([], length: (textView.string as NSString).length); return }
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let tokens = ScratchpadHighlighter.tokens(in: text, grammar: grammar)
+                await MainActor.run { [weak self] in
+                    guard let self, generation == self.highlightGeneration, let textView = self.textView else { return }
+                    self.applyTokens(tokens, length: (textView.string as NSString).length)
+                }
+            }
+        }
+
+        private func applyTokens(_ tokens: [ScratchpadToken], length: Int) {
+            guard let layout = textView?.layoutManager else { return }
             let full = NSRange(location: 0, length: length)
             layout.removeTemporaryAttribute(.foregroundColor, forCharacterRange: full)
-            guard textView.string.utf8.count <= parent.highlightLimit else { return }
             let palette = parent.palette
-            for token in ScratchpadHighlighter.tokens(in: textView.string, grammar: parent.language.grammar) {
+            for token in tokens {
                 let range = NSIntersectionRange(token.range, full)
                 guard range.length > 0 else { continue }
                 layout.addTemporaryAttribute(.foregroundColor, value: Self.color(token.kind, palette: palette), forCharacterRange: range)
