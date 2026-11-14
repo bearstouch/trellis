@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import XCTest
 import TrellisCore
 import TrellisTerminal
@@ -61,5 +62,32 @@ final class TabProgressReviewTests: XCTestCase {
         now.addTimeInterval(1)
         try report(.set, 60)
         XCTAssertEqual(h.model.progress[pane]?.percent, 60, "After a quiet 250 ms an update shows at once")
+    }
+
+    @MainActor
+    func testAPromptWithoutProgressPublishesNothing() async throws {
+        let h = try Harness()
+        let created = await h.model.createSpace(name: "W", startSession: false)
+        _ = try XCTUnwrap(created)
+        let tab = try XCTUnwrap(h.model.presentation.selectedTab?.id)
+        let pane = try XCTUnwrap(h.model.snapshot.tabs[tab]?.activePaneID)
+        _ = try await h.model.service.execute(.configureStoppedSession(paneID: pane, launch: .process(executable: "/bin/sleep", arguments: ["30"], directory: "/tmp")))
+        await h.model.refresh()
+        await h.model.start(paneID: pane)
+        let terminal = try XCTUnwrap(h.model.terminals[pane])
+        defer { terminal.requestTermination(force: true); terminal.adapter.detach() }
+        terminal.onShellIntegrationEvent?(.promptStart(directory: nil))
+        var published = 0
+        let watcher = h.model.$progress.dropFirst().sink { _ in published += 1 }
+        defer { watcher.cancel() }
+
+        terminal.onShellIntegrationEvent?(.promptStart(directory: nil))
+        terminal.onShellIntegrationEvent?(.promptStart(directory: nil))
+        XCTAssertEqual(published, 0, "Clearing progress that isn't there doesn't publish, so a prompt doesn't redraw the window")
+
+        try XCTUnwrap(terminal.onProgress)(TerminalProgressReport(kind: .set, value: 40))
+        terminal.onShellIntegrationEvent?(.promptStart(directory: nil))
+        XCTAssertEqual(published, 2, "Progress that is there still shows and clears")
+        XCTAssertNil(h.model.progress[pane])
     }
 }

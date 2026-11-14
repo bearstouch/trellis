@@ -1456,7 +1456,11 @@ public final class AppWorkspaceModel: ObservableObject {
         progressTrackers.removeValue(forKey: paneID)
         pendingProgress.remove(paneID)
         progressPublishedAt.removeValue(forKey: paneID)
-        if progress.removeValue(forKey: paneID) != nil { refreshTerminalAccessibility() }
+        // Checked first: removing from a published dictionary publishes even when the key is absent, and every prompt
+        // clears progress, so each one would redraw the window for nothing.
+        guard progress[paneID] != nil else { return }
+        progress.removeValue(forKey: paneID)
+        refreshTerminalAccessibility()
     }
 
     /// One task for every pane: it sleeps until the earliest deadline, so updates never spawn timers.
