@@ -214,8 +214,10 @@ struct EditorCursorButton: NSViewRepresentable {
 
     final class Button: NSButton {
         var onPress: () -> Void = {}
-        // A fixed size: a new title must not ask the window to lay out again.
+        // A fixed size: a new title must not ask the window to lay out again. Retitling invalidates the intrinsic size,
+        // which SwiftUI's host passes up as a layout of the whole window (it is one hosting view), so that is ignored too.
         override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: super.intrinsicContentSize.height) }
+        override func invalidateIntrinsicContentSize() {}
         @objc func press() { onPress() }
     }
 

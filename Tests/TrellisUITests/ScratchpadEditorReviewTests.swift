@@ -191,4 +191,24 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         let visible = ScratchpadLineRuler.lines(in: text as NSString, visible: NSRange(location: expected, length: 40))
         XCTAssertEqual(visible.lines.first?.number, 15_000, "and the ruler numbers it")
     }
+
+    @MainActor
+    func testANewCursorPositionDoesNotAskTheWindowToLayOutAgain() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let readout = EditorCursorReadout()
+        let button = EditorCursorButton.Button(title: "", target: nil, action: nil)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        window.contentView?.addSubview(button)
+        readout.button = button
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.updateConstraintsIfNeeded()
+        XCTAssertFalse(button.needsUpdateConstraints)
+
+        readout.update(line: 1_234, column: 56)
+        XCTAssertEqual(button.title, "Ln 1234, Col 56")
+        XCTAssertFalse(button.needsUpdateConstraints, "Its size is fixed, so a new title doesn't invalidate it (SwiftUI would lay the window out again)")
+        XCTAssertFalse(window.contentView?.needsUpdateConstraints ?? true)
+    }
 }
