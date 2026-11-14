@@ -23,11 +23,8 @@ struct PaneFocusStyle: Equatable {
 }
 
 extension AppWorkspaceModel {
-    // The original Trellis defaults retain native chrome. Bundled editor palettes
-    // and imported/previewed JSON themes own their entire palette.
-    var usesNativeChrome: Bool {
-        previewedTheme == nil && effectiveTheme == .builtIn(effectiveTheme.appearance)
-    }
+    // The original Trellis defaults retain native chrome (``usesNativeChrome``, kept with the theme). Bundled editor
+    // palettes and imported/previewed JSON themes own their entire palette.
     func themeColor(_ field: UIColorField) -> Color {
         guard usesNativeChrome else { return Color(themeRGB: effectiveTheme[field].rgb) }
         switch field {
