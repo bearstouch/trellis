@@ -97,4 +97,45 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         XCTAssertEqual(color(textView, at: ("echo x " as NSString).length), comment)
         withExtendedLifetime([coordinator, smallCoordinator]) {}
     }
+
+    func testNewlinesAreCountedLikeAPlainCountAcrossChunksAndSurrogates() {
+        func plain(_ text: String, before end: Int) -> Int { Array(text.utf16.prefix(max(0, end))).filter { $0 == 10 }.count }
+        let long = String(repeating: "line 👋🏽 with emoji\n", count: 2_000) + "last"
+        XCTAssertGreaterThan((long as NSString).length, 8_192 * 3, "Spans several chunks")
+        for text in ["", "\n", "no newline", "a\nb\n", "\n\n\n", "é\n🇵🇹\n", long] {
+            let string = text as NSString
+            for end in Set([0, 1, string.length / 2, string.length - 1, string.length, string.length + 5, -3, 8_192, 8_193]) {
+                XCTAssertEqual(ScratchpadLineRuler.newlines(in: string, before: end), plain(text, before: min(end, string.length)), "\(end) in \(string.length)")
+            }
+        }
+        let lines = ScratchpadLineRuler.lines(in: long as NSString, visible: NSRange(location: 8_200, length: 100))
+        XCTAssertEqual(lines.lines.first?.number, 1 + plain(long, before: lines.lines.first?.location ?? 0), "The ruler numbers from the same count")
+    }
+
+    @MainActor
+    func testTheCursorReportsItsLineAndColumnAndTheRulerFitsTheLineCount() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let box = Box()
+        let (textView, coordinator, editor) = makeEditor(box, window: window)
+        var cursor: (Int, Int)?
+        var reporting = editor("one\ntwo\nthree")
+        reporting.onCursor = { cursor = ($0, $1) }
+        coordinator.parent = reporting
+        coordinator.apply(reporting, force: true)
+        textView.setSelectedRange(NSRange(location: ("one\ntwo\nth" as NSString).length, length: 0))
+        XCTAssertEqual(cursor?.0, 3)
+        XCTAssertEqual(cursor?.1, 3)
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        XCTAssertEqual(cursor?.0, 1)
+        XCTAssertEqual(cursor?.1, 1)
+
+        let ruler = ScratchpadLineRuler(textView: textView)
+        ruler.fitLineNumbers(in: "x" as NSString)
+        let narrow = ruler.ruleThickness
+        ruler.fitLineNumbers(in: String(repeating: "\n", count: 99_999) as NSString)
+        XCTAssertGreaterThan(ruler.ruleThickness, narrow, "Six-digit line numbers widen the ruler")
+        withExtendedLifetime(coordinator) {}
+    }
 }
