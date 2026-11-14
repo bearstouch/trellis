@@ -106,6 +106,11 @@ struct ScratchpadEditor: NSViewRepresentable {
         private var focusRequest: Int
         private var jumpID: UUID?
         private var pendingHighlight: DispatchWorkItem?
+        /// The text the view holds, as a native string: the last one set from the model or typed. Every redraw of the
+        /// window updates every mounted editor, and comparing the model's text with `textView.string` (bridged from
+        /// the text storage) walked the whole document each time.
+        private(set) var synced: String?
+        private var accessibilityDescription: String?
         /// Each editor's own undo history: with the window's, ⌘Z in one editor tab would undo typing in another one,
         /// mounted but hidden (FR-ED03).
         let undo = UndoManager()
@@ -116,14 +121,16 @@ struct ScratchpadEditor: NSViewRepresentable {
             guard let textView else { return }
             textView.commands = editor.commands
             textView.currentLineColor = editor.highlightsCurrentLine ? Self.currentLineColor(editor.palette) : nil
-            textView.setAccessibilityValueDescription(L("%1$@ %2$@", editor.language.displayName, editor.contentNoun))
+            let description = L("%1$@ %2$@", editor.language.displayName, editor.contentNoun)
+            if description != accessibilityDescription { accessibilityDescription = description; textView.setAccessibilityValueDescription(description) }
             var restyle = force
-            if textView.string != editor.text {
+            if editor.text != synced {
                 let selection = textView.selectedRanges
                 // Typing's undo steps name ranges in the old text; undoing one after Clear or Open would raise.
                 if let storage = textView.textStorage { textView.undoManager?.removeAllActions(withTarget: storage) }
                 textView.breakUndoCoalescing()
                 textView.string = editor.text
+                synced = editor.text
                 // Clamped, never dropped: AppKit raises on an empty selection array, as after Clear or opening a shorter file.
                 textView.selectedRanges = Self.clamped(selection.map(\.rangeValue), length: (editor.text as NSString).length).map { NSValue(range: $0) }
                 restyle = true
@@ -253,7 +260,11 @@ struct ScratchpadEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
-            parent.text = textView.string
+            // Native and contiguous, so comparing it (here, and the model's unsaved check) is a quick byte comparison.
+            var text = textView.string
+            text.makeContiguousUTF8()
+            synced = text
+            parent.text = text
             scheduleHighlight()
             ruler?.fitLineNumbers(in: textView.string as NSString)
             ruler?.needsDisplay = true
