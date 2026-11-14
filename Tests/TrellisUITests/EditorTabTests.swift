@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import XCTest
 import TrellisCore
 import TrellisTerminal
@@ -388,6 +389,37 @@ final class EditorTabTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "let a = 100\n")
         XCTAssertFalse(try XCTUnwrap(model.shownEditor).isDirty)
         XCTAssertTrue(model.editorSaves.isEmpty)
+    }
+
+    @MainActor
+    func testTypingPublishesOnlyWhenTheUnsavedStateChanges() async throws {
+        let (model, _, _) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.openInEditor(path: project + "/Sources/App.swift")
+        let tab = try XCTUnwrap(model.shownEditor)
+        let original = tab.text
+        var published = 0
+        let watcher = model.objectWillChange.sink { published += 1 }
+        defer { watcher.cancel() }
+
+        model.updateEditorText(tab.id, "x" + original)
+        XCTAssertEqual(published, 1, "The first key makes the tab unsaved: the tab bar and header show it")
+        XCTAssertTrue(model.hasUnsavedEditors)
+        model.updateEditorText(tab.id, "xy" + original)
+        model.updateEditorText(tab.id, "xyz" + original)
+        XCTAssertEqual(published, 1, "Further keys don't redraw the window; the text view already shows them")
+        XCTAssertEqual(model.editorTab(tab.id)?.text, "xyz" + original, "The model still has every key, for saving")
+        XCTAssertEqual(model.unsavedEditorNames, ["App.swift"])
+
+        model.updateEditorText(tab.id, original)
+        XCTAssertEqual(published, 2, "Typing back to the saved text makes it saved again, and that shows")
+        XCTAssertFalse(model.hasUnsavedEditors)
+        model.toggleEditorPreview(tab.id)
+        XCTAssertEqual(published, 2, "A Swift file has no preview")
+        model.clearEditorJump(tab.id)
+        XCTAssertEqual(published, 2, "Clearing a jump that isn't there changes nothing")
+        model.goToLine(tab.id, line: 2)
+        XCTAssertEqual(published, 3, "Other changes to a tab still publish")
     }
 
     @MainActor

@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Typing in editor tabs is fast again, even in long files:** a key no longer redraws the whole window or every open editor tab, longer files are highlighted off the main thread after a short pause, line numbers and the cursor's "Ln, Col" are cheap to update, and opening a long file no longer stalls while it is laid out.
 - **Less redrawing while programs report progress or the Files view is used:** a progress bar's percentage now redraws the tab and pane header at most four times a second per pane (appearing, clearing and state changes still show at once). Moving through, opening or searching the Files tree redraws only the Files view instead of the whole window, and a Files row redraws only when its own file, selection or open state changes.
 - **Remote hosts:** a failed helper install (for example a digest mismatch) could be reported as "ssh exited" when ssh ended before the host's error reply was read. The buffered reply is now read first.
 - **Files view felt slow:** a click on a file or folder waited out the double-click interval before it selected or opened anything; it now acts at once (a double click still opens a file). The tree is no longer rebuilt on every redraw and arrow key, and the installed editors are looked up once (and on **Reload**) instead of on every pane switch or `cd`.
