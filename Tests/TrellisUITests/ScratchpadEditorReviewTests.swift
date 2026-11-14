@@ -90,11 +90,22 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         textView.insertText("echo x # tail\n", replacementRange: textView.selectedRange())
         textView.insertText("ls\n", replacementRange: textView.selectedRange())
-        try await Task.sleep(for: .milliseconds(400))
+        let tail = ("echo x " as NSString).length, later = Date().addingTimeInterval(5)
+        while color(textView, at: tail) != comment, Date() < later { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(box.text, "echo x # tail\nls\n# first\n" + long)
         XCTAssertNotEqual(color(textView, at: 0), comment, "`echo` isn't a comment: no stale tokens from before the keys")
         XCTAssertEqual(color(textView, at: ("echo x # tail\nls\n" as NSString).length), comment, "the newest text's comment is colored")
         XCTAssertEqual(color(textView, at: ("echo x " as NSString).length), comment)
+
+        // A new long text from the model, replaced by a short one before its tokens arrive: they're dropped, not applied
+        // over the short text.
+        coordinator.parent = editor("# again\n" + long)
+        coordinator.apply(coordinator.parent, force: false)
+        coordinator.parent = editor("echo hi")
+        coordinator.apply(coordinator.parent, force: false)
+        XCTAssertNotEqual(color(textView, at: 0), comment)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertNotEqual(color(textView, at: 0), comment, "The long text's comment never colors the short text")
         withExtendedLifetime([coordinator, smallCoordinator]) {}
     }
 
@@ -177,7 +188,11 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         container.widthTracksTextView = true
         layout.addTextContainer(container)
         let textView = ScratchpadTextView(frame: scroll.bounds, textContainer: container)
+        // As `makeNSView` sets it up: the text view grows with its text.
+        textView.minSize = NSSize(width: 0, height: 300)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
         let text = (1...20_000).map { "let line\($0) = \($0)" }.joined(separator: "\n")
         textView.string = text
         scroll.documentView = textView
@@ -188,8 +203,12 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         ScratchpadEditor.Coordinator.move(textView, toLine: 15_000, column: 5)
         let expected = (text as NSString).range(of: "let line15000 =").location + 4
         XCTAssertEqual(textView.selectedRange(), NSRange(location: expected, length: 0), "A jump far down still lands on its line")
-        let visible = ScratchpadLineRuler.lines(in: text as NSString, visible: NSRange(location: expected, length: 40))
-        XCTAssertEqual(visible.lines.first?.number, 15_000, "and the ruler numbers it")
+        let glyph = layout.glyphIndexForCharacter(at: expected)
+        var target = layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+        target.origin.y += textView.textContainerOrigin.y
+        XCTAssertTrue(textView.visibleRect.intersects(target), "and scrolls it into view: \(target) in \(textView.visibleRect)")
+        let ruler = ScratchpadLineRuler(textView: textView)
+        XCTAssertTrue(ruler.visibleLines?.lines.contains { $0.number == 15_000 } == true, "and the ruler numbers it")
     }
 
     @MainActor
