@@ -19,9 +19,15 @@ public struct FilesBrowserState: Equatable, Sendable {
 
     public internal(set) var paneID: UUID?
     /// The project root the tree shows; nil when the focused pane has no local folder.
-    public internal(set) var root: String?
-    public internal(set) var folders: [String: Folder] = [:]
-    public internal(set) var expanded: Set<String> = []
+    public internal(set) var root: String? { didSet { if root != oldValue { rebuildRows() } } }
+    public internal(set) var folders: [String: Folder] = [:] { didSet { rebuildRows() } }
+    public internal(set) var expanded: Set<String> = [] { didSet { if expanded != oldValue { rebuildRows() } } }
+    /// The tree flattened in display order, through open folders only. Kept up to date as the tree changes, not built on
+    /// every read: the view, the Open in menu and each arrow key all read it.
+    public private(set) var rows: [Row] = []
+    /// Each tree entry's place among the readable rows, for selection and arrow keys.
+    private var treeIndex: [String: Int] = [:]
+    private var treeEntries: [FileEntry] = []
     public internal(set) var selection: String?
     public internal(set) var showHidden = false
     public internal(set) var query = ""
@@ -42,9 +48,7 @@ public struct FilesBrowserState: Equatable, Sendable {
 
     public var editor: EditorApp { editors.first { $0.id == editorID } ?? .trellisEditor }
 
-    /// The tree flattened in display order, through open folders only.
-    public var rows: [Row] {
-        guard let root else { return [] }
+    private mutating func rebuildRows() {
         var rows: [Row] = []
         func add(_ folder: String, depth: Int) {
             switch folders[folder] {
@@ -58,17 +62,23 @@ public struct FilesBrowserState: Equatable, Sendable {
             case nil: break
             }
         }
-        add(root, depth: 0)
-        return rows
+        if let root { add(root, depth: 0) }
+        self.rows = rows
+        treeEntries = rows.filter { !$0.unreadable }.map(\.entry)
+        treeIndex = Dictionary(treeEntries.enumerated().map { ($1.path, $0) }, uniquingKeysWith: { first, _ in first })
     }
+
+    var isSearching: Bool { query.contains { !$0.isWhitespace } }
 
     /// The entries keyboard navigation moves through: search results while searching, else the tree.
-    public var navigableEntries: [FileEntry] {
-        if !query.trimmingCharacters(in: .whitespaces).isEmpty { return search?.matches.map(\.entry) ?? [] }
-        return rows.filter { !$0.unreadable }.map(\.entry)
+    public var navigableEntries: [FileEntry] { isSearching ? search?.matches.map(\.entry) ?? [] : treeEntries }
+
+    /// Where `path` is in ``navigableEntries``.
+    func navigableIndex(of path: String) -> Int? {
+        isSearching ? search?.matches.firstIndex { $0.entry.path == path } : treeIndex[path]
     }
 
-    public var selectedEntry: FileEntry? { selection.flatMap { path in navigableEntries.first { $0.path == path } } }
+    public var selectedEntry: FileEntry? { selection.flatMap { navigableIndex(of: $0) }.map { navigableEntries[$0] } }
 }
 
 public enum FilePathStyle: Sendable { case absolute, relative, name }
@@ -82,11 +92,13 @@ extension AppWorkspaceModel {
         return canonical(ProjectLocator.taskRoot(containing: directory, home: home, exists: { manager.fileExists(atPath: $0) }) ?? directory)
     }
 
-    /// Reads the focused pane's project again: its root, the root listing and each open folder (FR-FB02, FR-FB03).
-    public func refreshFiles(paneID: UUID) async {
+    /// Reads the focused pane's project again: its root, the root listing and each open folder (FR-FB02, FR-FB03). The
+    /// installed editors are looked up the first time and on Reload (`reloadEditors`), not on every pane switch or `cd`:
+    /// Launch Services lookups run on the main thread.
+    public func refreshFiles(paneID: UUID, reloadEditors: Bool = false) async {
         filesGeneration &+= 1
         let generation = filesGeneration
-        loadEditorChoices()
+        if reloadEditors || files.editors.isEmpty { loadEditorChoices() }
         guard presentation.activePane?.id == paneID, sidebarUnavailableReason(.files) == nil, let directory = paneDirectory(paneID) else {
             resetFiles(paneID: paneID, root: nil)
             return
@@ -165,7 +177,7 @@ extension AppWorkspaceModel {
     public func moveFilesSelection(by offset: Int) {
         let entries = files.navigableEntries
         guard !entries.isEmpty else { return }
-        guard let current = files.selection.flatMap({ path in entries.firstIndex { $0.path == path } }) else {
+        guard let current = files.selection.flatMap({ files.navigableIndex(of: $0) }) else {
             files.selection = (offset < 0 ? entries.last : entries.first)?.path
             return
         }

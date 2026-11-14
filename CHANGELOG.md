@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Remote hosts:** a failed helper install (for example a digest mismatch) could be reported as "ssh exited" when ssh ended before the host's error reply was read. The buffered reply is now read first.
+- **Files view felt slow:** a click on a file or folder waited out the double-click interval before it selected or opened anything; it now acts at once (a double click still opens a file). The tree is no longer rebuilt on every redraw and arrow key, and the installed editors are looked up once (and on **Reload**) instead of on every pane switch or `cd`.
 
 ## [1.3.0-beta.1] - 2026-11-13
 
