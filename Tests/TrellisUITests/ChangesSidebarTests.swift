@@ -476,6 +476,14 @@ final class ChangesSidebarTests: XCTestCase {
         model.toggleSidebarView(.changes)
         await model.refreshGitChanges(paneID: pane)
         XCTAssertEqual(model.currentReview?.diff?.body, .unchanged, "A file no longer changed says so")
+
+        var published = 0
+        let watcher = model.$reviewTabs.dropFirst().sink { _ in published += 1 }
+        defer { watcher.cancel() }
+        await model.refreshGitChanges(paneID: pane)
+        await model.refreshGitChanges(paneID: pane)
+        XCTAssertEqual(published, 0, "Later prompts don't say it again, so they don't redraw the window")
+        XCTAssertEqual(model.currentReview?.diff?.body, .unchanged)
     }
 
     // MARK: Conflicts and pane actions (FR-GC05, FR-GC06)

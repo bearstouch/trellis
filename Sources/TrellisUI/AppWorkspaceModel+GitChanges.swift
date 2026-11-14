@@ -193,7 +193,9 @@ extension AppWorkspaceModel {
             guard let review = reviewTabs[spaceID], review.root == list.root else { continue }
             guard let file = list.files.first(where: { $0.path == review.file.path }) else {
                 // A cut list may just not reach the file.
-                if !list.truncated { reviewTabs[spaceID]?.diff = GitFileDiff(body: .unchanged) }
+                // Every prompt reads the list again; saying so once keeps each later prompt from redrawing the window.
+                let unchanged = GitFileDiff(body: .unchanged)
+                if !list.truncated, review.diff != unchanged { reviewTabs[spaceID]?.diff = unchanged }
                 continue
             }
             guard file != review.file || review.hasCommits != list.hasCommits else { continue }
