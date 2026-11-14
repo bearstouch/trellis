@@ -83,6 +83,12 @@ public struct FilesBrowserState: Equatable, Sendable {
 
 public enum FilePathStyle: Sendable { case absolute, relative, name }
 
+/// Publishes the Files view's state on its own, so only the Files view redraws when it changes (see `AppWorkspaceModel.files`).
+@MainActor public final class FilesBrowserModel: ObservableObject {
+    @Published public internal(set) var state = FilesBrowserState()
+    public init() {}
+}
+
 extension AppWorkspaceModel {
     static let filesEditorKey = "files.editor"
 

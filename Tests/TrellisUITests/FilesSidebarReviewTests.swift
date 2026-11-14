@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import XCTest
 import TrellisCore
 @testable import TrellisUI
@@ -81,5 +82,28 @@ final class FilesSidebarReviewTests: XCTestCase {
         XCTAssertEqual(lookups, first, "A pane switch or cd doesn't look them up again")
         await model.refreshFiles(paneID: pane, reloadEditors: true)
         XCTAssertEqual(lookups, first * 2, "Reload does")
+    }
+
+    @MainActor
+    func testFilesChangesRedrawFilesAloneButTheEditorChoiceTellsTheApp() throws {
+        _ = NSApplication.shared
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-fbo-\(UUID().uuidString.prefix(8))").resolvingSymlinksInPath()
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis-fbo-\(UUID().uuidString)"))
+        let model = AppWorkspaceModel(store: try WorkspaceStore(), preferences: preferences, persistence: WorkspacePersistence(directory: scratch.appendingPathComponent("state")))
+        model.applicationURL = { _ in nil }
+        var app = 0, files = 0
+        let watchers = [model.objectWillChange.sink { app += 1 }, model.filesBrowser.objectWillChange.sink { files += 1 }]
+        defer { watchers.forEach { $0.cancel() } }
+
+        model.selectFile("/p/a")
+        model.setFilesQuery("abc")
+        model.collapseAllFilesFolders()
+        XCTAssertEqual(app, 0, "Selecting, searching and folding redraw the Files view, not the window")
+        XCTAssertGreaterThan(files, 0)
+        XCTAssertEqual(model.files.selection, "/p/a", "and read back through the app model")
+
+        model.loadEditorChoices()
+        XCTAssertGreaterThan(app, 0, "The editor choice is shown by Changes, review and editor tabs too")
     }
 }

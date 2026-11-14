@@ -75,7 +75,7 @@ struct RightSidebarPanel: View {
     var body: some View {
         switch view {
         case .files:
-            if let paneID = model.presentation.activePane?.id { FilesSidebarView(model: model, paneID: paneID) }
+            if let paneID = model.presentation.activePane?.id { FilesSidebarView(model: model, browser: model.filesBrowser, paneID: paneID) }
         case .changes:
             if let paneID = model.presentation.activePane?.id { ChangesSidebarView(model: model, paneID: paneID) }
         case .scratchpad: ScratchpadPanel(model: model, buffer: model.scratchpadBuffer)
