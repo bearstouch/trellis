@@ -8,8 +8,9 @@ struct EditorTabView: View {
     @ObservedObject var model: AppWorkspaceModel
     let tab: EditorTab
     let shown: Bool
-    @State private var line = 1
-    @State private var column = 1
+    /// The cursor's "Ln, Col", updated on every key and cursor move straight on its AppKit button: as SwiftUI state, each
+    /// update laid the whole window out again (most of a key's cost once typing stopped publishing).
+    @State private var cursor = EditorCursorReadout()
     @State private var goToLineShown = false
     @State private var goToLineText = ""
 
@@ -29,9 +30,7 @@ struct EditorTabView: View {
                         togglePreview: tab.isMarkdown ? { model.toggleEditorPreview(tab.id) } : nil),
                     accessibilityName: L("Editor, %@", tab.fileName), contentNoun: L("file"), maximumBytes: EditorDocument.maximumBytes,
                     highlightsCurrentLine: true, jump: tab.jump, onJumped: { model.clearEditorJump(tab.id) },
-                    onCursor: {
-                        line = $0; column = $1
-                    }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview
+                    onCursor: { [cursor] in cursor.update(line: $0, column: $1) }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview
                 )
                 // The source stays mounted under the preview, so its undo, cursor and scroll survive (FR-ED12).
                 .opacity(tab.showsPreview ? 0 : 1).allowsHitTesting(!tab.showsPreview).accessibilityHidden(tab.showsPreview)
@@ -80,8 +79,8 @@ struct EditorTabView: View {
                 .accessibilityLabel(L("Language: %@", tab.language.displayName))
             if tab.isMarkdown { previewToggle }
             if !tab.showsPreview {
-                Button(L("Ln %1$d, Col %2$d", line, column)) { beginGoToLine() }
-                    .buttonStyle(.borderless).font(.caption.monospacedDigit()).foregroundStyle(muted).help(L("Go to Line (⌘L)"))
+                EditorCursorButton(readout: cursor, color: NSColor(muted)) { beginGoToLine() }
+                    .frame(width: EditorCursorButton.width, alignment: .trailing)
                     .popover(isPresented: $goToLineShown, arrowEdge: .bottom) { goToLinePopover }
             }
             openWithMenu
@@ -183,5 +182,64 @@ struct EditorTabView: View {
         .overlay(alignment: .bottom) { tint.opacity(0.4).frame(height: 1) }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isStaticText)
+    }
+}
+
+/// The editor's cursor position, shown on its button without SwiftUI: the text view reports it on every key.
+@MainActor final class EditorCursorReadout {
+    private(set) var line = 1
+    private(set) var column = 1
+    weak var button: NSButton? { didSet { show() } }
+
+    func update(line: Int, column: Int) {
+        guard line != self.line || column != self.column else { return }
+        (self.line, self.column) = (line, column)
+        show()
+    }
+
+    var title: String { L("Ln %1$d, Col %2$d", line, column) }
+    private func show() { button?.title = title }
+}
+
+/// "Ln, Col" as a borderless AppKit button that opens Go to Line. Its width is fixed, so a new position never changes the
+/// header's layout.
+struct EditorCursorButton: NSViewRepresentable {
+    let readout: EditorCursorReadout
+    let color: NSColor
+    let action: () -> Void
+
+    static let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+    /// Wide enough for a five-digit line and a four-digit column in the current language.
+    static var width: CGFloat { ceil((L("Ln %1$d, Col %2$d", 88_888, 8_888) as NSString).size(withAttributes: [.font: font]).width) + 8 }
+
+    final class Button: NSButton {
+        var onPress: () -> Void = {}
+        // A fixed size: a new title must not ask the window to lay out again.
+        override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: super.intrinsicContentSize.height) }
+        @objc func press() { onPress() }
+    }
+
+    func makeNSView(context: Context) -> Button {
+        let button = Button(title: readout.title, target: nil, action: nil)
+        button.target = button
+        button.action = #selector(Button.press)
+        button.isBordered = false
+        button.font = Self.font
+        button.alignment = .right
+        button.lineBreakMode = .byClipping
+        button.toolTip = L("Go to Line (⌘L)")
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        readout.button = button
+        update(button)
+        return button
+    }
+
+    func updateNSView(_ button: Button, context: Context) { update(button) }
+
+    private func update(_ button: Button) {
+        button.onPress = action
+        button.contentTintColor = color
+        if button.title != readout.title { button.title = readout.title }
     }
 }

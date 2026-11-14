@@ -138,4 +138,30 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         XCTAssertGreaterThan(ruler.ruleThickness, narrow, "Six-digit line numbers widen the ruler")
         withExtendedLifetime(coordinator) {}
     }
+
+    @MainActor
+    func testTheCursorPositionIsShownOnItsButtonWithoutSwiftUIOrALayoutChange() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let readout = EditorCursorReadout()
+        let button = EditorCursorButton.Button(title: "", target: nil, action: nil)
+        readout.button = button
+        XCTAssertEqual(button.title, "Ln 1, Col 1")
+        XCTAssertEqual(button.intrinsicContentSize.width, NSView.noIntrinsicMetric, "A new title never changes the header's layout")
+        let widest = ("Ln 99999, Col 9999" as NSString).size(withAttributes: [.font: EditorCursorButton.font]).width
+        XCTAssertGreaterThanOrEqual(EditorCursorButton.width, widest, "The fixed width fits a five-digit line and four-digit column")
+
+        let box = Box()
+        let (textView, coordinator, editor) = makeEditor(box, window: window)
+        var reporting = editor("one\ntwo\nthree")
+        reporting.onCursor = { [readout] in readout.update(line: $0, column: $1) }
+        coordinator.parent = reporting
+        coordinator.apply(reporting, force: true)
+        textView.setSelectedRange(NSRange(location: ("one\ntwo\nth" as NSString).length, length: 0))
+        XCTAssertEqual(button.title, "Ln 3, Col 3", "A cursor move reaches the button directly")
+        XCTAssertEqual(readout.line, 3)
+        XCTAssertEqual(readout.column, 3)
+        withExtendedLifetime(coordinator) {}
+    }
 }
