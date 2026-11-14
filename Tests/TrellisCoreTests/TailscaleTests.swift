@@ -93,6 +93,18 @@ final class TailscaleTests: XCTestCase {
         XCTAssertEqual(try TailscaleServeConfig(json: Data(foreground.utf8)).use(host: TailscaleFixtures.host, port: 8443, target: target), .other, "A foreground serve in another terminal")
     }
 
+    func testTheRealCLIIsAskedToRunAsACLIEvenWithoutATerminal() async throws {
+        // Stands in for Tailscale.app's binary, which starts its GUI unless told to be the CLI.
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-tailscale-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let script = directory.appendingPathComponent("tailscale")
+        try Data("#!/bin/sh\nif [ \"$TAILSCALE_BE_CLI\" = 1 ]; then echo '{\"BackendState\":\"Running\"}'; else echo 'The Tailscale GUI failed to start'; fi\n".utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        let status = await TailscaleController(runner: TailscaleCLI(candidates: [script.path])).status()
+        XCTAssertEqual(try status.get().backend, .connected)
+    }
+
     private func connected() throws -> TailscaleStatus { try TailscaleStatus(json: Data(TailscaleFixtures.status.utf8)) }
 
     func testShareAddsTheEntryWithExactArgumentsAndConfirmsIt() async throws {

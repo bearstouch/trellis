@@ -329,6 +329,9 @@ public struct TailscaleCLI: TailscaleCommandRunning {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.standardInput = FileHandle.nullDevice
+        // The app's binary is both GUI and CLI and picks CLI only when TERM is set, which a Finder-launched Trellis
+        // doesn't have: without this it prints "The Tailscale GUI failed to start" and exits 0.
+        process.environment = ProcessInfo.processInfo.environment.merging(["TAILSCALE_BE_CLI": "1"]) { _, new in new }
         let out = Pipe(), err = Pipe()
         process.standardOutput = out; process.standardError = err
         let output = Buffer(), errors = Buffer()
