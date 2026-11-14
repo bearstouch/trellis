@@ -46,7 +46,8 @@ public struct EditorTab: Identifiable, Equatable, Sendable {
     private func sameChrome(_ other: EditorTab) -> Bool {
         var mine = self, theirs = other
         mine.text = ""; theirs.text = ""
-        return mine == theirs && isDirty == other.isDirty
+        // An untouched tab's text is the same string, which compares at once; only the typed tab is checked against its file.
+        return mine == theirs && (text == other.text || isDirty == other.isDirty)
     }
     public var isMarkdown: Bool { language.id == EditorLanguage.markdown.id }
     public var fileName: String { document.fileName }
