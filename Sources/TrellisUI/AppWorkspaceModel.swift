@@ -589,7 +589,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var reviewTabs: [UUID: ReviewTab] = [:]
     @Published public internal(set) var reviewShownSpaces: Set<UUID> = []
     /// Each space's editor tabs in tab-bar order, and the one shown in place of its terminal tabs (FR-ED01, FR-ED08). Never saved.
-    @Published public internal(set) var editorTabs: [UUID: [EditorTab]] = [:]
+    /// Published only when something the window shows changes: typing changes a tab's text, which its text view already
+    /// shows, and publishing each key redrew the whole window and every editor tab. A tab becoming unsaved, or saved again,
+    /// still publishes (the tab bar's dot, the header's capsule).
+    public internal(set) var editorTabs: [UUID: [EditorTab]] = [:] {
+        willSet { if !EditorTab.sameChrome(editorTabs, newValue) { objectWillChange.send() } }
+    }
     @Published public internal(set) var shownEditors: [UUID: UUID] = [:]
     /// Bumped when the shown editor should take keyboard focus.
     @Published public internal(set) var editorFocusRequest = 0

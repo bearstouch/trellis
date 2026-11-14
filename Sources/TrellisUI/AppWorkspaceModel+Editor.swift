@@ -33,6 +33,21 @@ public struct EditorTab: Identifiable, Equatable, Sendable {
     public internal(set) var previewAnchor: EditorPreviewAnchor?
 
     public var isDirty: Bool { text != document.text }
+
+    /// Whether the window would show these tabs the same: everything but the text being equal, and the same unsaved state.
+    static func sameChrome(_ old: [UUID: [EditorTab]], _ new: [UUID: [EditorTab]]) -> Bool {
+        guard old.count == new.count else { return false }
+        return old.allSatisfy { spaceID, tabs in
+            guard let others = new[spaceID], others.count == tabs.count else { return false }
+            return zip(tabs, others).allSatisfy { $0.sameChrome($1) }
+        }
+    }
+
+    private func sameChrome(_ other: EditorTab) -> Bool {
+        var mine = self, theirs = other
+        mine.text = ""; theirs.text = ""
+        return mine == theirs && isDirty == other.isDirty
+    }
     public var isMarkdown: Bool { language.id == EditorLanguage.markdown.id }
     public var fileName: String { document.fileName }
     public var language: ScratchpadLanguage { document.language }
