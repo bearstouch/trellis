@@ -1956,7 +1956,12 @@ public final class AppWorkspaceModel: ObservableObject {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
         // An editor tab hidden here gives the keyboard back to the terminals, which stayed mounted under it (FR-ED01).
         let editorHidden = snapshot.tabs[id].flatMap { shownEditors[$0.spaceID] } != nil
-        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID); shownEditors[spaceID] = nil }
+        // Only when shown: these publish before the store's reply, in a turn of their own, so clearing what is already clear
+        // would redraw the window once more on every tab switch.
+        if let spaceID = snapshot.tabs[id]?.spaceID {
+            if reviewShownSpaces.contains(spaceID) { reviewShownSpaces.remove(spaceID) }
+            if shownEditors[spaceID] != nil { shownEditors[spaceID] = nil }
+        }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = L("The tab could not be selected.") }
         if editorHidden { focusActiveTerminal() }
