@@ -2219,7 +2219,12 @@ public final class AppWorkspaceModel: ObservableObject {
         cancelPaste()
     }
 
-    public func cancelPaste() { pasteFocusEpoch &+= 1; pasteReview.cancel(); pendingPaste = nil }
+    /// Every tab switch and pane focus change cancels; publishing only when a paste was waiting keeps those from redrawing
+    /// the window an extra time.
+    public func cancelPaste() {
+        pasteFocusEpoch &+= 1; pasteReview.cancel()
+        if pendingPaste != nil { pendingPaste = nil }
+    }
 
     @discardableResult
     /// Quitting and closing the window detach remote workspace sessions without a signal (FR-RW06); closing the
