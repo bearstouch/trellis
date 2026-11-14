@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 /// editors on this Mac, and Copy Path. Every action names its file; state is in words and symbols, never color alone.
 struct FilesSidebarView: View {
     @ObservedObject var model: AppWorkspaceModel
+    /// The Files state is published here, not by the app model, so a selection move redraws Files alone.
+    @ObservedObject var browser: FilesBrowserModel
     let paneID: UUID
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
@@ -145,8 +147,18 @@ struct FilesSidebarView: View {
 
     // MARK: Tree (FR-FB03)
 
+    /// A row's inputs from the current state: rows compare these and skip redrawing when none changed.
+    private func row(_ entry: FileEntry, depth: Int, title: AttributedString, subtitle: String?, palette: FilesPalette) -> some View {
+        let files = model.files
+        return FileRow(
+            model: model, entry: entry, depth: depth, title: title, subtitle: subtitle, selected: files.selection == entry.path,
+            expanded: files.expanded.contains(entry.path), editor: files.editor, editors: files.editors, palette: palette
+        ).equatable()
+    }
+
     private var tree: some View {
-        ScrollViewReader { proxy in
+        let palette = FilesPalette(model)
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(model.files.rows) { row in
@@ -154,7 +166,7 @@ struct FilesSidebarView: View {
                             Label(L("Can't read this folder"), systemImage: "exclamationmark.triangle").font(.caption)
                                 .foregroundStyle(model.themeColor(.mutedForeground)).padding(.leading, CGFloat(row.depth) * 16 + 26).frame(height: 24)
                         } else {
-                            FileRow(model: model, entry: row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil)
+                            self.row(row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil, palette: palette)
                         }
                     }
                 }.padding(.horizontal, 6).padding(.vertical, 2)
@@ -169,14 +181,14 @@ struct FilesSidebarView: View {
     // MARK: Search results (FR-FB04)
 
     @ViewBuilder private var results: some View {
-        let muted = model.themeColor(.mutedForeground)
+        let palette = FilesPalette(model)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     if let result = model.files.search {
-                        Text(summary(result)).font(.caption).foregroundStyle(muted).padding(.horizontal, 8).padding(.bottom, 4)
+                        Text(summary(result)).font(.caption).foregroundStyle(palette.muted).padding(.horizontal, 8).padding(.bottom, 4)
                         ForEach(result.matches) { match in
-                            FileRow(model: model, entry: match.entry, depth: 0, title: highlighted(match), subtitle: match.relativeFolder.isEmpty ? "/" : match.relativeFolder)
+                            row(match.entry, depth: 0, title: highlighted(match, accent: palette.accent), subtitle: match.relativeFolder.isEmpty ? "/" : match.relativeFolder, palette: palette)
                         }
                     } else {
                         ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.top, 12)
@@ -195,14 +207,14 @@ struct FilesSidebarView: View {
         return count == 0 ? L("No files match in the first %@ files", limit) : count == 1 ? L("1 match in the first %@ files", limit) : L("%1$d matches in the first %2$@ files", count, limit)
     }
 
-    private func highlighted(_ match: FileSearchMatch) -> AttributedString {
+    private func highlighted(_ match: FileSearchMatch, accent: Color) -> AttributedString {
         var text = AttributedString()
         let positions = Set(match.namePositions)
         for (index, character) in match.entry.name.enumerated() {
             var piece = AttributedString(String(character))
             if positions.contains(index) {
                 piece.font = .system(size: 12.5, weight: .bold)
-                piece.foregroundColor = model.themeColor(.accent)
+                piece.foregroundColor = accent
             }
             text += piece
         }
@@ -243,28 +255,47 @@ struct FilesSidebarView: View {
     }
 }
 
+/// The theme colors a Files row draws with, read once per redraw of the list rather than per row.
+struct FilesPalette: Equatable {
+    let foreground: Color, muted: Color, accent: Color, selection: Color
+
+    @MainActor init(_ model: AppWorkspaceModel) {
+        (foreground, muted, accent, selection) = (model.themeColor(.foreground), model.themeColor(.mutedForeground), model.themeColor(.accent), model.sidebarSelectionBackground)
+    }
+}
+
 /// One file or folder line: disclosure, icon, name (with its folder in search), and Copy Path and Open on hover or selection.
-private struct FileRow: View {
-    @ObservedObject var model: AppWorkspaceModel
+/// It takes plain values and compares them (`.equatable()`), so a change elsewhere in the app, or to another row, doesn't redraw
+/// it. `model` is kept for the row's actions only and isn't observed.
+private struct FileRow: View, Equatable {
+    let model: AppWorkspaceModel
     let entry: FileEntry
     let depth: Int
     let title: AttributedString
     let subtitle: String?
+    let selected: Bool
+    let expanded: Bool
+    let editor: EditorApp
+    let editors: [EditorApp]
+    let palette: FilesPalette
     @State private var hovering = false
 
+    nonisolated static func == (a: FileRow, b: FileRow) -> Bool {
+        a.entry == b.entry && a.depth == b.depth && a.title == b.title && a.subtitle == b.subtitle && a.selected == b.selected && a.expanded == b.expanded
+            && a.editor == b.editor && a.editors == b.editors && a.palette == b.palette
+    }
+
     var body: some View {
-        let selected = model.files.selection == entry.path
-        let expanded = model.files.expanded.contains(entry.path)
-        let muted = model.themeColor(.mutedForeground)
+        let muted = palette.muted
         HStack(spacing: 6) {
             if subtitle == nil {
                 Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(muted)
                     .frame(width: 10).opacity(entry.isDirectory ? 1 : 0).accessibilityHidden(true)
             }
             Image(systemName: entry.isDirectory ? "folder" : entry.isSymbolicLink ? "arrow.up.right.square" : "doc").font(.system(size: 12))
-                .foregroundStyle(selected ? model.themeColor(.foreground) : muted).frame(width: 16).accessibilityHidden(true)
+                .foregroundStyle(selected ? palette.foreground : muted).frame(width: 16).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 12.5)).lineLimit(1).truncationMode(.middle).foregroundStyle(model.themeColor(.foreground))
+                Text(title).font(.system(size: 12.5)).lineLimit(1).truncationMode(.middle).foregroundStyle(palette.foreground)
                 if let subtitle { Text(subtitle).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(muted).lineLimit(1).truncationMode(.head) }
             }
             Spacer(minLength: 4)
@@ -280,14 +311,14 @@ private struct FileRow: View {
                 } label: {
                     Image(systemName: "arrow.up.forward.app")
                 }
-                .help(L("Open in %@", model.files.editor.name)).accessibilityLabel(L("Open %1$@ in %2$@", entry.name, model.files.editor.name))
+                .help(L("Open in %@", editor.name)).accessibilityLabel(L("Open %1$@ in %2$@", entry.name, editor.name))
             }
         }
-        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(model.themeColor(.foreground))
+        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(palette.foreground)
         .padding(.leading, CGFloat(depth) * 16 + 6).padding(.trailing, 6).padding(.vertical, subtitle == nil ? 0 : 4)
         .frame(minHeight: 24)
         .background(RoundedRectangle(cornerRadius: 5).fill(background(selected: selected)))
-        .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? model.themeColor(.accent).opacity(0.5) : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? palette.accent.opacity(0.5) : .clear))
         .contentShape(Rectangle())
         .id(entry.path)
         .onHover { hovering = $0 }
@@ -308,8 +339,8 @@ private struct FileRow: View {
     private var isTreeFolder: Bool { entry.isDirectory && subtitle == nil }
 
     private func background(selected: Bool) -> Color {
-        if selected { return model.sidebarSelectionBackground }
-        return hovering ? model.themeColor(.foreground).opacity(0.05) : .clear
+        if selected { return palette.selection }
+        return hovering ? palette.foreground.opacity(0.05) : .clear
     }
 
     private func spokenValue(expanded: Bool) -> String {
@@ -344,14 +375,13 @@ private struct FileRow: View {
     }
 
     @ViewBuilder private var menu: some View {
-        let editor = model.files.editor
         Button(L("Open in %@", editor.name)) { Task { await model.openFile(entry) } }
         // An editor tab is one click away whichever app is remembered; choosing it here isn't remembered (FR-ED09).
         if editor != .trellisEditor, !entry.isDirectory {
             Button(L("Open in %@", EditorApp.trellisEditor.name)) { Task { await model.openFile(entry, in: .trellisEditor, remember: false) } }
         }
         Menu(L("Open With")) {
-            ForEach(model.files.editors) { app in Button(app.name) { Task { await model.openFile(entry, in: app) } } }
+            ForEach(editors) { app in Button(app.name) { Task { await model.openFile(entry, in: app) } } }
         }
         Button(L("Reveal in Finder")) { model.revealFile(entry) }
         Divider()
