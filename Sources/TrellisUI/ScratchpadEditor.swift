@@ -48,9 +48,17 @@ struct ScratchpadEditor: NSViewRepresentable {
         return added <= removed || text.utf8.count - removed + added <= limit
     }
 
+    /// Lays out only what is drawn or asked for: with contiguous layout, putting a long file's text view in its scroll view
+    /// laid out the whole file first (~0.8 s for 2.3k lines).
+    static func makeLayoutManager() -> NSLayoutManager {
+        let layout = NSLayoutManager()
+        layout.allowsNonContiguousLayout = true
+        return layout
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
-        let storage = NSTextStorage(), layout = NSLayoutManager()
+        let storage = NSTextStorage(), layout = Self.makeLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: scroll.contentSize.width, height: .greatestFiniteMagnitude))
         container.widthTracksTextView = true

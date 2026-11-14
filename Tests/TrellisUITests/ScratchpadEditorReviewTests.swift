@@ -164,4 +164,31 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         XCTAssertEqual(readout.column, 3)
         withExtendedLifetime(coordinator) {}
     }
+
+    @MainActor
+    func testALongTextIsLaidOutOnlyAsFarAsNeededAndJumpsStillWork() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let storage = NSTextStorage(), layout = ScratchpadEditor.makeLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layout.addTextContainer(container)
+        let textView = ScratchpadTextView(frame: scroll.bounds, textContainer: container)
+        textView.isVerticallyResizable = true
+        let text = (1...20_000).map { "let line\($0) = \($0)" }.joined(separator: "\n")
+        textView.string = text
+        scroll.documentView = textView
+        window.contentView?.addSubview(scroll)
+        XCTAssertTrue(layout.allowsNonContiguousLayout)
+        XCTAssertLessThan(layout.firstUnlaidCharacterIndex(), (text as NSString).length, "Showing a long text doesn't lay all of it out")
+
+        ScratchpadEditor.Coordinator.move(textView, toLine: 15_000, column: 5)
+        let expected = (text as NSString).range(of: "let line15000 =").location + 4
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: expected, length: 0), "A jump far down still lands on its line")
+        let visible = ScratchpadLineRuler.lines(in: text as NSString, visible: NSRange(location: expected, length: 40))
+        XCTAssertEqual(visible.lines.first?.number, 15_000, "and the ruler numbers it")
+    }
 }
