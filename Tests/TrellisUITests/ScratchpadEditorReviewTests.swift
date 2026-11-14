@@ -230,4 +230,31 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         XCTAssertFalse(button.needsUpdateConstraints, "Its size is fixed, so a new title doesn't invalidate it (SwiftUI would lay the window out again)")
         XCTAssertFalse(window.contentView?.needsUpdateConstraints ?? true)
     }
+
+    @MainActor
+    func testTheCursorButtonKeepsTheHeaderItsOwnHeight() throws {
+        // The header sits above the flexible editor; a button with no height of its own let it take half the window.
+        _ = NSApplication.shared
+        let readout = EditorCursorReadout()
+        let root = VStack(spacing: 0) {
+            HStack {
+                Text("README.md")
+                EditorCursorButton(readout: readout, color: .secondaryLabelColor) {}.frame(width: EditorCursorButton.width, alignment: .trailing)
+            }
+            Color.clear
+        }
+        let host = NSHostingView(rootView: root)
+        host.frame = NSRect(x: 0, y: 0, width: 600, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        let button = try XCTUnwrap(readout.button)
+        XCTAssertLessThanOrEqual(button.frame.height, 30, "The button is one line tall, not a share of the window")
+        XCTAssertGreaterThanOrEqual(button.frame.height, EditorCursorButton.font.pointSize)
+        XCTAssertEqual(button.frame.width, EditorCursorButton.width, accuracy: 1)
+        readout.update(line: 2_000, column: 40)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertLessThanOrEqual(button.frame.height, 30, "and stays so as the cursor moves")
+    }
 }

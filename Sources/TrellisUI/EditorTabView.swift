@@ -211,12 +211,14 @@ struct EditorCursorButton: NSViewRepresentable {
     static let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
     /// Wide enough for a five-digit line and a four-digit column in the current language.
     static var width: CGFloat { ceil((L("Ln %1$d, Col %2$d", 88_888, 8_888) as NSString).size(withAttributes: [.font: font]).width) + 8 }
+    /// One line of the caption font.
+    static var height: CGFloat { ceil(("Ln 0" as NSString).size(withAttributes: [.font: font]).height) + 2 }
 
     final class Button: NSButton {
         var onPress: () -> Void = {}
         // A fixed size: a new title must not ask the window to lay out again. Retitling invalidates the intrinsic size,
         // which SwiftUI's host passes up as a layout of the whole window (it is one hosting view), so that is ignored too.
-        override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: super.intrinsicContentSize.height) }
+        override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: EditorCursorButton.height) }
         override func invalidateIntrinsicContentSize() {}
         @objc func press() { onPress() }
     }
@@ -232,12 +234,16 @@ struct EditorCursorButton: NSViewRepresentable {
         button.toolTip = L("Go to Line (⌘L)")
         button.setContentHuggingPriority(.defaultLow, for: .horizontal)
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        button.setContentHuggingPriority(.required, for: .vertical)
         readout.button = button
         update(button)
         return button
     }
 
     func updateNSView(_ button: Button, context: Context) { update(button) }
+
+    /// Its exact size, so SwiftUI never stretches it: without one, it took a share of the editor's height.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: Button, context: Context) -> CGSize? { CGSize(width: Self.width, height: Self.height) }
 
     private func update(_ button: Button) {
         button.onPress = action
