@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import XCTest
 import TrellisBroker
 import TrellisCore
@@ -188,6 +189,28 @@ final class ChangesSidebarTests: XCTestCase {
 
         await model.refreshGitChanges(paneID: pane)
         XCTAssertTrue(model.gitChanges.collapsed.contains("notes"), "Folds survive a refresh for the session")
+    }
+
+    @MainActor
+    func testReadingTheSameListAgainPublishesNothing() async throws {
+        try makeChangedRepository()
+        let (model, pane, _) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.refreshGitChanges(paneID: pane)
+        let first = try XCTUnwrap(model.gitChanges.list, "\(model.gitChanges.load)")
+        var published = 0
+        let watcher = model.$gitChanges.dropFirst().sink { _ in published += 1 }
+        defer { watcher.cancel() }
+
+        await model.refreshGitChanges(paneID: pane)
+        await model.refreshGitChanges(paneID: pane)
+        XCTAssertEqual(published, 0, "Each prompt reads again; an unchanged list doesn't redraw the window and every row")
+        XCTAssertEqual(model.gitChanges.list, first)
+
+        try write("changed again\n", "README.md")
+        await model.refreshGitChanges(paneID: pane)
+        XCTAssertEqual(published, 1, "A changed list still shows, in one publish")
+        XCTAssertNotNil(file(model, "README.md"))
     }
 
     @MainActor
@@ -453,6 +476,14 @@ final class ChangesSidebarTests: XCTestCase {
         model.toggleSidebarView(.changes)
         await model.refreshGitChanges(paneID: pane)
         XCTAssertEqual(model.currentReview?.diff?.body, .unchanged, "A file no longer changed says so")
+
+        var published = 0
+        let watcher = model.$reviewTabs.dropFirst().sink { _ in published += 1 }
+        defer { watcher.cancel() }
+        await model.refreshGitChanges(paneID: pane)
+        await model.refreshGitChanges(paneID: pane)
+        XCTAssertEqual(published, 0, "Later prompts don't say it again, so they don't redraw the window")
+        XCTAssertEqual(model.currentReview?.diff?.body, .unchanged)
     }
 
     // MARK: Conflicts and pane actions (FR-GC05, FR-GC06)

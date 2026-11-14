@@ -1456,7 +1456,11 @@ public final class AppWorkspaceModel: ObservableObject {
         progressTrackers.removeValue(forKey: paneID)
         pendingProgress.remove(paneID)
         progressPublishedAt.removeValue(forKey: paneID)
-        if progress.removeValue(forKey: paneID) != nil { refreshTerminalAccessibility() }
+        // Checked first: removing from a published dictionary publishes even when the key is absent, and every prompt
+        // clears progress, so each one would redraw the window for nothing.
+        guard progress[paneID] != nil else { return }
+        progress.removeValue(forKey: paneID)
+        refreshTerminalAccessibility()
     }
 
     /// One task for every pane: it sleeps until the earliest deadline, so updates never spawn timers.
@@ -1952,7 +1956,12 @@ public final class AppWorkspaceModel: ObservableObject {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
         // An editor tab hidden here gives the keyboard back to the terminals, which stayed mounted under it (FR-ED01).
         let editorHidden = snapshot.tabs[id].flatMap { shownEditors[$0.spaceID] } != nil
-        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID); shownEditors[spaceID] = nil }
+        // Only when shown: these publish before the store's reply, in a turn of their own, so clearing what is already clear
+        // would redraw the window once more on every tab switch.
+        if let spaceID = snapshot.tabs[id]?.spaceID {
+            if reviewShownSpaces.contains(spaceID) { reviewShownSpaces.remove(spaceID) }
+            if shownEditors[spaceID] != nil { shownEditors[spaceID] = nil }
+        }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = L("The tab could not be selected.") }
         if editorHidden { focusActiveTerminal() }
@@ -2210,7 +2219,12 @@ public final class AppWorkspaceModel: ObservableObject {
         cancelPaste()
     }
 
-    public func cancelPaste() { pasteFocusEpoch &+= 1; pasteReview.cancel(); pendingPaste = nil }
+    /// Every tab switch and pane focus change cancels; publishing only when a paste was waiting keeps those from redrawing
+    /// the window an extra time.
+    public func cancelPaste() {
+        pasteFocusEpoch &+= 1; pasteReview.cancel()
+        if pendingPaste != nil { pendingPaste = nil }
+    }
 
     @discardableResult
     /// Quitting and closing the window detach remote workspace sessions without a signal (FR-RW06); closing the
