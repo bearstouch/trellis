@@ -154,22 +154,29 @@ extension AppWorkspaceModel {
         // A late call for a pane no longer focused (staging that finished after a focus change) leaves the view alone.
         guard presentation.activePane?.id == paneID else { return }
         guard sidebarUnavailableReason(.changes) == nil, let directory = paneDirectory(paneID) else {
-            gitChanges.paneID = paneID; gitChanges.load = .idle
+            setGitChanges(paneID: paneID, load: .idle)
             return
         }
-        if gitChanges.paneID != paneID || gitChanges.list == nil { gitChanges.load = .loading }
-        gitChanges.paneID = paneID
+        if gitChanges.paneID != paneID || gitChanges.list == nil { setGitChanges(paneID: paneID, load: .loading) }
+        setGitChanges(paneID: paneID, load: nil)
         let client = gitChangesClient
         let read = await Task.detached(priority: .userInitiated) { client.list(directory) }.value
         guard generation == gitChangesGeneration, gitChanges.paneID == paneID else { return }
         switch read {
-        case .notRepository: gitChanges.load = .noRepository(directory)
-        case .failed: gitChanges.load = .failed
+        case .notRepository: setGitChanges(paneID: paneID, load: .noRepository(directory))
+        case .failed: setGitChanges(paneID: paneID, load: .failed)
         case .loaded(let list):
-            gitChanges.load = .loaded(list)
+            setGitChanges(paneID: paneID, load: .loaded(list))
             if let selection = gitChanges.selection, !list.files.contains(where: { $0.path == selection }) { gitChanges.selection = nil }
             await refreshReviews(with: list, generation: generation)
         }
+    }
+
+    /// Writes only what changed: every write to the published state redraws the window and each Changes row, and every
+    /// prompt with Changes open reads the repository again, usually to find the same list.
+    private func setGitChanges(paneID: UUID, load: GitChangesState.Load?) {
+        if gitChanges.paneID != paneID { gitChanges.paneID = paneID }
+        if let load, gitChanges.load != load { gitChanges.load = load }
     }
 
     /// A prompt may follow a command that changed files (FR-GC03).
@@ -186,7 +193,9 @@ extension AppWorkspaceModel {
             guard let review = reviewTabs[spaceID], review.root == list.root else { continue }
             guard let file = list.files.first(where: { $0.path == review.file.path }) else {
                 // A cut list may just not reach the file.
-                if !list.truncated { reviewTabs[spaceID]?.diff = GitFileDiff(body: .unchanged) }
+                // Every prompt reads the list again; saying so once keeps each later prompt from redrawing the window.
+                let unchanged = GitFileDiff(body: .unchanged)
+                if !list.truncated, review.diff != unchanged { reviewTabs[spaceID]?.diff = unchanged }
                 continue
             }
             guard file != review.file || review.hasCommits != list.hasCommits else { continue }

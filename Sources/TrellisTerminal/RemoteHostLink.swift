@@ -217,7 +217,8 @@ public final class RemoteHostLink {
     }
 
     private func sshExited(_ code: Int32?) {
-        channel?.cancel()
+        // Not cancel(): the host's last reply (`ERROR DIGEST` before `exit 1`) may still be unread, and it names the failure.
+        channel?.endAfterBuffered()
         if state == .connected { finish(.failed(.lost)) }
     }
 
@@ -276,6 +277,7 @@ final class LinkChannel: @unchecked Sendable {
     private let lock = NSLock()
     private var fd: Int32
     private var cancelled = false
+    private var draining = false
     private let nonce: String
     private(set) var lastError: String?
 
@@ -290,6 +292,13 @@ final class LinkChannel: @unchecked Sendable {
         if fd >= 0 { shutdown(fd, SHUT_RDWR) }
     }
 
+    /// The peer is gone: reads return what is already buffered, then end instead of waiting for more.
+    func endAfterBuffered() {
+        lock.lock()
+        defer { lock.unlock() }
+        draining = true
+    }
+
     /// Hands the socket to the broker connection; the channel no longer owns it. -1 once cancelled.
     func takeDescriptor() -> Int32 {
         lock.lock()
@@ -300,6 +309,12 @@ final class LinkChannel: @unchecked Sendable {
     }
 
     deinit { if fd >= 0 { Darwin.close(fd) } }
+
+    private var isDraining: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return draining
+    }
 
     private var descriptor: Int32? {
         lock.lock()
@@ -367,10 +382,14 @@ final class LinkChannel: @unchecked Sendable {
     private func readByte() -> UInt8? {
         while true {
             guard let fd = descriptor else { return nil }
+            let drain = isDraining
             var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-            let ready = poll(&poller, 1, 250)
+            let ready = poll(&poller, 1, drain ? 0 : 250)
             if ready < 0, errno != EINTR { return nil }
-            guard ready > 0 else { continue }
+            guard ready > 0 else {
+                if drain, ready == 0 { return nil }
+                continue
+            }
             var byte: UInt8 = 0
             let count = Darwin.read(fd, &byte, 1)
             if count == 1 { return byte }

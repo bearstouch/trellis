@@ -48,9 +48,17 @@ struct ScratchpadEditor: NSViewRepresentable {
         return added <= removed || text.utf8.count - removed + added <= limit
     }
 
+    /// Lays out only what is drawn or asked for: with contiguous layout, putting a long file's text view in its scroll view
+    /// laid out the whole file first (~0.8 s for 2.3k lines).
+    static func makeLayoutManager() -> NSLayoutManager {
+        let layout = NSLayoutManager()
+        layout.allowsNonContiguousLayout = true
+        return layout
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
-        let storage = NSTextStorage(), layout = NSLayoutManager()
+        let storage = NSTextStorage(), layout = Self.makeLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: scroll.contentSize.width, height: .greatestFiniteMagnitude))
         container.widthTracksTextView = true
@@ -106,6 +114,11 @@ struct ScratchpadEditor: NSViewRepresentable {
         private var focusRequest: Int
         private var jumpID: UUID?
         private var pendingHighlight: DispatchWorkItem?
+        /// The text the view holds, as a native string: the last one set from the model or typed. Every redraw of the
+        /// window updates every mounted editor, and comparing the model's text with `textView.string` (bridged from
+        /// the text storage) walked the whole document each time.
+        private(set) var synced: String?
+        private var accessibilityDescription: String?
         /// Each editor's own undo history: with the window's, ⌘Z in one editor tab would undo typing in another one,
         /// mounted but hidden (FR-ED03).
         let undo = UndoManager()
@@ -116,14 +129,16 @@ struct ScratchpadEditor: NSViewRepresentable {
             guard let textView else { return }
             textView.commands = editor.commands
             textView.currentLineColor = editor.highlightsCurrentLine ? Self.currentLineColor(editor.palette) : nil
-            textView.setAccessibilityValueDescription(L("%1$@ %2$@", editor.language.displayName, editor.contentNoun))
+            let description = L("%1$@ %2$@", editor.language.displayName, editor.contentNoun)
+            if description != accessibilityDescription { accessibilityDescription = description; textView.setAccessibilityValueDescription(description) }
             var restyle = force
-            if textView.string != editor.text {
+            if editor.text != synced {
                 let selection = textView.selectedRanges
                 // Typing's undo steps name ranges in the old text; undoing one after Clear or Open would raise.
                 if let storage = textView.textStorage { textView.undoManager?.removeAllActions(withTarget: storage) }
                 textView.breakUndoCoalescing()
                 textView.string = editor.text
+                synced = editor.text
                 // Clamped, never dropped: AppKit raises on an empty selection array, as after Clear or opening a shorter file.
                 textView.selectedRanges = Self.clamped(selection.map(\.rangeValue), length: (editor.text as NSString).length).map { NSValue(range: $0) }
                 restyle = true
@@ -142,7 +157,7 @@ struct ScratchpadEditor: NSViewRepresentable {
                 ruler?.style(font: editor.font, palette: editor.palette)
                 restyle = true
             }
-            if restyle { highlight(); ruler?.fitLineNumbers(in: textView.string as NSString); ruler?.needsDisplay = true; textView.needsDisplay = true }
+            if restyle { highlightNowOrInBackground(); ruler?.fitLineNumbers(in: textView.string as NSString); ruler?.needsDisplay = true; textView.needsDisplay = true }
             if ruler?.issueLines != editor.issueLines { ruler?.issueLines = editor.issueLines }
             if let jump = editor.jump, jump.id != jumpID {
                 jumpID = jump.id
@@ -210,23 +225,60 @@ struct ScratchpadEditor: NSViewRepresentable {
             }
         }
 
-        /// Large texts are highlighted a moment after typing stops, so each key stays quick.
+        /// Texts up to this many UTF-16 units are highlighted at once, on each key: tokenizing them takes well under a
+        /// millisecond. Larger ones are tokenized off the main thread, so a key in a long file never waits for the whole
+        /// file to be read again.
+        static let immediateHighlightLimit = 8_192
+        private var highlightGeneration = 0
+
+        /// Highlights after a key: small texts at once, larger ones a moment after typing pauses, off the main thread.
         func scheduleHighlight() {
             pendingHighlight?.cancel()
-            guard let textView, (textView.string as NSString).length > 65_536 else { highlight(); return }
-            let work = DispatchWorkItem { [weak self] in self?.highlight() }
+            highlightGeneration &+= 1
+            guard let textView else { return }
+            let length = (textView.string as NSString).length
+            guard length > Self.immediateHighlightLimit else { highlight(); return }
+            let work = DispatchWorkItem { [weak self] in self?.highlightInBackground() }
             pendingHighlight = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (length > 65_536 ? 0.15 : 0.05), execute: work)
+        }
+
+        /// A new text, font or theme: small texts at once, larger ones off the main thread (opening a long file).
+        func highlightNowOrInBackground() {
+            pendingHighlight?.cancel()
+            highlightGeneration &+= 1
+            guard let textView else { return }
+            if (textView.string as NSString).length > Self.immediateHighlightLimit { highlightInBackground() } else { highlight() }
         }
 
         func highlight() {
-            guard let textView, let layout = textView.layoutManager else { return }
-            let length = (textView.string as NSString).length
+            guard let textView else { return }
+            let text = synced ?? textView.string
+            guard text.utf8.count <= parent.highlightLimit else { applyTokens([], length: (textView.string as NSString).length); return }
+            applyTokens(ScratchpadHighlighter.tokens(in: text, grammar: parent.language.grammar), length: (textView.string as NSString).length)
+        }
+
+        /// Tokenizes a copy of the text on another thread; the tokens are applied only if no key, new text or restyle came
+        /// in meanwhile (each starts a new generation).
+        private func highlightInBackground() {
+            guard let textView else { return }
+            let text = synced ?? textView.string, generation = highlightGeneration, grammar = parent.language.grammar
+            guard text.utf8.count <= parent.highlightLimit else { applyTokens([], length: (textView.string as NSString).length); return }
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let tokens = ScratchpadHighlighter.tokens(in: text, grammar: grammar)
+                await MainActor.run { [weak self] in
+                    guard let self, generation == self.highlightGeneration, let textView = self.textView else { return }
+                    self.applyTokens(tokens, length: (textView.string as NSString).length)
+                }
+            }
+        }
+
+        private func applyTokens(_ tokens: [ScratchpadToken], length: Int) {
+            guard let layout = textView?.layoutManager else { return }
             let full = NSRange(location: 0, length: length)
             layout.removeTemporaryAttribute(.foregroundColor, forCharacterRange: full)
-            guard textView.string.utf8.count <= parent.highlightLimit else { return }
             let palette = parent.palette
-            for token in ScratchpadHighlighter.tokens(in: textView.string, grammar: parent.language.grammar) {
+            for token in tokens {
                 let range = NSIntersectionRange(token.range, full)
                 guard range.length > 0 else { continue }
                 layout.addTemporaryAttribute(.foregroundColor, value: Self.color(token.kind, palette: palette), forCharacterRange: range)
@@ -253,7 +305,11 @@ struct ScratchpadEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
-            parent.text = textView.string
+            // Native and contiguous, so comparing it (here, and the model's unsaved check) is a quick byte comparison.
+            var text = textView.string
+            text.makeContiguousUTF8()
+            synced = text
+            parent.text = text
             scheduleHighlight()
             ruler?.fitLineNumbers(in: textView.string as NSString)
             ruler?.needsDisplay = true
@@ -265,8 +321,7 @@ struct ScratchpadEditor: NSViewRepresentable {
             guard let onCursor = parent.onCursor else { return }
             let string = textView.string as NSString
             let location = min(textView.selectedRange().location, string.length)
-            let before = string.substring(to: location)
-            let line = 1 + before.utf16.reduce(0) { $1 == 10 ? $0 + 1 : $0 }
+            let line = 1 + ScratchpadLineRuler.newlines(in: string, before: location)
             let lineStart = string.range(of: "\n", options: [.literal, .backwards], range: NSRange(location: 0, length: location))
             onCursor(line, location - (lineStart.location == NSNotFound ? 0 : lineStart.location + 1) + 1)
         }
@@ -363,7 +418,7 @@ final class ScratchpadLineRuler: NSRulerView {
 
     /// Widens the ruler for the text's largest line number, so five-digit numbers fit.
     func fitLineNumbers(in string: NSString) {
-        let lines = 1 + (string as String).utf16.reduce(0) { $1 == 10 ? $0 + 1 : $0 }
+        let lines = 1 + Self.newlines(in: string, before: string.length)
         let digits = max(3, String(lines).count)
         let width = ceil(("8" as NSString).size(withAttributes: [.font: font]).width * CGFloat(digits)) + 16
         if abs(ruleThickness - max(40, width)) > 0.5 { ruleThickness = max(40, width) }
@@ -402,6 +457,24 @@ final class ScratchpadLineRuler: NSRulerView {
         if layout.extraLineFragmentTextContainer != nil { draw(next, fragment: layout.extraLineFragmentRect) }
     }
 
+    /// The `\n`s before `end`. These run on each key, cursor move and ruler draw; bridging the text to a Swift string to
+    /// fold over its UTF-16 units took ~1.5 ms for a 2.3k-line file, copying the units out in chunks ~0.07 ms.
+    nonisolated static func newlines(in string: NSString, before end: Int) -> Int {
+        let end = min(max(0, end), string.length)
+        var count = 0, location = 0
+        var buffer = [unichar](repeating: 0, count: min(8_192, max(1, end)))
+        while location < end {
+            let length = min(buffer.count, end - location)
+            buffer.withUnsafeMutableBufferPointer { units in
+                guard let base = units.baseAddress else { return }
+                string.getCharacters(base, range: NSRange(location: location, length: length))
+                for unit in units[0..<length] where unit == 10 { count += 1 }
+            }
+            location += length
+        }
+        return count
+    }
+
     /// The lines the text view is showing now.
     var visibleLines: (lines: [(number: Int, location: Int)], next: Int)? {
         guard let textView, let layout = textView.layoutManager, let container = textView.textContainer else { return nil }
@@ -419,7 +492,7 @@ final class ScratchpadLineRuler: NSRulerView {
         var location = min(visible.location, length)
         let previous = string.range(of: "\n", options: [.literal, .backwards], range: NSRange(location: 0, length: location))
         location = previous.location == NSNotFound ? 0 : previous.location + 1
-        var number = 1 + string.substring(to: location).utf16.reduce(0) { $1 == 10 ? $0 + 1 : $0 }
+        var number = 1 + newlines(in: string, before: location)
         var lines: [(number: Int, location: Int)] = []
         while location < min(NSMaxRange(visible), length) {
             lines.append((number, location))

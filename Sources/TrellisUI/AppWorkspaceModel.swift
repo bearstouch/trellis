@@ -72,8 +72,12 @@ public final class AppWorkspaceModel: ObservableObject {
     public var onAppearanceChanged: (() -> Void)?
     private var committedAppearance = (settings: AppearanceSettings(), themeID: ResolvedTheme.builtIn(.light).id)
     @Published public internal(set) var themeCatalog = ThemeLibrarySnapshot()
-    @Published public private(set) var effectiveTheme = ResolvedTheme.builtIn(.light)
-    @Published public private(set) var previewedTheme: ThemeDocument?
+    @Published public private(set) var effectiveTheme = ResolvedTheme.builtIn(.light) { didSet { refreshNativeChrome() } }
+    @Published public private(set) var previewedTheme: ThemeDocument? { didSet { refreshNativeChrome() } }
+    /// Whether the chrome uses the system's own colors; kept with the theme because every themed color asks, several times
+    /// per row, and comparing against a freshly built built-in theme each time showed up in profiles.
+    public private(set) var usesNativeChrome = true
+    private func refreshNativeChrome() { usesNativeChrome = previewedTheme == nil && effectiveTheme == .builtIn(effectiveTheme.appearance) }
     @Published public private(set) var themeNotice: String?
     @Published public internal(set) var themeBusy = false
     @Published public private(set) var themeReplacementID: String?
@@ -367,6 +371,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public private(set) var progress: [UUID: TerminalProgress] = [:] { didSet { if onLiveEvents != nil, progress != oldValue { liveProgressChanged(from: oldValue) } } }
     private var progressTrackers: [UUID: PaneProgressTracker] = [:]
     private var progressExpiryTask: Task<Void, Never>?
+    /// When each pane's progress was last published, and the panes whose newer percentage waits for the window to end.
+    private var progressPublishedAt: [UUID: Date] = [:]
+    private var pendingProgress: Set<UUID> = []
+    private var progressFlushTask: Task<Void, Never>?
+    /// Percentage-only updates are published at most this often per pane (FR-T09): each one redraws the window's chrome.
+    static let progressRedrawInterval: TimeInterval = 0.25
     private var busySettleTasks: [UUID: Task<Void, Never>] = [:]
     /// Posts desktop notifications (FR-T08); nil (tests, `swift run`) posts nothing.
     public var desktopNotifier: DesktopNotifier?
@@ -555,8 +565,19 @@ public final class AppWorkspaceModel: ObservableObject {
     public var scratchpadProcessRunner: ScratchpadProcessRunner = ScratchpadValidator.runProcess
     /// Opens launch.json in the user's editor; injected by tests.
     public var openLaunchFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
-    /// The Files view's tree, search and copy status (FR-FB02–FR-FB06): runtime only, never saved with the workspace.
-    @Published public internal(set) var files = FilesBrowserState()
+    /// The Files view's tree, search and copy status (FR-FB02–FR-FB06): runtime only, never saved with the workspace. It is
+    /// published by ``filesBrowser``, which only the Files view observes, so a selection move or an opened folder doesn't
+    /// redraw the whole window. The editor choice is also shown by Changes, review and editor tabs, so changing it still
+    /// tells this model's observers.
+    public let filesBrowser = FilesBrowserModel()
+    public internal(set) var files: FilesBrowserState {
+        get { filesBrowser.state }
+        set {
+            let old = filesBrowser.state
+            if newValue.editorID != old.editorID || newValue.editors != old.editors || newValue.editorAppURLs != old.editorAppURLs { objectWillChange.send() }
+            filesBrowser.state = newValue
+        }
+    }
     /// Bumped when the Files view's search field should take keyboard focus.
     @Published public internal(set) var filesFocusRequest = 0
     var filesSearchTask: Task<Void, Never>?
@@ -568,7 +589,12 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var reviewTabs: [UUID: ReviewTab] = [:]
     @Published public internal(set) var reviewShownSpaces: Set<UUID> = []
     /// Each space's editor tabs in tab-bar order, and the one shown in place of its terminal tabs (FR-ED01, FR-ED08). Never saved.
-    @Published public internal(set) var editorTabs: [UUID: [EditorTab]] = [:]
+    /// Published only when something the window shows changes: typing changes a tab's text, which its text view already
+    /// shows, and publishing each key redrew the whole window and every editor tab. A tab becoming unsaved, or saved again,
+    /// still publishes (the tab bar's dot, the header's capsule).
+    public internal(set) var editorTabs: [UUID: [EditorTab]] = [:] {
+        willSet { if !EditorTab.sameChrome(editorTabs, newValue) { objectWillChange.send() } }
+    }
     @Published public internal(set) var shownEditors: [UUID: UUID] = [:]
     /// Bumped when the shown editor should take keyboard focus.
     @Published public internal(set) var editorFocusRequest = 0
@@ -1388,14 +1414,58 @@ public final class AppWorkspaceModel: ObservableObject {
         var tracker = progressTrackers[paneID] ?? PaneProgressTracker()
         let next = tracker.apply(report, at: activityNow())
         progressTrackers[paneID] = next == nil ? nil : tracker
-        if progress[paneID] != next { progress[paneID] = next; refreshTerminalAccessibility() }
+        publishProgress(next, paneID: paneID)
         applyAgentSignal(.progress(active: next != nil), paneID: paneID)
         scheduleProgressExpiry()
     }
 
+    /// Progress that appears, clears or changes state shows at once; a new percentage in the same state within
+    /// ``progressRedrawInterval`` of the last one waits, and only the latest is shown when the window ends.
+    private func publishProgress(_ next: TerminalProgress?, paneID: UUID) {
+        let current = progress[paneID]
+        guard current != next else { pendingProgress.remove(paneID); return }
+        let now = activityNow()
+        if let current, let next, current.state == next.state, let last = progressPublishedAt[paneID], now.timeIntervalSince(last) < Self.progressRedrawInterval {
+            pendingProgress.insert(paneID)
+            scheduleProgressFlush()
+            return
+        }
+        pendingProgress.remove(paneID)
+        progress[paneID] = next
+        // Removed progress has no tracker, so pane cleanup (which walks the trackers) wouldn't drop its timestamp.
+        progressPublishedAt[paneID] = next == nil ? nil : now
+        refreshTerminalAccessibility()
+    }
+
+    private func scheduleProgressFlush() {
+        guard progressFlushTask == nil else { return }
+        progressFlushTask = Task { [weak self] in
+            guard let sleep = self?.activitySleep else { return }
+            await sleep(Self.progressRedrawInterval)
+            guard let self, !Task.isCancelled else { return }
+            self.progressFlushTask = nil
+            let now = self.activityNow()
+            var changed = false
+            for id in self.pendingProgress {
+                guard let latest = self.progressTrackers[id]?.progress, self.progress[id] != latest else { continue }
+                self.progress[id] = latest
+                self.progressPublishedAt[id] = now
+                changed = true
+            }
+            self.pendingProgress.removeAll()
+            if changed { self.refreshTerminalAccessibility() }
+        }
+    }
+
     private func clearProgress(paneID: UUID) {
         progressTrackers.removeValue(forKey: paneID)
-        if progress.removeValue(forKey: paneID) != nil { refreshTerminalAccessibility() }
+        pendingProgress.remove(paneID)
+        progressPublishedAt.removeValue(forKey: paneID)
+        // Checked first: removing from a published dictionary publishes even when the key is absent, and every prompt
+        // clears progress, so each one would redraw the window for nothing.
+        guard progress[paneID] != nil else { return }
+        progress.removeValue(forKey: paneID)
+        refreshTerminalAccessibility()
     }
 
     /// One task for every pane: it sleeps until the earliest deadline, so updates never spawn timers.
@@ -1891,7 +1961,12 @@ public final class AppWorkspaceModel: ObservableObject {
         // A terminal tab shows the terminals again; the Review tab stays until closed (FR-GC05).
         // An editor tab hidden here gives the keyboard back to the terminals, which stayed mounted under it (FR-ED01).
         let editorHidden = snapshot.tabs[id].flatMap { shownEditors[$0.spaceID] } != nil
-        if let spaceID = snapshot.tabs[id]?.spaceID { reviewShownSpaces.remove(spaceID); shownEditors[spaceID] = nil }
+        // Only when shown: these publish before the store's reply, in a turn of their own, so clearing what is already clear
+        // would redraw the window once more on every tab switch.
+        if let spaceID = snapshot.tabs[id]?.spaceID {
+            if reviewShownSpaces.contains(spaceID) { reviewShownSpaces.remove(spaceID) }
+            if shownEditors[spaceID] != nil { shownEditors[spaceID] = nil }
+        }
         if id != presentation.selectedTab?.id { cancelPaste(); notePasteFocus(nil) }
         do { publish(try await service.execute(.selectTab(id: id)).snapshot) } catch { errorMessage = L("The tab could not be selected.") }
         if editorHidden { focusActiveTerminal() }
@@ -2149,7 +2224,12 @@ public final class AppWorkspaceModel: ObservableObject {
         cancelPaste()
     }
 
-    public func cancelPaste() { pasteFocusEpoch &+= 1; pasteReview.cancel(); pendingPaste = nil }
+    /// Every tab switch and pane focus change cancels; publishing only when a paste was waiting keeps those from redrawing
+    /// the window an extra time.
+    public func cancelPaste() {
+        pasteFocusEpoch &+= 1; pasteReview.cancel()
+        if pendingPaste != nil { pendingPaste = nil }
+    }
 
     @discardableResult
     /// Quitting and closing the window detach remote workspace sessions without a signal (FR-RW06); closing the

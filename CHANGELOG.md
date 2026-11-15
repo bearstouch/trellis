@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0-beta.2] - 2026-11-15
+
+The second 1.3 beta.
+
+### Changed
+
+- **Pane headers have no background of their own**: they sit on the terminal's background, so a pane reads as one surface. The focused pane keeps its focus line and semibold title; the accent tint is gone. The header's Maximize, Split and Close icons brighten under the pointer.
+
+### Fixed
+
+- **Share over Tailscale said "Tailscale's answer couldn't be read":** when Trellis was opened from Finder or the Dock, the Tailscale app's command-line tool started as the app instead of answering. Trellis now asks it to run as a command-line tool.
+- **Typing in editor tabs is fast again, even in long files:** a key no longer redraws the whole window or every open editor tab, longer files are highlighted off the main thread after a short pause, line numbers and the cursor's "Ln, Col" are cheap to update, and opening a long file no longer stalls while it is laid out.
+- **Less redrawing while programs report progress or the Files view is used:** a progress bar's percentage now redraws the tab and pane header at most four times a second per pane (appearing, clearing and state changes still show at once). Moving through, opening or searching the Files tree redraws only the Files view instead of the whole window, and a Files row redraws only when its own file, selection or open state changes.
+- **Less redrawing at prompts and on tab switches:** a shell prompt with no progress bar, a Changes read that finds the same list, and switching tabs with no editor or review shown no longer redraw the whole window.
+- **Remote hosts:** a failed helper install (for example a digest mismatch) could be reported as "ssh exited" when ssh ended before the host's error reply was read. The buffered reply is now read first.
+- **Files view felt slow:** a click on a file or folder waited out the double-click interval before it selected or opened anything; it now acts at once (a double click still opens a file). The tree is no longer rebuilt on every redraw and arrow key, and the installed editors are looked up once (and on **Reload**) instead of on every pane switch or `cd`.
+
 ## [1.3.0-beta.1] - 2026-11-13
 
 The first 1.3 beta.
@@ -423,7 +440,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.2...HEAD
+[1.3.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.1...v1.3.0-beta.2
 [1.3.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.2.0...v1.3.0-beta.1
 [1.2.0]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.3...v1.2.0
 [1.2.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.2.0-beta.2...v1.2.0-beta.3

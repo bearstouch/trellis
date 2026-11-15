@@ -111,35 +111,30 @@ struct PaneTreeView: View {
                         Task { await model.toggleMaximize(id) }
                     } label: {
                         Image(systemName: model.maximizedPanes[tabID] == id ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                    }.help(model.maximizedPanes[tabID] == id ? L("Restore Panes") : L("Maximize Pane"))
+                    }.buttonStyle(iconStyle).help(model.maximizedPanes[tabID] == id ? L("Restore Panes") : L("Maximize Pane"))
                         .accessibilityLabel(model.maximizedPanes[tabID] == id ? L("Restore Panes") : L("Maximize Pane"))
                     Button {
                         split(id, axis: .x, size: size)
                     } label: {
                         Image(systemName: "rectangle.split.2x1")
                     }
-                    .help(L("Split Left/Right")).accessibilityLabel(L("Split Left/Right")).disabled(model.maximizedPanes[tabID] != nil)
+                    .buttonStyle(iconStyle).help(L("Split Left/Right")).accessibilityLabel(L("Split Left/Right")).disabled(model.maximizedPanes[tabID] != nil)
                     Button {
                         split(id, axis: .y, size: size)
                     } label: {
                         Image(systemName: "rectangle.split.1x2")
                     }
-                    .help(L("Split Top/Bottom")).accessibilityLabel(L("Split Top/Bottom")).disabled(model.maximizedPanes[tabID] != nil)
+                    .buttonStyle(iconStyle).help(L("Split Top/Bottom")).accessibilityLabel(L("Split Top/Bottom")).disabled(model.maximizedPanes[tabID] != nil)
                     Button {
                         Task { await model.closePane(id) }
                     } label: {
                         Image(systemName: "xmark")
                     }
-                    .help(L("Close Pane")).accessibilityLabel(L("Close Pane"))
+                    .buttonStyle(iconStyle).help(L("Close Pane")).accessibilityLabel(L("Close Pane"))
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
-                    // The surface under it: the native tint is translucent, and the terminal canvas behind a pane tree is dark.
-                    // Flattened before the chrome opacity, so the tint and its surface don't composite twice (FR-TH10).
+                    // No chrome fill: the header sits on the terminal's own background, so the pane reads as one surface (FR-P05, FR-TH10).
                     .padding(.horizontal, 9).frame(height: 30)
-                    .background {
-                        ZStack {
-                            model.themeColor(.surface); headerBackground(focusStyle.header)
-                        }.compositingGroup().opacity(model.chromeOpacity)
-                    }
+                    .background(model.terminalBackground.opacity(model.effectiveBackgroundOpacity))
                     // On the bottom edge: along the top it would stack against the selected tab's underline.
                     .overlay(alignment: .bottom) {
                         if focusStyle.header == .focused { model.themeColor(.focusRing).frame(height: 3).allowsHitTesting(false).accessibilityHidden(true) }
@@ -174,13 +169,7 @@ struct PaneTreeView: View {
         }
     }
 
-    private func headerBackground(_ header: PaneFocusStyle.Header) -> Color {
-        switch header {
-        case .plain: return model.themeColor(.surface)
-        case .focused: return model.focusedPaneHeaderBackground
-        case .receded: return model.themeColor(.background)
-        }
-    }
+    private var iconStyle: PaneHeaderIconStyle { PaneHeaderIconStyle(rest: model.themeColor(.mutedForeground), hover: model.themeColor(.foreground)) }
 
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {
         model.themeColor(.border)
@@ -216,5 +205,26 @@ struct PaneTreeView: View {
 
     private func split(_ id: UUID, axis: SplitAxis, size: CGSize) {
         Task { await model.splitPane(id, axis: axis, availableCanvas: CanvasDimensions(width: size.width, height: size.height)) }
+    }
+}
+
+/// The pane header's icon buttons: muted at rest, the full foreground color under the pointer.
+private struct PaneHeaderIconStyle: ButtonStyle {
+    let rest: Color
+    let hover: Color
+
+    func makeBody(configuration: Configuration) -> some View { HoverLabel(configuration: configuration, rest: rest, hover: hover) }
+
+    private struct HoverLabel: View {
+        let configuration: Configuration
+        let rest: Color
+        let hover: Color
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label.foregroundStyle(hovering && isEnabled ? hover : rest).opacity(configuration.isPressed ? 0.7 : 1)
+                .contentShape(Rectangle()).onHover { hovering = $0 }
+        }
     }
 }

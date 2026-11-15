@@ -23,11 +23,8 @@ struct PaneFocusStyle: Equatable {
 }
 
 extension AppWorkspaceModel {
-    // The original Trellis defaults retain native chrome. Bundled editor palettes
-    // and imported/previewed JSON themes own their entire palette.
-    var usesNativeChrome: Bool {
-        previewedTheme == nil && effectiveTheme == .builtIn(effectiveTheme.appearance)
-    }
+    // The original Trellis defaults retain native chrome (``usesNativeChrome``, kept with the theme). Bundled editor
+    // palettes and imported/previewed JSON themes own their entire palette.
     func themeColor(_ field: UIColorField) -> Color {
         guard usesNativeChrome else { return Color(themeRGB: effectiveTheme[field].rgb) }
         switch field {
@@ -40,10 +37,6 @@ extension AppWorkspaceModel {
         case .focusRing: return Color.accentColor.opacity(0.65)
         case .success, .warning, .error: return Color(themeRGB: effectiveTheme[field].rgb)
         }
-    }
-    /// FR-P05. The system accent can't be measured here, so native chrome uses a fixed tint, as the sidebar selection does.
-    var focusedPaneHeaderBackground: Color {
-        usesNativeChrome ? Color.accentColor.opacity(0.16) : Color(themeRGB: effectiveTheme.focusedPaneHeader.rgb)
     }
     /// How a pane shows focus right now (FR-P05). Only a tab showing several panes needs telling apart.
     func paneFocusStyle(paneID: UUID, tabID: UUID, windowActive: Bool, increasedContrast: Bool) -> PaneFocusStyle {
