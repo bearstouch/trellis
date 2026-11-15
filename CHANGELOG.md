@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Scrolling a long Files list stuttered**, and more so with an editor tab open: the tree and search results now reuse their rows as they scroll, and the Copy Path and Open buttons no longer re-lay a row out as it passes under the pointer.
 - **Text looked stretched after a pane changed size with GPU rendering on:** opening or closing a sidebar, moving a split or resizing the window drew the next frame at the pane's previous size, so the text looked like a different font size until the pane redrew. Each frame is now drawn at the pane's current size.
 
 ## [1.3.0-beta.2] - 2026-11-15
