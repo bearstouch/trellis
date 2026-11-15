@@ -6,6 +6,7 @@
   "resumeArguments": ["resume", "--last"],
   "integration": "codex-notify",
   "icon": { "image": "trellis-codex.svg" },
+  "tile": "#1A1C20",
   "install": {
     "darwin": { "command": "npm install -g @openai/codex", "requires": ["npm"] },
     "linux": { "command": "npm install -g @openai/codex", "requires": ["npm"] }

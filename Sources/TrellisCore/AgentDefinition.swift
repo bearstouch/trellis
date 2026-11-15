@@ -65,6 +65,19 @@ extension AgentIcon: Codable {
     }
 }
 
+/// The tile behind an agent's icon in the Agents view (FR-AG20): the definition's `tile` color lit from above, with the
+/// mark in white, or in near-black on a light tile.
+public struct AgentTileStyle: Equatable, Sendable {
+    public static let neutral = ThemeColor(0x4A5262)
+    public let top: ThemeColor, bottom: ThemeColor, mark: ThemeColor
+
+    public init(tile: String?) {
+        let base = tile.flatMap(ThemeColor.init(hex:)) ?? Self.neutral
+        top = base.mixed(with: ThemeColor(0xFFFFFF), fraction: 0.14); bottom = base.mixed(with: ThemeColor(0x000000), fraction: 0.12)
+        mark = base.relativeLuminance > 0.5 ? ThemeColor(0x2B2622) : ThemeColor(0xFFFFFF)
+    }
+}
+
 /// The vendor's own installer, run in the user's login shell in a visible pane (FR-AG12). Never with sudo.
 public struct AgentInstallRecipe: Codable, Equatable, Sendable {
     public var command: String
@@ -94,19 +107,21 @@ public struct AgentDefinition: Codable, Equatable, Identifiable, Sendable {
     public var resumeArguments: [String]
     public var integration: AgentIntegration
     public var icon: AgentIcon
+    /// The `#RRGGBB` color of the tile behind the icon in the Agents view (FR-AG20); nil for the neutral tile.
+    public var tile: String?
     /// Keyed by platform: `darwin` or `linux`.
     public var install: [String: AgentInstallRecipe]
     public var homepage: String?
 
     public init(
         id: String, name: String, executable: String, arguments: [String] = [], resumeArguments: [String] = [], integration: AgentIntegration = .none,
-        icon: AgentIcon = .fallback, install: [String: AgentInstallRecipe] = [:], homepage: String? = nil
+        icon: AgentIcon = .fallback, tile: String? = nil, install: [String: AgentInstallRecipe] = [:], homepage: String? = nil
     ) {
         version = Self.schemaVersion; self.id = id; self.name = name; self.executable = executable; self.arguments = arguments
-        self.resumeArguments = resumeArguments; self.integration = integration; self.icon = icon; self.install = install; self.homepage = homepage
+        self.resumeArguments = resumeArguments; self.integration = integration; self.icon = icon; self.tile = tile; self.install = install; self.homepage = homepage
     }
 
-    private enum CodingKeys: String, CodingKey { case version, id, name, executable, arguments, resumeArguments, integration, icon, install, homepage }
+    private enum CodingKeys: String, CodingKey { case version, id, name, executable, arguments, resumeArguments, integration, icon, tile, install, homepage }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decode(Int.self, forKey: .version)
@@ -118,6 +133,7 @@ public struct AgentDefinition: Codable, Equatable, Identifiable, Sendable {
         // An integration from a newer build degrades to the terminal's own signals.
         integration = (try? values.decodeIfPresent(String.self, forKey: .integration)).flatMap { $0.flatMap(AgentIntegration.init(rawValue:)) } ?? .none
         icon = (try? values.decodeIfPresent(AgentIcon.self, forKey: .icon)) ?? .fallback
+        tile = (try? values.decodeIfPresent(String.self, forKey: .tile)) ?? nil
         install = try values.decodeIfPresent([String: AgentInstallRecipe].self, forKey: .install) ?? [:]
         homepage = try values.decodeIfPresent(String.self, forKey: .homepage)
     }
@@ -168,6 +184,7 @@ public enum AgentDefinitionValidator {
         case .monogram(let text): guard (1...2).contains(text.count), !text.contains(where: \.isWhitespace) else { throw AgentDefinitionError.invalid("icon") }
         case .image(let file, _): guard isIconFile(file) else { throw AgentDefinitionError.invalid("icon") }
         }
+        if let tile = definition.tile { guard ThemeColor(hex: tile) != nil else { throw AgentDefinitionError.invalid("tile") } }
         for (platform, recipe) in definition.install {
             guard ["darwin", "linux"].contains(platform), !recipe.command.isEmpty, recipe.command.utf8.count <= 1024,
                 !recipe.command.contains(where: { $0 == "\0" || $0.isNewline }), recipe.requires.count <= 8, recipe.requires.allSatisfy(isCommandName)

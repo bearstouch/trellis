@@ -137,6 +137,7 @@ Your own agents are definition files in the **Agents** folder in Trellis's state
 | `arguments`, `resumeArguments` | Up to 32 single-line arguments each. `resumeArguments` continue the agent's last conversation (**Resume**); without them the agent has no Resume button. |
 | `integration` | How the agent reports its state: `claude-hooks`, `codex-notify`, `pi-extension` or `none`. With `none`, Trellis relies on the terminal's own signals, and pressing Return counts as working. |
 | `icon` | One of `{"symbol": "<SF Symbol>"}`, `{"monogram": "<1–2 characters>"}` or `{"image": "<id>.svg"}` (an SVG, PNG or PDF file beside the definition, at most 32 KB), drawn in the tab's color. Add `"fullColor": true` to draw an image in its own colors. |
+| `tile` | Optional `#RRGGBB` color of the tile behind the icon in the Agents view, for example `"#D97757"`. Without it the tile is neutral gray. The mark on it is white, or dark on a light tile. |
 | `install` | Per platform (`darwin` for macOS, `linux`): the vendor's install `command`, one line, and the programs it `requires` on `PATH`. |
 | `homepage` | An `https` link shown in the install sheet. |
 

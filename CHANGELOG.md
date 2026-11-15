@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Agent icons sit on colored tiles in the Agents view:** Claude Code on its orange, Codex on near-black and pi on cream, each with a white or dark mark. Tabs keep the plain icons. Agent definitions can set `"tile": "#RRGGBB"`; without it the tile is neutral gray.
+
 ## [1.3.0-beta.2] - 2026-11-15
 
 The second 1.3 beta.
