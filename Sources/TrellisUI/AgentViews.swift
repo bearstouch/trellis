@@ -8,6 +8,8 @@ struct AgentIconView: View {
     let icon: AgentIcon
     var directory: URL?
     var size: CGFloat = 10
+    /// Draws a `fullColor` image in the tint too, for a mark on its tile (FR-AG20).
+    var template = false
 
     var body: some View {
         switch icon {
@@ -17,8 +19,9 @@ struct AgentIconView: View {
             Text(text).font(.system(size: size + 1, weight: .bold, design: .rounded)).lineLimit(1).fixedSize()
         case .image(let file, let fullColor):
             // Built-in definitions read their images from the bundle; a user's from their Agents folder.
-            if let image = AgentIconImages.load(file, directory: directory ?? AgentCatalog.bundledDirectory, template: !fullColor) {
-                Image(nsImage: image).renderingMode(fullColor ? .original : .template).resizable().aspectRatio(contentMode: .fit).frame(width: size + 2, height: size + 2)
+            let colored = fullColor && !template
+            if let image = AgentIconImages.load(file, directory: directory ?? AgentCatalog.bundledDirectory, template: !colored) {
+                Image(nsImage: image).renderingMode(colored ? .original : .template).resizable().aspectRatio(contentMode: .fit).frame(width: size + 2, height: size + 2)
             } else {
                 Image(systemName: fallbackSymbol).font(.system(size: size))
             }
@@ -26,6 +29,23 @@ struct AgentIconView: View {
     }
 
     private var fallbackSymbol: String { if case .symbol(let name) = AgentIcon.fallback { name } else { "sparkles" } }
+}
+
+/// An agent's icon on its tile, in the Agents view only (FR-AG20): tabs and menus keep the plain icon in their own tint.
+struct AgentTileIcon: View {
+    let agent: AgentDefinition
+    var directory: URL?
+    var side: CGFloat = 26
+
+    var body: some View {
+        let style = AgentTileStyle(tile: agent.tile)
+        let shape = RoundedRectangle(cornerRadius: side * 0.29, style: .continuous)
+        AgentIconView(icon: agent.icon, directory: directory, size: (side * 0.5).rounded(), template: true)
+            .foregroundStyle(Color(themeRGB: style.mark.rgb)).frame(width: side, height: side)
+            .background(shape.fill(LinearGradient(colors: [Color(themeRGB: style.top.rgb), Color(themeRGB: style.bottom.rgb)], startPoint: .top, endPoint: .bottom)))
+            .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.32), .white.opacity(0)], startPoint: .top, endPoint: .center), lineWidth: 1))
+            .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+    }
 }
 
 /// User and registry icons: SVG, PNG or PDF beside the definition, at most 32 KB. An SVG that could run script or load

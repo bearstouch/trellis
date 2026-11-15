@@ -95,6 +95,28 @@ final class AgentCatalogTests: XCTestCase {
         XCTAssertEqual(try AgentDefinitionValidator.validate(Data(misplaced.utf8)).icon, .fallback, "fullColor without an image is the default icon")
     }
 
+    func testATileColorRoundTripsAndABadOneIsRefusedOrIgnored() throws {
+        let json = ##"{"version":1,"id":"t","name":"T","executable":"t","tile":"#D97757"}"##
+        let definition = try AgentDefinitionValidator.validate(Data(json.utf8))
+        XCTAssertEqual(definition.tile, "#D97757")
+        XCTAssertEqual(try JSONDecoder().decode(AgentDefinition.self, from: try JSONEncoder().encode(definition)).tile, "#D97757")
+        let plain = try JSONEncoder().encode(AgentDefinition(id: "p", name: "P", executable: "p"))
+        XCTAssertFalse(String(decoding: plain, as: UTF8.self).contains("tile"), "No tile writes no key")
+        let bad = #"{"version":1,"id":"t","name":"T","executable":"t","tile":"orange"}"#
+        XCTAssertThrowsError(try AgentDefinitionValidator.validate(Data(bad.utf8))) { XCTAssertEqual($0 as? AgentDefinitionError, .invalid("tile")) }
+        let future = ##"{"version":1,"id":"t","name":"T","executable":"t","tile":{"light":"#FFFFFF"}}"##
+        XCTAssertNil(try AgentDefinitionValidator.validate(Data(future.utf8)).tile, "A tile shape from a newer build is the neutral tile")
+    }
+
+    func testTheTileIsLitFromAboveAndItsMarkReadsOnIt() {
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: AgentCatalog.bundled().map { ($0.id, $0.tile) }), ["trellis-claude-code": "#D97757", "trellis-codex": "#1A1C20", "trellis-pi": "#F1E9DA"])
+        let clay = AgentTileStyle(tile: "#D97757"), cream = AgentTileStyle(tile: "#F1E9DA")
+        XCTAssertEqual(clay.mark.hex, "#FFFFFF"); XCTAssertEqual(cream.mark.hex, "#2B2622")
+        XCTAssertGreaterThan(clay.top.relativeLuminance, clay.bottom.relativeLuminance)
+        XCTAssertEqual(AgentTileStyle(tile: nil), AgentTileStyle(tile: AgentTileStyle.neutral.hex), "No tile, or an unreadable one, is the neutral tile")
+        XCTAssertEqual(AgentTileStyle(tile: "nope"), AgentTileStyle(tile: nil))
+    }
+
     func testANewerSchemaIsRefusedWithItsVersionEvenWhenItsShapeChanged() {
         let json = #"{"version":2,"id":"new","name":{"en":"New"},"run":["new"]}"#
         XCTAssertThrowsError(try AgentDefinitionValidator.validate(Data(json.utf8))) { XCTAssertEqual($0 as? AgentDefinitionError, .unsupportedVersion(2)) }
