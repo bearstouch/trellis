@@ -3,7 +3,7 @@ import SwiftUI
 import TrellisCore
 import UniformTypeIdentifiers
 
-/// The sidebar's Files view (FR-FB01–FR-FB07): the focused pane's project as a tree, a file-name search, Open in with the
+/// The sidebar's Files view (FR-FB01–FR-FB08): the focused pane's project as a tree, a file-name search, Open in with the
 /// editors on this Mac, and Copy Path. Every action names its file; state is in words and symbols, never color alone.
 struct FilesSidebarView: View {
     @ObservedObject var model: AppWorkspaceModel
@@ -266,7 +266,7 @@ struct FilesSidebarView: View {
 /// `rowHeight` is the least a row takes and what the list assumes for rows it hasn't drawn yet: with a wrong guess the
 /// content's height, and so the scroller and the rows under the pointer, moved as scrolling measured the real rows.
 private struct FilesList<Content: View>: View {
-    var rowHeight: CGFloat = 1
+    let rowHeight: CGFloat
     @ViewBuilder let content: Content
 
     var body: some View {

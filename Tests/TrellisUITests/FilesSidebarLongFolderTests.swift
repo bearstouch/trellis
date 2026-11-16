@@ -116,4 +116,30 @@ final class FilesSidebarLongFolderTests: XCTestCase {
         browser.state.selection = "/p/f40"
         XCTAssertTrue(browser.marks.mark(for: "/p/f40", in: browser.state).selected, "A line first drawn after the move is already selected")
     }
+
+    @MainActor
+    func testMarksInUseSurviveAnotherProjectAndUnusedOnesAreDropped() {
+        let browser = FilesBrowserModel()
+        var state = FilesBrowserState()
+        state.root = "/p"
+        state.expanded = ["/p/A"]
+        state.selection = "/p/A"
+        browser.state = state
+
+        let kept = browser.marks.mark(for: "/p/A", in: browser.state)
+        for index in 0..<10 { _ = browser.marks.mark(for: "/p/gone\(index)", in: browser.state) }
+        XCTAssertEqual(browser.marks.count, 11)
+
+        // Another project: a new state with nothing selected or open, as `resetFiles` makes.
+        var next = FilesBrowserState()
+        next.root = "/q"
+        browser.state = next
+        XCTAssertEqual(browser.marks.count, 1, "Marks no line holds are dropped")
+        XCTAssertFalse(kept.selected || kept.expanded, "A line still drawn follows the new state")
+        XCTAssertTrue(browser.marks.mark(for: "/p/A", in: browser.state) === kept, "and keeps its mark")
+
+        // A mark dropped and made again starts from the state as it is now.
+        browser.state.selection = "/p/gone3"
+        XCTAssertTrue(browser.marks.mark(for: "/p/gone3", in: browser.state).selected)
+    }
 }

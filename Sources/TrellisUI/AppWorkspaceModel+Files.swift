@@ -106,6 +106,8 @@ public enum FilePathStyle: Sendable { case absolute, relative, name }
 @MainActor final class FilesLineMarks {
     private struct Held { weak var mark: FilesLineMark? }
     private var held: [String: Held] = [:]
+    /// How many paths are remembered, live or not; for tests.
+    var count: Int { held.count }
 
     /// The mark for `path`, kept for as long as a line uses it.
     func mark(for path: String, in state: FilesBrowserState) -> FilesLineMark {
@@ -126,8 +128,8 @@ public enum FilePathStyle: Sendable { case absolute, relative, name }
                 if let mark = held[path]?.mark, mark.expanded != open { mark.expanded = open }
             }
         }
-        // Marks no line uses any more are dropped when the tree moves to another project.
-        if old.root != new.root { held = held.filter { $0.value.mark != nil } }
+        // Marks no line uses any more are dropped when the tree moves to another project, or once they outnumber its rows.
+        if old.root != new.root || held.count > max(1024, new.rows.count * 2) { held = held.filter { $0.value.mark != nil } }
     }
 }
 
