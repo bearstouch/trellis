@@ -28,8 +28,9 @@ struct FilesSidebarView: View {
                 Button {
                     model.collapseAllFilesFolders()
                 } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").rotationEffect(.degrees(90))
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
                 }
+                .disabled(model.files.expanded.isEmpty)
                 .help(L("Collapse all folders")).accessibilityLabel(L("Collapse All Folders"))
                 Button {
                     Task { await model.refreshFiles(paneID: paneID, reloadEditors: true) }
