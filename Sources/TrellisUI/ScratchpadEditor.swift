@@ -48,6 +48,39 @@ struct ScratchpadEditor: NSViewRepresentable {
         return added <= removed || text.utf8.count - removed + added <= limit
     }
 
+    /// The same rule for the text view, whose text is `storage`. `synced` is that text as a native string, with its size
+    /// known: counting the storage's bytes walked the whole file on each key. It is trusted for the size only while it
+    /// is as long as the storage, and the replaced range is always read from the storage itself.
+    nonisolated static func allowsChange(of storage: NSString, synced: String?, in range: NSRange, to replacement: String, limit: Int) -> Bool {
+        let removed = storage.substring(with: range).utf8.count, added = replacement.utf8.count
+        guard added > removed else { return true }
+        let total = synced.flatMap { $0.utf16.count == storage.length ? $0.utf8.count : nil } ?? (storage as String).utf8.count
+        return total - removed + added <= limit
+    }
+
+    /// The text view's string as a native Swift string, converted in one pass. `textView.string` is the text storage's
+    /// own string, which Swift reads one UTF-16 unit at a time: making that contiguous on every key took most of a keystroke's ~75 ms
+    /// in a 2 MB file. Text holding an unpaired surrogate, which has no UTF-8 form, takes the slow
+    /// way and comes out as Swift repairs it.
+    nonisolated static func nativeText(of string: NSString) -> String {
+        let whole = NSRange(location: 0, length: string.length), utf8 = String.Encoding.utf8.rawValue
+        var count = 0, rest = NSRange()
+        guard string.getBytes(nil, maxLength: .max, usedLength: &count, encoding: utf8, options: [], range: whole, remaining: &rest), rest.length == 0 else { return slowNativeText(of: string) }
+        var complete = true
+        let text = String(unsafeUninitializedCapacity: count) { buffer in
+            var used = 0
+            complete = string.getBytes(buffer.baseAddress, maxLength: count, usedLength: &used, encoding: utf8, options: [], range: whole, remaining: &rest) && rest.length == 0 && used == count
+            return complete ? used : 0
+        }
+        return complete ? text : slowNativeText(of: string)
+    }
+
+    private nonisolated static func slowNativeText(of string: NSString) -> String {
+        var text = string as String
+        text.makeContiguousUTF8()
+        return text
+    }
+
     /// Lays out only what is drawn or asked for: with contiguous layout, putting a long file's text view in its scroll view
     /// laid out the whole file first (~0.8 s for 2.3k lines).
     static func makeLayoutManager() -> NSLayoutManager {
@@ -306,8 +339,7 @@ struct ScratchpadEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
             // Native and contiguous, so comparing it (here, and the model's unsaved check) is a quick byte comparison.
-            var text = textView.string
-            text.makeContiguousUTF8()
+            let text = ScratchpadEditor.nativeText(of: textView.string as NSString)
             synced = text
             parent.text = text
             scheduleHighlight()
@@ -326,9 +358,9 @@ struct ScratchpadEditor: NSViewRepresentable {
             onCursor(line, location - (lineStart.location == NSNotFound ? 0 : lineStart.location + 1) + 1)
         }
 
-        /// The buffer is limited (64 KB for scripts), so checking and highlighting stay quick.
+        /// Refuses a change that would grow the text past its limit (64 KB for scripts, 2 MB for editor tabs).
         func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
-            guard let replacementString, !ScratchpadEditor.allowsChange(of: textView.string, in: range, to: replacementString, limit: parent.maximumBytes) else {
+            guard let replacementString, !ScratchpadEditor.allowsChange(of: textView.string as NSString, synced: synced, in: range, to: replacementString, limit: parent.maximumBytes) else {
                 return true
             }
             NSSound.beep()

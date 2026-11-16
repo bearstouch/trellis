@@ -257,4 +257,69 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         host.layoutSubtreeIfNeeded()
         XCTAssertLessThanOrEqual(button.frame.height, 30, "and stays so as the cursor moves")
     }
+
+    func testTheTextStorageIsReadAsANativeStringInOnePass() {
+        for sample in ["", "plain ascii\nlines\n", "café — naïve ✓", "emoji 👩‍💻 and 𝒳 beyond the BMP", String(repeating: "línea ñ 🙂\n", count: 5_000)] {
+            // As the text view holds it: a mutable UTF-16 string, not a Swift one.
+            let stored = NSMutableString(string: sample)
+            let native = ScratchpadEditor.nativeText(of: stored)
+            XCTAssertEqual(native, sample)
+            XCTAssertEqual(Array(native.utf8), Array(sample.utf8), "The same bytes, not just an equal string")
+            XCTAssertTrue(native.isContiguousUTF8, "Comparing it with the model's text is a byte comparison")
+        }
+        // An unpaired surrogate has no UTF-8 form: it comes out as Swift repairs it, and the rest of the text is kept.
+        let broken = NSMutableString(string: "ab")
+        broken.append(String(utf16CodeUnits: [0xD83D], count: 1))
+        broken.append("cd\n")
+        let repaired = ScratchpadEditor.nativeText(of: broken)
+        XCTAssertEqual(repaired, "ab\u{FFFD}cd\n")
+        XCTAssertTrue(repaired.isContiguousUTF8)
+        // Wherever the broken unit is, high or low, the result is what Swift's own reading of the string gives.
+        for units: [unichar] in [[0xDE00, 0x61], [0x61, 0xD83D], [0x61, 0xDE00, 0x62], [0xD83D, 0xD83D, 0xDE00]] {
+            let odd = NSMutableString(string: String(utf16CodeUnits: units, count: units.count))
+            var expected = odd as String
+            expected.makeContiguousUTF8()
+            XCTAssertEqual(Array(ScratchpadEditor.nativeText(of: odd).utf8), Array(expected.utf8), "\(units)")
+        }
+        XCTAssertEqual(Array(ScratchpadEditor.nativeText(of: NSMutableString(string: "a\0b\r\nc")).utf8), Array("a\0b\r\nc".utf8), "NUL and CRLF are kept as they are")
+    }
+
+    func testTheSizeLimitUsesTheKnownSizeOnlyWhileItMatchesTheTextView() {
+        let storage = NSMutableString(string: "ñandú!")  // 6 UTF-16 units, 8 bytes
+        let end = NSRange(location: 6, length: 0)
+        XCTAssertTrue(ScratchpadEditor.allowsChange(of: storage, synced: "ñandú!", in: end, to: "ab", limit: 10))
+        XCTAssertFalse(ScratchpadEditor.allowsChange(of: storage, synced: "ñandú!", in: end, to: "abc", limit: 10), "Growing past the limit is refused")
+        XCTAssertTrue(ScratchpadEditor.allowsChange(of: storage, synced: "ñandú!", in: NSRange(location: 0, length: 1), to: "n", limit: 4), "A change that doesn't grow the text is always allowed")
+        XCTAssertTrue(ScratchpadEditor.allowsChange(of: storage, synced: "ñandú!", in: NSRange(location: 0, length: 1), to: "ññ", limit: 10), "The replaced range's bytes are counted from the text view")
+
+        // A copy that fell behind the text view isn't trusted: the text view's own size decides, and a range past the
+        // copy's end is read from the text view.
+        XCTAssertFalse(ScratchpadEditor.allowsChange(of: storage, synced: "ñ", in: end, to: "abc", limit: 10))
+        XCTAssertTrue(ScratchpadEditor.allowsChange(of: storage, synced: "ñandú! and much more that was deleted", in: end, to: "ab", limit: 10))
+        XCTAssertFalse(ScratchpadEditor.allowsChange(of: storage, synced: nil, in: end, to: "abc", limit: 10))
+    }
+
+    @MainActor
+    func testTypingInALongNonASCIITextReachesTheModelIntact() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let box = Box()
+        let (textView, coordinator, editor) = makeEditor(box, window: window)
+        let start = String(repeating: "let señal = \"🙂\" // ñ\n", count: 20_000)
+        // An editor tab's limit, not the scratchpad's 64 KB.
+        var large = editor(start)
+        large.maximumBytes = EditorDocument.maximumBytes
+        coordinator.parent = large
+        coordinator.apply(large, force: true)
+        window.makeFirstResponder(textView)
+        let middle = (start as NSString).length / 2
+        textView.insertText("é👍", replacementRange: NSRange(location: middle, length: 0))
+
+        let expected = (start as NSString).replacingCharacters(in: NSRange(location: middle, length: 0), with: "é👍")
+        XCTAssertEqual(box.text, expected, "The model gets the typed text")
+        XCTAssertEqual(Array(box.text.utf8), Array(expected.utf8))
+        XCTAssertEqual(coordinator.synced, expected)
+        XCTAssertTrue(box.text.isContiguousUTF8)
+    }
 }
