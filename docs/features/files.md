@@ -30,6 +30,7 @@ panes, whose files Trellis can't list.
 | Type in **Search files…** | Find files by name anywhere in the project (letters in order, like the [command palette](command-palette.md)); a query with `/` matches the path |
 | ↑ / ↓ | Move the selection |
 | Return, double-click, or **Open in** | Open the selection (the project folder when nothing is selected) in the chosen app |
+| Double-click a code file | Open it in a [Trellis editor tab](editor.md), whichever app is chosen |
 | The arrow beside **Open in** | Choose another app; it is remembered for next time |
 | ⇧⌘C, or the copy button on the row | Copy the full path |
 | ⌥⇧⌘C | Copy the path relative to the project |

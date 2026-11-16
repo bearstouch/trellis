@@ -389,13 +389,14 @@ private struct FileRow: View, Equatable {
         }
     }
 
-    /// VoiceOver's default action (and a double click on a file) opens a file in the editor; a tree folder opens or closes.
+    /// VoiceOver's default action (and a double click on a file) opens a file: code in an editor tab, anything else in the
+    /// remembered app; a tree folder opens or closes.
     private func activate() {
         if isTreeFolder {
             Task { await model.toggleFilesFolder(entry.path) }
         } else {
             model.selectFile(entry.path)
-            Task { await model.openFile(entry) }
+            Task { await model.openFileOnDoubleClick(entry) }
         }
     }
 

@@ -73,6 +73,14 @@ public enum EditorLanguage {
         return detect(fileName: "code." + (fenceAliases[name] ?? name), firstLine: "")
     }
 
+    /// Whether `fileName` is source code or config the editor highlights, by full name or extension (not by `#!` line): a
+    /// double click in Files opens such a file in an editor tab whatever app **Open in** remembers (FR-ED09).
+    public static func isCode(fileName: String) -> Bool {
+        if byName[fileName] != nil { return true }
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return !ext.isEmpty && byExtension[ext] != nil
+    }
+
     /// The language of `fileName`: by full name, then extension, then (for a file with no extension) its `#!` line.
     public static func detect(fileName: String, firstLine: String) -> ScratchpadLanguage {
         if let known = byName[fileName] { return known }

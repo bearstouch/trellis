@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Double-clicking a code file in Files opens it in an editor tab**, even when **Open in** remembers another app such as VS Code. Code means a name or extension the editor highlights (`.swift`, `.ts`, `.py`, `.md`, `Dockerfile`…); other files, and Return and **Open in**, still use the chosen app, which is kept.
 - **Agent icons sit on colored tiles in the Agents view:** Claude Code on its orange, Codex on near-black and pi on cream, each with a white or dark mark. Tabs keep the plain icons. Agent definitions can set `"tile": "#RRGGBB"`; without it the tile is neutral gray.
 
 ### Fixed
