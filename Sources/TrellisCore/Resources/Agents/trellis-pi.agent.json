@@ -6,6 +6,7 @@
   "resumeArguments": ["--continue"],
   "integration": "pi-extension",
   "icon": { "monogram": "π" },
+  "tile": "#F1E9DA",
   "install": {
     "darwin": { "command": "npm install -g @mariozechner/pi-coding-agent", "requires": ["npm"] },
     "linux": { "command": "npm install -g @mariozechner/pi-coding-agent", "requires": ["npm"] }

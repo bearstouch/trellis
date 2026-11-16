@@ -1,5 +1,6 @@
 import AppKit
 import Metal
+import MetalKit
 import XCTest
 import SwiftTerm
 import TrellisCore
@@ -84,6 +85,27 @@ final class TerminalMetalRendererTests: XCTestCase {
 
     /// The Metal view covers the grid; a click on it must still give the terminal the keyboard, taking it from a text field
     /// (a sidebar filter, say).
+    /// A frame drawn after a resize must use a drawable of the new size: one of the old size, drawn with the new
+    /// viewport, showed the text stretched until the next redraw (opening a sidebar).
+    @MainActor
+    func testMetalDrawableMatchesTheViewInTheFirstFrameAfterAResize() throws {
+        let (_, view) = try hostedTerminal()
+        let metalView = try XCTUnwrap(view.subviews.compactMap { $0 as? MTKView }.first, "Metal is drawing")
+        let layer = try XCTUnwrap(metalView.layer as? CAMetalLayer)
+        func pump(_ seconds: TimeInterval) { RunLoop.current.run(until: Date().addingTimeInterval(seconds)) }
+        for width in [700, 853, 900] as [CGFloat] {
+            // A draw is refused while a frame is in flight, so let earlier frames finish, then wait for this size's own.
+            pump(0.3)
+            let presented = view.metalRendererStatus.presentedFrameCount
+            view.setFrameSize(NSSize(width: width, height: 520))
+            let deadline = Date().addingTimeInterval(3)
+            while view.metalRendererStatus.presentedFrameCount == presented, Date() < deadline { pump(0.01) }
+            XCTAssertNotEqual(view.metalRendererStatus.presentedFrameCount, presented, "a frame is presented after the resize to \(width)")
+            let scale = layer.contentsScale
+            XCTAssertEqual(layer.drawableSize, CGSize(width: (width * scale).rounded(.up), height: (520 * scale).rounded(.up)), "width \(width)")
+        }
+    }
+
     @MainActor
     func testClickOnMetalTerminalTakesKeyboardFromTextField() throws {
         let (native, view) = try hostedTerminal()

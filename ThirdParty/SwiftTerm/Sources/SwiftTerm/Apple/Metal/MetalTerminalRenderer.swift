@@ -426,6 +426,9 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         // stretched over the view, which blended its edge rows with transparency into a seam on translucent panes.
         let drawableSize = CGSize(width: (view.bounds.width * scale).rounded(.up), height: (view.bounds.height * scale).rounded(.up))
         if view.drawableSize != drawableSize { view.drawableSize = drawableSize }
+        // MTKView applies a size set during a draw to its layer only before the next one, so this frame's drawable
+        // would keep the old size while the viewport uses the new: text stretched until the next redraw.
+        if let metalLayer = view.layer as? CAMetalLayer, metalLayer.drawableSize != drawableSize { metalLayer.drawableSize = drawableSize }
         let cursorStyle = terminalView.terminal.options.cursorStyle
         let shouldBlink = isBlinkStyle(cursorStyle)
             && !terminalView.terminal.cursorHidden

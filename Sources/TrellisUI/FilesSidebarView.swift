@@ -16,20 +16,37 @@ struct FilesSidebarView: View {
     private var refreshKey: [String?] { [paneID.uuidString, model.paneDirectory(paneID)] }
     private var searching: Bool { model.files.query.contains { !$0.isWhitespace } }
 
+    private var hiddenToggle: some View {
+        let show = model.files.showHidden
+        return Toggle(isOn: Binding(get: { show }, set: { show in Task { await model.setFilesShowHidden(show) } })) {
+            Image(systemName: show ? "eye" : "eye.slash")
+        }
+        .toggleStyle(.button).buttonStyle(.plain)
+        .help(show ? L("Hide hidden files") : L("Show hidden files")).accessibilityLabel(L("Show hidden files"))
+    }
+
+    /// `.gitignore`'d entries, apart from hidden ones (FR-FB03).
+    private var ignoredToggle: some View {
+        let show = model.files.showIgnored
+        return Toggle(isOn: Binding(get: { show }, set: { show in Task { await model.setFilesShowIgnored(show) } })) {
+            Image(systemName: show ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+        }
+        .toggleStyle(.button).buttonStyle(.plain)
+        .help(show ? L("Hide ignored files") : L("Show ignored files")).accessibilityLabel(L("Show ignored files"))
+    }
+
     var body: some View {
         let muted = model.themeColor(.mutedForeground)
         VStack(spacing: 0) {
             SidebarHeader(model: model, view: .files) {
-                Toggle(isOn: Binding(get: { model.files.showHidden }, set: { show in Task { await model.setFilesShowHidden(show) } })) {
-                    Image(systemName: model.files.showHidden ? "eye" : "eye.slash")
-                }
-                .toggleStyle(.button).buttonStyle(.plain)
-                .help(model.files.showHidden ? L("Hide hidden files") : L("Show hidden files")).accessibilityLabel(L("Show hidden files"))
+                hiddenToggle
+                ignoredToggle
                 Button {
                     model.collapseAllFilesFolders()
                 } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").rotationEffect(.degrees(90))
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
                 }
+                .disabled(model.files.expanded.isEmpty)
                 .help(L("Collapse all folders")).accessibilityLabel(L("Collapse All Folders"))
                 Button {
                     Task { await model.refreshFiles(paneID: paneID, reloadEditors: true) }
@@ -159,17 +176,17 @@ struct FilesSidebarView: View {
     private var tree: some View {
         let palette = FilesPalette(model)
         return ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(model.files.rows) { row in
+            FilesList {
+                ForEach(model.files.rows) { row in
+                    Group {
                         if row.unreadable {
                             Label(L("Can't read this folder"), systemImage: "exclamationmark.triangle").font(.caption)
                                 .foregroundStyle(model.themeColor(.mutedForeground)).padding(.leading, CGFloat(row.depth) * 16 + 26).frame(height: 24)
                         } else {
                             self.row(row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil, palette: palette)
                         }
-                    }
-                }.padding(.horizontal, 6).padding(.vertical, 2)
+                    }.filesListRow(spacing: 0)
+                }
             }
             .focusable().focused($listFocused).focusEffectDisabled()
             .onKeyPress(phases: .down) { handleKey($0) }
@@ -183,17 +200,16 @@ struct FilesSidebarView: View {
     @ViewBuilder private var results: some View {
         let palette = FilesPalette(model)
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 1) {
-                    if let result = model.files.search {
-                        Text(summary(result)).font(.caption).foregroundStyle(palette.muted).padding(.horizontal, 8).padding(.bottom, 4)
-                        ForEach(result.matches) { match in
-                            row(match.entry, depth: 0, title: highlighted(match, accent: palette.accent), subtitle: match.relativeFolder.isEmpty ? "/" : match.relativeFolder, palette: palette)
-                        }
-                    } else {
-                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.top, 12)
+            FilesList {
+                if let result = model.files.search {
+                    Text(summary(result)).font(.caption).foregroundStyle(palette.muted).padding(.horizontal, 8).padding(.bottom, 4).filesListRow(spacing: 1)
+                    ForEach(result.matches) { match in
+                        row(match.entry, depth: 0, title: highlighted(match, accent: palette.accent), subtitle: match.relativeFolder.isEmpty ? "/" : match.relativeFolder, palette: palette)
+                            .filesListRow(spacing: 1)
                     }
-                }.padding(.horizontal, 6).padding(.vertical, 2)
+                } else {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.top, 12).filesListRow(spacing: 1)
+                }
             }
             .onChange(of: model.files.selection) { _, path in if let path { proxy.scrollTo(path) } }
             .accessibilityLabel(L("Matching files"))
@@ -255,6 +271,23 @@ struct FilesSidebarView: View {
     }
 }
 
+/// The tree and the search results scroll in a `List`: it reuses its rows as they scroll (a table underneath), where a lazy
+/// stack built a new row, with its menu, drag and tooltips, for each line scrolled into view and kept them all.
+private struct FilesList<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        List { content }.listStyle(.plain).scrollContentBackground(.hidden).environment(\.defaultMinListRowHeight, 1)
+    }
+}
+
+extension View {
+    /// A Files line in a `FilesList`: no separator, background or inset of the list's own, `spacing` points below it.
+    fileprivate func filesListRow(spacing: CGFloat) -> some View {
+        listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: spacing, trailing: 6)).listRowSeparator(.hidden).listRowBackground(Color.clear)
+    }
+}
+
 /// The theme colors a Files row draws with, read once per redraw of the list rather than per row.
 struct FilesPalette: Equatable {
     let foreground: Color, muted: Color, accent: Color, selection: Color
@@ -299,19 +332,26 @@ private struct FileRow: View, Equatable {
                 if let subtitle { Text(subtitle).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(muted).lineLimit(1).truncationMode(.head) }
             }
             Spacer(minLength: 4)
-            if hovering || selected {
-                Button {
-                    model.copyFilePath(entry)
-                } label: {
-                    Image(systemName: "doc.on.doc")
+        }
+        // Over the line, in room it keeps free, rather than in it: rows slide under a still pointer as the list scrolls, and
+        // laying each row out again around the buttons as they came and went made scrolling stutter.
+        .padding(.trailing, showsActions ? Self.actionsWidth : 0)
+        .overlay(alignment: .trailing) {
+            if showsActions {
+                HStack(spacing: 6) {
+                    Button {
+                        model.copyFilePath(entry)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .help(L("Copy Path (⇧⌘C)")).accessibilityLabel(L("Copy path of %@", entry.name))
+                    Button {
+                        Task { await model.openFile(entry) }
+                    } label: {
+                        Image(systemName: "arrow.up.forward.app")
+                    }
+                    .help(L("Open in %@", editor.name)).accessibilityLabel(L("Open %1$@ in %2$@", entry.name, editor.name))
                 }
-                .help(L("Copy Path (⇧⌘C)")).accessibilityLabel(L("Copy path of %@", entry.name))
-                Button {
-                    Task { await model.openFile(entry) }
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                }
-                .help(L("Open in %@", editor.name)).accessibilityLabel(L("Open %1$@ in %2$@", entry.name, editor.name))
             }
         }
         .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(palette.foreground)
@@ -320,7 +360,6 @@ private struct FileRow: View, Equatable {
         .background(RoundedRectangle(cornerRadius: 5).fill(background(selected: selected)))
         .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? palette.accent.opacity(0.5) : .clear))
         .contentShape(Rectangle())
-        .id(entry.path)
         .onHover { hovering = $0 }
         // A single tap answering every click: one that waited to rule out a double click (`exclusively(before:)`) held each
         // click back for the system's double-click interval. The second click of a double click is told apart by its count.
@@ -337,6 +376,9 @@ private struct FileRow: View, Equatable {
     }
 
     private var isTreeFolder: Bool { entry.isDirectory && subtitle == nil }
+    private var showsActions: Bool { hovering || selected }
+    /// The room the two action buttons take at the end of the line.
+    private static let actionsWidth: CGFloat = 40
 
     private func background(selected: Bool) -> Color {
         if selected { return palette.selection }
@@ -364,13 +406,14 @@ private struct FileRow: View, Equatable {
         }
     }
 
-    /// VoiceOver's default action (and a double click on a file) opens a file in the editor; a tree folder opens or closes.
+    /// VoiceOver's default action (and a double click on a file) opens a file: code in an editor tab, anything else in the
+    /// remembered app; a tree folder opens or closes.
     private func activate() {
         if isTreeFolder {
             Task { await model.toggleFilesFolder(entry.path) }
         } else {
             model.selectFile(entry.path)
-            Task { await model.openFile(entry) }
+            Task { await model.openFileOnDoubleClick(entry) }
         }
     }
 

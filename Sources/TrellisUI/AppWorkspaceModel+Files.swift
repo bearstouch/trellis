@@ -30,6 +30,8 @@ public struct FilesBrowserState: Equatable, Sendable {
     private var treeEntries: [FileEntry] = []
     public internal(set) var selection: String?
     public internal(set) var showHidden = false
+    /// Shows what the root's `.gitignore` ignores; independent of ``showHidden`` (FR-FB03).
+    public internal(set) var showIgnored = false
     public internal(set) var query = ""
     public internal(set) var search: FileSearchResult?
     public internal(set) var searching = false
@@ -41,6 +43,8 @@ public struct FilesBrowserState: Equatable, Sendable {
     /// Each installed editor's app, for its menu icon.
     var editorAppURLs: [String: URL] = [:]
     var ignore = IgnorePatterns.none
+    /// The patterns the tree and search apply: none while ignored files are shown.
+    var effectiveIgnore: IgnorePatterns { showIgnored ? .none : ignore }
     /// Each root's open folders, so going back to a project's pane finds its tree as it was (this session only).
     var expandedByRoot: [String: Set<String>] = [:]
 
@@ -114,15 +118,16 @@ extension AppWorkspaceModel {
         guard generation == filesGeneration else { return }
         if files.root != root { resetFiles(paneID: paneID, root: root) }
         files.paneID = paneID
-        let listing = fileListing, showHidden = files.showHidden
+        let listing = fileListing, showHidden = files.showHidden, showIgnored = files.showIgnored
         let wanted = [root] + files.expanded.sorted()
         var (ignore, folders) = await Task.detached(priority: .userInitiated) {
             let ignore = FileBrowser.ignorePatterns(root: root, listing: listing)
+            let applied = showIgnored ? IgnorePatterns.none : ignore
             var folders: [String: FilesBrowserState.Folder] = [:]
-            for folder in wanted { folders[folder] = Self.listFolder(folder, root: root, listing: listing, showHidden: showHidden, ignore: ignore) }
+            for folder in wanted { folders[folder] = Self.listFolder(folder, root: root, listing: listing, showHidden: showHidden, ignore: applied) }
             return (ignore, folders)
         }.value
-        guard generation == filesGeneration, files.root == root, files.showHidden == showHidden else { return }
+        guard generation == filesGeneration, files.root == root, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
         // A folder opened while this read ran keeps the listing it got; dropping it would leave it open but empty.
         for (path, folder) in files.folders where folders[path] == nil && files.expanded.contains(path) { folders[path] = folder }
         files.ignore = ignore
@@ -142,7 +147,7 @@ extension AppWorkspaceModel {
         filesSearchTask?.cancel()
         if let old = files.root { files.expandedByRoot[old] = files.expanded }
         var state = FilesBrowserState()
-        (state.paneID, state.root, state.showHidden) = (paneID, root, files.showHidden)
+        (state.paneID, state.root, state.showHidden, state.showIgnored) = (paneID, root, files.showHidden, files.showIgnored)
         (state.editors, state.editorID, state.status, state.editorAppURLs) = (files.editors, files.editorID, files.status, files.editorAppURLs)
         state.expandedByRoot = files.expandedByRoot
         state.expanded = root.flatMap { files.expandedByRoot[$0] } ?? []
@@ -162,9 +167,9 @@ extension AppWorkspaceModel {
         }
         files.expanded.insert(path)
         guard files.folders[path] == nil, let root = files.root else { return }
-        let listing = fileListing, showHidden = files.showHidden, ignore = files.ignore
+        let listing = fileListing, showHidden = files.showHidden, showIgnored = files.showIgnored, ignore = files.effectiveIgnore
         let folder = await Task.detached(priority: .userInitiated) { Self.listFolder(path, root: root, listing: listing, showHidden: showHidden, ignore: ignore) }.value
-        guard files.root == root, files.showHidden == showHidden else { return }
+        guard files.root == root, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
         files.folders[path] = folder
     }
 
@@ -173,6 +178,14 @@ extension AppWorkspaceModel {
     public func setFilesShowHidden(_ show: Bool) async {
         guard files.showHidden != show else { return }
         files.showHidden = show
+        files.folders = [:]
+        if let paneID = files.paneID { await refreshFiles(paneID: paneID) }
+    }
+
+    /// Shows or hides what the root's `.gitignore` ignores (FR-FB03); the always-skipped names stay hidden.
+    public func setFilesShowIgnored(_ show: Bool) async {
+        guard files.showIgnored != show else { return }
+        files.showIgnored = show
         files.folders = [:]
         if let paneID = files.paneID { await refreshFiles(paneID: paneID) }
     }
@@ -206,7 +219,7 @@ extension AppWorkspaceModel {
             return
         }
         files.searching = true
-        let listing = fileListing, showHidden = files.showHidden, ignore = files.ignore
+        let listing = fileListing, showHidden = files.showHidden, ignore = files.effectiveIgnore
         filesSearchTask = Task { [weak self] in
             // Typing settles before the walk starts, so each letter doesn't start one.
             try? await Task.sleep(for: .milliseconds(120))
@@ -262,6 +275,25 @@ extension AppWorkspaceModel {
             }
             openFileInApp(url, app)
         }
+    }
+
+    /// A double click on a file: code opens in an editor tab whatever app is remembered (FR-ED09), and isn't remembered;
+    /// anything else, a link to a folder, and code the editor refuses (FR-ED02) open in the remembered app, as **Open in** does.
+    public func openFileOnDoubleClick(_ entry: FileEntry) async {
+        let path = entry.path
+        guard files.editor != .trellisEditor, !entry.isDirectory, EditorLanguage.isCode(fileName: entry.name),
+            await Task.detached(priority: .userInitiated, operation: { !Self.isFolder(path) }).value
+        else { return await openFile(entry) }
+        // The refusal names the default app; the remembered one opens instead, so it isn't shown.
+        let message = errorMessage
+        guard await !openInEditor(path: path, projectRoot: files.root) else { return }
+        errorMessage = message
+        await openFile(entry)
+    }
+
+    nonisolated static func isFolder(_ path: String) -> Bool {
+        var folder: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &folder) && folder.boolValue
     }
 
     /// Opens a file or folder in an app the user picked; it isn't remembered.

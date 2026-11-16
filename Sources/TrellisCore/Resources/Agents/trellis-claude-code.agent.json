@@ -6,6 +6,7 @@
   "resumeArguments": ["--continue"],
   "integration": "claude-hooks",
   "icon": { "image": "trellis-claude-code.svg", "fullColor": true },
+  "tile": "#D97757",
   "install": {
     "darwin": { "command": "curl -fsSL https://claude.ai/install.sh | bash", "requires": ["curl", "bash"] },
     "linux": { "command": "curl -fsSL https://claude.ai/install.sh | bash", "requires": ["curl", "bash"] }

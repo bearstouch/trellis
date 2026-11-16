@@ -15,7 +15,7 @@ Files works only for panes on this Mac. Its icon is dimmed for [SSH](ssh-hosts.m
 
 ## What's left out
 
-The tree never shows `.git`, `.build`, `.swiftpm`, `node_modules`, `DerivedData` or `.DS_Store`, nor anything the project's `.gitignore` ignores. Hidden files (names starting with `.`) appear only while the eye button at the top of the view is on.
+The tree never shows `.git`, `.build`, `.swiftpm`, `node_modules`, `DerivedData` or `.DS_Store`. Files the project's `.gitignore` ignores appear only while the ignored-files button (the filter symbol at the top of the view) is on, and hidden files (names starting with `.`) only while the eye button is on. To see a `.env` file, which is usually both hidden and ignored, turn both on.
 
 Trellis reads the simple parts of the `.gitignore` at the root of the tree: `#` comments, `*`, `?` and `[…]` globs, a trailing `/` for folders, and a leading or inner `/` to anchor a pattern to the root. It skips negations (`!`), and doesn't read nested `.gitignore` files or your global excludes, so a few ignored files can still show up.
 
@@ -34,7 +34,7 @@ Folders are read when you first open them. The folders you've opened are remembe
 
 ## Open a file in your editor
 
-Press <kbd>Return</kbd>, double-click a row, or click **Open in** to open the selection in your chosen app. With nothing selected, **Open in** opens the project folder.
+Press <kbd>Return</kbd>, double-click a row, or click **Open in** to open the selection in your chosen app. Double-clicking a code file always opens it in a Trellis [editor tab](editor.md), whichever app you chose. With nothing selected, **Open in** opens the project folder.
 
 Click the arrow beside **Open in** to choose another app. Trellis remembers your choice for next time, and the [Changes](changes.md) view uses the same app. The list has:
 

@@ -167,6 +167,48 @@ final class FilesSidebarTests: XCTestCase {
     }
 
     @MainActor
+    func testIgnoredFilesFollowTheirOwnToggleApartFromHiddenOnes() async throws {
+        let manager = FileManager.default
+        try "*.log\n.env*\ndist/\n".write(toFile: project + "/.gitignore", atomically: true, encoding: .utf8)
+        try manager.createDirectory(atPath: project + "/dist", withIntermediateDirectories: true)
+        try manager.createDirectory(atPath: project + "/node_modules", withIntermediateDirectories: true)
+        try "SECRET=1".write(toFile: project + "/.env", atomically: true, encoding: .utf8)
+        let (model, pane, _, _) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.refreshFiles(paneID: pane)
+        var names: [String] { model.files.rows.map(\.entry.name) }
+        XCTAssertFalse(model.files.showIgnored, "Ignored files are hidden by default")
+        XCTAssertFalse(names.contains("dist") || names.contains("notes.log") || names.contains(".env"))
+
+        await model.setFilesShowHidden(true)
+        XCTAssertTrue(names.contains(".hidden"))
+        XCTAssertFalse(names.contains(".env"), "The eye alone doesn't show a .gitignore'd dot-file")
+
+        await model.setFilesShowHidden(false)
+        await model.setFilesShowIgnored(true)
+        XCTAssertTrue(names.contains("dist") && names.contains("notes.log"), "Ignored entries show with their own toggle")
+        XCTAssertFalse(names.contains(".env"), "A dot-file still follows the eye")
+
+        await model.setFilesShowHidden(true)
+        XCTAssertTrue(names.contains(".env"), "Both toggles show .env")
+        XCTAssertFalse(names.contains(".git") || names.contains("node_modules"), "Always-skipped names never show")
+
+        model.setFilesQuery("notes")
+        await model.waitForFilesSearch()
+        XCTAssertEqual(model.files.search?.matches.map(\.entry.name), ["notes.log"], "Search finds ignored files while they're shown")
+        model.setFilesQuery("")
+
+        await model.toggleFilesFolder(project + "/dist")
+        XCTAssertEqual(model.files.folders[project + "/dist"], .loaded([]), "An ignored folder opens")
+
+        await model.setFilesShowIgnored(false)
+        XCTAssertFalse(names.contains("dist") || names.contains(".env"))
+        model.setFilesQuery("notes")
+        await model.waitForFilesSearch()
+        XCTAssertEqual(model.files.search?.matches, [], "and search skips them again")
+    }
+
+    @MainActor
     func testOpenInUsesTheRememberedEditorAndFinderReveals() async throws {
         let (model, pane, recorder, preferences) = try await makeModel()
         defer { cleanUp(model) }
@@ -202,6 +244,36 @@ final class FilesSidebarTests: XCTestCase {
         XCTAssertEqual(model.snapshot.tabs.count, tabs + 1, "New Tab Here opens a tab in the file's folder")
         let newPane = try XCTUnwrap(model.presentation.activePane?.id)
         XCTAssertEqual(model.paneDirectory(newPane), project)
+    }
+
+    @MainActor
+    func testDoubleClickOpensCodeInAnEditorTabWhateverAppIsRemembered() async throws {
+        let (model, pane, recorder, _) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.refreshFiles(paneID: pane)
+        await model.openFile(nil, in: try XCTUnwrap(EditorApp.with(id: "vscode")))
+        let opened = recorder.opened.count
+
+        await model.openFileOnDoubleClick(FileEntry(path: project + "/Sources/App.swift", isDirectory: false))
+        XCTAssertEqual(model.shownEditor?.fileName, "App.swift", "Code opens in an editor tab")
+        XCTAssertEqual(recorder.opened.count, opened, "…not in VS Code")
+        XCTAssertEqual(model.files.editor.id, "vscode", "The remembered app is kept")
+
+        await model.openFileOnDoubleClick(FileEntry(path: project + "/notes.log", isDirectory: false))
+        XCTAssertEqual(recorder.opened.last?.0.path, project + "/notes.log", "Other files open in the remembered app")
+        XCTAssertEqual(recorder.opened.last?.1?.lastPathComponent, "Visual Studio Code.app")
+
+        // Code the editor refuses (FR-ED02) and a link to a folder go to the remembered app too, not the default app or Finder.
+        try Data([0x7B, 0x00, 0x7D]).write(to: URL(fileURLWithPath: project + "/data.json"))
+        try FileManager.default.createSymbolicLink(atPath: project + "/linked.js", withDestinationPath: project + "/Sources")
+        for name in ["data.json", "linked.js"] {
+            await model.openFileOnDoubleClick(FileEntry(path: project + "/" + name, isDirectory: false, isSymbolicLink: name == "linked.js"))
+            XCTAssertEqual(recorder.opened.last?.0.path, project + "/" + name, name)
+            XCTAssertEqual(recorder.opened.last?.1?.lastPathComponent, "Visual Studio Code.app", name)
+        }
+        XCTAssertEqual(model.currentEditors.count, 1, "No tab for either")
+        XCTAssertTrue(recorder.revealed.isEmpty)
+        XCTAssertNil(model.errorMessage, "The refusal names the default app, which isn't used")
     }
 
     @MainActor

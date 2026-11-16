@@ -175,9 +175,7 @@ struct AgentsSidebarView: View {
         let status = model.agentStatusText(agent)
         let missing = model.agentIsMissing(agent)
         return HStack(spacing: 10) {
-            AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id], size: 13)
-                .frame(width: 26, height: 26).background(RoundedRectangle(cornerRadius: 6).fill(model.themeColor(.accent).opacity(0.12)))
-                .accessibilityHidden(true)
+            AgentTileIcon(agent: agent, directory: model.agentCatalog.iconDirectories[agent.id]).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(agent.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
                 if let status { Text(status).font(.caption2).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1) }
@@ -207,7 +205,7 @@ struct AgentsSidebarView: View {
             Task { await model.revealPane(row.id) }
         } label: {
             HStack(spacing: 10) {
-                AgentIconView(icon: row.agent.icon, directory: model.agentCatalog.iconDirectories[row.agent.id], size: 12).frame(width: 18).accessibilityHidden(true)
+                AgentTileIcon(agent: row.agent, directory: model.agentCatalog.iconDirectories[row.agent.id], side: 22).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 5) {
                         Text(row.tabTitle).font(.system(size: 12)).lineLimit(1).foregroundStyle(model.themeColor(.foreground))

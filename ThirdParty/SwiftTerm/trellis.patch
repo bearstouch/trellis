@@ -2326,7 +2326,7 @@
          let scale = terminalView.metalRenderingScaleFactor()
          if let layer = view.layer, layer.contentsScale != scale {
              layer.contentsScale = scale
-@@ -380,7 +422,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -380,7 +422,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  #else
          let scale = terminalView.backingScaleFactor()
  #endif
@@ -2335,10 +2335,13 @@
 +        // stretched over the view, which blended its edge rows with transparency into a seam on translucent panes.
 +        let drawableSize = CGSize(width: (view.bounds.width * scale).rounded(.up), height: (view.bounds.height * scale).rounded(.up))
 +        if view.drawableSize != drawableSize { view.drawableSize = drawableSize }
++        // MTKView applies a size set during a draw to its layer only before the next one, so this frame's drawable
++        // would keep the old size while the viewport uses the new: text stretched until the next redraw.
++        if let metalLayer = view.layer as? CAMetalLayer, metalLayer.drawableSize != drawableSize { metalLayer.drawableSize = drawableSize }
          let cursorStyle = terminalView.terminal.options.cursorStyle
          let shouldBlink = isBlinkStyle(cursorStyle)
              && !terminalView.terminal.cursorHidden
-@@ -427,6 +472,12 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -427,6 +475,12 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
  #endif
          let drawData = buildDrawData(scale: scale)
@@ -2351,7 +2354,7 @@
  #if canImport(os)
          if MetalTerminalRenderer.profileEnabled {
              os_signpost(.end, log: MetalTerminalRenderer.profileLog, name: "Metal.BuildDrawData", signpostID: buildID)
-@@ -444,11 +495,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -444,11 +498,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              debugLastLogTime = now
          }
  #endif
@@ -2364,7 +2367,7 @@
          passDescriptor.colorAttachments[0].loadAction = .clear
  
  #if canImport(os)
-@@ -628,9 +675,14 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -628,9 +678,14 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
      private static let maxAtlasRebuildPasses = 5
  
      private func buildDrawData(scale: CGFloat) -> DrawData {
@@ -2379,7 +2382,7 @@
          }
          var attempt = 0
          while true {
-@@ -657,6 +709,68 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -657,6 +712,68 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -2448,7 +2451,7 @@
      private func buildDrawDataPass(scale: CGFloat) -> DrawData {
          guard let terminalView = terminalView else {
  #if DEBUG
-@@ -729,8 +843,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -729,8 +846,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              rowCache = rowCache.filter { visibleRange.contains($0.key) }
          }
  
@@ -2458,7 +2461,7 @@
          let needsFullRebuild = signatureChanged || rowCache.isEmpty
          let rebuildRange = needsFullRebuild ? visibleRange : intersect(dirtyRange, visibleRange)
  
-@@ -769,6 +882,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -769,6 +885,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              // BufferLine instance (scrolls rotate refs in the CircularList) and
              // that line has not been mutated since we cached its draw data.
              let cacheValid = entry?.lineRef === line
@@ -2466,7 +2469,7 @@
                  && entry?.generation == lineGeneration
                  && entry?.bidiParagraphRevision == bidiParagraphRevision
              let needsRebuild = needsFullRebuild ||
-@@ -777,6 +891,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -777,6 +894,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                  (bufferingMode == .perFrameAggregated && entry?.data == nil)
              let rowBuffers: RowDrawBuffers?
              let rowData: RowDrawData
@@ -2480,7 +2483,7 @@
              if needsRebuild {
                  rowData = buildRowDrawData(row: row,
                                             buffer: buffer,
-@@ -971,7 +1092,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -971,7 +1095,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let lineOrigin = CGPoint(x: 0, y: terminalView.bounds.height - lineOffset)
          let rowBase = lineOrigin.y + cellHeight
          let lineInfo = terminalView.buildAttributedString(row: row, line: line, cols: buffer.cols)
@@ -2489,7 +2492,7 @@
          let lineOriginPx = CGPoint(x: lineOrigin.x * scale, y: lineOrigin.y * scale)
          let cellWidthPx = cellWidth * scale
          let cellHeightPx = cellHeight * scale
-@@ -1000,7 +1121,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1000,7 +1124,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }()
          let underlinePosition = terminalView.fontSet.underlinePosition()
          let underlineThickness = max(round(scale * terminalView.fontSet.underlineThickness()) / scale, 0.5)
@@ -2497,7 +2500,7 @@
  
          if !lineInfo.boxDrawings.isEmpty || !lineInfo.blockElements.isEmpty || !lineInfo.powerlineGlyphs.isEmpty {
              let boxThicknessScale: CGFloat = 1.35
-@@ -1176,24 +1296,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1176,24 +1299,13 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
          for shaped in shapedSegments {
              for run in shaped.runs {
@@ -2526,7 +2529,7 @@
                      backgroundColor = runAttributes[.backgroundColor] as? TTColor
                  }
                      // Runs carrying the default background emit no quad: the
-@@ -1315,16 +1424,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1315,16 +1427,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
          for shaped in shapedSegments {
              for run in shaped.runs {
@@ -2548,7 +2551,7 @@
  
                  // Same-cell glyphs (base + combining marks) are adjacent in
                  // glyph order, so a pair of locals replaces a per-run anchor
-@@ -1335,7 +1445,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1335,7 +1448,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                      let scaledFont = scaledFontFor(font: glyphRun.font, scale: scale)
                      for i in 0..<glyphRun.glyphs.count {
                          let glyph = glyphRun.glyphs[i]
@@ -2557,7 +2560,7 @@
                              continue
                          }
                          if entry.size.width <= 0 || entry.size.height <= 0 {
-@@ -1401,26 +1511,36 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1401,26 +1514,36 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                      }
                  }
  
@@ -2609,7 +2612,7 @@
                                                  thickness: thickness,
                                                  color: underlineColorSIMD,
                                                  style: segmentStyle,
-@@ -1429,25 +1549,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1429,25 +1552,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                                                  clipRect: clipRect,
                                                  pivotY: pivotY,
                                                  output: &decorationCells)
@@ -2636,7 +2639,7 @@
                      let style = NSUnderlineStyle(rawValue: rawStyle)
                      let strikeColor = (runAttributes[.strikethroughColor] as? TTColor) ?? terminalView.effectiveNativeForegroundColor
                      let strikeColorSIMD = colorToSIMD(strikeColor)
-@@ -1459,24 +1564,26 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1459,24 +1567,26 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                      } else {
                          strikeStyle = .single
                      }
@@ -2679,7 +2682,7 @@
                                                  color: strikeColorSIMD,
                                                  style: strikeStyle,
                                                  patternScale: scale,
-@@ -1484,23 +1591,27 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1484,23 +1594,27 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                                                  clipRect: clipRect,
                                                  pivotY: pivotY,
                                                  output: &decorationCells)
@@ -2721,7 +2724,7 @@
              }
          }
  
-@@ -1575,33 +1686,33 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1575,33 +1689,33 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                             otherImageDraws: otherImageDraws)
      }
  
@@ -2779,7 +2782,7 @@
      }
  
      /// Reacts to a grow or reset that `ensureRegion` performed on `atlas`.
-@@ -1622,16 +1733,50 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1622,16 +1736,50 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -2835,7 +2838,7 @@
          let atlasKind: GlyphAtlasKind = bitmap.isColor ? .color : .grayscale
          let atlas = atlasKind == .color ? colorAtlas : grayscaleAtlas
          let previousSize = atlas.size
-@@ -1905,7 +2050,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1905,7 +2053,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              guard let buffer = dequeue(length: length) else {
                  return nil
              }
@@ -2844,7 +2847,7 @@
                  memcpy(buffer.contents(), raw.baseAddress!, byteCount)
              }
              frameBuffers.append(buffer)
-@@ -1966,12 +2111,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1966,12 +2114,6 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -2857,7 +2860,7 @@
      private struct ShaperGlyphRun {
          let font: CTFont
          let glyphs: [CGGlyph]
-@@ -1986,9 +2125,18 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1986,9 +2128,18 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let glyphCount: Int
      }
  
@@ -2877,7 +2880,7 @@
          let shaperRun: ShaperRun
      }
  
-@@ -1997,91 +2145,35 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -1997,91 +2148,35 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let runs: [ShapedRun]
      }
  
@@ -2992,7 +2995,7 @@
          #if os(macOS)
          let rgb = color.usingColorSpace(.deviceRGB) ?? color
          var r: CGFloat = 0
-@@ -2129,7 +2221,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2129,7 +2224,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          guard let buffer = device.makeBuffer(length: byteCount, options: .storageModeShared) else {
              return (nil, 0)
          }
@@ -3001,7 +3004,7 @@
              memcpy(buffer.contents(), raw.baseAddress!, byteCount)
          }
          return (buffer, count)
-@@ -2352,7 +2444,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2352,7 +2447,17 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          // the CoreGraphics caret.
          let cursorColumnWidth = CGFloat(max(1, Int(buffer.lines[cursorRow][buffer.x].width)))
  
@@ -3020,7 +3023,7 @@
          let y0 = lineOriginPx.y
          let x1 = x0 + cellWidthPx * doublePosition * cursorColumnWidth
          let y1 = y0 + cellHeightPx
-@@ -2417,7 +2519,9 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2417,7 +2522,9 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
          let charData = buffer.lines[cursorRow][buffer.x]
          let caretTextColor = terminalView.effectiveCaretTextColor
@@ -3031,7 +3034,7 @@
              return (colorVertices, [], [])
          }
          if PowerlineRenderer.shouldRender(codePoint: UInt32(charData.code),
-@@ -2457,7 +2561,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2457,7 +2564,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let attributes = terminalView.getAttributedValue(charData.attribute,
                                                           usingFg: terminalView.effectiveCaretColor,
                                                           andBg: caretTextColor) ?? [.font: terminalView.fontSet.normal]
@@ -3040,7 +3043,7 @@
          let ctline = CTLineCreateWithAttributedString(attributedString)
          guard let runs = CTLineGetGlyphRuns(ctline) as? [CTRun] else {
              return (colorVertices, [], [])
-@@ -2484,7 +2588,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2484,7 +2591,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
              for i in 0..<runGlyphsCount {
                  let glyph = runGlyphs[i]
@@ -3049,7 +3052,7 @@
                      continue
                  }
                  if entry.size.width <= 0 || entry.size.height <= 0 {
-@@ -2494,7 +2598,8 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2494,7 +2601,8 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                  // Center the glyph under the cursor the same way as normal text so
                  // a full-width (CJK) character doesn't shift when the caret lands on it.
                  let fit = terminalView.glyphSlotFit(font: ctFont, glyph: glyph, columnWidth: max(1, Int(charData.width)))
@@ -3059,7 +3062,7 @@
                                        y: lineOrigin.y + yOffset + ctPos.y + fit.dy)
                  let pxX = basePos.x * scale + entry.bearing.x * fit.scale
                  let pxY = basePos.y * scale + entry.bearing.y * fit.scale
-@@ -2769,6 +2874,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2769,6 +2877,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
  
      private func appendUnderlineSegments(x0: CGFloat,
                                           x1: CGFloat,
@@ -3067,7 +3070,7 @@
                                           yCenter: CGFloat,
                                           thickness: CGFloat,
                                           color: SIMD4<Float>,
-@@ -2803,7 +2909,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2803,7 +2912,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
              let step = max(thickness, patternScale)
              var x = x0
              while x < x1 {
@@ -3076,7 +3079,7 @@
                  let y = baseY + amplitude * CGFloat(sin(phase))
                  let end = min(x + step, x1)
                  emitSegment(start: x, end: end, centerY: y)
-@@ -2812,11 +2918,16 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2812,11 +2921,16 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          case .dotted, .dashed:
              let segmentLength = style == .dotted ? dotLength : dashLength
              let gapLength = style == .dotted ? (dotLength * 2) : dashLength
@@ -3096,7 +3099,7 @@
              }
          case .none:
              break
-@@ -2825,7 +2936,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2825,7 +2939,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -3105,7 +3108,7 @@
          if let raw = attributes[SwiftTermUnderlineStyleKey] as? Int,
             let style = UnderlineStyle(rawValue: UInt8(raw)) {
              return style
-@@ -2980,7 +3091,32 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -2980,7 +3094,32 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          }
      }
  
@@ -3138,7 +3141,7 @@
          if let library = device.makeDefaultLibrary(),
             libraryHasRequiredFunctions(library) {
              return library
-@@ -3081,9 +3217,14 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
+@@ -3081,9 +3220,14 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
          let containerBundles = [Bundle.main, Bundle(for: MetalTerminalRenderer.self)]
              + Bundle.allBundles + Bundle.allFrameworks
          for container in containerBundles {
