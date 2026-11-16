@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **A long Markdown preview froze the app:** every change anywhere in the app redrew the whole preview (over two seconds each for a 6,000-block document, and about ten seconds to open it). The preview is now redrawn only when its text, theme or font changes, and a long document builds its blocks as they scroll into view, so it opens at once.
+- **Typing lagged in large files:** each key re-read the whole file a character at a time, about 75 ms per key near the 2 MB limit. A key now costs about 11 ms there and about 4 ms in a 400 KB file.
 - **Files lagged and jumped in a folder with thousands of files:** the scroller and rows shifted while scrolling because the list guessed the height of rows it hadn't drawn, and every arrow key, click or unrelated change in the app walked the whole list again (about a third of a second with 5,000 files). Row heights are now known up front, and a selection move redraws only the two lines it touches. The search count now stays above the results instead of scrolling with them.
 
 ## [1.3.0-beta.3] - 2026-11-16
