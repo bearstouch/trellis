@@ -34,7 +34,7 @@ Folders are read when you first open them. The folders you've opened are remembe
 
 ## Open a file in your editor
 
-Press <kbd>Return</kbd>, double-click a row, or click **Open in** to open the selection in your chosen app. With nothing selected, **Open in** opens the project folder.
+Press <kbd>Return</kbd>, double-click a row, or click **Open in** to open the selection in your chosen app. Double-clicking a code file always opens it in a Trellis [editor tab](editor.md), whichever app you chose. With nothing selected, **Open in** opens the project folder.
 
 Click the arrow beside **Open in** to choose another app. Trellis remembers your choice for next time, and the [Changes](changes.md) view uses the same app. The list has:
 

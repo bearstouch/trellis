@@ -264,6 +264,13 @@ extension AppWorkspaceModel {
         }
     }
 
+    /// A double click on a file: code opens in an editor tab whatever app is remembered (FR-ED09), and isn't remembered;
+    /// anything else opens in the remembered app, as **Open in** does.
+    public func openFileOnDoubleClick(_ entry: FileEntry) async {
+        guard !entry.isDirectory, EditorLanguage.isCode(fileName: entry.name) else { return await openFile(entry) }
+        await openFile(entry, in: .trellisEditor, remember: false)
+    }
+
     /// Opens a file or folder in an app the user picked; it isn't remembered.
     public func openFile(_ entry: FileEntry?, withApp app: URL) {
         guard let path = entry?.path ?? files.root else { return }

@@ -6,7 +6,7 @@ syntax highlighting in your theme's colors, find and <kbd>⌘</kbd><kbd>S</kbd>.
 
 ## Open a file
 
-- **From Files:** double-click a file in the [Files](files.md) view, or select it and press <kbd>Return</kbd>.
+- **From Files:** double-click a file in the [Files](files.md) view, or select it and press <kbd>Return</kbd>. Double-clicking a code file (Swift, TypeScript, Markdown, a `Dockerfile` and so on) always opens it here, even when you chose another app in **Open in**.
   **Trellis Editor** is the default in **Open in**; if you chose another app there, right-click the file and choose
   **Open in Trellis Editor**.
 - **From the terminal:** hold <kbd>⌘</kbd> and click a file path that a command printed, such as

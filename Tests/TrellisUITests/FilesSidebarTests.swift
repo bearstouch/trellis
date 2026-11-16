@@ -205,6 +205,24 @@ final class FilesSidebarTests: XCTestCase {
     }
 
     @MainActor
+    func testDoubleClickOpensCodeInAnEditorTabWhateverAppIsRemembered() async throws {
+        let (model, pane, recorder, _) = try await makeModel()
+        defer { cleanUp(model) }
+        await model.refreshFiles(paneID: pane)
+        await model.openFile(nil, in: try XCTUnwrap(EditorApp.with(id: "vscode")))
+        let opened = recorder.opened.count
+
+        await model.openFileOnDoubleClick(FileEntry(path: project + "/Sources/App.swift", isDirectory: false))
+        XCTAssertEqual(model.shownEditor?.fileName, "App.swift", "Code opens in an editor tab")
+        XCTAssertEqual(recorder.opened.count, opened, "…not in VS Code")
+        XCTAssertEqual(model.files.editor.id, "vscode", "The remembered app is kept")
+
+        await model.openFileOnDoubleClick(FileEntry(path: project + "/notes.log", isDirectory: false))
+        XCTAssertEqual(recorder.opened.last?.0.path, project + "/notes.log", "Other files open in the remembered app")
+        XCTAssertEqual(recorder.opened.last?.1?.lastPathComponent, "Visual Studio Code.app")
+    }
+
+    @MainActor
     func testFinderAndDefaultAppNeverRunAnythingFromTheTree() async throws {
         let (model, pane, recorder, _) = try await makeModel()
         defer { cleanUp(model) }

@@ -100,6 +100,13 @@ final class EditorDocumentTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "back\n")
     }
 
+    func testCodeFilesAreKnownByNameOrExtension() {
+        for name in ["App.swift", "main.PY", "index.tsx", "README.md", "Package.resolved", "Dockerfile", ".zshrc", "config.yml"] {
+            XCTAssertTrue(EditorLanguage.isCode(fileName: name), name)
+        }
+        for name in ["logo.png", "notes.log", "report.pdf", "LICENSE", "swift", "notes.txt"] { XCTAssertFalse(EditorLanguage.isCode(fileName: name), name) }
+    }
+
     func testLinksOpenInTheEditorOnlyInsideTheProjectOrCurrentFolder() throws {
         let project = scratch.appendingPathComponent("project").path, other = scratch.appendingPathComponent("other").path
         for folder in [project + "/Sources", other] { try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true) }
