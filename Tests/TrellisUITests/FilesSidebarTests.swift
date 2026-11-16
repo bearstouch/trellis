@@ -220,6 +220,18 @@ final class FilesSidebarTests: XCTestCase {
         await model.openFileOnDoubleClick(FileEntry(path: project + "/notes.log", isDirectory: false))
         XCTAssertEqual(recorder.opened.last?.0.path, project + "/notes.log", "Other files open in the remembered app")
         XCTAssertEqual(recorder.opened.last?.1?.lastPathComponent, "Visual Studio Code.app")
+
+        // Code the editor refuses (FR-ED02) and a link to a folder go to the remembered app too, not the default app or Finder.
+        try Data([0x7B, 0x00, 0x7D]).write(to: URL(fileURLWithPath: project + "/data.json"))
+        try FileManager.default.createSymbolicLink(atPath: project + "/linked.js", withDestinationPath: project + "/Sources")
+        for name in ["data.json", "linked.js"] {
+            await model.openFileOnDoubleClick(FileEntry(path: project + "/" + name, isDirectory: false, isSymbolicLink: name == "linked.js"))
+            XCTAssertEqual(recorder.opened.last?.0.path, project + "/" + name, name)
+            XCTAssertEqual(recorder.opened.last?.1?.lastPathComponent, "Visual Studio Code.app", name)
+        }
+        XCTAssertEqual(model.currentEditors.count, 1, "No tab for either")
+        XCTAssertTrue(recorder.revealed.isEmpty)
+        XCTAssertNil(model.errorMessage, "The refusal names the default app, which isn't used")
     }
 
     @MainActor
