@@ -9,56 +9,18 @@ struct MarkdownPreviewView: View {
     let tab: EditorTab
     /// Parsing runs only while the preview is on screen.
     let visible: Bool
-    @State private var blocks: [MarkdownBlock] = []
-    @State private var anchors: [Int: String] = [:]
+    @State private var items: [MarkdownPreviewItem] = []
 
     private struct ParseKey: Equatable {
         let text: String
         let visible: Bool
     }
 
-    private var palette: TerminalPalette { model.effectiveTheme.terminal }
-    private var foreground: Color { Color(nsColor: NSColor(rgb: palette.foreground)) }
-    private var muted: Color { foreground.opacity(0.65) }
-    private var accent: Color { Color(nsColor: NSColor(rgb: palette.ansi.indices.contains(4) ? palette.ansi[4] : palette.cursor)) }
-    private var baseSize: CGFloat { CGFloat(model.appearance.fontSize) + 1 }
-    private var codeFont: NSFont {
-        let size = CGFloat(model.appearance.fontSize) - 1
-        return NSFont(name: model.appearance.fontName, size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
-    }
-
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-                        blockView(block, depth: 0).id(anchors[index].map { "heading-" + $0 } ?? "block-\(index)")
-                    }
-                }
-                .frame(maxWidth: 760, alignment: .leading)
-                .padding(.horizontal, 32).padding(.vertical, 24)
-                .frame(maxWidth: .infinity)
-                .textSelection(.enabled)
-            }
-            .onChange(of: tab.previewAnchor) { _, anchor in
-                guard let anchor else { return }
-                withAnimation(model.reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("heading-" + anchor.slug, anchor: .top) }
-            }
-        }
-        .foregroundStyle(foreground)
-        .background(Color(nsColor: NSColor(rgb: palette.background)))
-        // Every link click goes through the model's rules; SwiftUI never opens a URL by itself.
-        .environment(
-            \.openURL,
-            OpenURLAction { url in
-                let destination = url.relativeString
-                Task { await model.openMarkdownLink(destination, in: tab.id) }
-                return .handled
-            }
-        )
-        .task(id: ParseKey(text: tab.text, visible: visible)) { await parse() }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(L("Preview of %@", tab.fileName))
+        MarkdownPreviewContent(model: model, tabID: tab.id, items: items, style: MarkdownPreviewStyle(model), anchor: tab.previewAnchor, reduceMotion: model.reduceMotion).equatable()
+            .task(id: ParseKey(text: tab.text, visible: visible)) { await parse() }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(L("Preview of %@", tab.fileName))
     }
 
     /// Large texts are read a moment after typing stops, off the main thread.
@@ -69,19 +31,120 @@ struct MarkdownPreviewView: View {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
         }
-        let parsed = await Task.detached(priority: .userInitiated) { MarkdownDocument.parse(text) }.value
+        let parsed = await Task.detached(priority: .userInitiated) { MarkdownPreviewItem.items(MarkdownDocument.parse(text)) }.value
         guard !Task.isCancelled else { return }
-        var seen: [String: Int] = [:], ids: [Int: String] = [:]
-        for (index, block) in parsed.enumerated() {
-            guard case .heading(_, let heading) = block else { continue }
-            let slug = MarkdownDocument.slug(String(inline(heading).characters))
-            // As on GitHub, a repeated heading gets `-1`, `-2`…
-            let count = seen[slug, default: 0]
+        items = parsed
+    }
+}
+
+/// One top-level block of the preview, with the id the list and `#heading` links find it by.
+struct MarkdownPreviewItem: Identifiable, Equatable, Sendable {
+    /// `heading-<slug>` for a heading, else `block-<index>`.
+    let id: String
+    let block: MarkdownBlock
+
+    /// As on GitHub, a repeated heading gets `-1`, `-2`… An id already taken (`Step`, `Step`, `Step 1`) moves on to the next
+    /// free one: the list tells its blocks apart by these.
+    static func items(_ blocks: [MarkdownBlock]) -> [MarkdownPreviewItem] {
+        var seen: [String: Int] = [:], used: Set<String> = []
+        return blocks.enumerated().map { index, block in
+            guard case .heading(_, let heading) = block else { return MarkdownPreviewItem(id: "block-\(index)", block: block) }
+            let slug = MarkdownDocument.slug(String(MarkdownPreviewContent.parsedInline(heading).characters))
+            var count = seen[slug, default: 0]
+            var id = count == 0 ? slug : "\(slug)-\(count)"
+            while !used.insert(id).inserted {
+                count += 1
+                id = "\(slug)-\(count)"
+            }
             seen[slug] = count + 1
-            ids[index] = count == 0 ? slug : "\(slug)-\(count)"
+            return MarkdownPreviewItem(id: "heading-" + id, block: block)
         }
-        blocks = parsed
-        anchors = ids
+    }
+}
+
+/// What the preview draws with, read from the app once per redraw of the tab rather than by each block.
+struct MarkdownPreviewStyle: Equatable {
+    let palette: TerminalPalette
+    let border: Color
+    let fontName: String
+    let fontSize: CGFloat
+    /// The preview's own words ("Code", "done", "Image") follow the language on screen.
+    let language: AppLanguage
+
+    @MainActor init(_ model: AppWorkspaceModel) {
+        (palette, border, fontName, fontSize) = (model.effectiveTheme.terminal, model.themeColor(.border), model.appearance.fontName, CGFloat(model.appearance.fontSize))
+        language = model.language
+    }
+
+    var foreground: Color { Color(nsColor: NSColor(rgb: palette.foreground)) }
+    var muted: Color { foreground.opacity(0.65) }
+    var accent: Color { Color(nsColor: NSColor(rgb: palette.ansi.indices.contains(4) ? palette.ansi[4] : palette.cursor)) }
+    var baseSize: CGFloat { fontSize + 1 }
+    var codeFont: NSFont { NSFont(name: fontName, size: fontSize - 1) ?? .monospacedSystemFont(ofSize: fontSize - 1, weight: .regular) }
+}
+
+/// The rendered blocks. It takes plain values and compares them (`.equatable()`): the app model changes on every keystroke,
+/// tab switch and progress report anywhere in the app, and drawing every block again for each froze a long document for
+/// seconds. `model` is kept for link clicks only and isn't observed.
+struct MarkdownPreviewContent: View, Equatable {
+    let model: AppWorkspaceModel
+    let tabID: UUID
+    let items: [MarkdownPreviewItem]
+    let style: MarkdownPreviewStyle
+    let anchor: EditorPreviewAnchor?
+    let reduceMotion: Bool
+
+    /// A document up to this many blocks is laid out whole, so its height is exact from the start. A longer one builds its
+    /// blocks as they scroll into view: laying thousands out at once took seconds, at the cost of a scroller that settles
+    /// as blocks are measured.
+    static let wholeLayoutLimit = 150
+
+    nonisolated static func == (a: MarkdownPreviewContent, b: MarkdownPreviewContent) -> Bool {
+        a.tabID == b.tabID && a.items == b.items && a.style == b.style && a.anchor == b.anchor && a.reduceMotion == b.reduceMotion
+    }
+
+    private var foreground: Color { style.foreground }
+    private var muted: Color { style.muted }
+    private var accent: Color { style.accent }
+    private var baseSize: CGFloat { style.baseSize }
+    private var codeFont: NSFont { style.codeFont }
+    private var palette: TerminalPalette { style.palette }
+
+    @ViewBuilder private var blocks: some View {
+        ForEach(items) { item in blockView(item.block, depth: 0) }
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                Group {
+                    if items.count > Self.wholeLayoutLimit {
+                        LazyVStack(alignment: .leading, spacing: 14) { blocks }
+                    } else {
+                        VStack(alignment: .leading, spacing: 14) { blocks }
+                    }
+                }
+                .frame(maxWidth: 760, alignment: .leading)
+                .padding(.horizontal, 32).padding(.vertical, 24)
+                .frame(maxWidth: .infinity)
+                .textSelection(.enabled)
+            }
+            .onChange(of: anchor) { _, anchor in
+                guard let anchor else { return }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("heading-" + anchor.slug, anchor: .top) }
+            }
+        }
+        .foregroundStyle(foreground)
+        .background(Color(nsColor: NSColor(rgb: palette.background)))
+        // Every link click goes through the model's rules; SwiftUI never opens a URL by itself.
+        .environment(
+            \.openURL,
+            OpenURLAction { [model, tabID] url in
+                let destination = url.relativeString
+                Task { await model.openMarkdownLink(destination, in: tabID) }
+                return .handled
+            }
+        )
     }
 
     // MARK: Blocks
@@ -94,7 +157,7 @@ struct MarkdownPreviewView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(inline(text)).font(.system(size: baseSize * scale[max(0, min(5, level - 1))], weight: level <= 2 ? .bold : .semibold))
                         .padding(.top, level <= 2 ? 8 : 4)
-                    if level <= 2 { Rectangle().fill(model.themeColor(.border).opacity(0.5)).frame(height: 1) }
+                    if level <= 2 { Rectangle().fill(style.border.opacity(0.5)).frame(height: 1) }
                 }
                 .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader))
         case .paragraph(let text):
@@ -114,7 +177,7 @@ struct MarkdownPreviewView: View {
         case .quote(let inner):
             return AnyView(
                 HStack(alignment: .top, spacing: 12) {
-                    Rectangle().fill(model.themeColor(.border)).frame(width: 3)
+                    Rectangle().fill(style.border).frame(width: 3)
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(Array(inner.enumerated()), id: \.offset) { _, child in blockView(child, depth: depth + 1) }
                     }
@@ -148,10 +211,10 @@ struct MarkdownPreviewView: View {
                             }
                         }
                     }
-                    .overlay(Rectangle().stroke(model.themeColor(.border).opacity(0.6)))
+                    .overlay(Rectangle().stroke(style.border.opacity(0.6)))
                 })
         case .rule:
-            return AnyView(Rectangle().fill(model.themeColor(.border).opacity(0.6)).frame(height: 1).padding(.vertical, 6).accessibilityHidden(true))
+            return AnyView(Rectangle().fill(style.border.opacity(0.6)).frame(height: 1).padding(.vertical, 6).accessibilityHidden(true))
         case .html(let text):
             return AnyView(Text(text).font(Font(codeFont)).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true))
         }
@@ -172,7 +235,7 @@ struct MarkdownPreviewView: View {
         Text(inline(text)).font(.system(size: baseSize - 1)).multilineTextAlignment(textAlignment(alignment))
             .padding(.horizontal, 10).padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: frameAlignment(alignment))
-            .overlay(alignment: .bottom) { Rectangle().fill(model.themeColor(.border).opacity(0.35)).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(style.border.opacity(0.35)).frame(height: 1) }
     }
 
     private func horizontal(_ alignment: MarkdownAlignment) -> HorizontalAlignment {
@@ -201,10 +264,14 @@ struct MarkdownPreviewView: View {
 
     /// Emphasis, strong, strikethrough, code and links through Foundation's inline Markdown; an image becomes its alt text
     /// with a symbol, never a fetch.
-    private func inline(_ text: String) -> AttributedString {
+    nonisolated static func parsedInline(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             allowsExtendedAttributes: false, interpretedSyntax: .inlineOnlyPreservingWhitespace, failurePolicy: .returnPartiallyParsedIfPossible)
-        var result = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+
+    private func inline(_ text: String) -> AttributedString {
+        var result = Self.parsedInline(text)
         let links = result.runs.compactMap { run in run.link.map { ($0, run.range) } }
         for (url, range) in links {
             guard MarkdownLink.isClickable(url) else { result[range].link = nil; continue }
