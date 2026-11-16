@@ -174,45 +174,35 @@ struct FilesSidebarView: View {
     }
 
     private var tree: some View {
-        let palette = FilesPalette(model)
+        let files = model.files
         return ScrollViewReader { proxy in
-            FilesList {
-                ForEach(model.files.rows) { row in
-                    Group {
-                        if row.unreadable {
-                            Label(L("Can't read this folder"), systemImage: "exclamationmark.triangle").font(.caption)
-                                .foregroundStyle(model.themeColor(.mutedForeground)).padding(.leading, CGFloat(row.depth) * 16 + 26).frame(height: 24)
-                        } else {
-                            self.row(row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil, palette: palette)
-                        }
-                    }.filesListRow(spacing: 0)
-                }
-            }
-            .focusable().focused($listFocused).focusEffectDisabled()
-            .onKeyPress(phases: .down) { handleKey($0) }
-            .onChange(of: model.files.selection) { _, path in if let path { proxy.scrollTo(path) } }
-            .accessibilityLabel(L("Project files"))
+            FilesTree(model: model, browser: browser, rows: files.rows, editor: files.editor, editors: files.editors, palette: FilesPalette(model)).equatable()
+                .focusable().focused($listFocused).focusEffectDisabled()
+                .onKeyPress(phases: .down) { handleKey($0) }
+                .onChange(of: files.selection) { _, path in if let path { proxy.scrollTo(path) } }
+                .accessibilityLabel(L("Project files"))
         }
     }
 
     // MARK: Search results (FR-FB04)
 
+    /// The count stays above the list, so every line in it is a result of one height (see `FilesList`).
     @ViewBuilder private var results: some View {
         let palette = FilesPalette(model)
-        ScrollViewReader { proxy in
-            FilesList {
-                if let result = model.files.search {
-                    Text(summary(result)).font(.caption).foregroundStyle(palette.muted).padding(.horizontal, 8).padding(.bottom, 4).filesListRow(spacing: 1)
+        if let result = model.files.search {
+            Text(summary(result)).font(.caption).foregroundStyle(palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 4)
+            ScrollViewReader { proxy in
+                FilesList(rowHeight: FileRow.resultHeight) {
                     ForEach(result.matches) { match in
                         row(match.entry, depth: 0, title: highlighted(match, accent: palette.accent), subtitle: match.relativeFolder.isEmpty ? "/" : match.relativeFolder, palette: palette)
-                            .filesListRow(spacing: 1)
+                            .filesListRow(spacing: 0)
                     }
-                } else {
-                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.top, 12).filesListRow(spacing: 1)
                 }
+                .onChange(of: model.files.selection) { _, path in if let path { proxy.scrollTo(path) } }
+                .accessibilityLabel(L("Matching files"))
             }
-            .onChange(of: model.files.selection) { _, path in if let path { proxy.scrollTo(path) } }
-            .accessibilityLabel(L("Matching files"))
+        } else {
+            ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 12)
         }
     }
 
@@ -273,11 +263,65 @@ struct FilesSidebarView: View {
 
 /// The tree and the search results scroll in a `List`: it reuses its rows as they scroll (a table underneath), where a lazy
 /// stack built a new row, with its menu, drag and tooltips, for each line scrolled into view and kept them all.
+/// `rowHeight` is the least a row takes and what the list assumes for rows it hasn't drawn yet: with a wrong guess the
+/// content's height, and so the scroller and the rows under the pointer, moved as scrolling measured the real rows.
 private struct FilesList<Content: View>: View {
+    var rowHeight: CGFloat = 1
     @ViewBuilder let content: Content
 
     var body: some View {
-        List { content }.listStyle(.plain).scrollContentBackground(.hidden).environment(\.defaultMinListRowHeight, 1)
+        List { content }.listStyle(.plain).scrollContentBackground(.hidden).environment(\.defaultMinListRowHeight, rowHeight)
+    }
+}
+
+/// The tree's list. It takes plain values and compares them (`.equatable()`): the list walks every row each time it is
+/// rebuilt, which a long folder makes slow, so it is rebuilt only when the rows themselves change. The selection and the
+/// open folders reach each line through its own mark (`FilesLineMarks`), not through here.
+private struct FilesTree: View, Equatable {
+    let model: AppWorkspaceModel
+    let browser: FilesBrowserModel
+    let rows: [FilesBrowserState.Row]
+    let editor: EditorApp
+    let editors: [EditorApp]
+    let palette: FilesPalette
+
+    nonisolated static func == (a: FilesTree, b: FilesTree) -> Bool {
+        a.rows == b.rows && a.editor == b.editor && a.editors == b.editors && a.palette == b.palette
+    }
+
+    var body: some View {
+        FilesList(rowHeight: FileRow.height) {
+            ForEach(rows) { row in
+                FilesTreeLine(model: model, mark: browser.marks.mark(for: row.entry.path, in: browser.state), row: row, editor: editor, editors: editors, palette: palette)
+                    .filesListRow(spacing: 0)
+            }
+        }
+    }
+}
+
+/// One line of the tree, redrawn when its own mark changes.
+private struct FilesTreeLine: View {
+    let model: AppWorkspaceModel
+    @ObservedObject var mark: FilesLineMark
+    let row: FilesBrowserState.Row
+    let editor: EditorApp
+    let editors: [EditorApp]
+    let palette: FilesPalette
+
+    var body: some View {
+        // One view whichever branch draws: a line that could be either made the list count every row's views again each
+        // time one line was redrawn.
+        ZStack {
+            if row.unreadable {
+                Label(L("Can't read this folder"), systemImage: "exclamationmark.triangle").font(.caption)
+                    .foregroundStyle(palette.muted).padding(.leading, CGFloat(row.depth) * 16 + 26).frame(maxWidth: .infinity, alignment: .leading).frame(height: FileRow.height)
+            } else {
+                FileRow(
+                    model: model, entry: row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil, selected: mark.selected, expanded: mark.expanded,
+                    editor: editor, editors: editors, palette: palette
+                ).equatable()
+            }
+        }
     }
 }
 
@@ -355,8 +399,8 @@ private struct FileRow: View, Equatable {
             }
         }
         .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(palette.foreground)
-        .padding(.leading, CGFloat(depth) * 16 + 6).padding(.trailing, 6).padding(.vertical, subtitle == nil ? 0 : 4)
-        .frame(minHeight: 24)
+        .padding(.leading, CGFloat(depth) * 16 + 6).padding(.trailing, 6).padding(.vertical, subtitle == nil ? 0 : 3)
+        .frame(minHeight: subtitle == nil ? Self.height : Self.resultHeight)
         .background(RoundedRectangle(cornerRadius: 5).fill(background(selected: selected)))
         .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? palette.accent.opacity(0.5) : .clear))
         .contentShape(Rectangle())
@@ -379,6 +423,9 @@ private struct FileRow: View, Equatable {
     private var showsActions: Bool { hovering || selected }
     /// The room the two action buttons take at the end of the line.
     private static let actionsWidth: CGFloat = 40
+    /// A tree line's height; a search result, with its folder under the name, is taller.
+    static let height: CGFloat = 24
+    static let resultHeight: CGFloat = 40
 
     private func background(selected: Bool) -> Color {
         if selected { return palette.selection }

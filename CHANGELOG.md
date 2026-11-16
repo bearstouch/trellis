@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Files lagged and jumped in a folder with thousands of files:** the scroller and rows shifted while scrolling because the list guessed the height of rows it hadn't drawn, and every arrow key, click or unrelated change in the app walked the whole list again (about a third of a second with 5,000 files). Row heights are now known up front, and a selection move redraws only the two lines it touches. The search count now stays above the results instead of scrolling with them.
+
 ## [1.3.0-beta.3] - 2026-11-16
 
 The third 1.3 beta.

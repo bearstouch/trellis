@@ -89,8 +89,46 @@ public enum FilePathStyle: Sendable { case absolute, relative, name }
 
 /// Publishes the Files view's state on its own, so only the Files view redraws when it changes (see `AppWorkspaceModel.files`).
 @MainActor public final class FilesBrowserModel: ObservableObject {
-    @Published public internal(set) var state = FilesBrowserState()
+    @Published public internal(set) var state = FilesBrowserState() { didSet { marks.update(from: oldValue, to: state) } }
+    let marks = FilesLineMarks()
     public init() {}
+}
+
+/// Whether one tree line is selected and, for a folder, open. Each line watches its own.
+@MainActor final class FilesLineMark: ObservableObject {
+    @Published fileprivate(set) var selected: Bool
+    @Published fileprivate(set) var expanded: Bool
+    fileprivate init(selected: Bool, expanded: Bool) { (self.selected, self.expanded) = (selected, expanded) }
+}
+
+/// The marks of the tree lines drawn so far, by path. The list keeps every line it has drawn, so lines that all watched the
+/// Files state were all redrawn on each arrow key, thousands of them in a long folder; a selection move now tells two.
+@MainActor final class FilesLineMarks {
+    private struct Held { weak var mark: FilesLineMark? }
+    private var held: [String: Held] = [:]
+
+    /// The mark for `path`, kept for as long as a line uses it.
+    func mark(for path: String, in state: FilesBrowserState) -> FilesLineMark {
+        if let mark = held[path]?.mark { return mark }
+        let mark = FilesLineMark(selected: state.selection == path, expanded: state.expanded.contains(path))
+        held[path] = Held(mark: mark)
+        return mark
+    }
+
+    fileprivate func update(from old: FilesBrowserState, to new: FilesBrowserState) {
+        if old.selection != new.selection {
+            if let path = old.selection, let mark = held[path]?.mark, mark.selected { mark.selected = false }
+            if let path = new.selection, let mark = held[path]?.mark, !mark.selected { mark.selected = true }
+        }
+        if old.expanded != new.expanded {
+            for path in old.expanded.symmetricDifference(new.expanded) {
+                let open = new.expanded.contains(path)
+                if let mark = held[path]?.mark, mark.expanded != open { mark.expanded = open }
+            }
+        }
+        // Marks no line uses any more are dropped when the tree moves to another project.
+        if old.root != new.root { held = held.filter { $0.value.mark != nil } }
+    }
 }
 
 extension AppWorkspaceModel {
