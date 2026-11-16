@@ -16,15 +16,31 @@ struct FilesSidebarView: View {
     private var refreshKey: [String?] { [paneID.uuidString, model.paneDirectory(paneID)] }
     private var searching: Bool { model.files.query.contains { !$0.isWhitespace } }
 
+    private var hiddenToggle: some View {
+        let show = model.files.showHidden
+        return Toggle(isOn: Binding(get: { show }, set: { show in Task { await model.setFilesShowHidden(show) } })) {
+            Image(systemName: show ? "eye" : "eye.slash")
+        }
+        .toggleStyle(.button).buttonStyle(.plain)
+        .help(show ? L("Hide hidden files") : L("Show hidden files")).accessibilityLabel(L("Show hidden files"))
+    }
+
+    /// `.gitignore`'d entries, apart from hidden ones (FR-FB03).
+    private var ignoredToggle: some View {
+        let show = model.files.showIgnored
+        return Toggle(isOn: Binding(get: { show }, set: { show in Task { await model.setFilesShowIgnored(show) } })) {
+            Image(systemName: show ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+        }
+        .toggleStyle(.button).buttonStyle(.plain)
+        .help(show ? L("Hide ignored files") : L("Show ignored files")).accessibilityLabel(L("Show ignored files"))
+    }
+
     var body: some View {
         let muted = model.themeColor(.mutedForeground)
         VStack(spacing: 0) {
             SidebarHeader(model: model, view: .files) {
-                Toggle(isOn: Binding(get: { model.files.showHidden }, set: { show in Task { await model.setFilesShowHidden(show) } })) {
-                    Image(systemName: model.files.showHidden ? "eye" : "eye.slash")
-                }
-                .toggleStyle(.button).buttonStyle(.plain)
-                .help(model.files.showHidden ? L("Hide hidden files") : L("Show hidden files")).accessibilityLabel(L("Show hidden files"))
+                hiddenToggle
+                ignoredToggle
                 Button {
                     model.collapseAllFilesFolders()
                 } label: {

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Files can show `.gitignore`'d files:** a new button next to the eye shows what the project's `.gitignore` ignores, separately from hidden files. Turn both on to see a `.env` file. `.git`, `node_modules` and build folders stay hidden.
+
 ### Changed
 
 - **Double-clicking a code file in Files opens it in an editor tab**, even when **Open in** remembers another app such as VS Code. Code means a name or extension the editor highlights (`.swift`, `.ts`, `.py`, `.md`, `Dockerfile`…); other files, and Return and **Open in**, still use the chosen app, which is kept.
