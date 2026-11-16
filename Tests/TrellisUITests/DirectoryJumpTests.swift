@@ -226,8 +226,10 @@ final class DirectoryJumpTests: XCTestCase {
         let tabs = model.snapshot.tabs.count
         model.openDirectoryJump()
         model.runCommandPaletteItem()
-        try await waitFor { self.text(model, pane).contains("cd '") }
-        XCTAssertTrue(text(model, pane).contains("^E^Ucd '\(other!)'^M"), text(model, pane))
+        // The echo can arrive in pieces on a slow runner: wait for the whole line, not its start.
+        let typed = "^E^Ucd '\(other!)'^M"
+        try await waitFor { self.text(model, pane).contains(typed) }
+        XCTAssertTrue(text(model, pane).contains(typed), text(model, pane))
         XCTAssertEqual(model.snapshot.tabs.count, tabs)
         XCTAssertTrue(model.taskRuns.isEmpty)
         XCTAssertFalse(model.commandPaletteVisible)
