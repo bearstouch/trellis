@@ -7,13 +7,9 @@ import class SwiftTerm.TerminalView
 public struct WorkspaceRootView: View {
     @ObservedObject private var model: AppWorkspaceModel
     @State private var spaceToRename: Space?
-    /// The scratchpad's width; layout only, never persisted.
-    @State private var sidebarWidth: CGFloat = 380
-    @State private var sidebarDragStart: CGFloat?
-    /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
-    @State private var sidebarCursorPushed = false
+    /// The right sidebar's width; layout only, never persisted. Held by reference so a drag redraws the handle and the panel, not this whole view.
+    @State private var sidebarLayout = SidebarLayout()
     @State private var hoveredEditorTab: UUID?
-    static let sidebarWidths: ClosedRange<CGFloat> = 280...640
     @State private var spaceName = ""
     @FocusState private var tabNameFocused: Bool
     @State private var draggedTabID: UUID?
@@ -397,8 +393,8 @@ public struct WorkspaceRootView: View {
                             }
                         }
                         if let view = model.visibleSidebarView {
-                            sidebarResizeHandle
-                            RightSidebarPanel(model: model, view: view).frame(width: sidebarWidth)
+                            SidebarResizeHandle(model: model, layout: sidebarLayout)
+                            RightSidebarPanel(model: model, view: view).modifier(SidebarWidthFrame(layout: sidebarLayout))
                         }
                     }
                 }
@@ -434,30 +430,6 @@ public struct WorkspaceRootView: View {
             }
             .buttonStyle(.plain).padding(.horizontal, 14).help(shortcutHelp(L("New Tab"), .newTab)).accessibilityLabel(L("New Tab"))
         }.frame(height: 40).background(model.chromeFill(.surface))
-    }
-
-    /// Drag to resize the sidebar, whichever view it shows; the canvas takes the rest, so split minimums follow (FR-SB03).
-    private var sidebarResizeHandle: some View {
-        // A 1-point line, like the other dividers, with a wider invisible grab area over its neighbors.
-        Color.clear.frame(width: 7).overlay(model.themeColor(.border).frame(width: 1)).contentShape(Rectangle()).padding(.horizontal, -3).zIndex(1)
-            .onHover { inside in
-                guard inside != sidebarCursorPushed else { return }
-                sidebarCursorPushed = inside
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .onDisappear { if sidebarCursorPushed { sidebarCursorPushed = false; NSCursor.pop() } }
-            .gesture(
-                DragGesture(minimumDistance: 1).onChanged { value in
-                    let start = sidebarDragStart ?? sidebarWidth
-                    sidebarDragStart = start
-                    sidebarWidth = min(max(start - value.translation.width, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
-                }.onEnded { _ in sidebarDragStart = nil }
-            )
-            .accessibilityElement().accessibilityLabel(L("Sidebar width")).accessibilityValue(L("%d points", Int(sidebarWidth)))
-            .accessibilityAdjustableAction { direction in
-                let next = sidebarWidth + (direction == .increment ? 20 : -20)
-                sidebarWidth = min(max(next, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
-            }
     }
 
     /// The space's Review tab (FR-GC05): after the terminal tabs, never saved, not reorderable.
@@ -1433,5 +1405,50 @@ public struct LaunchSettingsView: View {
             }
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
             .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
+    }
+}
+
+/// The right sidebar's width (FR-SB03), outside the root view's state so each drag step invalidates only its two observers.
+@MainActor final class SidebarLayout: ObservableObject {
+    static let widths: ClosedRange<CGFloat> = 280...640
+    @Published private(set) var width: CGFloat = 380
+    func setWidth(_ value: CGFloat) {
+        let next = min(max(value.rounded(), Self.widths.lowerBound), Self.widths.upperBound)
+        if next != width { width = next }
+    }
+}
+
+private struct SidebarWidthFrame: ViewModifier {
+    @ObservedObject var layout: SidebarLayout
+    func body(content: Content) -> some View { content.frame(width: layout.width) }
+}
+
+/// Drag to resize the sidebar, whichever view it shows; the canvas takes the rest, so split minimums follow (FR-SB03).
+private struct SidebarResizeHandle: View {
+    @ObservedObject var model: AppWorkspaceModel
+    @ObservedObject var layout: SidebarLayout
+    @State private var dragStart: CGFloat?
+    /// Whether the resize cursor is pushed, so it is popped exactly once, also when the panel closes under the mouse.
+    @State private var cursorPushed = false
+
+    var body: some View {
+        // A 1-point line, like the other dividers, with a wider invisible grab area over its neighbors.
+        Color.clear.frame(width: 7).overlay(model.themeColor(.border).frame(width: 1)).contentShape(Rectangle()).padding(.horizontal, -3).zIndex(1)
+            .onHover { inside in
+                guard inside != cursorPushed else { return }
+                cursorPushed = inside
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .onDisappear { if cursorPushed { cursorPushed = false; NSCursor.pop() } }
+            .gesture(
+                // Global: the handle moves with the width, so a local translation would chase itself and jitter.
+                DragGesture(minimumDistance: 1, coordinateSpace: .global).onChanged { value in
+                    let start = dragStart ?? layout.width
+                    dragStart = start
+                    layout.setWidth(start - value.translation.width)
+                }.onEnded { _ in dragStart = nil }
+            )
+            .accessibilityElement().accessibilityLabel(L("Sidebar width")).accessibilityValue(L("%d points", Int(layout.width)))
+            .accessibilityAdjustableAction { direction in layout.setWidth(layout.width + (direction == .increment ? 20 : -20)) }
     }
 }
