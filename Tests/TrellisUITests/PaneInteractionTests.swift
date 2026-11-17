@@ -27,6 +27,36 @@ final class PaneInteractionTests: XCTestCase {
         XCTAssertEqual(valid.panes, split.panes)
     }
 
+    func testDraggedDividerStopsAtPaneMinimumsAndStoreAcceptsIt() async throws {
+        let store = try WorkspaceStore()
+        let initial = try await store.execute(.createSpace(name: "Project")).snapshot
+        let first = try XCTUnwrap(initial.panes.keys.first)
+        let once = try await store.execute(.splitPane(id: first, axis: .x, availableSize: TerminalSize(columns: 200, rows: 60))).snapshot
+        let second = try XCTUnwrap(once.tabs.values.first?.activePaneID)
+        let twice = try await store.execute(.splitPane(id: second, axis: .x, availableSize: TerminalSize(columns: 100, rows: 60))).snapshot
+        let tab = try XCTUnwrap(twice.tabs.values.first)
+        guard case .split(let outer, _, _, let children) = tab.root, case .split = children[1] else { return XCTFail("Missing nested split") }
+        // Left pane | (middle | right): the nested split needs 321 points, a single pane 160.
+        let canvas = CanvasDimensions(width: 1001, height: 600)
+        let free = try XCTUnwrap(CanvasDimensions.dividerRatio(nearest: 0.4004, in: tab.root, length: canvas.width))
+        XCTAssertEqual(free * 1000, 400, accuracy: 1e-6, "The first pane gets whole points")
+        let low = try XCTUnwrap(CanvasDimensions.dividerRatio(nearest: -3, in: tab.root, length: canvas.width))
+        let high = try XCTUnwrap(CanvasDimensions.dividerRatio(nearest: 7, in: tab.root, length: canvas.width))
+        XCTAssertEqual(low * 1000, 160, accuracy: 1e-3)
+        XCTAssertEqual((1 - high) * 1000, 321, accuracy: 1e-3)
+        for ratio in [low, high, free] {
+            let resized = try await store.execute(.resizeSplit(tabID: tab.id, splitID: outer, ratio: ratio, canvas: canvas)).snapshot
+            XCTAssertEqual(resized.tabs[tab.id]?.root, tab.root.resizing(splitID: outer, ratio: ratio))
+        }
+        // A wide canvas stops at the 10–90% range instead.
+        XCTAssertEqual(try XCTUnwrap(CanvasDimensions.dividerRatio(nearest: 0, in: tab.root, length: 5001)), 0.1, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(CanvasDimensions.dividerRatio(nearest: 1, in: tab.root, length: 5001)), 0.9, accuracy: 1e-6)
+        // No room to move, not a split, or a meaningless request: the divider stays where it is.
+        XCTAssertNil(CanvasDimensions.dividerRatio(nearest: 0.5, in: tab.root, length: 400))
+        XCTAssertNil(CanvasDimensions.dividerRatio(nearest: 0.5, in: .pane(first), length: 1000))
+        XCTAssertNil(CanvasDimensions.dividerRatio(nearest: .nan, in: tab.root, length: 1000))
+    }
+
     func testDirectionalFocusUsesGeometry() {
         let left = UUID(), top = UUID(), bottom = UUID()
         let layout = PaneLayout.split(

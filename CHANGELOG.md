@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Split dividers were hard to grab and jerky to drag:** a divider could only be caught on its 1-point line, showed no resize cursor, and every mouse step redrew the whole window. Dividers now have a 7-point grab area with the resize cursor, a drag redraws only the panes of that split, and it stops at a pane's minimum size instead of sticking short of it. The new position is saved when the mouse is released.
 - **Dragging the right sidebar's edge was jerky:** the drag was measured against the handle, which moves as the sidebar resizes, and every step redrew the whole window. The drag is now measured against the window and redraws only the sidebar's edge and width.
 - **Long diffs scrolled slowly in the Review tab and slowed the app:** each diff line was several views, kept once drawn, so a 19,000-line diff scrolled at about 170 ms a step and every change elsewhere in the app cost up to 90 ms after scrolling through it. The diff is now one text view that draws only what is on screen: about 0.1 ms a step and 1 ms per change. Text can now be selected across lines.
 - **A long Markdown preview froze the app:** every change anywhere in the app redrew the whole preview (over two seconds each for a 6,000-block document, and about ten seconds to open it). The preview is now redrawn only when its text, theme or font changes, and a long document builds its blocks as they scroll into view, so it opens at once.

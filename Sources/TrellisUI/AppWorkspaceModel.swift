@@ -468,8 +468,6 @@ public final class AppWorkspaceModel: ObservableObject {
             liveMaximizedChanged(from: oldValue)
         }
     }
-    private var pendingDividerResize: (splitID: UUID, ratio: Double, tabID: UUID)?
-    private var dividerResizeTask: Task<Void, Never>?
     var canvasSizes: [UUID: CanvasDimensions] = [:]
     @Published public var tabRenameRequest: UUID?
     @Published public var spaceRenameRequest: UUID?
@@ -949,9 +947,7 @@ public final class AppWorkspaceModel: ObservableObject {
 
     @discardableResult
     public func flushWorkspaceSave() async -> Bool {
-        // Capture the final dragged divider and ordered session callbacks before
-        // taking the snapshot used by an explicit Save or shutdown.
-        await dividerResizeTask?.value
+        // Capture ordered session callbacks before taking the snapshot used by an explicit Save or shutdown.
         await waitForUpdates()
         pendingSaveTask?.cancel(); pendingSaveTask = nil; pendingSaveBatched = false
         return await saveWorkspaceNow()
@@ -1777,20 +1773,6 @@ public final class AppWorkspaceModel: ObservableObject {
             snapshot.tabs[tab.id]?.activePaneID == next
         else { return }
         if wasMaximized, maximizedPanes[tab.id] != nil { maximizedPanes[tab.id] = next }
-    }
-
-    /// Coalesce rapid pointer events while preserving the final requested position.
-    public func queueDividerResize(_ splitID: UUID, ratio: Double, tabID: UUID) {
-        pendingDividerResize = (splitID, ratio, tabID)
-        guard dividerResizeTask == nil else { return }
-        dividerResizeTask = Task { [weak self] in
-            guard let self else { return }
-            while let request = pendingDividerResize {
-                pendingDividerResize = nil
-                await resizeSplit(request.splitID, ratio: request.ratio, tabID: request.tabID, quietly: true)
-            }
-            dividerResizeTask = nil
-        }
     }
 
     public func resizeSplit(_ splitID: UUID, ratio: Double, tabID: UUID, quietly: Bool = false) async {
