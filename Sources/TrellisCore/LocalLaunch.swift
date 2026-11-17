@@ -9,8 +9,11 @@ public struct LocalLaunchConfiguration: Equatable, Sendable {
     public var environmentOverrides: [String: String]
     /// Trusted, app-planned rewrite; never derived from automation input.
     public var shellIntegration: ShellIntegrationInjection?
-    /// Trusted, app-planned agent hook channel (FR-AG08): the only control variables a launch carries.
+    /// Trusted, app-planned agent hook channel (FR-AG08): with `paneID`, the only control variables a launch carries.
     public var agentHook: AgentHookEnvironment?
+    /// The pane the session runs in, exported as `TRELLIS_PANE_ID` so a program can name its own pane (`trellis … --pane self`).
+    /// An ID, not a credential: every call still needs a grant.
+    public var paneID: UUID?
 
     public init(
         executable: String, arguments: [String] = [], directory: String,
@@ -137,6 +140,7 @@ public struct LocalLaunchValidator: Sendable {
             environment[AgentHookEnvironment.socketVariable] = hook.socket
             environment[AgentHookEnvironment.nonceVariable] = hook.nonce
         }
+        if let paneID = configuration.paneID { environment[Self.paneVariable] = paneID.uuidString.lowercased() }
         return ValidatedLocalLaunch(
             executable: configuration.executable, arguments: arguments,
             directory: configuration.directory, environment: environment)
@@ -147,6 +151,9 @@ public struct LocalLaunchValidator: Sendable {
     public static let terminalEnvironment = [
         "TERM": "xterm-256color", "COLORTERM": "truecolor", "TERM_PROGRAM": "Trellis", "LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.5.0"
     ]
+
+    /// Names the session's own pane to what runs in it (API2-09). Never inherited: a Trellis started from a pane drops it.
+    public static let paneVariable = "TRELLIS_PANE_ID"
 
     private static func isControlKey(_ key: String) -> Bool {
         let name = key.uppercased()

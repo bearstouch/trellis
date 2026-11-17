@@ -13,9 +13,11 @@ Trellis is a native terminal for macOS. Each project gets its own space in the l
 | Open your projects and run their tasks | [Project library](features/project-library.md) and [Tasks](features/tasks.md) |
 | Run coding agents and see which one needs you | [Coding agents](features/agents.md) |
 | Review what changed in a repository | [Changes](features/changes.md) |
+| Edit a project file without leaving the terminal | [Editor tabs](features/editor.md) |
 | Connect to servers | [SSH hosts](features/ssh-hosts.md) and [Remote workspaces](features/remote-workspaces.md) |
 | Change how it looks | [Themes](features/themes.md) |
 | Learn the shortcuts | [Keyboard and accessibility](features/keyboard-accessibility.md) |
+| Use Trellis in Portuguese, French or Spanish | [Languages](features/localization.md) |
 | Drive Trellis from scripts or an AI agent | [Automation](api/index.md), the [CLI](api/cli.md) and the [MCP server](api/mcp.md) |
 
 ## Help and feedback

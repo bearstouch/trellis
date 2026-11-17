@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-17
+
+The stable 1.3 release. Coming from 1.2.0, you also get everything listed under the 1.3 betas: automation API protocol 2 (a breaking change for scripts and agents; read [Migration from v1](docs/api/migration.md) first), editor tabs with a Markdown preview, Trellis in Portuguese, French and Spanish, copying to the clipboard from programs over SSH, sharing the MCP server over Tailscale, grant presets and editable grants, an idle timeout for kept sessions, a toggle for `.gitignore`'d files, and faster Files, editor and pane drawing.
+
+### Added
+
+- **Scripts can act on the pane they run in:** every session Trellis starts on this Mac now has its pane's ID in `TRELLIS_PANE_ID`, and the `trellis` command takes `--pane self` and `--split self`. `trellis pane resize` also takes a pane instead of a split's ID (`--pane self --axis x --share 0.7`, or `--direction left [--by 0.1]`), and `trellis pane focus --direction left|right|up|down` moves focus to the pane on that side. The API methods `pane.resize` and `pane.focus` take the same options.
+
+### Fixed
+
+- **Split dividers were hard to grab and jerky to drag:** a divider could only be caught on its 1-point line, showed no resize cursor, and every mouse step redrew the whole window. Dividers now have a 7-point grab area with the resize cursor, a drag redraws only the panes of that split, and it stops at a pane's minimum size instead of sticking short of it. The new position is saved when the mouse is released.
+- **Dragging the right sidebar's edge was jerky:** the drag was measured against the handle, which moves as the sidebar resizes, and every step redrew the whole window. The drag is now measured against the window and redraws only the sidebar's edge and width.
+- **Long diffs scrolled slowly in the Review tab and slowed the app:** each diff line was several views, kept once drawn, so a 19,000-line diff scrolled at about 170 ms a step and every change elsewhere in the app cost up to 90 ms after scrolling through it. The diff is now one text view that draws only what is on screen: about 0.1 ms a step and 1 ms per change. Text can now be selected across lines.
+- **A long Markdown preview froze the app:** every change anywhere in the app redrew the whole preview (over two seconds each for a 6,000-block document, and about ten seconds to open it). The preview is now redrawn only when its text, theme or font changes, and a long document builds its blocks as they scroll into view, so it opens at once.
+- **Typing lagged in large files:** each key re-read the whole file a character at a time, about 75 ms per key near the 2 MB limit. A key now costs about 11 ms there and about 4 ms in a 400 KB file.
+- **Files lagged and jumped in a folder with thousands of files:** the scroller and rows shifted while scrolling because the list guessed the height of rows it hadn't drawn, and every arrow key, click or unrelated change in the app walked the whole list again (about a third of a second with 5,000 files). Row heights are now known up front, and a selection move redraws only the two lines it touches. The search count now stays above the results instead of scrolling with them.
+
 ## [1.3.0-beta.3] - 2026-11-16
 
 The third 1.3 beta.
@@ -459,7 +476,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...v1.3.0
 [1.3.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.2...v1.3.0-beta.3
 [1.3.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.1...v1.3.0-beta.2
 [1.3.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.2.0...v1.3.0-beta.1

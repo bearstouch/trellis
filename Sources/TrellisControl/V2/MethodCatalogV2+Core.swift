@@ -13,6 +13,7 @@ extension MethodCatalogV2 {
     private static let stopsSessions = ConditionalCapabilityV2(.sessionClose, if: .anyOf([.present("allowRunning"), .present("force")]))
     private static let closeErrors: Set<APIErrorCode> = [.confirmationRequired, .closePending, .invalidState]
     private static let colors = TabColor.allCases.map(\.rawValue)
+    private static let directions = PaneDirection.allCases.map(\.rawValue)
 
     /// What a pane runs (resources.md#session). Agents start only through `agent.start`, so `agent` is not a kind here.
     static let launch = ParamV2(
@@ -159,13 +160,22 @@ extension MethodCatalogV2 {
             ], capabilities: [.workspaceWrite], conditional: [ConditionalCapabilityV2(.sessionStart, if: .present("start"))], resources: [ResourceRuleV2(.pane, "id")],
             effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState, .launchFailed, .remoteDisconnected, .confirmationRequired]),
         MethodSpecV2(
-            "pane.resize", "Move a split's divider; expectedRevision is the tab's.",
-            params: [ParamV2("branchId", .uuid, required: true, "The split (a layout branch ID)."), ParamV2("ratio", .number(minimum: 0.1, maximum: 0.9), required: true, "The first child's share.")],
-            capabilities: [.workspaceWrite], resources: [ResourceRuleV2(.branch, "branchId")], effect: .mutating(revision: .resource(param: "branchId")),
+            "pane.resize", "Move a split's divider, named by its branch or by a pane beside it; expectedRevision is the tab's with branchId and the pane's with id.",
+            params: [
+                ParamV2("branchId", .uuid, "The split (a layout branch ID); takes ratio."),
+                ParamV2("id", .uuid, "A pane, for the nearest split around it on one axis; takes axis and share, or direction."),
+                ParamV2("ratio", .number(minimum: 0.1, maximum: 0.9), "With branchId: the first child's share."),
+                ParamV2("axis", .string(values: ["x", "y"]), "With id and share: x is the left/right split around the pane, y the top/bottom one."),
+                ParamV2("share", .number(minimum: 0.1, maximum: 0.9), "With id and axis: the share of that split for the side holding the pane."),
+                ParamV2("direction", .string(values: directions), "With id: move the divider this way, as the app's Resize shortcuts do."),
+                ParamV2("by", .number(minimum: 0.01, maximum: 0.8), "With direction: how far, as a share of the split; default 0.05.")
+            ], capabilities: [.workspaceWrite], rules: [.exactlyOne(["branchId", "id"]), .exactlyOne(["ratio", "share", "direction"])],
+            resources: [ResourceRuleV2(.branch, "branchId"), ResourceRuleV2(.pane, "id")], effect: .mutating(revision: .anyResource(["branchId", "id"])),
             errors: [.invalidState]),
         MethodSpecV2(
-            "pane.focus", "Make a pane its tab's focused pane.", params: [id("pane")], capabilities: [.workspaceWrite], resources: [ResourceRuleV2(.pane, "id")],
-            effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState]),
+            "pane.focus", "Make a pane its tab's focused pane, or with direction the pane next to it on that side.",
+            params: [id("pane"), ParamV2("direction", .string(values: directions), "Focus the pane on this side of the named one instead, as the app's Focus shortcuts do.")],
+            capabilities: [.workspaceWrite], resources: [ResourceRuleV2(.pane, "id")], effect: .mutating(revision: .resource(param: "id")), errors: [.invalidState]),
         MethodSpecV2(
             "pane.maximize", "Maximize a pane in its tab (it also becomes focused), or restore the tab.",
             params: [id("pane"), ParamV2("maximized", .boolean, required: true, "true maximizes, false restores.")], capabilities: [.workspaceWrite],

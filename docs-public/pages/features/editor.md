@@ -4,6 +4,9 @@ An **editor tab** lets you change a file of your project without leaving Trellis
 about, adjust a config file, tweak a script. It opens in the current space next to your terminal tabs, with line numbers,
 syntax highlighting in your theme's colors, find and <kbd>⌘</kbd><kbd>S</kbd>.
 
+!!! note "New in 1.3"
+    Editor tabs and the Markdown preview first shipped in 1.3.
+
 ## Open a file
 
 - **From Files:** double-click a file in the [Files](files.md) view, or select it and press <kbd>Return</kbd>. Double-clicking a code file (Swift, TypeScript, Markdown, a `Dockerfile` and so on) always opens it here, even when you chose another app in **Open in**.

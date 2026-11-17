@@ -141,6 +141,21 @@ Choose **Pane → Maximize / Restore Pane** (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>Re
 
 Choose **File → Close Pane** (<kbd>⌘</kbd><kbd>W</kbd>) or click the close button in the pane header. Its neighbor grows to fill the space. Closing a tab's last pane closes the tab.
 
+### Script the pane you're in
+
+!!! note "New in 1.3"
+    A script running in a pane can split, resize or move focus from that pane without looking up its ID.
+
+Every session Trellis starts on this Mac has its pane's ID in the `TRELLIS_PANE_ID` environment variable, and the [`trellis` command](../api/cli.md) accepts `self` wherever it takes a pane:
+
+```sh
+trellis pane split --pane self --axis y --start --token-stdin < ~/.config/trellis/token
+trellis pane resize --pane self --axis x --share 0.7 --token-stdin < ~/.config/trellis/token
+trellis pane focus --pane self --direction left --token-stdin < ~/.config/trellis/token
+```
+
+`--share` is how much of the split this pane's side takes. `--direction left|right|up|down` moves the nearest divider, or with `pane focus` moves focus, the way the **Pane** menu commands do. The ID isn't a password: each command still needs an automation grant from **Settings → Automation**. Panes in remote workspaces don't have the variable, and outside a Trellis pane `self` is refused.
+
 ### Limits
 
 A tab's splits can nest at most 16 levels deep, and the whole workspace holds at most 100 panes. If a split or resize can't be done, Trellis says why and leaves the layout as it was.
@@ -156,6 +171,9 @@ Trellis then asks the programs to stop. If they haven't finished after two secon
 ### Sessions keep running after you quit
 
 By default your sessions run in a small background helper, so they keep going when you quit Trellis, close its window, or Trellis stops unexpectedly. When you open Trellis again, each one returns to its pane, still running, with up to 4 MiB of its recent output replayed. Full-screen programs such as `vim` or `htop` redraw.
+
+!!! note "New in 1.3"
+    Kept sessions that sit idle now end after 24 hours by default. Before 1.3 they ran until they ended by themselves; pick **No timeout** to keep that.
 
 - Quitting (<kbd>⌘</kbd><kbd>Q</kbd>) doesn't ask when every session can be kept. If some can't (for example the helper couldn't start), Trellis offers **Keep Running**, **Stop Sessions** or **Cancel** and says how many will stop.
 - A session that ended while Trellis was closed comes back stopped, with its output and a line saying "Session ended while Trellis was closed" and its exit code. This works as long as the helper is still running; it exits 30 seconds after its last session ends, and that output goes with it.

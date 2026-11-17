@@ -353,6 +353,30 @@ final class AgentWorkspaceTests: XCTestCase {
         XCTAssertEqual(AgentHookEnvironment.nonceVariable, "TRELLIS_AGENT_NONCE")
     }
 
+    func testASessionIsToldItsOwnPaneAndNeverAnInheritedOne() throws {
+        let files = AllowAll()
+        let pane = UUID()
+        var configuration = LocalLaunchConfiguration(executable: "/bin/zsh", arguments: ["-l"], directory: "/tmp", inheritedEnvironment: ["TRELLIS_PANE_ID": "stale", "HOME": "/Users/me"])
+        XCTAssertNil(try LocalLaunchValidator(files: files).validate(configuration).environment["TRELLIS_PANE_ID"], "A Trellis started from a pane doesn't pass that pane's ID on")
+        configuration.paneID = pane
+        XCTAssertEqual(try LocalLaunchValidator(files: files).validate(configuration).environment["TRELLIS_PANE_ID"], pane.uuidString.lowercased())
+        configuration.environmentOverrides = ["TRELLIS_PANE_ID": UUID().uuidString]
+        XCTAssertThrowsError(try LocalLaunchValidator(files: files).validate(configuration), "A launch can't name another pane as its own") {
+            XCTAssertEqual($0 as? LocalLaunchError, .reservedEnvironmentKey)
+        }
+        XCTAssertEqual(LocalLaunchValidator.paneVariable, "TRELLIS_PANE_ID")
+    }
+
+    func testEnclosingSplitSaysWhichSideHoldsThePane() {
+        let a = UUID(), b = UUID(), c = UUID(), outer = UUID(), inner = UUID()
+        let layout = PaneLayout.split(id: outer, axis: .x, ratio: 0.4, children: [.pane(a), .split(id: inner, axis: .y, ratio: 0.7, children: [.pane(b), .pane(c)])])
+        XCTAssertTrue(layout.enclosingSplit(paneID: a, axis: .x).map { $0.id == outer && $0.ratio == 0.4 && $0.inFirst } ?? false)
+        XCTAssertTrue(layout.enclosingSplit(paneID: c, axis: .x).map { $0.id == outer && !$0.inFirst } ?? false, "The nearest left/right split is an ancestor's")
+        XCTAssertTrue(layout.enclosingSplit(paneID: b, axis: .y).map { $0.id == inner && $0.inFirst } ?? false)
+        XCTAssertTrue(layout.enclosingSplit(paneID: c, axis: .y).map { $0.id == inner && $0.ratio == 0.7 && !$0.inFirst } ?? false)
+        XCTAssertNil(layout.enclosingSplit(paneID: a, axis: .y))
+    }
+
     private struct AllowAll: LaunchFileAccess {
         func isExecutableFile(_ path: String) -> Bool { true }
         func isAccessibleDirectory(_ path: String) -> Bool { true }

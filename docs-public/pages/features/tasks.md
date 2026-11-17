@@ -34,6 +34,9 @@ Before the line, Trellis sends Ctrl-E and Ctrl-U (end of line, then delete to it
 
 ### Find a task
 
+!!! note "New in 1.3"
+    The **Find tasks** field, and stopping a task from the stop symbol beside its status, are new in 1.3.
+
 Type in **Find tasks** at the top of the Tasks view to keep only the tasks whose name, command, group or source contains every word you type; case and accents don't matter. Press Escape to clear it.
 
 ### While it runs

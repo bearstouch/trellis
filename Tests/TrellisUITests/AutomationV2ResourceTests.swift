@@ -204,6 +204,124 @@ final class AutomationV2ResourceTests: XCTestCase {
     }
 
     @MainActor
+    func testPanesResizeAndFocusByPaneAndDirection() async throws {
+        let v = try HarnessV2()
+        defer { v.cleanUp() }
+        try await v.grant("full")
+        let created = try await v.ok("space.create", ["name": "Grid"])
+        let tabID = try XCTUnwrap(object(created, "tab")["id"] as? String)
+        let a = try XCTUnwrap((created["panes"] as? [[String: Any]])?.first?["id"] as? String)
+        // a | (b over c): the outer split is left/right, the inner one top/bottom.
+        let first = try await v.ok("pane.split", ["id": a, "axis": "x"])
+        let b = try XCTUnwrap(object(first, "pane")["id"] as? String)
+        let second = try await v.ok("pane.split", ["id": b, "axis": "y"])
+        let c = try XCTUnwrap(object(second, "pane")["id"] as? String)
+        func ratios() async throws -> (outer: Double, inner: Double) {
+            let layout = object(object(try await v.ok("tab.get", ["id": tabID]), "tab"), "layout")
+            let inner = try XCTUnwrap((layout["children"] as? [[String: Any]])?.last)
+            return (try XCTUnwrap(layout["ratio"] as? Double), try XCTUnwrap(inner["ratio"] as? Double))
+        }
+        func invalidParams(_ params: [String: Any]) async throws -> Bool { ((try await v.call("pane.resize", params))["error"] as? [String: Any])?["code"] as? Int == -32602 }
+
+        // share is for the side holding the pane, whichever child that is.
+        let shared = object(try await v.ok("pane.resize", ["id": b, "axis": "x", "share": 0.7]), "tab")
+        XCTAssertEqual(try XCTUnwrap(object(shared, "layout")["ratio"] as? Double), 0.3, accuracy: 0.0001, "b is on the second side")
+        _ = try await v.ok("pane.resize", ["id": a.uppercased(), "axis": "x", "share": 0.6])
+        _ = try await v.ok("pane.resize", ["id": c, "axis": "y", "share": 0.25])
+        var now = try await ratios()
+        XCTAssertEqual(now.outer, 0.6, accuracy: 0.0001)
+        XCTAssertEqual(now.inner, 0.75, accuracy: 0.0001)
+        _ = try await v.ok("pane.resize", ["id": c, "axis": "x", "share": 0.9])
+        now = try await ratios()
+        XCTAssertEqual(now.outer, 0.1, accuracy: 0.0001, "The far end of the range is reachable from the second side")
+
+        // direction moves the nearest divider on that axis, 0.05 unless `by` says more, and stops at the end of the range.
+        _ = try await v.ok("pane.resize", ["id": b, "direction": "right", "by": 0.4])
+        _ = try await v.ok("pane.resize", ["id": b, "direction": "left"])
+        _ = try await v.ok("pane.resize", ["id": c, "direction": "up", "by": 0.25])
+        now = try await ratios()
+        XCTAssertEqual(now.outer, 0.45, accuracy: 0.0001)
+        XCTAssertEqual(now.inner, 0.5, accuracy: 0.0001)
+        _ = try await v.ok("pane.resize", ["id": a, "direction": "right", "by": 0.8])
+        now = try await ratios()
+        XCTAssertEqual(now.outer, 0.9, accuracy: 0.0001)
+        _ = try await v.ok("pane.resize", ["id": a, "axis": "x", "share": 0.5])
+
+        // Refused calls change nothing.
+        let noSplit = try await v.call("pane.resize", ["id": a, "axis": "y", "share": 0.5])
+        XCTAssertEqual(errorCode(noSplit), "INVALID_STATE")
+        XCTAssertEqual(details(noSplit)?["state"] as? String, "noSplit")
+        let noSplitDirection = try await v.code("pane.resize", ["id": a, "direction": "down"])
+        XCTAssertEqual(noSplitDirection, "INVALID_STATE")
+        let tab = try await v.ok("tab.get", ["id": tabID])
+        let branch = try XCTUnwrap(object(object(tab, "tab"), "layout")["id"] as? String)
+        let mixed: [[String: Any]] = [
+            ["branchId": branch, "share": 0.4], ["branchId": branch, "ratio": 0.4, "axis": "x"], ["branchId": branch, "ratio": 0.4, "by": 0.1], ["id": a, "ratio": 0.4],
+            ["id": a, "share": 0.4], ["id": a, "axis": "x", "share": 0.4, "by": 0.1], ["id": a, "direction": "left", "axis": "x"], ["id": a, "axis": "x"],
+            ["id": a, "branchId": branch, "ratio": 0.4], ["id": a, "direction": "left", "share": 0.4, "axis": "x"], ["id": a, "direction": "sideways"],
+            ["id": a, "axis": "x", "share": 0.95]
+        ]
+        for params in mixed {
+            let refused = try await invalidParams(params)
+            XCTAssertTrue(refused, "\(params)")
+        }
+        let missing = try await v.code("pane.resize", ["id": UUID().uuidString, "direction": "left"])
+        XCTAssertEqual(missing, "NOT_FOUND")
+        let current = try await v.ok("pane.get", ["id": a])
+        let paneRevision = try XCTUnwrap(object(current, "pane")["revision"] as? Int)
+        let stale = try await v.call("pane.resize", ["id": a, "direction": "left", "expectedRevision": paneRevision - 1])
+        XCTAssertEqual(errorCode(stale), "CONFLICT", "With id, expectedRevision is the pane's")
+        now = try await ratios()
+        XCTAssertEqual(now.outer, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(now.inner, 0.5, accuracy: 0.0001)
+        _ = try await v.ok("pane.resize", ["id": a, "direction": "left", "expectedRevision": paneRevision])
+        now = try await ratios()
+        XCTAssertEqual(now.outer, 0.45, accuracy: 0.0001)
+
+        // Focus by direction answers with the pane it moved to.
+        func focus(_ id: String, _ direction: String) async throws -> String? { object(try await v.ok("pane.focus", ["id": id, "direction": direction]), "pane")["id"] as? String }
+        let right = try await focus(a, "right")
+        XCTAssertEqual(right, b, "Of two panes on that side, the first in the tab wins a tie")
+        XCTAssertEqual(v.model.snapshot.tabs.values.first?.activePaneID.uuidString.lowercased(), b)
+        let down = try await focus(b, "down")
+        XCTAssertEqual(down, c)
+        let left = try await focus(c, "left")
+        XCTAssertEqual(left, a)
+        let edge = try await v.call("pane.focus", ["id": a, "direction": "left"])
+        XCTAssertEqual(errorCode(edge), "INVALID_STATE")
+        XCTAssertEqual(details(edge)?["state"] as? String, "noNeighbor")
+        let unknown = try await v.call("pane.focus", ["id": a, "direction": "north"])
+        XCTAssertEqual((unknown["error"] as? [String: Any])?["code"] as? Int, -32602)
+        XCTAssertEqual(v.model.snapshot.tabs.values.first?.activePaneID.uuidString.lowercased(), a, "A refused move leaves focus where it was")
+        // The named pane needn't be the focused one: the move starts from it.
+        let fromOther = try await focus(c, "up")
+        XCTAssertEqual(fromOther, b)
+
+        // In a maximized tab the pane moved to is the one shown, as with the app's shortcuts.
+        _ = try await v.ok("pane.maximize", ["id": a, "maximized": true])
+        let moved = object(try await v.ok("pane.focus", ["id": a, "direction": "right"]), "pane")
+        XCTAssertEqual(moved["id"] as? String, b)
+        XCTAssertEqual(moved["maximized"] as? Bool, true)
+        let shown = try await v.ok("tab.get", ["id": tabID])
+        XCTAssertEqual(object(shown, "tab")["maximizedPaneId"] as? String, b)
+    }
+
+    @MainActor
+    func testASessionKnowsItsOwnPane() async throws {
+        let v = try HarnessV2()
+        defer { v.cleanUp() }
+        try await v.grant("full", Set(CapabilityV2.allCases).subtracting([.agentControl]))
+        let created = try await v.ok("space.create", ["name": "Self"])
+        let paneID = try XCTUnwrap((created["panes"] as? [[String: Any]])?.first?["id"] as? String)
+        let script = #"printf 'PANE=%s.\n' "$TRELLIS_PANE_ID"; read -r line"#
+        let started = object(
+            try await v.ok("session.start", ["paneId": paneID, "launch": ["kind": "process", "executable": "/bin/zsh", "arguments": ["-f", "-c", script], "directory": "/tmp"]]), "session")
+        let terminal = NativeTerminalHandle(try XCTUnwrap(v.model.terminals[try XCTUnwrap(UUID(uuidString: paneID))]))
+        try await terminal.waitFor("PANE=\(paneID).")
+        _ = try await v.ok("session.stop", ["id": try XCTUnwrap(started["id"] as? String)])
+    }
+
+    @MainActor
     func testPermissionsScopeAndPagingThroughTheRealModel() async throws {
         let v = try HarnessV2()
         defer { v.cleanUp() }

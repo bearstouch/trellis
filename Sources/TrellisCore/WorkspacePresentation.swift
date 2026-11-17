@@ -29,6 +29,19 @@ public struct CanvasDimensions: Equatable, Sendable {
                 : Self(width: max(first.width, second.width), height: max(first.height / ratio, second.height / (1 - ratio)) + dividerThickness)
         }
     }
+    /// The ratio nearest `requested` that a dragged divider can take in a split `length` points long on its axis:
+    /// the first child gets whole points, and neither child goes below its minimum (FR-P02). Nil when the split has no room to move.
+    public static func dividerRatio(nearest requested: Double, in layout: PaneLayout, length: Double) -> Double? {
+        guard case .split(_, let axis, _, let children) = layout, children.count == 2, requested.isFinite, length.isFinite else { return nil }
+        let usable = length - dividerThickness
+        guard usable > 0 else { return nil }
+        let first = minimum(for: children[0]), second = minimum(for: children[1])
+        // Just inside the store's 0.1...0.9 and minimum checks, so a clamped drag is never rejected for rounding.
+        let lower = max(0.1, (axis == .x ? first.width : first.height) / usable) + 1e-9
+        let upper = min(0.9, 1 - (axis == .x ? second.width : second.height) / usable) - 1e-9
+        guard lower <= upper else { return nil }
+        return min(max((requested * usable).rounded() / usable, lower), upper)
+    }
     public func fitting(width: Double, height: Double) -> Self {
         Self(width: max(self.width, width), height: max(self.height, height))
     }

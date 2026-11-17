@@ -33,6 +33,7 @@ final class CLIHarness {
     var stdinToken: String? = "trl_STDIN_SECRET_123"
     var keychain: [UUID: String] = [:]
     let transport = FakeTransport()
+    var variables: [String: String] = [:]
 
     var environment: CLIEnvironment {
         CLIEnvironment(
@@ -51,7 +52,7 @@ final class CLIHarness {
             readKeychain: { self.keychain[$0] },
             readFile: { _ in Data(#"{"version":3,"spaces":[]}"#.utf8) },
             stdout: { self.out.append($0) }, stderr: { self.err.append($0) }, sleep: { _ in },
-            defaultStateDirectory: URL(fileURLWithPath: "/tmp/state"))
+            defaultStateDirectory: URL(fileURLWithPath: "/tmp/state"), variable: { self.variables[$0] })
     }
 
     func run(_ arguments: [String]) -> Int32 { CLI.run(arguments, environment: environment) }
@@ -396,6 +397,49 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(h.last?.params, ["tabId": .string(tab)])
         XCTAssertEqual(h.run(["pane", "list", "--token-stdin"]), 2)
         XCTAssertEqual(h.run(["pane", "close", "--pane", "not-a-uuid", "--token-stdin"]), 2)
+    }
+
+    func testPaneSelfIsThePaneTheCommandRunsIn() {
+        let h = CLIHarness()
+        let own = UUID().uuidString
+        XCTAssertEqual(h.run(["pane", "split", "--pane", "self", "--axis", "x", "--token-stdin"]), 2, "Outside a pane there is no self")
+        XCTAssertTrue(h.err.joined().contains("TRELLIS_PANE_ID"), "\(h.err)")
+        XCTAssertTrue(h.mutatingCalls.isEmpty)
+        h.variables["TRELLIS_PANE_ID"] = own
+        XCTAssertEqual(h.run(["pane", "split", "--pane", "self", "--axis", "x", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["id": .string(own.lowercased()), "axis": .string("x")])
+        XCTAssertEqual(h.run(["task", "list", "--pane", "self", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["paneId": .string(own.lowercased())])
+        XCTAssertEqual(h.run(["agent", "start", "--agent", "trellis-claude-code", "--split", "self", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params["placement"], .object(["kind": .string("split"), "paneId": .string(own.lowercased())]))
+        XCTAssertEqual(h.run(["session", "get", "--session", "self", "--token-stdin"]), 2, "Only pane flags take self")
+        h.variables["TRELLIS_PANE_ID"] = "not-a-uuid"
+        XCTAssertEqual(h.run(["pane", "get", "--pane", "self", "--token-stdin"]), 2, "A forged or broken value is never sent")
+    }
+
+    func testPaneFocusAndResizeByPaneAndDirection() {
+        let h = CLIHarness()
+        let pane = UUID().uuidString.lowercased(), branch = UUID().uuidString.lowercased()
+        XCTAssertEqual(h.run(["pane", "focus", "--pane", pane, "--direction", "left", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["id": .string(pane), "direction": .string("left")])
+        XCTAssertEqual(h.run(["pane", "focus", "--pane", pane, "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["id": .string(pane)])
+        XCTAssertEqual(h.run(["pane", "resize", "--branch", branch, "--ratio", "0.4", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["branchId": .string(branch), "ratio": .number(0.4)])
+        XCTAssertEqual(h.run(["pane", "resize", "--pane", pane, "--axis", "x", "--share", "0.7", "--expected-revision", "4", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["id": .string(pane), "axis": .string("x"), "share": .number(0.7), "expectedRevision": .number(4)])
+        XCTAssertEqual(h.run(["pane", "resize", "--pane", pane, "--direction", "up", "--by", "0.1", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["id": .string(pane), "direction": .string("up"), "by": .number(0.1)])
+        XCTAssertEqual(h.run(["pane", "resize", "--pane", pane, "--direction", "down", "--token-stdin"]), 0)
+        XCTAssertEqual(h.last?.params, ["id": .string(pane), "direction": .string("down")])
+        let sent = h.transport.calls("pane.resize").count
+        let mixed: [[String]] = [
+            ["--branch", branch], ["--pane", pane], ["--branch", branch, "--share", "0.5", "--axis", "x"], ["--pane", pane, "--ratio", "0.5"],
+            ["--pane", pane, "--share", "0.5"], ["--pane", pane, "--axis", "x"], ["--pane", pane, "--axis", "x", "--share", "0.5", "--by", "0.1"],
+            ["--pane", pane, "--direction", "left", "--share", "0.5", "--axis", "x"], ["--branch", branch, "--pane", pane, "--ratio", "0.5"], ["--ratio", "0.5"]
+        ]
+        for arguments in mixed { XCTAssertEqual(h.run(["pane", "resize"] + arguments + ["--token-stdin"]), 2, "\(arguments)") }
+        XCTAssertEqual(h.transport.calls("pane.resize").count, sent, "A mixed form sends nothing")
     }
 
     func testSessionLaunchesAndStop() {

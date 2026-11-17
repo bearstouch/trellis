@@ -15,6 +15,9 @@ Files works only for panes on this Mac. Its icon is dimmed for [SSH](ssh-hosts.m
 
 ## What's left out
 
+!!! note "New in 1.3"
+    The ignored-files button is new in 1.3. Before, `.gitignore`'d files were never shown.
+
 The tree never shows `.git`, `.build`, `.swiftpm`, `node_modules`, `DerivedData` or `.DS_Store`. Files the project's `.gitignore` ignores appear only while the ignored-files button (the filter symbol at the top of the view) is on, and hidden files (names starting with `.`) only while the eye button is on. To see a `.env` file, which is usually both hidden and ignored, turn both on.
 
 Trellis reads the simple parts of the `.gitignore` at the root of the tree: `#` comments, `*`, `?` and `[…]` globs, a trailing `/` for folders, and a leading or inner `/` to anchor a pattern to the root. It skips negations (`!`), and doesn't read nested `.gitignore` files or your global excludes, so a few ignored files can still show up.
