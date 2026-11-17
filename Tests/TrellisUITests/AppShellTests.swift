@@ -177,6 +177,31 @@ final class AppShellTests: XCTestCase {
     }
 
     @MainActor
+    func testTerminalRowsStayPutWhileADividerDragChangesTheHeight() throws {
+        _ = NSApplication.shared
+        let native = NativeTerminal()
+        let grid = try XCTUnwrap(native.view as? TerminalView)
+        let rowHeight = grid.getOptimalFrameSize().height / CGFloat(grid.getTerminal().rows)
+        let start = (rowHeight * 10).rounded(.down) + rowHeight / 2
+        let container = TerminalContainerView(frame: NSRect(x: 0, y: 0, width: 600, height: start))
+        container.display(native.view)
+        container.layout()
+        let above = container.bounds.maxY - native.view.frame.maxY
+        XCTAssertGreaterThan(above, 1, "centered: part of the spare half row is above the rows")
+        container.holdRows(true)
+        for step in stride(from: -rowHeight * 2, through: rowHeight * 2, by: 1) {
+            container.frame.size.height = start + step
+            container.layout()
+            XCTAssertEqual(container.bounds.maxY - native.view.frame.maxY, above, accuracy: 0.01, "the first row doesn't move")
+            XCTAssertGreaterThanOrEqual(native.view.frame.minY, -0.01)
+            XCTAssertLessThan(native.view.frame.minY, rowHeight + 0.01, "as many whole rows as fit under the held strip")
+        }
+        container.holdRows(false)
+        container.layout()
+        XCTAssertEqual(container.bounds.maxY - native.view.frame.maxY, native.view.frame.minY, accuracy: 1.01, "centered again after the drag")
+    }
+
+    @MainActor
     func testStoppingDuringLaunchCompletesSharedState() async throws {
         _ = NSApplication.shared
         let preferences = try XCTUnwrap(UserDefaults(suiteName: "trellis.tests.\(UUID())"))

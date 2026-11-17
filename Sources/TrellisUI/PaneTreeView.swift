@@ -8,6 +8,12 @@ struct PaneTreeView: View {
     let activePaneID: UUID
     let tabID: UUID
     @State private var dragStartRatio: Double?
+    /// The divider's position while it is dragged. Kept here, not in the store, so a mouse step redraws this split
+    /// alone instead of publishing a snapshot to the whole window; the store gets the final ratio on release.
+    @State private var liveRatio: Double?
+    @State private var dividerHovered = false
+    /// Whether the resize cursor is pushed, so it is popped exactly once, also when the split goes away under the mouse.
+    @State private var cursorPushed = false
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
@@ -15,8 +21,9 @@ struct PaneTreeView: View {
         GeometryReader { geometry in
             switch layout {
             case .pane(let id): leaf(id, size: geometry.size)
-            case .split(let id, let axis, let ratio, let children):
+            case .split(let id, let axis, let stored, let children):
                 if children.count == 2 {
+                    let ratio = liveRatio ?? stored
                     if axis == .x {
                         HStack(spacing: 0) {
                             PaneTreeView(model: model, layout: children[0], activePaneID: activePaneID, tabID: tabID)
@@ -35,7 +42,21 @@ struct PaneTreeView: View {
                 }
             }
         }.background(model.panesTranslucent ? .clear : model.themeColor(.border))
+            .transformEnvironment(\.terminalRowsHeld) { if rowsHeld { $0 = true } }
             .coordinateSpace(name: layoutCoordinateSpace)
+            .onDisappear { if cursorPushed { cursorPushed = false; NSCursor.pop() } }
+            // This view outlives its split (a pane closes, one is maximized, another tab is selected), and a drag cut
+            // short that way gets no `onEnded`: without this the next split shown here would keep the dragged ratio.
+            .onChange(of: layoutCoordinateSpace) { _, _ in
+                dragStartRatio = nil; liveRatio = nil; dividerHovered = false
+                if cursorPushed { cursorPushed = false; NSCursor.pop() }
+            }
+    }
+
+    /// A top/bottom drag changes the height of every pane below this split.
+    private var rowsHeld: Bool {
+        if case .split(_, .y, _, _) = layout { return dragStartRatio != nil }
+        return false
     }
 
     private var layoutCoordinateSpace: UUID {
@@ -172,19 +193,30 @@ struct PaneTreeView: View {
     private var iconStyle: PaneHeaderIconStyle { PaneHeaderIconStyle(rest: model.themeColor(.mutedForeground), hover: model.themeColor(.foreground)) }
 
     private func divider(_ id: UUID, axis: SplitAxis, ratio: Double, size: CGSize) -> some View {
+        // A 1-point line in the layout, with a wider invisible grab area over the panes' own margins.
         model.themeColor(.border)
             .frame(
                 width: axis == .x ? CanvasDimensions.dividerThickness : nil,
                 height: axis == .y ? CanvasDimensions.dividerThickness : nil
             )
-            .contentShape(Rectangle())
+            .padding(axis == .x ? .horizontal : .vertical, 3).contentShape(Rectangle()).padding(axis == .x ? .horizontal : .vertical, -3).zIndex(1)
+            .onHover {
+                dividerHovered = $0; syncCursor(axis)
+            }
             .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named(id)).onChanged { value in
-                    if dragStartRatio == nil { dragStartRatio = ratio }
-                    updateDivider(id, axis: axis, size: size, translation: value.translation)
+                DragGesture(minimumDistance: 1, coordinateSpace: .named(id)).onChanged { value in
+                    if dragStartRatio == nil { dragStartRatio = ratio; syncCursor(axis) }
+                    updateDivider(axis: axis, size: size, translation: value.translation)
                 }.onEnded { value in
-                    updateDivider(id, axis: axis, size: size, translation: value.translation)
+                    updateDivider(axis: axis, size: size, translation: value.translation)
                     dragStartRatio = nil
+                    syncCursor(axis)
+                    guard let final = liveRatio else { return }
+                    Task {
+                        await model.resizeSplit(id, ratio: final, tabID: tabID, quietly: true)
+                        // In the same turn as the published snapshot, so the divider never shows the old ratio in between.
+                        if dragStartRatio == nil { liveRatio = nil }
+                    }
                 }
             )
             .accessibilityLabel(axis == .x ? L("Left/right divider") : L("Top/bottom divider"))
@@ -195,12 +227,21 @@ struct PaneTreeView: View {
             }
     }
 
-    private func updateDivider(_ id: UUID, axis: SplitAxis, size: CGSize, translation: CGSize) {
+    /// The resize cursor shows under the pointer and for the whole drag, which leaves the grab area when a pane reaches its minimum.
+    private func syncCursor(_ axis: SplitAxis) {
+        let wanted = dividerHovered || dragStartRatio != nil
+        guard wanted != cursorPushed else { return }
+        cursorPushed = wanted
+        if wanted { (axis == .x ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push() } else { NSCursor.pop() }
+    }
+
+    private func updateDivider(axis: SplitAxis, size: CGSize, translation: CGSize) {
         guard let initial = dragStartRatio else { return }
-        let length = (axis == .x ? size.width : size.height) - CanvasDimensions.dividerThickness
-        guard length > 0 else { return }
-        let delta = (axis == .x ? translation.width : translation.height) / length
-        model.queueDividerResize(id, ratio: initial + delta, tabID: tabID)
+        let length = axis == .x ? size.width : size.height
+        guard length > CanvasDimensions.dividerThickness else { return }
+        let delta = (axis == .x ? translation.width : translation.height) / (length - CanvasDimensions.dividerThickness)
+        guard let next = CanvasDimensions.dividerRatio(nearest: initial + delta, in: layout, length: length), next != liveRatio else { return }
+        liveRatio = next
     }
 
     private func split(_ id: UUID, axis: SplitAxis, size: CGSize) {

@@ -1150,12 +1150,25 @@ private struct SpaceTabsPreviewCard: View {
 struct NativeTerminalSurface: NSViewRepresentable {
     let terminal: NativeTerminal
     var isFocused = true
+    @Environment(\.terminalRowsHeld) private var rowsHeld
     func makeNSView(context: Context) -> TerminalContainerView {
         let container = TerminalContainerView()
         container.display(terminal.view, focused: isFocused)
         return container
     }
-    func updateNSView(_ view: TerminalContainerView, context: Context) { view.display(terminal.view, focused: isFocused) }
+    func updateNSView(_ view: TerminalContainerView, context: Context) {
+        view.holdRows(rowsHeld)
+        view.display(terminal.view, focused: isFocused)
+    }
+}
+
+/// True under a split whose top/bottom divider is being dragged: terminals keep their rows where they are (FR-P02).
+private struct TerminalRowsHeldKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var terminalRowsHeld: Bool {
+        get { self[TerminalRowsHeldKey.self] }
+        set { self[TerminalRowsHeldKey.self] = newValue }
+    }
 }
 
 /// SwiftUI retains representables across selection changes. Keep a stable host,
@@ -1170,18 +1183,30 @@ final class TerminalContainerView: NSView {
     private var backgroundObservation: NSKeyValueObservation?
     private var hostedTerminal: NSView? { subviews.first { view in !gaps.contains { $0 === view } } }
 
+    /// The strip above the rows while a divider drag changes the height. Centering the rows at every step would slide
+    /// the text down by up to half a row and snap it back at each new row; the strip is frozen until the drag ends.
+    private var heldAbove: CGFloat?
+
+    func holdRows(_ held: Bool) {
+        guard held != (heldAbove != nil) else { return }
+        heldAbove = held ? (gapAbove.isHidden ? 0 : gapAbove.frame.height) : nil
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
         gaps.forEach { $0.isHidden = true }
         guard let terminal = hostedTerminal else { return }
-        terminal.frame = bounds
+        let above = heldAbove.map { min($0, bounds.height) }
+        let room = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height - (above ?? 0))
+        terminal.frame = room
         guard let grid = terminal as? TerminalView else { return }
         let gridHeight = grid.getOptimalFrameSize().height
-        guard gridHeight > 0, gridHeight <= bounds.height else { return }
+        guard gridHeight > 0, gridHeight <= room.height else { return }
         // Whole rows only, with the remainder of a row split evenly above and below them, so the top and bottom
         // padding always match. A tiny rounding allowance prevents floating-point division from dropping the final row.
-        let height = min(bounds.height, gridHeight + 0.001)
-        let below = ((bounds.height - height) / 2).rounded(.down)
+        let height = min(room.height, gridHeight + 0.001)
+        let below = above == nil ? ((room.height - height) / 2).rounded(.down) : room.height - height
         terminal.frame = NSRect(x: bounds.minX, y: bounds.minY + below, width: bounds.width, height: height)
         gapBelow.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: below)
         gapAbove.frame = NSRect(x: bounds.minX, y: terminal.frame.maxY, width: bounds.width, height: max(0, bounds.maxY - terminal.frame.maxY))
