@@ -172,6 +172,9 @@ Trellis then asks the programs to stop. If they haven't finished after two secon
 
 By default your sessions run in a small background helper, so they keep going when you quit Trellis, close its window, or Trellis stops unexpectedly. When you open Trellis again, each one returns to its pane, still running, with up to 4 MiB of its recent output replayed. Full-screen programs such as `vim` or `htop` redraw.
 
+!!! note "New in 1.3"
+    Kept sessions that sit idle now end after 24 hours by default. Before 1.3 they ran until they ended by themselves; pick **No timeout** to keep that.
+
 - Quitting (<kbd>⌘</kbd><kbd>Q</kbd>) doesn't ask when every session can be kept. If some can't (for example the helper couldn't start), Trellis offers **Keep Running**, **Stop Sessions** or **Cancel** and says how many will stop.
 - A session that ended while Trellis was closed comes back stopped, with its output and a line saying "Session ended while Trellis was closed" and its exit code. This works as long as the helper is still running; it exits 30 seconds after its last session ends, and that output goes with it.
 - If kept sessions are found that no pane claims, Trellis asks whether to **Stop Them** or **Leave Running**. Nothing is ended without asking.

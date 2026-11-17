@@ -2,6 +2,9 @@
 
 Trellis is available in English, Portuguese (Portugal), French and Spanish. It follows your Mac's language, and you can pick another one for Trellis alone.
 
+!!! note "New in 1.3"
+    Portuguese, French and Spanish first shipped in 1.3.
+
 ## Choose a language
 
 1. Open **Trellis → Settings…** and select **Appearance**.

@@ -65,6 +65,9 @@ While a program captures the mouse (for example `vim` with mouse support on), cl
 
 ### Copy from programs on a remote host
 
+!!! note "New in 1.3"
+    Programs can copy to your Mac's clipboard since 1.3, if you allow it.
+
 Programs such as Claude Code, tmux and Neovim copy text by sending it through the terminal (OSC 52), because over SSH they can't reach your Mac's clipboard. Trellis ignores these requests unless you allow them in **Settings → Sessions → Programs can copy to the clipboard**:
 
 - **Off** (the default): only your own selections and <kbd>⌘</kbd><kbd>C</kbd> change the clipboard.

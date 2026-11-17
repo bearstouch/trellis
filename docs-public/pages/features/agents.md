@@ -50,6 +50,9 @@ The dock's Agents icon shows a badge with the number of agents that need you, in
 
 The **Running** list in the Agents view shows every agent pane in every space, in space and tab order: its icon and name, its tab and space, and its state in words (**Ready**, **Needs you**, **Done**, **Error**, or the session's status when it isn't running). A working agent shows a small spinner. Choosing a row takes you to that pane, switching space and tab.
 
+!!! note "New in 1.3"
+    The model and reasoning effort of a Claude Code session are new in 1.3.
+
 For Claude Code, the row also shows the model in place of the agent's name ("Ardaven · Opus 5.5") and the reasoning effort as a small label next to the tab name (`high`). They appear once Claude Code reports them: the effort with its first tool call or finished turn, and the model when Claude Code includes it or after you switch models with `/model`. Trellis reads only these two settings from Claude Code, nothing from your conversation.
 
 ### Notifications
