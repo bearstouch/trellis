@@ -1155,6 +1155,7 @@ public final class AppWorkspaceModel: ObservableObject {
                 }
                 // Synchronous and without new locals: Swift 6.3's task allocator aborts when this frame grows (see `startAgent`).
                 wireTypedAgents(&configuration, sessionID: request.sessionID, brokered: terminal.survivesQuit)
+                configuration.paneID = paneID
                 if shellIntegrationEnabled, Self.isRemote(request.launch) { terminal.observeRemoteShellMarks() }
                 await terminal.start(configuration: configuration)
                 // A launch refused before spawning never reports an exit, so drop its nonce here.

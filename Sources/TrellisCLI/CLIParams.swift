@@ -10,8 +10,15 @@ enum CLIParams {
         func set(_ key: String, _ option: String) { if let value = command.value(option) { params[key] = .string(value) } }
         func flag(_ key: String, _ name: String) { if command.has(name) { params[key] = .bool(true) } }
         func uuid(_ option: String) throws -> JSONValue? {
-            guard let raw = command.value(option) else { return nil }
-            guard UUID(uuidString: raw) != nil else { throw CLIFailure.arguments("--\(option) expects a UUID.") }
+            guard var raw = command.value(option) else { return nil }
+            // `self` is the pane this command runs in, which Trellis names in the session's environment (API2-09).
+            if raw == "self", paneOptions.contains(option) {
+                guard let own = environment.variable(LocalLaunchValidator.paneVariable), UUID(uuidString: own) != nil else {
+                    throw CLIFailure.arguments("--\(option) self works only inside a Trellis pane on this Mac (\(LocalLaunchValidator.paneVariable) is not set).")
+                }
+                raw = own
+            }
+            guard UUID(uuidString: raw) != nil else { throw CLIFailure.arguments("--\(option) expects a UUID\(paneOptions.contains(option) ? " or self" : "").") }
             return .string(raw.lowercased())
         }
         func number(_ option: String, integer: Bool = false) throws -> JSONValue? {
@@ -138,11 +145,21 @@ enum CLIParams {
         case "pane list":
             if command.value("tab") != nil { params["tabId"] = try tab() } else if command.value("space") != nil { params["spaceId"] = try space() }
             guard params["tabId"] != nil || params["spaceId"] != nil else { throw CLIFailure.arguments("pane list needs --tab or --space.") }
-        case "pane get", "pane focus": params["id"] = try uuid("pane")
+        case "pane get": params["id"] = try uuid("pane")
+        case "pane focus": params["id"] = try uuid("pane"); set("direction", "direction")
         case "pane close": params["id"] = try uuid("pane"); flag("allowRunning", "allow-running"); flag("force", "force")
         case "pane maximize": params["id"] = try uuid("pane"); params["maximized"] = .bool(!command.has("restore"))
         case "pane split": params["id"] = try uuid("pane"); set("axis", "axis"); params["ratio"] = try number("ratio"); flag("start", "start")
-        case "pane resize": params["branchId"] = try uuid("branch"); params["ratio"] = try number("ratio")
+        case "pane resize":
+            // One form each: a branch takes --ratio, a pane --axis with --share, or --direction with an optional --by.
+            let pane = command.value("pane") != nil
+            let forms = [command.value("ratio"), command.value("share"), command.value("direction")].compactMap { $0 }.count
+            guard pane != (command.value("branch") != nil), forms == 1, (command.value("ratio") != nil) == !pane,
+                (command.value("share") != nil) == (command.value("axis") != nil), command.value("by") == nil || command.value("direction") != nil
+            else { throw CLIFailure.arguments("Give --branch BRANCH --ratio RATIO, --pane PANE --axis x|y --share SHARE, or --pane PANE --direction DIRECTION [--by AMOUNT].") }
+            params["branchId"] = try uuid("branch"); params["id"] = try uuid("pane")
+            params["ratio"] = try number("ratio"); params["share"] = try number("share"); params["by"] = try number("by")
+            set("axis", "axis"); set("direction", "direction")
         case "session get": params["id"] = try uuid("session")
         case "session stop": params["id"] = try uuid("session"); flag("force", "force")
         case "session input": params["id"] = try uuid("session"); set("text", "text"); set("base64", "base64"); set("mode", "mode")
@@ -226,6 +243,9 @@ enum CLIParams {
         }
         return params
     }
+
+    /// The flags that name a pane, where `self` is the pane the CLI runs in.
+    static let paneOptions: Set<String> = ["pane", "split"]
 
     /// What `events subscribe` and `events poll` follow without `--topics`.
     static let defaultTopics = ["workspace", "selection", "session"]

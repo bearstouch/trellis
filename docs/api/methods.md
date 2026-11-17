@@ -49,12 +49,12 @@ Every method follows the [conventions](index.md#conventions-api2-02). In the tab
 | `pane.list` | `tabId` or `spaceId` | `panes`, `revision` | workspace.read |
 | `pane.get` | `id` | `pane` | workspace.read |
 | `pane.split` | `id`, `axis` `x`/`y`, `ratio?`, `start?` | `pane` (new), `tab` | workspace.write (+session.start) |
-| `pane.resize` | `branchId`, `ratio` | `tab` | workspace.write |
-| `pane.focus` | `id` | `pane` | workspace.write |
+| `pane.resize` | `branchId`, `ratio`; or `id`, `axis`, `share`; or `id`, `direction`, `by?` | `tab` | workspace.write |
+| `pane.focus` | `id`, `direction?` | `pane` (the focused one) | workspace.write |
 | `pane.maximize` | `id`, `maximized` | `pane`, `tab` | workspace.write |
 | `pane.close` | `id`, `allowRunning?`, `force?` | `deleted` | workspace.write (+session.close) |
 
-A new pane inherits the source pane's machine and folder, as in the UI: a split of a remote pane is a remote shell on the same host. `pane.list` takes exactly one of `tabId` and `spaceId`; its `revision` is that tab's or space's. A branch has no revision of its own, so `pane.resize`'s `expectedRevision` is its tab's. `pane.split` is refused with `INVALID_STATE` while the tab has a maximized pane, as in the app.
+A new pane inherits the source pane's machine and folder, as in the UI: a split of a remote pane is a remote shell on the same host. `pane.list` takes exactly one of `tabId` and `spaceId`; its `revision` is that tab's or space's. `pane.split` is refused with `INVALID_STATE` while the tab has a maximized pane, as in the app.
 
 ## Sessions
 
@@ -88,6 +88,22 @@ A new pane inherits the source pane's machine and folder, as in the UI: a split 
 - `session.execute` takes one non-empty line without NUL, CR or LF and appends a carriage return; the shell parses it, deliberately.
 - A shell that has started isn't necessarily at its prompt yet; `wait` and `pane.shell` say when it is.
 - **Never retry a command blindly.** If a connection drops while a call runs, inspect the session first: a missing reply doesn't mean nothing ran. `idempotencyKey` makes a retried call safe.
+
+### Acting from a pane (API2-09)
+
+A program running in a pane can act on its own pane and the panes around it without reading the layout first:
+
+- **Its own pane.** Every session Trellis starts on this Mac (a shell, a process, an `ssh` host pane or an agent) has `TRELLIS_PANE_ID` in its environment: its pane's ID, lowercase. The name is reserved like every `TRELLIS_` name, so a launch can't set it and a Trellis started from a pane doesn't inherit it. It is an ID, not a credential: every call still needs a grant with the pane in scope. Sessions in remote workspaces don't get it. The CLI reads it for [`--pane self`](cli.md#names).
+- **`pane.resize` takes one of three forms.** Anything else is `INVALID_PARAMS`.
+
+    | Form | Moves | `expectedRevision` |
+    | --- | --- | --- |
+    | `branchId`, `ratio` | That split's divider; `ratio` is the first child's share. | The tab's (a branch has no revision of its own) |
+    | `id`, `axis`, `share` | The divider of the nearest split around the pane on that axis (`x`: left/right, `y`: top/bottom). `share` (0.1–0.9) is the share of that split for the side holding the pane, whichever child that is. | The pane's |
+    | `id`, `direction`, `by?` | The same divider, `left`, `right`, `up` or `down`, by `by` of the split (0.01–0.8, default 0.05, the step of the app's **Move Divider** commands). A step past 0.1 or 0.9 stops there. | The pane's |
+
+    A pane with no split around it on that axis is `INVALID_STATE` with `details.state: "noSplit"`. The size rules below apply to every form.
+- **`pane.focus` with `direction`** focuses the pane to the `left`, `right`, `up` or `down` of the named pane, chosen as the app's **Focus** commands choose it (a pane overlapping it on that side first, then the nearest, then tab order), and returns that pane. The named pane needn't be the focused one. No pane on that side is `INVALID_STATE` with `details.state: "noNeighbor"`, and focus stays where it was. In a maximized tab the pane moved to becomes the maximized one, as in the app.
 
 ### Splits and geometry
 

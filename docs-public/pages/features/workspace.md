@@ -141,6 +141,21 @@ Choose **Pane → Maximize / Restore Pane** (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>Re
 
 Choose **File → Close Pane** (<kbd>⌘</kbd><kbd>W</kbd>) or click the close button in the pane header. Its neighbor grows to fill the space. Closing a tab's last pane closes the tab.
 
+### Script the pane you're in
+
+!!! note "New in 1.3"
+    A script running in a pane can split, resize or move focus from that pane without looking up its ID.
+
+Every session Trellis starts on this Mac has its pane's ID in the `TRELLIS_PANE_ID` environment variable, and the [`trellis` command](../api/cli.md) accepts `self` wherever it takes a pane:
+
+```sh
+trellis pane split --pane self --axis y --start --token-stdin < ~/.config/trellis/token
+trellis pane resize --pane self --axis x --share 0.7 --token-stdin < ~/.config/trellis/token
+trellis pane focus --pane self --direction left --token-stdin < ~/.config/trellis/token
+```
+
+`--share` is how much of the split this pane's side takes. `--direction left|right|up|down` moves the nearest divider, or with `pane focus` moves focus, the way the **Pane** menu commands do. The ID isn't a password: each command still needs an automation grant from **Settings → Automation**. Panes in remote workspaces don't have the variable, and outside a Trellis pane `self` is refused.
+
 ### Limits
 
 A tab's splits can nest at most 16 levels deep, and the whole workspace holds at most 100 panes. If a split or resize can't be done, Trellis says why and leaves the layout as it was.

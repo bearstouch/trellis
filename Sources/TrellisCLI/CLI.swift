@@ -54,6 +54,8 @@ public struct CLIEnvironment {
     public var stderr: (String) -> Void
     public var sleep: (TimeInterval) -> Void
     public var defaultStateDirectory: URL
+    /// The CLI's own environment, read only for `TRELLIS_PANE_ID` (`--pane self`).
+    public var variable: (String) -> String? = { ProcessInfo.processInfo.environment[$0] }
     /// Local setup effects (link management), injected for tests.
     /// `$HOME` first, like other command-line tools, so a link can target another home.
     public var home: String = ProcessInfo.processInfo.environment["HOME"].flatMap { $0.hasPrefix("/") ? $0 : nil } ?? NSHomeDirectory()

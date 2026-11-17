@@ -357,6 +357,7 @@ extension AppWorkspaceModel {
         let (executable, arguments) = AgentShell.arguments(shell: defaultShell, line: line)
         var configuration = LocalLaunchConfiguration(executable: executable, arguments: arguments, directory: directory, environmentOverrides: environment)
         configuration.agentHook = hook
+        configuration.paneID = paneID
         agentStates[paneID] = AgentStateReducer(integration: definition.integration)
         return configuration
     }

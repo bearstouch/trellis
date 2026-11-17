@@ -81,11 +81,12 @@ extension PaneLayout {
         }
     }
 
-    /// Nearest ancestor on the requested axis, suitable for keyboard resizing.
-    public func enclosingSplit(paneID: UUID, axis: SplitAxis) -> (id: UUID, ratio: Double)? {
+    /// Nearest ancestor on the requested axis, suitable for keyboard resizing. `inFirst` says which side holds the pane:
+    /// the first child's share is `ratio`, the second's the rest.
+    public func enclosingSplit(paneID: UUID, axis: SplitAxis) -> (id: UUID, ratio: Double, inFirst: Bool)? {
         guard case .split(let id, let ownAxis, let ratio, let children) = self, children.count == 2 else { return nil }
-        for child in children where child.paneIDs.contains(paneID) {
-            return child.enclosingSplit(paneID: paneID, axis: axis) ?? (ownAxis == axis ? (id, ratio) : nil)
+        for (index, child) in children.enumerated() where child.paneIDs.contains(paneID) {
+            return child.enclosingSplit(paneID: paneID, axis: axis) ?? (ownAxis == axis ? (id, ratio, index == 0) : nil)
         }
         return nil
     }
