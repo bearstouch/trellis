@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-17
+
+The stable 1.3 release. Coming from 1.2.0, you also get everything listed under the 1.3 betas: automation API protocol 2 (a breaking change for scripts and agents; read [Migration from v1](docs/api/migration.md) first), editor tabs with a Markdown preview, Trellis in Portuguese, French and Spanish, copying to the clipboard from programs over SSH, sharing the MCP server over Tailscale, grant presets and editable grants, an idle timeout for kept sessions, a toggle for `.gitignore`'d files, and faster Files, editor and pane drawing.
+
 ### Added
 
 - **Scripts can act on the pane they run in:** every session Trellis starts on this Mac now has its pane's ID in `TRELLIS_PANE_ID`, and the `trellis` command takes `--pane self` and `--split self`. `trellis pane resize` also takes a pane instead of a split's ID (`--pane self --axis x --share 0.7`, or `--direction left [--by 0.1]`), and `trellis pane focus --direction left|right|up|down` moves focus to the pane on that side. The API methods `pane.resize` and `pane.focus` take the same options.
@@ -472,7 +476,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...v1.3.0
 [1.3.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.2...v1.3.0-beta.3
 [1.3.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.1...v1.3.0-beta.2
 [1.3.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.2.0...v1.3.0-beta.1
