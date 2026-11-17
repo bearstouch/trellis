@@ -43,7 +43,7 @@ trellis --version
 | `--project NAME` | `project.list {query}`, then an exact name match |
 | `--agent ID\|NAME` | `agent.get {id}`; if there is no such ID, `agent.list` and an exact name match |
 
-Lookups follow `nextCursor` to the end. A name that matches several resources exits with 2 (use the ID); no match exits with 3; a lookup the grant may not make keeps its own status (4). Panes, sessions and branches are always UUIDs. Every lookup runs before the command's own call, so a failed one changes nothing.
+Lookups follow `nextCursor` to the end. A name that matches several resources exits with 2 (use the ID); no match exits with 3; a lookup the grant may not make keeps its own status (4). Panes, sessions and branches are always UUIDs, with one exception: `--pane self` and `--split self` name the pane the command runs in, from the `TRELLIS_PANE_ID` Trellis sets in every session it starts on this Mac ([Acting from a pane](methods.md#acting-from-a-pane-api2-09)). Outside a Trellis pane `self` is an argument error (exit 2), and nothing is sent. Every lookup runs before the command's own call, so a failed one changes nothing.
 
 ## Commands
 
@@ -68,9 +68,10 @@ Lookups follow `nextCursor` to the end. A name that matches several resources ex
 | `tab reorder` | `tab.reorder` | `--space --ids` |
 | `tab close` | `tab.close` | `--tab [--allow-running] [--force]` |
 | `pane list` | `pane.list` | `--tab` or `--space` |
-| `pane get` / `focus` | `pane.get` / `focus` | `--pane` |
+| `pane get` | `pane.get` | `--pane` |
+| `pane focus` | `pane.focus` | `--pane [--direction left\|right\|up\|down]` |
 | `pane split` | `pane.split` | `--pane --axis x\|y [--ratio] [--start]` |
-| `pane resize` | `pane.resize` | `--branch --ratio` |
+| `pane resize` | `pane.resize` | one of `--branch --ratio`, `--pane --axis x\|y --share`, `--pane --direction left\|right\|up\|down [--by]` |
 | `pane maximize` | `pane.maximize` | `--pane [--restore]` |
 | `pane close` | `pane.close` | `--pane [--allow-running] [--force]` |
 | `session get` | `session.get` | `--session` |
@@ -175,6 +176,10 @@ t workspace get --include tabs,panes
 t space create --name Build --start
 t tab create --space Build --title Server
 t pane split --pane PANE_UUID --axis x
+t pane split --pane self --axis y --start          # from a script running in a pane
+t pane resize --pane self --axis x --share 0.7     # this pane's side takes 70% of the width
+t pane resize --pane self --direction down --by 0.1
+t pane focus --pane self --direction left
 t session start --pane PANE_UUID --shell --directory ~/code/app
 t session execute --session SESSION_UUID --command 'swift test' --wait
 t session output --session SESSION_UUID --view screen

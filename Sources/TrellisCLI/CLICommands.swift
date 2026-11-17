@@ -68,8 +68,8 @@ enum CLICommands {
             "list": spec("pane.list", ["tab", "space"]),
             "get": spec("pane.get", ["pane"], required: ["pane"]),
             "split": spec("pane.split", ["pane", "axis", "ratio"], switches: ["start"], required: ["pane", "axis"]),
-            "resize": spec("pane.resize", ["branch", "ratio"], required: ["branch", "ratio"]),
-            "focus": spec("pane.focus", ["pane"], required: ["pane"]),
+            "resize": spec("pane.resize", ["branch", "ratio", "pane", "axis", "share", "direction", "by"]),
+            "focus": spec("pane.focus", ["pane", "direction"], required: ["pane"]),
             "maximize": spec("pane.maximize", ["pane"], switches: ["restore"], required: ["pane"]),
             "close": spec("pane.close", ["pane"], switches: ["allow-running", "force"], required: ["pane"])
         ],

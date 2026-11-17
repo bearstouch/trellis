@@ -109,15 +109,29 @@ extension AutomationServiceV2 {
         case "pane.get": return ConventionsV2.resource("pane", try pane(call, try p.uuid("id")))
         case "pane.split": return try await split(call)
         case "pane.resize":
-            let branchID = try p.uuid("branchId")
-            guard let ratio = try p.optionalDouble("ratio"), let tab = model.snapshot.tabs.values.first(where: { $0.root.contains(branch: branchID) }) else { throw Self.notFound }
+            let target = try resizeTarget(p)
+            // A pane's revision was checked by the dispatcher; a branch has none, so its tab's is checked with the command.
             let result = try await run(
-                .resizeSplit(tabID: tab.id, splitID: branchID, ratio: ratio, canvas: model.automationCanvas(tab.id)), expecting: p.expectedRevision.map { .tab(tab.id, revision: $0) })
-            return ConventionsV2.resource("tab", try self.tab(call, tab.id), workspaceRevision: result.snapshot.revision)
+                .resizeSplit(tabID: target.tab.id, splitID: target.branchID, ratio: target.ratio, canvas: model.automationCanvas(target.tab.id)),
+                expecting: target.byBranch ? p.expectedRevision.map { .tab(target.tab.id, revision: $0) } : nil)
+            return ConventionsV2.resource("tab", try self.tab(call, target.tab.id), workspaceRevision: result.snapshot.revision)
         case "pane.focus":
-            let id = try p.uuid("id")
+            var id = try p.uuid("id")
+            let direction = try p.optionalString("direction").flatMap(PaneDirection.init(rawValue:))
+            var maximizedTab: UUID?
+            if let direction {
+                guard let tab = model.snapshot.panes[id].flatMap({ model.snapshot.tabs[$0.tabID] }) else { throw Self.notFound }
+                guard let next = PaneGeometry(layout: tab.root, canvas: model.automationCanvas(tab.id)).neighbor(of: id, direction: direction) else {
+                    throw Self.invalidState("This pane has no pane on its \(direction.rawValue) side.", state: "noNeighbor")
+                }
+                id = next
+                if model.maximizedPanes[tab.id] != nil { maximizedTab = tab.id }
+            }
             let result = try await run(.selectPane(id: id))
-            return ConventionsV2.resource("pane", try pane(call, id), workspaceRevision: result.snapshot.revision)
+            // As the app's Focus shortcuts: in a maximized tab the pane moved to is the one shown. Focus already moved, so a
+            // pane that started closing meanwhile is skipped, as the app skips it, instead of failing a call that took effect.
+            if let maximizedTab, model.maximizedPanes[maximizedTab] != nil { try? await model.automationSetMaximized(id, true) }
+            return ConventionsV2.resource("pane", try pane(call, id), workspaceRevision: maximizedTab == nil ? result.snapshot.revision : model.snapshot.revision)
         case "pane.maximize":
             let id = try p.uuid("id")
             let maximized = try p.bool("maximized")
@@ -131,6 +145,45 @@ extension AutomationServiceV2 {
             return try await close(.deletePane(id: id), kind: "pane", id: id, p, expecting: nil)
         default: throw ControlError.methodNotFound
         }
+    }
+
+    /// The split a `pane.resize` call names and its first child's new share. A pane names the nearest split around it on
+    /// one axis: `share` is for the side holding the pane, `direction` moves the divider as the app's shortcuts do.
+    @MainActor private func resizeTarget(_ p: ParamsV2) throws -> (tab: WorkspaceTab, branchID: UUID, ratio: Double, byBranch: Bool) {
+        func invalid(_ key: String, _ expectation: String) -> ControlError { .invalidParams("Invalid \(key).", fields: [key: expectation]) }
+        let snapshot = model.snapshot
+        let ratio = try p.optionalDouble("ratio"), share = try p.optionalDouble("share"), by = try p.optionalDouble("by")
+        let axis = try p.optionalString("axis").map { $0 == "y" ? SplitAxis.y : .x }
+        let direction = try p.optionalString("direction").flatMap(PaneDirection.init(rawValue:))
+        if let branchID = try p.optionalUUID("branchId") {
+            guard let ratio else { throw invalid("ratio", "required with branchId") }
+            guard axis == nil else { throw invalid("axis", "only with id") }
+            guard by == nil else { throw invalid("by", "only with direction") }
+            guard let tab = snapshot.tabs.values.first(where: { $0.root.contains(branch: branchID) }) else { throw Self.notFound }
+            return (tab, branchID, ratio, true)
+        }
+        let paneID = try p.uuid("id")
+        guard ratio == nil else { throw invalid("ratio", "only with branchId; a pane takes share or direction") }
+        guard let tab = snapshot.panes[paneID].flatMap({ snapshot.tabs[$0.tabID] }) else { throw Self.notFound }
+        func split(_ axis: SplitAxis) throws -> (id: UUID, ratio: Double, inFirst: Bool) {
+            guard let split = tab.root.enclosingSplit(paneID: paneID, axis: axis) else {
+                throw Self.invalidState("This pane has no \(axis == .x ? "left/right" : "top/bottom") split around it.", state: "noSplit")
+            }
+            return split
+        }
+        // The store takes 0.1–0.9; a step past the end stops there, and 1 - 0.9 must not fall just short of 0.1.
+        func clamped(_ ratio: Double) -> Double { min(0.9, max(0.1, ratio)) }
+        if let direction {
+            guard axis == nil else { throw invalid("axis", "only with share") }
+            let backwards = direction == .left || direction == .up
+            let split = try split(direction == .left || direction == .right ? .x : .y)
+            return (tab, split.id, clamped(split.ratio + (backwards ? -1 : 1) * (by ?? 0.05)), false)
+        }
+        guard by == nil else { throw invalid("by", "only with direction") }
+        guard let share else { throw invalid("share", "required with id, unless direction is sent") }
+        guard let axis else { throw invalid("axis", "required with share") }
+        let split = try split(axis)
+        return (tab, split.id, clamped(split.inFirst ? share : 1 - share), false)
     }
 
     /// As the app splits: the existing pane is the first child, the new pane inherits its machine (the space's) and folder.

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Scripts can act on the pane they run in:** every session Trellis starts on this Mac now has its pane's ID in `TRELLIS_PANE_ID`, and the `trellis` command takes `--pane self` and `--split self`. `trellis pane resize` also takes a pane instead of a split's ID (`--pane self --axis x --share 0.7`, or `--direction left [--by 0.1]`), and `trellis pane focus --direction left|right|up|down` moves focus to the pane on that side. The API methods `pane.resize` and `pane.focus` take the same options.
+
 ### Fixed
 
 - **Split dividers were hard to grab and jerky to drag:** a divider could only be caught on its 1-point line, showed no resize cursor, and every mouse step redrew the whole window. Dividers now have a 7-point grab area with the resize cursor, a drag redraws only the panes of that split, and it stops at a pane's minimum size instead of sticking short of it. The new position is saved when the mouse is released.
