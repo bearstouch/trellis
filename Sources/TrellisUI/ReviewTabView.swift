@@ -9,6 +9,8 @@ struct ReviewTabView: View {
     let review: ReviewTab
     @FocusState private var focused: Bool
     @State private var changeIndex: Int?
+    @State private var jump: DiffJump?
+    @State private var diffFocus = DiffFocusRequest()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,8 +23,13 @@ struct ReviewTabView: View {
         }
         .background(model.panesTranslucent ? .clear : model.terminalBackground)
         .accessibilityElement(children: .contain).accessibilityLabel(L("Review %@", review.file.name))
-        .onAppear { DispatchQueue.main.async { focused = true } }
-        .onChange(of: review.file) { _, _ in changeIndex = nil }
+        .onAppear {
+            diffFocus.pending = true
+            DispatchQueue.main.async { focused = true }
+        }
+        .onChange(of: review.file) { _, _ in
+            changeIndex = nil; jump = nil
+        }
         // Staging from here must say how it went with the sidebar hidden too; the Changes view announces it when shown.
         .onChange(of: model.gitChanges.status) { _, status in
             if let status, model.visibleSidebarView != .changes { AccessibilityNotification.Announcement(status).post() }
@@ -117,20 +124,20 @@ struct ReviewTabView: View {
             Text(detail).font(.callout).foregroundStyle(model.themeColor(.mutedForeground))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity).focusable().focused($focused).focusEffectDisabled().onKeyPress(phases: .down) { handleKey($0) }
+        // A notice takes the keyboard a diff was asked to take, so `]` from a diff onto a binary file keeps working, and
+        // the request doesn't wait for some later diff.
+        .onAppear {
+            guard diffFocus.pending else { return }
+            diffFocus.pending = false
+            DispatchQueue.main.async { focused = true }
+        }
         .accessibilityElement(children: .combine)
     }
 
     private func diff(_ lines: [GitDiffLine]) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView([.vertical]) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(lines) { line in DiffLineRow(model: model, line: line).id(line.id) }
-                }.padding(.vertical, 4)
-            }
-            .focusable().focused($focused).focusEffectDisabled()
-            .onKeyPress(phases: .down) { handleKey($0, proxy: proxy) }
-            .accessibilityLabel(L("Unified diff of %@", review.file.name))
-        }
+        DiffTextView(
+            lines: lines, palette: DiffPalette(model), accessibilityName: L("Unified diff of %@", review.file.name), jump: jump, reduceMotion: model.reduceMotion,
+            focus: diffFocus, onKey: { handleKey($0) })
     }
 
     private var footer: some View {
@@ -152,73 +159,43 @@ struct ReviewTabView: View {
 
     // MARK: Keyboard
 
-    private func handleKey(_ press: KeyPress, proxy: ScrollViewProxy? = nil) -> KeyPress.Result {
+    /// A notice's keys, through SwiftUI.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         guard press.modifiers.subtracting([.shift, .numericPad]).isEmpty || press.key == .escape else { return .ignored }
         switch press.key {
-        case .escape: model.hideReview()
-        case .return: Task { await model.openGitChange(review.root, review.file) }
-        default:
-            switch press.characters {
-            case "]": Task { await model.reviewAdjacentFile(1) }
-            case "[": Task { await model.reviewAdjacentFile(-1) }
-            case "n", "p":
-                guard let proxy, let starts = review.diff?.changeStarts, !starts.isEmpty else { return .ignored }
-                let next: Int
-                if let current = changeIndex {
-                    next = min(max(current + (press.characters == "n" ? 1 : -1), 0), starts.count - 1)
-                } else {
-                    next = press.characters == "n" ? 0 : starts.count - 1
-                }
-                changeIndex = next
-                withAnimation(model.reduceMotion ? nil : .easeOut(duration: 0.15)) { proxy.scrollTo(starts[next], anchor: .init(x: 0, y: 0.25)) }
-            default: return .ignored
+        case .escape: return perform("\u{1B}") ? .handled : .ignored
+        case .return: return perform("\r") ? .handled : .ignored
+        default: return perform(press.characters) ? .handled : .ignored
+        }
+    }
+
+    /// The diff's keys, from its text view.
+    private func handleKey(_ event: NSEvent) -> Bool {
+        let escape = event.keyCode == 53
+        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty || escape else { return false }
+        return perform(escape ? "\u{1B}" : [36, 76].contains(event.keyCode) ? "\r" : event.charactersIgnoringModifiers ?? "")
+    }
+
+    private func perform(_ key: String) -> Bool {
+        switch key {
+        case "\u{1B}": model.hideReview()
+        case "\r": Task { await model.openGitChange(review.root, review.file) }
+        // The file these lead to takes the keyboard, as this one has it.
+        case "]", "[":
+            diffFocus.pending = true
+            Task { await model.reviewAdjacentFile(key == "]" ? 1 : -1) }
+        case "n", "p":
+            guard case .lines? = review.diff?.body, let starts = review.diff?.changeStarts, !starts.isEmpty else { return false }
+            let next: Int
+            if let current = changeIndex {
+                next = min(max(current + (key == "n" ? 1 : -1), 0), starts.count - 1)
+            } else {
+                next = key == "n" ? 0 : starts.count - 1
             }
+            changeIndex = next
+            jump = DiffJump(line: starts[next])
+        default: return false
         }
-        return .handled
-    }
-}
-
-/// One diff line: old and new numbers, a `+`/`−` mark and the text on a tinted background; it reads as "Added line 12: …".
-private struct DiffLineRow: View {
-    @ObservedObject var model: AppWorkspaceModel
-    let line: GitDiffLine
-
-    var body: some View {
-        let muted = model.themeColor(.mutedForeground)
-        let tint = self.tint
-        HStack(alignment: .top, spacing: 0) {
-            number(line.old).background(tint.map { $0.opacity(0.18) } ?? .clear)
-            number(line.new).background(tint.map { $0.opacity(0.18) } ?? .clear)
-            Text(mark).fontWeight(.semibold).foregroundStyle(tint ?? muted).frame(width: 20)
-            Text(line.text.isEmpty ? " " : line.text)
-                .foregroundStyle(line.kind == .hunk ? model.themeColor(.accent) : line.kind == .note ? muted : model.themeColor(.foreground))
-                .italic(line.kind == .note)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 16)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.system(size: 12, design: .monospaced)).lineSpacing(2)
-        .background(line.kind == .hunk ? model.themeColor(.accent).opacity(0.08) : tint.map { $0.opacity(0.11) } ?? .clear)
-        .textSelection(.enabled)
-        .accessibilityElement(children: .ignore).accessibilityLabel(line.spoken)
-    }
-
-    private var tint: Color? {
-        switch line.kind {
-        case .added: model.themeColor(.success)
-        case .removed: model.themeColor(.error)
-        default: nil
-        }
-    }
-
-    private var mark: String {
-        switch line.kind {
-        case .added: "+"
-        case .removed: "−"
-        default: ""
-        }
-    }
-
-    private func number(_ value: Int?) -> some View {
-        Text(value.map(String.init) ?? "").foregroundStyle(model.themeColor(.mutedForeground)).frame(width: 46, alignment: .trailing).padding(.trailing, 6)
+        return true
     }
 }
