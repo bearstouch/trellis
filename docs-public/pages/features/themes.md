@@ -6,7 +6,7 @@ A theme sets the colors of the whole app and of the terminal panes. Trellis come
 
 Open **Settings → Appearance** (<kbd>⌘</kbd><kbd>,</kbd>).
 
-- **Application appearance** is **System**, **Dark** or **Light**. Dark is the default on a fresh install. System follows macOS as it switches between light and dark; Dark and Light stay fixed.
+- **Application appearance** is **System**, **Light** or **Dark**: choose a tile. Each tile shows a small window in the theme it uses, and System shows your light and dark themes side by side. Dark is the default on a fresh install. System follows macOS as it switches between light and dark; Dark and Light stay fixed.
 - **Light theme** and **Dark theme** pick a theme for each appearance separately, so you can pair your own dark theme with a built-in light one.
 
 Choose **Apply Appearance** to save. The new colors reach every window and pane at once, without restarting shells, changing what's on screen, or losing your focus or selection.

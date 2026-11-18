@@ -43,30 +43,30 @@ struct UpdateSettingsView: View {
     @ObservedObject var updates: UpdateSettingsModel
     var body: some View {
         Form {
-            // Not LabeledContent: a Form puts its label in a column of its own, left of the toggles below.
-            HStack(spacing: 8) {
-                Text(L("Current version"))
-                Text(updates.version)
+            Section(L("Current version")) {
+                LabeledContent {
+                    Button(L("Check Now")) { updates.checkNow() }.disabled(!updates.canCheck).accessibilityIdentifier("settings.updates.checkNow")
+                } label: {
+                    SettingsLabel(updates.version, help: lastCheckText)
+                }
+                .accessibilityIdentifier("settings.updates.version")
             }
-            .accessibilityElement(children: .combine).accessibilityIdentifier("settings.updates.version")
-            Toggle(L("Automatically check for updates"), isOn: Binding(get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
+            Section(L("Automatic updates")) {
+                Toggle(isOn: Binding(get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) })) {
+                    SettingsLabel(L("Automatically check for updates"), help: L("Checks once a day. Trellis only downloads the update list; it sends no usage data."))
+                }
                 .accessibilityIdentifier("settings.updates.automatic")
-            caption(L("Checks once a day. Trellis only downloads the update list; it sends no usage data."))
-            Toggle(L("Include beta versions"), isOn: Binding(get: { updates.includeBetas }, set: { updates.setIncludeBetas($0) }))
+                Toggle(isOn: Binding(get: { updates.includeBetas }, set: { updates.setIncludeBetas($0) })) {
+                    SettingsLabel(L("Include beta versions"), help: L("Offers pre-release builds as well as stable ones."))
+                }
                 .accessibilityIdentifier("settings.updates.betas")
-            caption(L("Offers pre-release builds as well as stable ones."))
-            HStack {
-                Text(lastCheckText).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("settings.updates.lastCheck")
-                Spacer()
-                Button(L("Check Now")) { updates.checkNow() }.disabled(!updates.canCheck).accessibilityIdentifier("settings.updates.checkNow")
             }
         }
-        .padding(16)
+        .settingsFormStyle()
         .onAppear { updates.refresh() }
     }
     private var lastCheckText: String {
         guard let date = updates.lastCheck else { return L("Never checked") }
         return L("Last checked %@", date.formatted(date: .abbreviated, time: .shortened))
     }
-    private func caption(_ text: String) -> some View { Text(text).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption() }
 }
