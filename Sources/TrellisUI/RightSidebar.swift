@@ -120,6 +120,7 @@ struct AgentsSidebarView: View {
 
     var body: some View {
         let muted = model.themeColor(.mutedForeground)
+        let usageAgents = model.agentUsageAgents
         VStack(spacing: 0) {
             SidebarHeader(model: model, view: .agents) { EmptyView() }
             Divider().overlay(model.separatorOverlay)
@@ -133,6 +134,11 @@ struct AgentsSidebarView: View {
                     let rows = model.agentSessionRows
                     if rows.isEmpty { Text(L("No agents are open.")).font(.caption).foregroundStyle(muted) }
                     ForEach(rows) { row in runningRow(row) }
+                    // FR-AG22: below Running, only for agents turned on in Settings → Agents.
+                    if !usageAgents.isEmpty {
+                        Divider().padding(.vertical, 2)
+                        AgentUsageSection(model: model, agents: usageAgents)
+                    }
                 }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider().overlay(model.separatorOverlay)
@@ -147,6 +153,8 @@ struct AgentsSidebarView: View {
         .task(id: model.presentation.activePane?.id) {
             if let pane = model.presentation.activePane?.id, !model.isRemoteWorkspace(paneID: pane) { model.refreshAgentAvailability() }
         }
+        // FR-AG22: usage is asked for only while this view is on screen, and again when an agent is turned on.
+        .task(id: usageAgents.map(\.id)) { await model.pollAgentUsage() }
     }
 
     @ViewBuilder private var target: some View {

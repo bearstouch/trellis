@@ -25,7 +25,7 @@ Trellis relies on the system and on existing tools rather than reimplementing th
 
 - SSH runs as `/usr/bin/ssh` inside a PTY, so the user's OpenSSH configuration, keys, agent, known-hosts policy and proxy settings all apply.
 - Host-key verification and interactive authentication stay in the terminal.
-- Trellis doesn't implement SSH. Its only credential handling is an optional per-host password in the macOS Keychain, given to ssh through `SSH_ASKPASS` for its password prompt only ([FR-H06–FR-H09](features/ssh-hosts.md#saved-passwords)).
+- Trellis doesn't implement SSH. Its only credential handling is an optional per-host password in the macOS Keychain, given to ssh through `SSH_ASKPASS` for its password prompt only ([FR-H06–FR-H09](features/ssh-hosts.md#saved-passwords)). Separately, the opt-in agent usage view reads, but never writes, Claude Code's own Keychain sign-in ([FR-AG23](features/agents.md#requirements)).
 - Arguments are built without a shell. There's no unrestricted "extra arguments" field, and destinations that start with `-` or contain control characters are rejected.
 
 **INT-04 (P0).** Discovery reads literal aliases from `~/.ssh/config`, as a best effort; it isn't an OpenSSH parser.

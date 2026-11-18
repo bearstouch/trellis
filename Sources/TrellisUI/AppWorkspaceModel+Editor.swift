@@ -106,15 +106,16 @@ extension AppWorkspaceModel {
 
     /// Opens `path` in an editor tab of the selected space, or shows the tab that has it, at `line`. Returns false when
     /// the file isn't text the editor can keep intact (FR-ED02), so the caller can hand it elsewhere; other failures
-    /// are shown and return true.
+    /// are shown and return true. `preview` shows a Markdown tab's preview (FR-ED15); other files ignore it.
     @discardableResult
-    public func openInEditor(path rawPath: String, line: Int? = nil, column: Int? = nil, projectRoot: String? = nil) async -> Bool {
+    public func openInEditor(path rawPath: String, line: Int? = nil, column: Int? = nil, projectRoot: String? = nil, preview: Bool = false) async -> Bool {
         guard let spaceID = presentation.selectedSpace?.id else { return true }
         // `a/./b` and `a/x/../b` name one file, so they share one tab.
         let path = URL(fileURLWithPath: rawPath).standardizedFileURL.path
         let jump = line.map { EditorJump(line: $0, column: column) }
         if let open = editorTabs[spaceID]?.first(where: { $0.document.path == path }) {
             if let jump { updateEditor(open.id) { $0.jump = jump } }
+            if preview { showEditorPreview(open.id) }
             selectEditor(open.id)
             return true
         }
@@ -125,11 +126,13 @@ extension AppWorkspaceModel {
             // The space may have closed, or the file opened twice, while it was read.
             guard snapshot.spaces.contains(where: { $0.id == spaceID }) else { return true }
             if let open = editorTabs[spaceID]?.first(where: { $0.document.path == path }) {
+                if preview { showEditorPreview(open.id) }
                 selectEditor(open.id)
                 return true
             }
             let root = projectRoot ?? files.root
-            let tab = EditorTab(id: UUID(), spaceID: spaceID, document: document, text: document.text, banner: nil, jump: jump, projectRoot: root)
+            var tab = EditorTab(id: UUID(), spaceID: spaceID, document: document, text: document.text, banner: nil, jump: jump, projectRoot: root)
+            tab.showsPreview = preview && tab.isMarkdown
             var tabs = editorTabs[spaceID] ?? []
             // After the shown editor tab, else after the others.
             let index = shownEditors[spaceID].flatMap { shown in tabs.firstIndex { $0.id == shown } }.map { $0 + 1 } ?? tabs.count
@@ -160,10 +163,10 @@ extension AppWorkspaceModel {
     }
 
     /// Opens a terminal link in an editor tab (FR-ED07); false hands it back to the terminal's usual open.
-    func openLinkInEditor(paneID: UUID, path: String, line: Int?, column: Int?) async -> Bool {
+    func openLinkInEditor(paneID: UUID, path: String, line: Int?, column: Int?, preview: Bool = false) async -> Bool {
         guard let context = fileLinkContext(paneID: paneID), editorMayOpenLink(path, context: context) else { return false }
         if let tabID = snapshot.panes[paneID]?.tabID, let spaceID = snapshot.tabs[tabID]?.spaceID, presentation.selectedSpace?.id != spaceID { return false }
-        return await openInEditor(path: path, line: line, column: column, projectRoot: context.projectRoot)
+        return await openInEditor(path: path, line: line, column: column, projectRoot: context.projectRoot, preview: preview)
     }
 
     /// A link to a regular file inside the pane's project or current folder; a folder keeps FR-L02 (opens in Finder).
@@ -223,6 +226,14 @@ extension AppWorkspaceModel {
             $0.showsPreview.toggle(); $0.previewAnchor = nil
         }
         if tab.showsPreview, shownEditor?.id == id { editorFocusRequest += 1 }
+    }
+
+    /// Shows a Markdown tab's preview from its start, as a link asking for it does (FR-ED15).
+    private func showEditorPreview(_ id: UUID) {
+        guard editorTab(id)?.isMarkdown == true else { return }
+        updateEditor(id) {
+            $0.showsPreview = true; $0.previewAnchor = nil
+        }
     }
 
     /// Back to the source, as Find does while the preview is shown.

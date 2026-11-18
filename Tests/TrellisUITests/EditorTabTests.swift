@@ -457,6 +457,28 @@ final class EditorTabTests: XCTestCase {
     }
 
     @MainActor
+    func testTerminalLinksCanOpenAMarkdownPreview() async throws {
+        let (model, pane, _) = try await makeModel()
+        defer { cleanUp(model) }
+        let opened = await model.openLinkInEditor(paneID: pane, path: project + "/README.md", line: nil, column: nil, preview: true)
+        XCTAssertTrue(opened)
+        let readme = try XCTUnwrap(model.shownEditor)
+        XCTAssertTrue(readme.isMarkdown)
+        XCTAssertTrue(readme.showsPreview, "A new tab opens on its preview")
+
+        model.toggleEditorPreview(readme.id)
+        XCTAssertFalse(try XCTUnwrap(model.editorTab(readme.id)).showsPreview)
+        _ = await model.openLinkInEditor(paneID: pane, path: project + "/README.md", line: nil, column: nil, preview: true)
+        XCTAssertEqual(model.currentEditors.count, 1, "The open tab is reused")
+        XCTAssertTrue(try XCTUnwrap(model.editorTab(readme.id)).showsPreview, "…and switches to its preview")
+
+        _ = await model.openLinkInEditor(paneID: pane, path: project + "/Sources/App.swift", line: nil, column: nil, preview: true)
+        XCTAssertFalse(try XCTUnwrap(model.shownEditor).showsPreview, "Only Markdown has a preview")
+        let outside = await model.openLinkInEditor(paneID: pane, path: scratch.appendingPathComponent("other/x.md").path, line: nil, column: nil, preview: true)
+        XCTAssertFalse(outside, "Outside the project, the link opens as before")
+    }
+
+    @MainActor
     func testMarkdownTabsToggleAPreviewThatKeepsEditingWorking() async throws {
         let (model, _, _) = try await makeModel()
         defer { cleanUp(model) }
