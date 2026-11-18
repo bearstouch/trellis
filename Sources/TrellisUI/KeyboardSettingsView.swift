@@ -14,43 +14,49 @@ struct KeyboardSettingsView: View {
 
     var body: some View {
         let issues = draft.shortcuts.issues()
-        VStack(alignment: .leading, spacing: 10) {
-            Toggle(L("Use Option as Meta key"), isOn: $draft.optionAsMeta)
-            Text(L("When off, Option types accented and layout characters (such as Portuguese symbols and dead keys). When on, Option sends Esc-prefixed Meta keys."))
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            List {
+        VStack(spacing: 0) {
+            Form {
+                Section(L("Terminal keys")) {
+                    Toggle(isOn: $draft.optionAsMeta) {
+                        SettingsLabel(
+                            L("Use Option as Meta key"),
+                            help: L("When off, Option types accented and layout characters (such as Portuguese symbols and dead keys). When on, Option sends Esc-prefixed Meta keys."))
+                    }
+                }
+                if !issues.isEmpty {
+                    // One stack, so the combined label is spoken once: on a Section it would land on every row.
+                    Section {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
+                                Label(issue.description, systemImage: "exclamationmark.triangle").foregroundStyle(model.themeColor(.warning))
+                            }
+                        }
+                        .accessibilityElement(children: .combine).accessibilityLabel(L("Shortcut problems: %@", issues.map(\.description).joined(separator: " ")))
+                    }
+                }
                 ForEach(ShortcutMenu.allCases, id: \.self) { menu in
                     Section(menu.title) {
                         ForEach(ShortcutAction.allCases.filter { $0.menu == menu }, id: \.self) { row($0, issues: issues) }
                     }
                 }
+                if let notice = model.keyboardNotice { Section { SettingsNote(text: notice) } }
             }
-            .frame(minHeight: 220)
+            .settingsFormStyle()
             .accessibilityLabel(L("Keyboard shortcuts"))
-            if !issues.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
-                        Label(issue.description, systemImage: "exclamationmark.triangle").font(.caption)
-                    }
-                }.accessibilityElement(children: .combine).accessibilityLabel(L("Shortcut problems: %@", issues.map(\.description).joined(separator: " ")))
-            }
-            if let notice = model.keyboardNotice { Text(notice).font(.caption) }
-            if let message { Text(message).font(.caption).accessibilityIdentifier("keyboard.result") }
-            HStack {
+            SettingsFooter(message: message) {
                 Button(L("Restore Defaults")) {
                     let meta = draft.optionAsMeta
                     draft = KeyboardSettings()
                     draft.optionAsMeta = meta
                 }
-                Spacer()
                 Button(L("Revert")) { draft = model.keyboard }.disabled(draft == model.keyboard)
                 Button(L("Save Shortcuts")) {
                     let problems = model.saveKeyboardSettings(draft)
                     message = problems.isEmpty ? L("Keyboard settings saved.") : L("Not saved. %@", problems.map(\.description).joined(separator: " "))
-                }.disabled(!issues.isEmpty || draft == model.keyboard)
+                }
+                .disabled(!issues.isEmpty || draft == model.keyboard)
             }
         }
-        .padding(16)
         .onAppear { draft = model.keyboard }
         .onDisappear(perform: stopRecording)
     }

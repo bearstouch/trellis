@@ -1322,96 +1322,128 @@ public struct LaunchSettingsView: View {
         }
         return model.shellIntegrationEnabled ? L("%@ supports shell integration.", name) : L("%@ supports shell integration; it's turned off below.", name)
     }
-    /// A wrapping caption: the form never grows wider than the pane.
-    private func caption(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
+    private var stopSessionsHelp: String {
+        model.keepSessionsRunning
+            ? L("Sessions run in a background helper: they keep running when you quit, close the window or Trellis stops unexpectedly, and reconnect next time. Logging out or restarting ends them.")
+            : L("Quitting or closing the window stops every session. Sessions still survive if Trellis stops unexpectedly.")
+    }
+    private var clipboardHelp: String {
+        switch model.appearance.clipboardWriteAccess {
+        case .off: L("Programs can't set the clipboard (OSC 52). Selecting text and ⌘C always work.")
+        case .ssh:
+            L("Programs on remote hosts (saved hosts, remote workspaces and ssh or mosh sessions) can replace what you copied, as Claude Code, tmux and Neovim do over SSH. They can never read it.")
+        // Spoken and visible, not color-only: the risk is in the words.
+        case .everywhere:
+            L("Risk: any output, including a file you cat or a page you curl, can silently replace what you copied. Check what you paste. Programs can never read the clipboard.")
+        }
     }
     public var body: some View {
-        Form {
-            Picker(L("Shell"), selection: shellSelection) {
-                ForEach(shells) { option in
-                    Text(option.integration == nil ? "\(option.name)  —  \(option.path)" : L("%1$@  —  %2$@  ·  Shell integration", option.name, option.path))
-                        .tag(option.path)
+        VStack(spacing: 0) {
+            Form {
+                Section(L("Shell")) {
+                    Picker(selection: shellSelection) {
+                        ForEach(shells) { option in
+                            Text(option.integration == nil ? "\(option.name)  —  \(option.path)" : L("%1$@  —  %2$@  ·  Shell integration", option.name, option.path))
+                                .tag(option.path)
+                        }
+                        Divider()
+                        Text(L("Other…")).tag(Self.customTag)
+                    } label: {
+                        SettingsLabel(L("Shell"), help: integrationNote)
+                    }
+                    .accessibilityIdentifier("settings.shell")
+                    if customShell {
+                        TextField(L("Shell executable"), text: $shell).accessibilityIdentifier("settings.shellPath")
+                    }
+                    LabeledContent {
+                        TextField(L("Working directory"), text: $directory).labelsHidden().frame(maxWidth: 260)
+                    } label: {
+                        SettingsLabel(L("Working directory"), help: L("For new local sessions. Use an absolute path."))
+                    }
+                    Toggle(isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })) {
+                        SettingsLabel(
+                            L("Shell integration (zsh, bash, fish)"), help: L("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions."))
+                    }
+                    .accessibilityIdentifier("settings.shellIntegration")
+                    Toggle(isOn: Binding(get: { model.directoryHistoryEnabled }, set: { model.setDirectoryHistoryEnabled($0) })) {
+                        SettingsLabel(
+                            L("Remember directories"),
+                            help: L("Lists where your shells have been under Jump to Directory (⌘J). Kept on this Mac; system, credential and network folders are skipped."))
+                    }
+                    .accessibilityIdentifier("settings.directoryHistory")
+                    LabeledContent {
+                        // Always enabled: a backup or set-aside copy can hold paths while the list is empty (FR-DJ08).
+                        Button(L("Clear Directory History…")) { Task { await model.clearDirectoryHistory() } }
+                            .accessibilityIdentifier("settings.clearDirectoryHistory")
+                    } label: {
+                        SettingsLabel(L("Directory history"), help: L("Removes every remembered directory from Jump to Directory."))
+                    }
                 }
-                Divider()
-                Text(L("Other…")).tag(Self.customTag)
-            }.accessibilityIdentifier("settings.shell")
-            if customShell {
-                TextField(L("Shell executable"), text: $shell).accessibilityIdentifier("settings.shellPath")
+                Section(L("Output")) {
+                    LabeledContent {
+                        TextField(L("Scrollback lines (0–50,000)"), value: $scrollbackLines, format: .number.grouping(.never))
+                            .labelsHidden().multilineTextAlignment(.trailing).frame(maxWidth: 100)
+                            .accessibilityIdentifier("settings.scrollbackLines")
+                    } label: {
+                        SettingsLabel(L("Scrollback lines (0–50,000)"), help: L("For every pane, up to 16 MiB of text. Lowering it drops older output."))
+                    }
+                    Toggle(isOn: appearanceSetting(\.gpuRendering)) {
+                        SettingsLabel(L("GPU rendering (Metal)"), help: L("Draws terminals with Metal, or with the CPU if Metal fails."))
+                    }
+                    .accessibilityIdentifier("settings.gpuRendering")
+                }
+                Section(L("When Trellis quits")) {
+                    Toggle(isOn: Binding(get: { !model.keepSessionsRunning }, set: { model.setKeepSessionsRunning(!$0) })) {
+                        SettingsLabel(L("Stop sessions when Trellis quits"), help: stopSessionsHelp)
+                    }
+                    .accessibilityIdentifier("settings.stopSessionsOnQuit")
+                    if model.sessionDefaultNoticePending {
+                        SettingsNote(text: L("New: sessions now keep running after quit by default. Turn this on to stop them when Trellis quits."))
+                            .accessibilityIdentifier("settings.sessionDefaultNotice")
+                            .onDisappear { model.dismissSessionDefaultNotice() }
+                    }
+                    Toggle(isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })) {
+                        SettingsLabel(
+                            L("Restore scrollback after quit"),
+                            help: L("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis."))
+                    }
+                    .accessibilityIdentifier("settings.restoreScrollback")
+                    Picker(selection: Binding(get: { model.saveBudgetMegabytesPerHour }, set: { model.setSaveBudget(megabytesPerHour: $0) })) {
+                        ForEach(WorkspaceWriteBudget.choices, id: \.self) { Text(L("Up to %d MB per hour", $0)).tag($0) }
+                    } label: {
+                        SettingsLabel(
+                            L("Workspace disk writes"),
+                            help: model.savesThrottled
+                                ? L("Limit reached: changes are now saved together every 5 minutes. Quit and ⌘S still save at once.")
+                                : L("Past this, changes to spaces, tabs and settings are saved together every 5 minutes instead of right away."))
+                    }
+                    .accessibilityIdentifier("settings.saveBudget")
+                }
+                Section(L("Notifications and clipboard")) {
+                    Toggle(isOn: appearanceSetting(\.desktopNotifications)) {
+                        SettingsLabel(L("Desktop notifications"), help: L("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane."))
+                    }
+                    .accessibilityIdentifier("settings.desktopNotifications")
+                    Picker(selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {
+                        ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? L("Off") : L("After %d s", $0)).tag($0) }
+                    } label: {
+                        SettingsLabel(
+                            L("Notify when a command finishes"),
+                            help: L("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line."))
+                    }
+                    .disabled(!model.appearance.desktopNotifications).accessibilityIdentifier("settings.commandFinishedNotification")
+                    Picker(selection: appearanceSetting(\.clipboardWriteAccess)) {
+                        ForEach(ClipboardWriteAccess.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    } label: {
+                        SettingsLabel(
+                            L("Programs can copy to the clipboard"), help: clipboardHelp,
+                            helpColor: model.appearance.clipboardWriteAccess == .everywhere ? model.themeColor(.warning) : nil)
+                    }
+                    .accessibilityIdentifier("settings.clipboardWriteAccess")
+                }
             }
-            caption(integrationNote).accessibilityIdentifier("settings.shellIntegrationNote")
-            TextField(L("Working directory"), text: $directory)
-            caption(L("For new local sessions. Use an absolute path."))
-            TextField(L("Scrollback lines (0–50,000)"), value: $scrollbackLines, format: .number.grouping(.never))
-                .accessibilityIdentifier("settings.scrollbackLines")
-            caption(L("For every pane, up to 16 MiB of text. Lowering it drops older output."))
-            if !message.isEmpty { Text(message).font(.caption).wrappingSettingsCaption().accessibilityIdentifier("settings.result") }
-            Toggle(
-                L("Shell integration (zsh, bash, fish)"),
-                isOn: Binding(get: { model.shellIntegrationEnabled }, set: { model.setShellIntegrationEnabled($0) })
-            ).accessibilityIdentifier("settings.shellIntegration")
-            caption(L("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions."))
-            Toggle(
-                L("Remember directories"),
-                isOn: Binding(get: { model.directoryHistoryEnabled }, set: { model.setDirectoryHistoryEnabled($0) })
-            ).accessibilityIdentifier("settings.directoryHistory")
-            caption(L("Lists where your shells have been under Jump to Directory (⌘J). Kept on this Mac; system, credential and network folders are skipped."))
-            // Always enabled: a backup or set-aside copy can hold paths while the list is empty (FR-DJ08).
-            Button(L("Clear Directory History…")) { Task { await model.clearDirectoryHistory() } }
-                .accessibilityIdentifier("settings.clearDirectoryHistory")
-            Toggle(
-                L("Stop sessions when Trellis quits"),
-                isOn: Binding(get: { !model.keepSessionsRunning }, set: { model.setKeepSessionsRunning(!$0) })
-            ).accessibilityIdentifier("settings.stopSessionsOnQuit")
-            caption(
-                model.keepSessionsRunning
-                    ? L("Sessions run in a background helper: they keep running when you quit, close the window or Trellis stops unexpectedly, and reconnect next time. Logging out or restarting ends them.")
-                    : L("Quitting or closing the window stops every session. Sessions still survive if Trellis stops unexpectedly."))
-            if model.sessionDefaultNoticePending {
-                caption(L("New: sessions now keep running after quit by default. Turn this on to stop them when Trellis quits."))
-                    .accessibilityIdentifier("settings.sessionDefaultNotice")
-                    .onDisappear { model.dismissSessionDefaultNotice() }
-            }
-            Toggle(
-                L("Restore scrollback after quit"),
-                isOn: Binding(get: { model.restoreScrollback }, set: { model.setRestoreScrollback($0) })
-            ).accessibilityIdentifier("settings.restoreScrollback")
-            caption(L("Shows each pane's last output after relaunch. Saved unencrypted; secrets are removed on a best-effort basis."))
-            Picker(
-                L("Workspace disk writes"),
-                selection: Binding(get: { model.saveBudgetMegabytesPerHour }, set: { model.setSaveBudget(megabytesPerHour: $0) })
-            ) {
-                ForEach(WorkspaceWriteBudget.choices, id: \.self) { Text(L("Up to %d MB per hour", $0)).tag($0) }
-            }.accessibilityIdentifier("settings.saveBudget")
-            caption(
-                model.savesThrottled
-                    ? L("Limit reached: changes are now saved together every 5 minutes. Quit and ⌘S still save at once.")
-                    : L("Past this, changes to spaces, tabs and settings are saved together every 5 minutes instead of right away.")
-            ).accessibilityIdentifier("settings.saveBudgetNote")
-            Toggle(L("Desktop notifications"), isOn: appearanceSetting(\.desktopNotifications)).accessibilityIdentifier("settings.desktopNotifications")
-            caption(L("Shows notifications from programs (OSC 9, 777, 99) when you aren’t looking at their pane."))
-            Picker(L("Notify when a command finishes"), selection: appearanceSetting(\.commandFinishedNotificationSeconds)) {
-                ForEach(AppearanceSettings.commandFinishedNotificationChoices, id: \.self) { Text($0 == 0 ? L("Off") : L("After %d s", $0)).tag($0) }
-            }.disabled(!model.appearance.desktopNotifications).accessibilityIdentifier("settings.commandFinishedNotification")
-            caption(L("With shell integration, a long command notifies when it finishes out of view. Only the program name is shown, never the command line."))
-            Picker(L("Programs can copy to the clipboard"), selection: appearanceSetting(\.clipboardWriteAccess)) {
-                ForEach(ClipboardWriteAccess.allCases, id: \.self) { Text($0.displayName).tag($0) }
-            }.accessibilityIdentifier("settings.clipboardWriteAccess")
-            switch model.appearance.clipboardWriteAccess {
-            case .off: caption(L("Programs can't set the clipboard (OSC 52). Selecting text and ⌘C always work."))
-            case .ssh:
-                caption(L("Programs on remote hosts (saved hosts, remote workspaces and ssh or mosh sessions) can replace what you copied, as Claude Code, tmux and Neovim do over SSH. They can never read it."))
-            case .everywhere:
-                // Spoken and visible, not color-only: the risk is in the words.
-                Label(
-                    L("Risk: any output, including a file you cat or a page you curl, can silently replace what you copied. Check what you paste. Programs can never read the clipboard."),
-                    systemImage: "exclamationmark.triangle"
-                ).font(.caption).foregroundStyle(model.themeColor(.warning)).wrappingSettingsCaption().accessibilityIdentifier("settings.clipboardWriteRisk")
-            }
-            Toggle(L("GPU rendering (Metal)"), isOn: appearanceSetting(\.gpuRendering)).accessibilityIdentifier("settings.gpuRendering")
-            caption(L("Draws terminals with Metal, or with the CPU if Metal fails."))
-            HStack {
-                Spacer()
+            .settingsFormStyle()
+            SettingsFooter(message: message.isEmpty ? nil : message) {
                 Button(L("Save")) {
                     guard (0...50_000).contains(scrollbackLines) else { message = L("Use 0–50,000 scrollback lines."); return }
                     saving = true
@@ -1426,10 +1458,11 @@ public struct LaunchSettingsView: View {
                         message = saved ? L("Saved.") : L("Check that the shell is executable and the directory is accessible.")
                         saving = false
                     }
-                }.disabled(saving)
+                }
+                .disabled(saving)
             }
-        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-            .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
+        }
+        .onChange(of: model.appearance.scrollbackLines) { _, value in scrollbackLines = value }
     }
 }
 
