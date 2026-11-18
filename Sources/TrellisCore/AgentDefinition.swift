@@ -9,6 +9,8 @@ public enum AgentIntegration: String, Codable, CaseIterable, Sendable {
     case codexNotify = "codex-notify"
     /// A pi extension loaded with `-e`.
     case piExtension = "pi-extension"
+    /// An OpenCode 2.x plugin, loaded into the pane's own `--standalone` server through `OPENCODE_CONFIG_CONTENT`.
+    case opencodePlugin = "opencode-plugin"
     /// Only the terminal's own signals: bell, desktop notifications and progress (FR-T06–T09).
     case none
 
@@ -17,11 +19,12 @@ public enum AgentIntegration: String, Codable, CaseIterable, Sendable {
         case .claudeHooks: L("Hooks")
         case .codexNotify: L("Notify + bell")
         case .piExtension: L("Extension")
+        case .opencodePlugin: L("Plugin")
         case .none: L("Bell and notifications")
         }
     }
     /// Whether the agent itself says when a prompt starts; without that, submitting input counts as working.
-    public var reportsPrompts: Bool { self == .claudeHooks || self == .piExtension }
+    public var reportsPrompts: Bool { self == .claudeHooks || self == .piExtension || self == .opencodePlugin }
 }
 
 /// What a tab shows in place of its terminal icon while the agent runs (FR-AG09).
@@ -263,7 +266,7 @@ public struct DiskAgentCatalogFiles: AgentCatalogFiles {
 public enum AgentCatalog {
     public static let reservedPrefix = "trellis-"
     public static let fileSuffix = ".agent.json"
-    public static let builtInIDs = ["trellis-claude-code", "trellis-pi", "trellis-codex"]
+    public static let builtInIDs = ["trellis-claude-code", "trellis-pi", "trellis-codex", "trellis-opencode"]
 
     public static func bundled() -> [AgentDefinition] {
         builtInIDs.compactMap { id in

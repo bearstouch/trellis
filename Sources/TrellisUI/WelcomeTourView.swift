@@ -183,7 +183,7 @@ private struct WelcomeTourCopy: View {
         case .sessions: L("Quit Trellis, or lose it to a crash, and your long builds and servers carry on. They’re back in their panes at the next launch.")
         case .projects: L("Save the layout and commands a project needs, then open it all together, ready to work.")
         case .remote: L("Save your SSH hosts, then open one as a whole workspace. When the network drops, your remote sessions keep going.")
-        case .agents: L("Run Claude Code, pi or Codex from the Agents view in the right sidebar, here or on a remote host. Your agent, your account: Trellis adds no AI of its own.")
+        case .agents: L("Run Claude Code, pi, Codex or OpenCode from the Agents view in the right sidebar, here or on a remote host. Your agent, your account: Trellis adds no AI of its own.")
         case .keyboard: L("Three shortcuts are worth learning first. You can rebind all of them in Settings → Keyboard.")
         case .setup: L("A few choices to finish. You can change them later.")
         }
@@ -604,7 +604,7 @@ private struct WelcomeTourStage: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(L("Agents")).font(.system(size: 11, weight: .semibold)).foregroundStyle(fg).padding(.bottom, 8)
                         Text(L("Launch")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
-                        launchRow("Claude Code"); launchRow("pi"); launchRow("Codex")
+                        launchRow("Claude Code"); launchRow("pi"); launchRow("Codex"); launchRow("OpenCode")
                         Rectangle().fill(border.opacity(0.6)).frame(height: 0.5).padding(.vertical, 6)
                         Text(L("Running")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
                         agentRow("checkout", "api · Claude Code") { capsule(L("! Needs you"), yellow) }
