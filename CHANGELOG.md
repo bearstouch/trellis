@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **OpenCode is a built-in agent:** the **Agents** view, the command palette, projects and automation can open OpenCode 2.x, and its tab shows when it is working, needs you (a permission request or a question) or is done, like Claude Code. Trellis starts it with its own server per pane and adds a small plugin to that server, without editing your OpenCode configuration. A missing OpenCode offers its installer, and Settings → Remote Control → **Copy Client Setup** has an `opencode mcp add` command. See [Coding agents](docs/features/agents.md).
+- **Subscription usage in the Agents view:** turn on **Show Claude Code usage** or **Show Codex usage** in Settings → Agents, and the **Agents** view gets a **Usage** section below **Running** with how much of each plan's session (5-hour) and weekly limits you have used, and when they reset. Both are off by default. Claude Code's usage is read with its own sign-in from the Keychain, which Trellis never stores or renews; Codex's comes from the Codex installed on this Mac. See [Coding agents](docs/features/agents.md).
 - **Cursor blink speed:** **Blink cursor** in Settings → Appearance is now a choice of Off, Slow, Normal and Fast instead of an on/off switch. Normal is the speed the cursor blinked at before; the setting applies live under both renderers.
 
 ## [1.3.0] - 2026-11-17

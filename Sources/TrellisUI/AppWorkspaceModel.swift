@@ -423,6 +423,13 @@ public final class AppWorkspaceModel: ObservableObject {
     var agentPathCheckedAt: Date?
     /// Sessions whose launch ran the agent's installer first.
     var agentInstalling: Set<UUID> = []
+    /// FR-AG22: each opted-in agent's subscription usage, by agent ID; runtime only, never persisted.
+    @Published public internal(set) var agentUsage: [String: AgentUsageStatus] = [:]
+    public var agentUsageClient = AgentUsageClient.live
+    /// When each agent's usage was last asked for, and the earliest next ask after a 429.
+    var agentUsageAskedAt: [String: Date] = [:]
+    var agentUsageRetryAt: [String: Date] = [:]
+    var agentUsageInFlight: Set<String> = []
     /// Each host's OS from its helper (`linux`, `darwin`), for the installer that fits it.
     var remoteHostPlatforms: [UUID: String] = [:]
     var activityNow: () -> Date = Date.init

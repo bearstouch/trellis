@@ -288,6 +288,14 @@ struct AgentSettingsView: View {
                 )
             )
             .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
+            // FR-AG22, FR-AG23: both off until turned on here.
+            Text(L("Subscription usage")).font(.subheadline.weight(.semibold)).padding(.top, 4)
+            Toggle(L("Show Claude Code usage in the Agents view"), isOn: $model.claudeUsageEnabled)
+            Text(L("Reads Claude Code’s sign-in from the Keychain and sends it only to Anthropic’s usage service. Trellis never stores, logs or renews it."))
+                .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
+            Toggle(L("Show Codex usage in the Agents view"), isOn: $model.codexUsageEnabled)
+            Text(L("Asks the Codex installed on this Mac (codex app-server) for its plan limits. Usage refreshes every 5 minutes while the Agents view is open."))
+                .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
             Text(
                 L(
                     "Trellis wires each agent’s own hooks at launch, without changing your agent settings. A hook can only set its own pane’s state; it gets no automation access, and nothing from the conversation reaches Trellis. Add an agent by dropping a <id>.agent.json file in the Agents folder."

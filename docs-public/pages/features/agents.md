@@ -59,6 +59,17 @@ For Claude Code, the row also shows the model in place of the agent's name ("Ard
 
 With desktop notifications allowed and **Settings → Agents → Notify me when an agent needs me or finishes while its pane is out of view** on, Trellis posts "<agent> needs you" or "<agent> finished" when that happens in a pane you can't see. The notification's subtitle names the space and tab.
 
+### Subscription usage
+
+The Agents view can show how much of your Claude Code and Codex plans you have used. Turn it on per agent in **Settings → Agents → Subscription usage**: **Show Claude Code usage in the Agents view** and **Show Codex usage in the Agents view**. Both are off until you turn them on.
+
+A **Usage** section then appears below **Running**, with a card for each agent: its plan, a **Session** meter for the 5-hour window and a **Weekly** meter, each with the percentage used and when it resets. Some plans have other windows, such as a model's own weekly limit or Codex Free's monthly one; they show under their own names. A bar turns amber from 80% and red from 95%, and the percentage is always written next to it.
+
+Usage refreshes when you open the view and every 5 minutes while it stays open. The **↻** button refreshes it now. If a refresh fails, the last values stay, dimmed and marked **Stale**.
+
+- **Claude Code:** Trellis reads Claude Code's own sign-in from the Keychain and sends it only to Anthropic's usage service. It never stores or renews it. macOS may ask once whether `security` can read the item. If the sign-in has expired, the card asks you to open Claude Code, which renews it.
+- **Codex:** Trellis asks the Codex installed on this Mac for its limits (`codex app-server`). Codex signed in with an API key has no plan limits to show.
+
 ## Agents you type in a shell
 
 When you type `claude`, `codex` or `pi` (or any agent's command) at a prompt, the tab shows that agent's icon and its title becomes "<agent> · <folder>" while it runs. A tab you renamed keeps its name. Everything goes back when the command finishes.
