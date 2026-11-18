@@ -96,7 +96,7 @@ class CaretView: NSView, CALayerDelegate {
         self.layer?.opacity = 1
         if to {
             let anim = CABasicAnimation.init(keyPath: #keyPath (CALayer.opacity))
-            anim.duration = 0.7
+            anim.duration = terminal?.cursorBlinkInterval ?? 0.7
             anim.autoreverses = true
             anim.repeatCount = Float.infinity
             anim.fromValue = NSNumber (floatLiteral: 1)

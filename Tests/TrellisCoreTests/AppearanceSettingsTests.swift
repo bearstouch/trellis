@@ -142,8 +142,18 @@ final class AppearanceSettingsTests: XCTestCase {
         settings.fontLigatures = false; settings.boldAsBright = false; settings.allowBoldFont = false
         settings.allowItalicFont = false; settings.blinkingText = false; settings.bellStyle = .visual
         settings.desktopNotifications = false; settings.commandFinishedNotificationSeconds = 0
-        settings.gpuRendering = true
+        settings.gpuRendering = true; settings.cursorBlinkSpeed = .fast
         XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)), settings)
+    }
+    func testCursorBlinkSpeedDecodesMissingOrUnknownAsNormal() throws {
+        let base = #"{"chromeMode":"dark","fontName":"Menlo","fontSize":13,"cursorShape":"block","cursorBlinks":true,"scrollbackLines":500,"lightThemeID":"trellis-light","darkThemeID":"trellis-dark""#
+        XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: Data((base + "}").utf8)).cursorBlinkSpeed, .normal)
+        let unknown = try JSONDecoder().decode(AppearanceSettings.self, from: Data((base + #","cursorBlinkSpeed":"ludicrous","fontLigatures":false}"#).utf8))
+        XCTAssertEqual(unknown.cursorBlinkSpeed, .normal, "a newer speed doesn't discard the other settings")
+        XCTAssertFalse(unknown.fontLigatures)
+        XCTAssertTrue(unknown.cursorBlinks)
+        let slow = try JSONDecoder().decode(AppearanceSettings.self, from: Data((base + #","cursorBlinkSpeed":"slow"}"#).utf8))
+        XCTAssertEqual(slow.cursorBlinkSpeed, .slow)
     }
     func testTerminalRenderingDiffersCoversTextStyleFields() {
         let base = AppearanceSettings()
@@ -161,7 +171,7 @@ final class AppearanceSettingsTests: XCTestCase {
             { $0.fontName = "Menlo" }, { $0.fontSize = 14 }, { $0.cursorShape = .bar }, { $0.cursorBlinks = true },
             { $0.scrollbackLines = 1 }, { $0.fontLigatures = false }, { $0.boldAsBright = false },
             { $0.allowBoldFont = false }, { $0.allowItalicFont = false }, { $0.blinkingText = false }, { $0.gpuRendering = true },
-            { $0.bellStyle = .off }
+            { $0.bellStyle = .off }, { $0.cursorBlinkSpeed = .fast }
         ]
         for (index, change) in changes.enumerated() {
             var changed = base

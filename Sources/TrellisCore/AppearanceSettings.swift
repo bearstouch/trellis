@@ -13,6 +13,19 @@ public enum ChromeMode: String, Codable, CaseIterable, Sendable {
 
 public enum TerminalCursorShape: String, Codable, CaseIterable, Sendable { case block, underline, bar }
 
+/// How fast a blinking cursor blinks (FR-TX06); Normal is the engine's original rate.
+public enum TerminalCursorBlinkSpeed: String, Codable, CaseIterable, Sendable {
+    case slow, normal, fast
+    /// Seconds the cursor stays shown, then hidden, in each blink.
+    public var phaseSeconds: Double {
+        switch self {
+        case .slow: 1.0;
+        case .normal: 0.7;
+        case .fast: 0.4
+        }
+    }
+}
+
 /// What a BEL does (FR-T07). Attention requests (FR-T06) fire whatever the style.
 public enum TerminalBellStyle: String, Codable, CaseIterable, Sendable {
     case sound, visual, soundAndVisual, off
@@ -33,6 +46,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var fontSize: Double = 13
     public var cursorShape: TerminalCursorShape = .block
     public var cursorBlinks = false
+    /// Used only while `cursorBlinks` is on, and kept while it's off.
+    public var cursorBlinkSpeed: TerminalCursorBlinkSpeed = .normal
     public var scrollbackLines = 10_000
     public var lightThemeID = "trellis-light"
     public var darkThemeID = "trellis-dark"
@@ -61,7 +76,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var clipboardWriteAccess: ClipboardWriteAccess = .off
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, scrollbackLines, lightThemeID, darkThemeID
+        case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, cursorBlinkSpeed, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
         case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, language, clipboardWriteAccess
     }
@@ -73,6 +88,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         fontSize = try c.decode(Double.self, forKey: .fontSize)
         cursorShape = try c.decode(TerminalCursorShape.self, forKey: .cursorShape)
         cursorBlinks = try c.decode(Bool.self, forKey: .cursorBlinks)
+        // Settings saved before FR-TX06, or naming a speed this build doesn't have, blink at Normal.
+        cursorBlinkSpeed = (try? c.decodeIfPresent(TerminalCursorBlinkSpeed.self, forKey: .cursorBlinkSpeed)) ?? .normal
         scrollbackLines = try c.decode(Int.self, forKey: .scrollbackLines)
         lightThemeID = try c.decode(String.self, forKey: .lightThemeID)
         darkThemeID = try c.decode(String.self, forKey: .darkThemeID)

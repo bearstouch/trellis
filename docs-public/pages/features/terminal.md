@@ -39,7 +39,8 @@ Terminal text settings are in **Settings → Appearance**. Click **Apply Appeara
 
 - **Terminal font**: JetBrains Mono is the default and is bundled with Trellis. Roboto Mono, Cascadia Mono NF (with Nerd Font prompt glyphs), IBM Plex Mono, Iosevka Fixed and Atkinson Hyperlegible Mono are bundled too, and any monospaced font installed on your Mac is listed. If a saved font is missing, Trellis falls back to Menlo or the system monospaced font and tells you.
 - **Font size**: 8 to 48 points. **View → Zoom In** (<kbd>⌘</kbd><kbd>+</kbd>), **Zoom Out** (<kbd>⌘</kbd><kbd>-</kbd>) and **Actual Size** (<kbd>⌘</kbd><kbd>0</kbd>, 13 points) change it quickly.
-- **Cursor**: Block, Underline or Bar, and **Blink cursor**.
+- **Cursor**: Block, Underline or Bar.
+- **Blink cursor**: Off, Slow, Normal or Fast. The cursor stays steady while Reduce Motion is on.
 - **Ligatures** (on by default): joins sequences such as `->`, `!=` and `<=>` in fonts that include ligatures, like JetBrains Mono. Turn it off to see the separate characters. Text after a ligature keeps its columns.
 - **Bold as bright colors**: draws bold text in the basic ANSI colors with their bright versions.
 - **Use bold fonts** and **Use italic fonts**: turn them off to draw that text with the regular face.

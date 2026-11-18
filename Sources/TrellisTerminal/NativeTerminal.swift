@@ -253,6 +253,7 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         case (.bar, false): style = .steadyBar
         case (.bar, true): style = .blinkBar
         }
+        terminalView.cursorBlinkInterval = settings.cursorBlinkSpeed.phaseSeconds
         terminalView.getTerminal().options.cursorStyle = style
         terminalView.cursorStyleChanged(source: terminalView.getTerminal(), newStyle: style)
         terminalView.needsDisplay = true
