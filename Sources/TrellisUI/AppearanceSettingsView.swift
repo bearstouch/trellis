@@ -19,6 +19,16 @@ extension ChromeMode {
     }
 }
 
+extension TerminalCursorBlinkSpeed {
+    var localizedTitle: String {
+        switch self {
+        case .slow: L("Slow")
+        case .normal: L("Normal")
+        case .fast: L("Fast")
+        }
+    }
+}
+
 extension TerminalCursorShape {
     var localizedTitle: String {
         switch self {
@@ -182,6 +192,15 @@ struct AppearanceSettingsView: View {
     @State private var draft = AppearanceSettings()
     @State private var message: String?
     @State private var fontNames: [String] = []
+    /// Off, or the speed of a blinking cursor; turning blinking off keeps the chosen speed for next time.
+    private var cursorBlink: Binding<TerminalCursorBlinkSpeed?> {
+        Binding(
+            get: { draft.cursorBlinks ? draft.cursorBlinkSpeed : nil },
+            set: { speed in
+                draft.cursorBlinks = speed != nil
+                if let speed { draft.cursorBlinkSpeed = speed }
+            })
+    }
     var body: some View {
         Form {
             Picker(L("Language"), selection: $draft.language) {
@@ -230,7 +249,12 @@ struct AppearanceSettingsView: View {
             Picker(L("Cursor"), selection: $draft.cursorShape) {
                 ForEach(TerminalCursorShape.allCases, id: \.self) { Text($0.localizedTitle).tag($0) }
             }
-            Toggle(L("Blink cursor"), isOn: $draft.cursorBlinks)
+            Picker(L("Blink cursor"), selection: cursorBlink) {
+                Text(L("Off")).tag(TerminalCursorBlinkSpeed?.none)
+                Divider()
+                ForEach(TerminalCursorBlinkSpeed.allCases, id: \.self) { Text($0.localizedTitle).tag(Optional($0)) }
+            }
+            Text(L("The cursor stays steady while Reduce Motion is on.")).font(.caption).foregroundStyle(.secondary).wrappingSettingsCaption()
             Picker(L("Bell"), selection: $draft.bellStyle) {
                 ForEach(TerminalBellStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }

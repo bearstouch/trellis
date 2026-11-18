@@ -379,6 +379,16 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         frameCoordinator.isIdle
     }
 
+    /// Restarts a running blink timer so a new `cursorBlinkInterval` applies; the next frame starts it again if needed.
+    func cursorBlinkIntervalChanged() {
+        cursorBlinkTimer?.invalidate()
+        cursorBlinkTimer = nil
+        cursorBlinkOn = true
+    }
+
+    /// The blink timer's interval while it runs, for tests.
+    var cursorBlinkTimerInterval: TimeInterval? { cursorBlinkTimer?.timeInterval }
+
     func invalidateForReplacement() {
         frameCoordinator.invalidate()
         cursorBlinkTimer?.invalidate()
@@ -3055,7 +3065,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         if shouldBlink {
             if cursorBlinkTimer == nil {
                 cursorBlinkOn = true
-                cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self] _ in
+                cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: terminalView?.cursorBlinkInterval ?? 0.7, repeats: true) { [weak self] _ in
                     guard let self = self, let view = self.view else {
                         return
                     }

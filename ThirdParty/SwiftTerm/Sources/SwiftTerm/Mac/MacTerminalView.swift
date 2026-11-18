@@ -321,6 +321,12 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         metalRenderer?.renderedRowForTesting(screenRow)
     }
 
+    /// The phase length the cursor blinks with: the CoreGraphics caret's running animation and the Metal renderer's
+    /// running timer, each nil when it isn't blinking. For tests.
+    public var cursorBlinkTimingForTesting: (caret: TimeInterval?, metal: TimeInterval?) {
+        (caretView.layer?.animation(forKey: "opacity")?.duration, metalRenderer?.cursorBlinkTimerInterval)
+    }
+
     /// The premultiplied color the Metal renderer clears to, or nil when Metal is off. For tests.
     public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
 
@@ -1099,6 +1105,21 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
             guard textBlinkEnabled != oldValue else { return }
             updateTextBlinkLifecycle()
             textStyleChanged()
+        }
+    }
+
+    /// Seconds each phase of a blinking cursor lasts (shown, then hidden). Values are clamped to 0.1...5.
+    public var cursorBlinkInterval: TimeInterval = 0.7 {
+        didSet {
+            let clamped = cursorBlinkInterval.isFinite ? min(max(cursorBlinkInterval, 0.1), 5) : 0.7
+            // Assigning here doesn't run didSet again, so carry on to restart the blink with the clamped value.
+            if clamped != cursorBlinkInterval { cursorBlinkInterval = clamped }
+            guard cursorBlinkInterval != oldValue else { return }
+            caretView?.updateCursorStyle()
+#if canImport(MetalKit)
+            metalRenderer?.cursorBlinkIntervalChanged()
+            queueMetalDisplay()
+#endif
         }
     }
 

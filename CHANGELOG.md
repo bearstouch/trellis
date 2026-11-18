@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Cursor blink speed:** **Blink cursor** in Settings → Appearance is now a choice of Off, Slow, Normal and Fast instead of an on/off switch. Normal is the speed the cursor blinked at before; the setting applies live under both renderers.
+
 ## [1.3.0] - 2026-11-17
 
 The stable 1.3 release. Coming from 1.2.0, you also get everything listed under the 1.3 betas: automation API protocol 2 (a breaking change for scripts and agents; read [Migration from v1](docs/api/migration.md) first), editor tabs with a Markdown preview, Trellis in Portuguese, French and Spanish, copying to the clipboard from programs over SSH, sharing the MCP server over Tailscale, grant presets and editable grants, an idle timeout for kept sessions, a toggle for `.gitignore`'d files, and faster Files, editor and pane drawing.
