@@ -295,7 +295,7 @@ extension ShortcutAction {
         case .toggleChanges: ["git diff review stage unstage status modified", "right sidebar"]
         case .toggleScratchpad: ["script editor", "right sidebar"]
         case .toggleTasks: ["launch.json run build test", "right sidebar"]
-        case .toggleAgents: ["claude codex pi coding", "right sidebar"]
+        case .toggleAgents: ["claude codex pi opencode coding", "right sidebar"]
         case .zoomIn, .zoomOut, .actualSize: ["font size"]
         default: []
         }

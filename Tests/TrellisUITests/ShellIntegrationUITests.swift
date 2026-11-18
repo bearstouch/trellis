@@ -413,11 +413,14 @@ final class ShellIntegrationUITests: XCTestCase {
         XCTAssertTrue(model.agentHookNonces.isEmpty)
         let records = try XCTUnwrap(wired[ShellIntegrationInjection.agentWiringVariable]).split(separator: "\n").map { $0.split(separator: "\t").map(String.init) }
         let byName = Dictionary(uniqueKeysWithValues: records.map { ($0[0], Array($0.dropFirst())) })
-        XCTAssertEqual(Set(byName.keys), ["claude", "codex", "pi"])
+        XCTAssertEqual(Set(byName.keys), ["claude", "codex", "pi", "opencode"])
         XCTAssertEqual(byName["claude"]?.prefix(2), ["0", "--settings"])
         XCTAssertTrue(byName["claude"]?[2].contains("/App/Helpers/trellis-broker agent-hook working") == true)
         XCTAssertEqual(byName["pi"]?.prefix(3), ["1", "TRELLIS_AGENT_HOOK=/App/Helpers/trellis-broker", "-e"])
         XCTAssertEqual(byName["codex"]?.prefix(2), ["0", "-c"])
+        XCTAssertEqual(byName["opencode"]?.prefix(2), ["2", "TRELLIS_AGENT_HOOK=/App/Helpers/trellis-broker"])
+        XCTAssertTrue(byName["opencode"]?[2].hasPrefix(#"OPENCODE_CONFIG_CONTENT={"plugins":["#) == true)
+        XCTAssertEqual(byName["opencode"]?.last, "--standalone")
 
         model.typedAgentWiringEnabled = false
         await model.createSpace(name: "Plain")

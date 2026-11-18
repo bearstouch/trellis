@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "trellis-opencode",
+  "name": "OpenCode",
+  "executable": "opencode",
+  "resumeArguments": ["--continue"],
+  "integration": "opencode-plugin",
+  "icon": { "image": "trellis-opencode.svg" },
+  "tile": "#211E1E",
+  "install": {
+    "darwin": { "command": "curl -fsSL https://opencode.ai/v2/install | bash && export PATH=\"$HOME/.opencode/bin:$PATH\"", "requires": ["curl", "bash"] },
+    "linux": { "command": "curl -fsSL https://opencode.ai/v2/install | bash && export PATH=\"$HOME/.opencode/bin:$PATH\"", "requires": ["curl", "bash"] }
+  },
+  "homepage": "https://opencode.ai"
+}

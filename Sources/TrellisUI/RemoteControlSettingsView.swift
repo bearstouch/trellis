@@ -79,6 +79,7 @@ struct RemoteControlSettingsView: View {
                     Menu(L("Copy Client Setup")) {
                         Button(L("Claude Code command")) { copy(MCPClientSetup.claudeCode.snippet(url: model.remoteControlClientURL)) }
                         Button(L("Codex (config.toml)")) { copy(MCPClientSetup.codex.snippet(url: model.remoteControlClientURL)) }
+                        Button(L("OpenCode command")) { copy(MCPClientSetup.opencode.snippet(url: model.remoteControlClientURL)) }
                         Button(L("Generic MCP JSON")) { copy(MCPClientSetup.json.snippet(url: model.remoteControlClientURL)) }
                     }
                     .fixedSize()

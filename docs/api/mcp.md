@@ -38,7 +38,7 @@ The code is in `Sources/TrellisMCP`: an HTTP listener, the endpoint, the tools g
 - `::` listens on IPv6 only. To accept IPv4 clients on every interface, use `0.0.0.0`.
 - The settings are stored in `workspace.json` under `settings.remoteControl`.
 - **Copy Endpoint URL** and **Copy Client Setup** give the tailnet URL while sharing over Tailscale, and otherwise a URL you can reach from this Mac. A wildcard bind is shown as its loopback address.
-- **Copy Client Setup** offers a Claude Code command, a Codex `config.toml` block and a generic `mcpServers` JSON entry. None holds a token: they use a `<TOKEN>` placeholder, or the `TRELLIS_TOKEN` environment variable for Codex, because a grant's token is only shown once, when the grant is created.
+- **Copy Client Setup** offers a Claude Code command, a Codex `config.toml` block, an OpenCode command (`opencode mcp add … --global`) and a generic `mcpServers` JSON entry. None holds a token: they use a `<TOKEN>` placeholder, or the `TRELLIS_TOKEN` environment variable for Codex, because a grant's token is only shown once, when the grant is created.
 - Allowed devices are saved with their names and Tailscale addresses, so the list still works while Tailscale's status can't be read. A device Tailscale lists now uses its current addresses.
 
 ## Connecting a client

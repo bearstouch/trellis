@@ -165,13 +165,14 @@ extension RemoteControlSettings {
 /// Ready-to-paste client configuration for the Remote Control endpoint. A snippet
 /// never holds a real token: a `<TOKEN>` placeholder or an environment variable name.
 public enum MCPClientSetup: String, CaseIterable, Sendable {
-    case claudeCode, codex, json
+    case claudeCode, codex, opencode, json
 
     public static let tokenVariable = "TRELLIS_TOKEN"
 
     public func snippet(url: String) -> String {
         switch self {
         case .claudeCode: "claude mcp add --transport http trellis \(url) --header \"Authorization: Bearer <TOKEN>\""
+        case .opencode: "opencode mcp add trellis --global --url \(url) --header \"Authorization=Bearer <TOKEN>\""
         case .codex: "[mcp_servers.trellis]\nurl = \"\(url)\"\nbearer_token_env_var = \"\(Self.tokenVariable)\"\n"
         case .json:
             """

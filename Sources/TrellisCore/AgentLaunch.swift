@@ -21,27 +21,42 @@ public struct AgentLaunch: Codable, Equatable, Sendable {
 public struct AgentCommand: Equatable, Sendable {
     public static let notInstalledStatus: Int32 = 127
     public static let piExtensionName = "trellis-pi-extension.ts"
+    /// OpenCode loads a configured plugin from a folder, so its plugin is that folder's `index.js` (FR-AG21).
+    public static let opencodePluginName = "trellis-opencode/index.js"
     public static let hookVariable = "TRELLIS_AGENT_HOOK"
+    public static let opencodeConfigVariable = "OPENCODE_CONFIG_CONTENT"
 
     public var definition: AgentDefinition
     public var resume: Bool
     /// Absolute path of `trellis-broker` on the machine the agent runs on; nil runs the agent without live state.
     public var hookHelper: String?
-    /// The pi extension's absolute path on that machine.
-    public var piExtension: String?
-    /// The pi extension's text, written beside the helper first on a remote host, which has no copy of the bundle.
-    public var piExtensionSource: String?
+    /// The integration's file on that machine: the pi extension, or OpenCode's plugin.
+    public var integrationFile: String?
+    /// That file's text, written there first on a remote host, which has no copy of the bundle.
+    public var integrationFileSource: String?
     public var extraArguments: [String]
 
-    public init(definition: AgentDefinition, resume: Bool = false, hookHelper: String? = nil, piExtension: String? = nil, piExtensionSource: String? = nil, extraArguments: [String] = []) {
-        self.definition = definition; self.resume = resume; self.hookHelper = hookHelper; self.piExtension = piExtension
-        self.piExtensionSource = piExtensionSource; self.extraArguments = extraArguments
+    public init(
+        definition: AgentDefinition, resume: Bool = false, hookHelper: String? = nil, integrationFile: String? = nil, integrationFileSource: String? = nil,
+        extraArguments: [String] = []
+    ) {
+        self.definition = definition; self.resume = resume; self.hookHelper = hookHelper; self.integrationFile = integrationFile
+        self.integrationFileSource = integrationFileSource; self.extraArguments = extraArguments
     }
 
-    /// `env [TRELLIS_AGENT_HOOK=…] <executable> <wiring…> <arguments…> [resume…] [extra…]`.
+    /// The bundled file an integration loads, relative to the Agents folder; nil when it needs none.
+    public static func integrationFileName(_ integration: AgentIntegration) -> String? {
+        switch integration {
+        case .piExtension: piExtensionName
+        case .opencodePlugin: opencodePluginName
+        case .claudeHooks, .codexNotify, .none: nil
+        }
+    }
+
+    /// `env [NAME=…] <executable> <wiring…> <arguments…> [resume…] [extra…]`.
     public var words: [String] {
         let wiring = wiring
-        // pi takes `-e` before its own flags; Claude Code and Codex accept their wiring anywhere before a prompt.
+        // pi takes `-e` before its own flags; the others accept their wiring anywhere before a prompt or subcommand.
         return ["env"] + wiring.environment + [definition.executable] + wiring.arguments + definition.arguments + (resume ? definition.resumeArguments : [])
             + extraArguments
     }
@@ -53,17 +68,28 @@ public struct AgentCommand: Equatable, Sendable {
         switch definition.integration {
         case .claudeHooks: return ([], ["--settings", Self.claudeSettings(helper: helper)])
         case .codexNotify: return ([], ["-c", "notify=" + Self.tomlArray([helper, "agent-hook", "done"])])
-        case .piExtension: return piExtension.map { ([Self.hookVariable + "=" + helper], ["-e", $0]) } ?? ([], [])
+        case .piExtension: return integrationFile.map { ([Self.hookVariable + "=" + helper], ["-e", $0]) } ?? ([], [])
+        case .opencodePlugin:
+            // A private server per pane inherits the pane's hook channel; the shared service can't tell panes apart.
+            guard let integrationFile else { return ([], []) }
+            return ([Self.hookVariable + "=" + helper, Self.opencodeConfigVariable + "=" + Self.opencodeConfig(plugin: integrationFile)], ["--standalone"])
         case .none: return ([], [])
         }
     }
 
     public var line: String {
         let command = "exec " + words.map(Self.quote).joined(separator: " ")
-        guard let source = piExtensionSource, let piExtension, definition.integration == .piExtension, hookHelper != nil else { return command }
-        // `;` and `>` read the same in every shell this runs in; a failed write only costs pi its live state.
-        let folder = (piExtension as NSString).deletingLastPathComponent
-        return "mkdir -p \(Self.quote(folder)); printf '%s' \(Self.quote(source)) > \(Self.quote(piExtension)); \(command)"
+        guard let source = integrationFileSource, let integrationFile, Self.integrationFileName(definition.integration) != nil, hookHelper != nil else { return command }
+        // `;` and `>` read the same in every shell this runs in; a failed write only costs the agent its live state.
+        let folder = (integrationFile as NSString).deletingLastPathComponent
+        return "mkdir -p \(Self.quote(folder)); printf '%s' \(Self.quote(source)) > \(Self.quote(integrationFile)); \(command)"
+    }
+
+    /// OpenCode merges this into the user's own configuration (their plugins stay); it names the plugin's folder.
+    static func opencodeConfig(plugin: String) -> String {
+        let folder = (plugin as NSString).deletingLastPathComponent
+        let data = (try? JSONSerialization.data(withJSONObject: ["plugins": [folder]], options: [.withoutEscapingSlashes])) ?? Data("{}".utf8)
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// Hooks only report: they print nothing and always exit 0, so they never decide or block anything.
