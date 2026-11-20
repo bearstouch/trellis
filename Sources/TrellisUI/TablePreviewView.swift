@@ -167,12 +167,21 @@ struct DelimitedTableView: NSViewRepresentable {
             muted = foreground.withAlphaComponent(0.6)
             stripe = foreground.withAlphaComponent(0.04)
             // The header, scrollers and selection follow the theme's lightness.
-            let dark = (background.usingColorSpace(.sRGB).map { 0.299 * $0.redComponent + 0.587 * $0.greenComponent + 0.114 * $0.blueComponent } ?? 0) < 0.5
+            let dark = Self.luminance(background) < 0.5
             scrollView?.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             tableView.backgroundColor = background
             scrollView?.backgroundColor = background
             tableView.gridColor = NSColor(style.border).withAlphaComponent(0.45)
             tableView.rowHeight = ceil(font.ascender - font.descender + font.leading) + 6
+        }
+
+        /// Typed step by step: as one expression it took the CI machine's type checker too long.
+        private static func luminance(_ color: NSColor) -> CGFloat {
+            guard let rgb = color.usingColorSpace(.sRGB) else { return 0 }
+            let red: CGFloat = 0.299 * rgb.redComponent
+            let green: CGFloat = 0.587 * rgb.greenComponent
+            let blue: CGFloat = 0.114 * rgb.blueComponent
+            return red + green + blue
         }
 
         private var digitWidth: CGFloat { ("0" as NSString).size(withAttributes: [.font: font]).width }
@@ -339,8 +348,13 @@ final class PreviewCell: NSTableCellView {
     override func layout() {
         super.layout()
         // From the font, not `intrinsicContentSize`, which measures the text on every layout.
-        let height = field.font.map { ceil($0.ascender - $0.descender + $0.leading) + 2 } ?? 16
-        field.frame = NSRect(x: 6, y: ((bounds.height - height) / 2).rounded(), width: max(0, bounds.width - 12), height: height)
+        var height: CGFloat = 16
+        if let font = field.font {
+            let line: CGFloat = font.ascender - font.descender + font.leading
+            height = ceil(line) + 2
+        }
+        let top: CGFloat = ((bounds.height - height) / 2).rounded()
+        field.frame = NSRect(x: 6, y: top, width: max(0, bounds.width - 12), height: height)
     }
 
     required init?(coder: NSCoder) { nil }
