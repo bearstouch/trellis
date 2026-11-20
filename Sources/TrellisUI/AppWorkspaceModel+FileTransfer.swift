@@ -177,8 +177,18 @@ extension AppWorkspaceModel {
             return await run.copy([path], into: folder)
         }
         let report = await task.value
-        showFilesStatus(Self.transferSummary(report, folder: (folder as NSString).lastPathComponent, moved: false))
         if report.cancelled { return .notAllowed }
-        return report.stopped ?? report.failures.values.first
+        if let failure = report.stopped ?? report.failures.values.first {
+            showFilesStatus(Self.transferSummary(report, folder: (folder as NSString).lastPathComponent, moved: false))
+            return failure
+        }
+        // Nothing written: a link or a special file, which aren't copied from a host. Finder is told the promise failed
+        // instead of being left waiting for a file that never comes.
+        guard report.copied > 0 else {
+            showFilesStatus(report.linksSkipped > 0 ? L("%@ is a link; links aren't copied from a host.", name) : L("%@ can't be copied: it isn't a file or a folder.", name))
+            return .notAllowed
+        }
+        showFilesStatus(Self.transferSummary(report, folder: (folder as NSString).lastPathComponent, moved: false))
+        return nil
     }
 }

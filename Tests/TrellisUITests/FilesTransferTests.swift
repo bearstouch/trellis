@@ -155,6 +155,15 @@ final class FilesTransferTests: XCTestCase {
         XCTAssertEqual(gone, .disconnected)
     }
 
+    func testAPromisedLinkFailsInsteadOfPromisingNothing() async throws {
+        let (model, _, _) = try await makeModel()
+        try FileManager.default.createSymbolicLink(atPath: project + "/latest", withDestinationPath: "README.md")
+        let failure = await model.downloadForPromise(hostID: saved.id, path: project + "/latest", to: desktop)
+        XCTAssertEqual(failure, .notAllowed, "Finder is told nothing was written")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: desktop + "/latest"))
+        XCTAssertEqual(model.files.status, "latest is a link; links aren't copied from a host.")
+    }
+
     func testTheSummarySaysWhatHappened() {
         var report = FileTransferReport()
         report.copied = 3
