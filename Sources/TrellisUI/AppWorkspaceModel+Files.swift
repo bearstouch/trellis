@@ -487,10 +487,11 @@ extension AppWorkspaceModel {
             let folder = entry.isDirectory ? entry.path : (entry.path as NSString).deletingLastPathComponent
             return await openTabForDirectory(folder.isEmpty ? "/" : folder, target: .host(host.id))
         }
-        await openRemoteInEditor(hostID: host.id, path: entry.path, projectRoot: files.root)
+        await openRemoteInEditor(hostID: host.id, path: entry.path, projectRoot: files.root, preview: EditorLanguage.isTable(fileName: entry.name))
     }
 
-    /// A double click on a file: code opens in an editor tab whatever app is remembered (FR-ED09), and isn't remembered;
+    /// A double click on a file: code opens in an editor tab whatever app is remembered (FR-ED09), a table on its preview
+    /// (FR-ED18), and isn't remembered;
     /// anything else, a link to a folder, and code the editor refuses (FR-ED02) open in the remembered app, as **Open in** does.
     public func openFileOnDoubleClick(_ entry: FileEntry) async {
         guard files.host == nil else { return await openFile(entry, in: .trellisEditor) }
@@ -500,7 +501,7 @@ extension AppWorkspaceModel {
         else { return await openFile(entry) }
         // The refusal names the default app; the remembered one opens instead, so it isn't shown.
         let message = errorMessage
-        guard await !openInEditor(path: path, projectRoot: files.root) else { return }
+        guard await !openInEditor(path: path, projectRoot: files.root, preview: EditorLanguage.isTable(fileName: entry.name)) else { return }
         errorMessage = message
         await openFile(entry)
     }

@@ -34,7 +34,7 @@ public struct EditorTab: Identifiable, Equatable, Sendable {
     public internal(set) var jump: EditorJump?
     /// The project the file was opened from, for the path shown in the header.
     public let projectRoot: String?
-    /// A Markdown tab showing its rendered preview instead of its source (FR-ED12); never saved.
+    /// A Markdown or table tab showing its rendered preview instead of its source (FR-ED12, FR-ED17); never saved.
     public internal(set) var showsPreview = false
     /// A `#heading` the preview should scroll to; a new `id` repeats it.
     public internal(set) var previewAnchor: EditorPreviewAnchor?
@@ -60,6 +60,9 @@ public struct EditorTab: Identifiable, Equatable, Sendable {
         return mine == theirs && (text == other.text || isDirty == other.isDirty)
     }
     public var isMarkdown: Bool { language.id == EditorLanguage.markdown.id }
+    /// A CSV or TSV file, previewed as a table (FR-ED17).
+    public var isTable: Bool { EditorLanguage.isTable(language) }
+    public var hasPreview: Bool { EditorLanguage.hasPreview(language) }
     public var fileName: String { document.fileName }
     public var language: ScratchpadLanguage { document.language }
     /// The path below the project, else with `~` for the home folder.
@@ -118,7 +121,7 @@ extension AppWorkspaceModel {
 
     /// Opens `path` in an editor tab of the selected space, or shows the tab that has it, at `line`. Returns false when
     /// the file isn't text the editor can keep intact (FR-ED02), so the caller can hand it elsewhere; other failures
-    /// are shown and return true. `preview` shows a Markdown tab's preview (FR-ED15); other files ignore it.
+    /// are shown and return true. `preview` shows a Markdown or table tab's preview (FR-ED15, FR-ED18); other files ignore it.
     @discardableResult
     public func openInEditor(path rawPath: String, line: Int? = nil, column: Int? = nil, projectRoot: String? = nil, preview: Bool = false) async -> Bool {
         guard let spaceID = presentation.selectedSpace?.id else { return true }
@@ -145,7 +148,7 @@ extension AppWorkspaceModel {
             // A host's root isn't this Mac's project.
             let root = projectRoot ?? (files.host == nil ? files.root : nil)
             var tab = EditorTab(id: UUID(), spaceID: spaceID, document: document, text: document.text, banner: nil, jump: jump, projectRoot: root)
-            tab.showsPreview = preview && tab.isMarkdown
+            tab.showsPreview = preview && tab.hasPreview
             var tabs = editorTabs[spaceID] ?? []
             // After the shown editor tab, else after the others.
             let index = shownEditors[spaceID].flatMap { shown in tabs.firstIndex { $0.id == shown } }.map { $0 + 1 } ?? tabs.count
@@ -167,9 +170,12 @@ extension AppWorkspaceModel {
     /// Opens a file on a remote workspace's host in a read-only editor tab of the selected space, or shows the tab that
     /// has it. Its bytes are read through the host's helper and kept only in the tab; a file the editor refuses (FR-ED02)
     /// opens nothing, since no app on this Mac can reach it.
-    public func openRemoteInEditor(hostID: UUID, path: String, projectRoot: String? = nil) async {
+    public func openRemoteInEditor(hostID: UUID, path: String, projectRoot: String? = nil, preview: Bool = false) async {
         guard let spaceID = presentation.selectedSpace?.id else { return }
-        if let open = editorTabs[spaceID]?.first(where: { $0.document.path == path && $0.remoteHost?.id == hostID }) { return selectEditor(open.id) }
+        if let open = editorTabs[spaceID]?.first(where: { $0.document.path == path && $0.remoteHost?.id == hostID }) {
+            if preview { showEditorPreview(open.id) }
+            return selectEditor(open.id)
+        }
         let name = (path as NSString).lastPathComponent, hostName = remoteHostName(hostID)
         guard let access = remoteFiles(hostID) else {
             errorMessage = L("%1$@ can't be opened: %2$@ isn't connected.", name, hostName)
@@ -178,9 +184,13 @@ extension AppWorkspaceModel {
         switch await Self.remoteDocument(path: path, access: access) {
         case .success(let document):
             guard snapshot.spaces.contains(where: { $0.id == spaceID }) else { return }
-            if let open = editorTabs[spaceID]?.first(where: { $0.document.path == path && $0.remoteHost?.id == hostID }) { return selectEditor(open.id) }
+            if let open = editorTabs[spaceID]?.first(where: { $0.document.path == path && $0.remoteHost?.id == hostID }) {
+                if preview { showEditorPreview(open.id) }
+                return selectEditor(open.id)
+            }
             var tab = EditorTab(id: UUID(), spaceID: spaceID, document: document, text: document.text, banner: nil, jump: nil, projectRoot: projectRoot)
             tab.remoteHost = EditorRemoteHost(id: hostID, name: hostName, home: access.home)
+            tab.showsPreview = preview && tab.hasPreview
             var tabs = editorTabs[spaceID] ?? []
             let index = shownEditors[spaceID].flatMap { shown in tabs.firstIndex { $0.id == shown } }.map { $0 + 1 } ?? tabs.count
             tabs.insert(tab, at: index)
@@ -219,14 +229,15 @@ extension AppWorkspaceModel {
         }
     }
 
-    /// Opens a file from the Files view; anything the editor refuses goes to the default app under FR-L03.
+    /// Opens a file from the Files view, a CSV or TSV on its table (FR-ED18); anything the editor refuses goes to the
+    /// default app under FR-L03.
     func openFileInEditor(_ entry: FileEntry) async {
         // A symbolic link to a folder is listed as a file; it is shown in Finder like the folder.
         if entry.isDirectory || isDirectory(entry.path) {
             revealFiles([URL(fileURLWithPath: entry.path, isDirectory: true)])
             return
         }
-        guard await !openInEditor(path: entry.path, projectRoot: files.host == nil ? files.root : nil) else { return }
+        guard await !openInEditor(path: entry.path, projectRoot: files.host == nil ? files.root : nil, preview: EditorLanguage.isTable(fileName: entry.name)) else { return }
         let message = errorMessage
         await openLocalFile(entry, in: .defaultApp, remember: false)
         if errorMessage == nil { errorMessage = message }
@@ -288,20 +299,20 @@ extension AppWorkspaceModel {
 
     public func clearEditorJump(_ id: UUID) { updateEditor(id) { $0.jump = nil } }
 
-    // MARK: Markdown preview (FR-ED12)
+    // MARK: Preview (FR-ED12, FR-ED17)
 
-    /// Switches a Markdown tab between its source and its preview; going back to the source gives it the keyboard.
+    /// Switches a Markdown or table tab between its source and its preview; going back to the source gives it the keyboard.
     public func toggleEditorPreview(_ id: UUID) {
-        guard let tab = editorTab(id), tab.isMarkdown else { return }
+        guard let tab = editorTab(id), tab.hasPreview else { return }
         updateEditor(id) {
             $0.showsPreview.toggle(); $0.previewAnchor = nil
         }
         if tab.showsPreview, shownEditor?.id == id { editorFocusRequest += 1 }
     }
 
-    /// Shows a Markdown tab's preview from its start, as a link asking for it does (FR-ED15).
+    /// Shows a tab's preview from its start, as a link or a Files double click asking for it does (FR-ED15, FR-ED18).
     private func showEditorPreview(_ id: UUID) {
-        guard editorTab(id)?.isMarkdown == true else { return }
+        guard editorTab(id)?.hasPreview == true else { return }
         updateEditor(id) {
             $0.showsPreview = true; $0.previewAnchor = nil
         }

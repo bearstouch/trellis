@@ -14,7 +14,7 @@ struct TerminalLinkMenu: Equatable {
     var canReveal = false
     /// Adds Open in Trellis Editor first: a file inside the pane's project (FR-ED07).
     var canEdit = false
-    /// Adds Preview in Trellis Editor after it: a Markdown file the editor may open (FR-ED15).
+    /// Adds Preview in Trellis Editor after it: a Markdown, CSV or TSV file the editor may open (FR-ED15).
     var canPreview = false
 }
 

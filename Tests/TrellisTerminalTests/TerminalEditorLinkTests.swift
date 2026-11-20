@@ -26,6 +26,7 @@ final class TerminalEditorLinkTests: XCTestCase {
         let files = [
             "/work/src/a.swift": FileFacts(resolvedPath: "/work/src/a.swift", kind: .regular),
             "/work/README.md": FileFacts(resolvedPath: "/work/README.md", kind: .regular),
+            "/work/data.csv": FileFacts(resolvedPath: "/work/data.csv", kind: .regular),
             "/elsewhere/notes.md": FileFacts(resolvedPath: "/elsewhere/notes.md", kind: .regular),
             "/work/run.sh": FileFacts(resolvedPath: "/work/run.sh", kind: .regular, isExecutable: true),
             "/elsewhere/b.txt": FileFacts(resolvedPath: "/elsewhere/b.txt", kind: .regular)
@@ -112,6 +113,7 @@ final class TerminalEditorLinkTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "src/a.swift", explicit: false, position: nil))).canPreview, "Only Markdown")
         XCTAssertFalse(
             try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "/elsewhere/notes.md", explicit: false, position: nil))).canPreview, "Only where the editor may open")
+        XCTAssertTrue(try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "data.csv", explicit: false, position: nil))).canPreview, "A table has a preview too")
         native.previewInEditor = nil
         XCTAssertFalse(try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "README.md", explicit: false, position: nil))).canPreview, "No preview, no item")
     }

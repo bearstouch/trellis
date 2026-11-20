@@ -27,14 +27,15 @@ struct EditorTabView: View {
                     font: editorFont, palette: model.effectiveTheme.terminal, issueLines: [], focusRequest: model.editorFocusRequest,
                     commands: ScratchpadEditorCommands(
                         saveFile: { Task { await model.saveEditor(tab.id) } }, goToLine: { beginGoToLine() },
-                        togglePreview: tab.isMarkdown ? { model.toggleEditorPreview(tab.id) } : nil),
+                        togglePreview: tab.hasPreview ? { model.toggleEditorPreview(tab.id) } : nil),
                     accessibilityName: L("Editor, %@", tab.fileName), contentNoun: L("file"), maximumBytes: EditorDocument.maximumBytes,
                     highlightsCurrentLine: true, jump: tab.jump, onJumped: { model.clearEditorJump(tab.id) },
                     onCursor: { [cursor] in cursor.update(line: $0, column: $1) }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview, editable: !tab.isReadOnly
                 )
-                // The source stays mounted under the preview, so its undo, cursor and scroll survive (FR-ED12).
+                // The source stays mounted under the preview, so its undo, cursor and scroll survive (FR-ED12, FR-ED17).
                 .opacity(tab.showsPreview ? 0 : 1).allowsHitTesting(!tab.showsPreview).accessibilityHidden(tab.showsPreview)
                 if tab.isMarkdown, tab.showsPreview { MarkdownPreviewView(model: model, tab: tab, visible: shown) }
+                if tab.isTable, tab.showsPreview { TablePreviewView(model: model, tab: tab, visible: shown) }
             }
         }
         .background(Color(nsColor: NSColor(rgb: model.effectiveTheme.terminal.background)))
@@ -82,7 +83,7 @@ struct EditorTabView: View {
             Text(tab.language.displayName).font(.caption).foregroundStyle(muted)
                 .padding(.horizontal, 7).padding(.vertical, 2).overlay(RoundedRectangle(cornerRadius: 4).stroke(model.themeColor(.border).opacity(0.6)))
                 .accessibilityLabel(L("Language: %@", tab.language.displayName))
-            if tab.isMarkdown { previewToggle }
+            if tab.hasPreview { previewToggle }
             if !tab.showsPreview {
                 EditorCursorButton(readout: cursor, color: NSColor(muted)) { beginGoToLine() }
                     .frame(width: EditorCursorButton.width, alignment: .trailing)
@@ -136,7 +137,7 @@ struct EditorTabView: View {
         .onAppear { if model.files.editors.isEmpty { model.loadEditorChoices() } }
     }
 
-    /// Preview / Edit for a Markdown tab (FR-ED12); ⇧⌘V also works while the source has the keyboard.
+    /// Preview / Edit for a Markdown or table tab (FR-ED12, FR-ED17); ⇧⌘V also works while the source has the keyboard.
     private var previewToggle: some View {
         Button {
             model.toggleEditorPreview(tab.id)
@@ -144,7 +145,7 @@ struct EditorTabView: View {
             Label(tab.showsPreview ? L("Edit") : L("Preview"), systemImage: tab.showsPreview ? "pencil" : "eye")
         }
         .controlSize(.small).keyboardShortcut("v", modifiers: [.command, .shift]).disabled(!shown)
-        .help(tab.showsPreview ? L("Edit the source (⇧⌘V)") : L("Preview the Markdown (⇧⌘V)"))
+        .help(tab.showsPreview ? L("Edit the source (⇧⌘V)") : tab.isTable ? L("Preview the table (⇧⌘V)") : L("Preview the Markdown (⇧⌘V)"))
         .accessibilityValue(tab.showsPreview ? L("showing the preview") : L("showing the source"))
     }
 

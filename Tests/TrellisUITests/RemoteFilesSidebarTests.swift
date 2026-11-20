@@ -256,6 +256,20 @@ final class RemoteFilesSidebarTests: XCTestCase {
         XCTAssertEqual(model.currentEditors.map(\.id), [local.id])
     }
 
+    func testAHostsTableOpensOnItsPreview() async throws {
+        let (model, pane, _, _) = try await makeModel()
+        try "a,b\n1,2\n".write(toFile: project + "/data.csv", atomically: true, encoding: .utf8)
+        await model.refreshFiles(paneID: pane)
+        await model.openFileOnDoubleClick(FileEntry(path: project + "/data.csv", isDirectory: false))
+        let tab = try XCTUnwrap(model.shownEditor)
+        XCTAssertTrue(tab.isReadOnly)
+        XCTAssertTrue(tab.showsPreview, "A host's CSV opens on its table too (FR-ED18)")
+        model.showEditorSource(tab.id)
+        await model.openFileOnDoubleClick(FileEntry(path: project + "/data.csv", isDirectory: false))
+        XCTAssertEqual(model.currentEditors.count, 1)
+        XCTAssertTrue(try XCTUnwrap(model.editorTab(tab.id)).showsPreview, "The open tab is switched to its table")
+    }
+
     func testFilesTheEditorRefusesOpenNothingAndFoldersOpenATabOnTheHost() async throws {
         let (model, pane, _, recorder) = try await makeModel()
         await model.refreshFiles(paneID: pane)
