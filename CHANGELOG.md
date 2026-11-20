@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0-beta.1] - 2026-11-20
+
+The first 1.4 beta.
+
 ### Added
 
 - **Preview CSV and TSV files as a table:** a CSV or TSV editor tab now has the same **Preview** button and ⇧⌘V as Markdown, showing the file as a native table in your theme with a fixed header and row numbers. Click a header to sort (the file never changes), drag to resize columns, and ⌘C copies the selected rows. Double-clicking a CSV or TSV in **Files** opens it on its table, and a terminal link to one offers **Preview in Trellis Editor**. Even a 2 MB file shows in about a tenth of a second. See [Editor](docs/features/editor.md#table-preview).
@@ -21,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Hosts and Projects match Settings:** the Hosts and Projects windows now group their fields into titled sections like Settings, with each field's explanation or error under its name and the field beside it, and their main buttons in a bar at the bottom. **Discover SSH Aliases** lists aliases as checkbox rows the same way.
 - **Larger pane header text:** the bar above each pane (its title, folder, status, buttons and icons) now uses 12-point text instead of 10, so it is easier to read.
+- **Tighter terminal padding:** the pane header already sets the first row apart, so terminals no longer have a top margin and keep 4 points at the bottom; the sides stay at 8.
 
 ### Fixed
 
@@ -496,7 +501,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.4.0-beta.1...HEAD
+[1.4.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.3.0...v1.4.0-beta.1
 [1.3.0]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...v1.3.0
 [1.3.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.2...v1.3.0-beta.3
 [1.3.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.1...v1.3.0-beta.2
