@@ -15,7 +15,8 @@ syntax highlighting in your theme's colors, find and <kbd>⌘</kbd><kbd>S</kbd>.
 - **From the terminal:** hold <kbd>⌘</kbd> and click a file path that a command printed, such as
   `Sources/App.swift:12:5` from a compiler. If the file is inside the pane's project or current folder, it opens in an
   editor tab with the cursor on that line and column. Right-click the path for **Open in Trellis Editor**, or **Open**
-  to use the file's default app instead.
+  to use the file's default app instead. For a Markdown file, **Preview in Trellis Editor** opens the tab already
+  showing the rendered preview.
 
 The tab appears after the space's terminal tabs. Opening a file that is already open in the space switches to its tab.
 

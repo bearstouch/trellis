@@ -114,9 +114,10 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             return TerminalLogicalLine.smartSelection(in: surface.getTerminal(), at: position)
         }
         surface.describeLink = { [weak self] in self?.describeLink($0) }
-        surface.onOpenLink = { [weak self] in self?.openLink($0, inEditor: false) }
+        surface.onOpenLink = { [weak self] in self?.openLink($0, target: .app) }
         surface.onRevealLink = { [weak self] in self?.revealLink($0) }
-        surface.onEditLink = { [weak self] in self?.openLink($0, inEditor: true) }
+        surface.onEditLink = { [weak self] in self?.openLink($0, target: .editor) }
+        surface.onPreviewLink = { [weak self] in self?.openLink($0, target: .preview) }
         observeNotifications()
         observeInlineImages()
         session.onOutput = { [weak self] data in
@@ -569,6 +570,8 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
     public var editorMayOpen: (String) -> Bool = { _ in false }
     /// Opens a file link in an editor tab at its line and column; false hands it back to `openURL` or `revealURL`.
     public var openInEditor: ((String, Int?, Int?) async -> Bool)?
+    /// Opens a Markdown file link in an editor tab showing its preview (FR-ED15); false hands it back like `openInEditor`.
+    public var previewInEditor: ((String) async -> Bool)?
     var fileProbe = FileProbe.live
     var now: () -> Date = { Date() }
 
@@ -605,9 +608,13 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         return String(Array(line.text)[match.range])
     }
 
+    /// Where a link goes: the default app (the menu's Open), an editor tab (⌘-click, Open in Trellis Editor) or its preview.
+    enum LinkTarget { case app, editor, preview }
+
     /// ⌘-click prefers an editor tab for a project file (FR-ED07); the menu's Open uses the default app, its Open in
-    /// Trellis Editor the editor. A file the editor refuses gets the usual open or reveal.
-    func openLink(_ click: TerminalLinkClick, inEditor: Bool = true) {
+    /// Trellis Editor the editor, its Preview in Trellis Editor the Markdown preview (FR-ED15). A file the editor refuses
+    /// gets the usual open or reveal.
+    func openLink(_ click: TerminalLinkClick, target: LinkTarget = .editor) {
         guard LinkPolicy.gestureIsFresh(lastGesture: terminalView.lastUserGesture, now: now()), let resolved = resolve(click) else { return }
         terminalView.lastUserGesture = nil
         guard case .file(let path, let action, let line, let column) = resolved.link else {
@@ -620,8 +627,15 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
             case .reveal(let url): self?.revealURL(url)
             }
         }
-        guard inEditor, let openInEditor, editorMayOpen(path) else { fallback(); return }
-        Task { @MainActor in if await !openInEditor(path, line, column) { fallback() } }
+        switch target {
+        case .app: fallback()
+        case .editor:
+            guard let openInEditor, editorMayOpen(path) else { fallback(); return }
+            Task { @MainActor in if await !openInEditor(path, line, column) { fallback() } }
+        case .preview:
+            guard let previewInEditor, Self.isMarkdown(path), editorMayOpen(path) else { fallback(); return }
+            Task { @MainActor in if await !previewInEditor(path) { fallback() } }
+        }
     }
 
     func revealLink(_ click: TerminalLinkClick) {
@@ -639,13 +653,20 @@ public final class NativeTerminal: NSObject, ObservableObject, @preconcurrency T
         let frozen = TerminalLinkClick(link: resolved.candidate, explicit: click.explicit, position: nil)
         switch resolved.link {
         case .web(let url): return TerminalLinkMenu(openTitle: L("Open Link"), copyTitle: L("Copy Link"), copyText: url.absoluteString, click: frozen)
-        case .file(let path, .open, _, _):
+        case .file(let path, let action, _, _):
+            let mayOpen = editorMayOpen(path)
+            let canEdit = openInEditor != nil && mayOpen, canPreview = previewInEditor != nil && mayOpen && Self.isMarkdown(path)
+            if case .reveal = action {
+                return TerminalLinkMenu(openTitle: L("Show in Finder"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canEdit: canEdit, canPreview: canPreview)
+            }
             return TerminalLinkMenu(
-                openTitle: L("Open"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canReveal: true, canEdit: openInEditor != nil && editorMayOpen(path))
-        case .file(let path, .reveal, _, _):
-            return TerminalLinkMenu(
-                openTitle: L("Show in Finder"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canEdit: openInEditor != nil && editorMayOpen(path))
+                openTitle: L("Open"), copyTitle: L("Copy Path"), copyText: path, click: frozen, canReveal: true, canEdit: canEdit, canPreview: canPreview)
         }
+    }
+
+    /// A file the editor reads as Markdown, by its name (FR-ED15).
+    static func isMarkdown(_ path: String) -> Bool {
+        EditorLanguage.detect(fileName: (path as NSString).lastPathComponent, firstLine: "").id == EditorLanguage.markdown.id
     }
     public func bell(source: TerminalView) { if !isReplaying { playBell() } }
     static func bellStyle(_ style: TerminalBellStyle) -> BellStyle {

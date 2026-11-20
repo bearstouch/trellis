@@ -87,23 +87,23 @@ struct AutomationSettingsView: View {
     @State private var failure: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L("Scripts and agents connect through a local socket using a grant token. Each grant allows only the capabilities and spaces you choose."))
-                .font(.callout).fixedSize(horizontal: false, vertical: true)
-            Text(L("Grants reduce accidental or unauthorized access, but any program running as your macOS user could still read your files or the Keychain item. Only grant access to software you trust."))
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            List {
-                if grants.grants.isEmpty { Text(L("No grants yet.")).foregroundStyle(.secondary) }
-                ForEach(grants.grants) { grant in row(grant) }
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    SettingsLabel(
+                        L("Scripts and agents connect through a local socket using a grant token. Each grant allows only the capabilities and spaces you choose."),
+                        help: L("Grants reduce accidental or unauthorized access, but any program running as your macOS user could still read your files or the Keychain item. Only grant access to software you trust."))
+                }
+                Section(L("Automation grants")) {
+                    if grants.grants.isEmpty { Text(L("No grants yet.")).foregroundStyle(.secondary) }
+                    ForEach(grants.grants) { grant in row(grant) }
+                }
             }
-            .frame(minHeight: 200).accessibilityLabel(L("Automation grants"))
-            HStack {
-                if let failure { Text(failure).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-                Spacer()
+            .settingsFormStyle()
+            SettingsFooter(message: failure) {
                 Button(L("New Grant…")) { creating = true }
             }
         }
-        .padding(16)
         .task { await grants.refresh() }
         .sheet(isPresented: $creating) { GrantSheet(grants: grants, workspace: workspace, hosts: hosts, editing: nil) }
         .sheet(item: $editing) { grant in GrantSheet(grants: grants, workspace: workspace, hosts: hosts, editing: grant) }

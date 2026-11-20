@@ -11,9 +11,8 @@ struct ThemePreviewView: View {
             blue: Double(rgb & 255) / 255, opacity: 1)
     }
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ThemeLibraryControls(workspace: workspace, preview: model)
+        Form {
+            ThemeLibraryControls(workspace: workspace, preview: model) {
                 HStack {
                     Button(L("Preview JSON…")) { model.chooseFile() }.disabled(model.loading)
                     Spacer()
@@ -21,23 +20,26 @@ struct ThemePreviewView: View {
                         Button(example.title) { model.example(example) }
                     }
                 }
-                Text(L("The sample stays separate until you choose Preview in Workspace. Save & Use installs the theme."))
-                    .font(.caption).foregroundStyle(.secondary)
+                SettingsNote(text: L("The sample stays separate until you choose Preview in Workspace. Save & Use installs the theme."))
                 if let error = model.validationMessage {
-                    Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                    Text(error).font(.subheadline).foregroundStyle(workspace.themeColor(.error)).textSelection(.enabled)
                 }
-                Text(model.theme.name).font(.headline)
-                sample
-                if model.theme.contrastWarnings.isEmpty {
-                    Text(L("Text and essential boundary contrast checks pass.")).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(L("Contrast advice · Colors are valid and may still be used.")).font(.caption.bold())
-                    ForEach(Array(model.theme.contrastWarnings.enumerated()), id: \.offset) { _, warning in
-                        Text(warning.message).font(.caption).textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(model.theme.name).font(.headline)
+                    sample
+                    if model.theme.contrastWarnings.isEmpty {
+                        SettingsNote(text: L("Text and essential boundary contrast checks pass."))
+                    } else {
+                        Text(L("Contrast advice · Colors are valid and may still be used.")).font(.subheadline.bold())
+                        ForEach(Array(model.theme.contrastWarnings.enumerated()), id: \.offset) { _, warning in
+                            Text(warning.message).font(.subheadline).textSelection(.enabled)
+                        }
                     }
                 }
-            }.padding(16)
+                .padding(.vertical, 4)
+            }
         }
+        .settingsFormStyle()
         .onDisappear { workspace.cancelThemePreview() }
     }
     private var sample: some View {

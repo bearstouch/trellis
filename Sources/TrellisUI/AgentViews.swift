@@ -246,65 +246,77 @@ struct AgentSettingsView: View {
     @ObservedObject var model: AppWorkspaceModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Button(L("Reveal Agents Folder")) { model.revealAgentsFolder() }.disabled(model.agentsDirectory == nil)
-                Button(L("Reload")) {
-                    model.reloadAgentCatalog()
-                    model.refreshAgentAvailability()
-                }
-                Spacer()
-            }
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-                GridRow {
-                    Text(L("Agent")); Text(L("Source")); Text(L("Live status")); Text(L("This Mac"))
-                }.font(.caption.weight(.semibold)).foregroundStyle(model.themeColor(.mutedForeground))
-                ForEach(model.agentCatalog.definitions) { agent in
+        Form {
+            Section(L("Agents")) {
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
                     GridRow {
-                        HStack(spacing: 6) {
-                            AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id], size: 12).accessibilityHidden(true)
-                            Text(agent.name).fontWeight(.medium)
+                        Text(L("Agent")); Text(L("Source")); Text(L("Live status")); Text(L("This Mac"))
+                    }
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(model.agentCatalog.definitions) { agent in
+                        GridRow {
+                            HStack(spacing: 6) {
+                                AgentIconView(icon: agent.icon, directory: model.agentCatalog.iconDirectories[agent.id], size: 12).accessibilityHidden(true)
+                                Text(agent.name).fontWeight(.medium)
+                            }
+                            Text(agent.isBuiltIn ? L("Built-in") : L("Agents folder"))
+                            Text(agent.integration.displayName)
+                            Text(availability(agent))
                         }
-                        Text(agent.isBuiltIn ? L("Built-in") : L("Agents folder"))
-                        Text(agent.integration.displayName)
-                        Text(availability(agent))
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
-            if !model.agentCatalog.issues.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L("Files that couldn’t be used")).font(.subheadline.weight(.semibold))
-                    ForEach(model.agentCatalog.issues, id: \.filename) { issue in
-                        Label("\(issue.filename): \(issue.message)", systemImage: "exclamationmark.triangle").font(.callout).wrappingSettingsCaption()
+                        .accessibilityElement(children: .combine)
                     }
                 }
+                .padding(.vertical, 4)
+                if !model.agentCatalog.issues.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L("Files that couldn’t be used")).fontWeight(.semibold)
+                        ForEach(model.agentCatalog.issues, id: \.filename) { issue in
+                            Label("\(issue.filename): \(issue.message)", systemImage: "exclamationmark.triangle").font(.subheadline)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                LabeledContent {
+                    HStack {
+                        Button(L("Reveal Agents Folder")) { model.revealAgentsFolder() }.disabled(model.agentsDirectory == nil)
+                        Button(L("Reload")) {
+                            model.reloadAgentCatalog()
+                            model.refreshAgentAvailability()
+                        }
+                    }
+                } label: {
+                    SettingsLabel(
+                        L("Agents folder"),
+                        help: L(
+                            "Trellis wires each agent’s own hooks at launch, without changing your agent settings. A hook can only set its own pane’s state; it gets no automation access, and nothing from the conversation reaches Trellis. Add an agent by dropping a <id>.agent.json file in the Agents folder."
+                        ))
+                }
             }
-            Toggle(L("Notify me when an agent needs me or finishes while its pane is out of view"), isOn: $model.agentNotificationsEnabled)
-            Toggle(L("Connect agents typed in a shell"), isOn: $model.typedAgentWiringEnabled)
-            Text(
-                L(
-                    "Typing an agent’s command in a zsh, bash or fish pane on this Mac runs it with the same hooks, so it shows its state and is listed under Running. Your own function or alias of the same name wins, and “command <agent>” runs it without hooks. Applies to shells started after the change."
-                )
-            )
-            .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
+            Section(L("Status")) {
+                Toggle(L("Notify me when an agent needs me or finishes while its pane is out of view"), isOn: $model.agentNotificationsEnabled)
+                Toggle(isOn: $model.typedAgentWiringEnabled) {
+                    SettingsLabel(
+                        L("Connect agents typed in a shell"),
+                        help: L(
+                            "Typing an agent’s command in a zsh, bash or fish pane on this Mac runs it with the same hooks, so it shows its state and is listed under Running. Your own function or alias of the same name wins, and “command <agent>” runs it without hooks. Applies to shells started after the change."
+                        ))
+                }
+            }
             // FR-AG22, FR-AG23: both off until turned on here.
-            Text(L("Subscription usage")).font(.subheadline.weight(.semibold)).padding(.top, 4)
-            Toggle(L("Show Claude Code usage in the Agents view"), isOn: $model.claudeUsageEnabled)
-            Text(L("Reads Claude Code’s sign-in from the Keychain and sends it only to Anthropic’s usage service. Trellis never stores, logs or renews it."))
-                .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
-            Toggle(L("Show Codex usage in the Agents view"), isOn: $model.codexUsageEnabled)
-            Text(L("Asks the Codex installed on this Mac (codex app-server) for its plan limits. Usage refreshes every 5 minutes while the Agents view is open."))
-                .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
-            Text(
-                L(
-                    "Trellis wires each agent’s own hooks at launch, without changing your agent settings. A hook can only set its own pane’s state; it gets no automation access, and nothing from the conversation reaches Trellis. Add an agent by dropping a <id>.agent.json file in the Agents folder."
-                )
-            )
-            .font(.callout).foregroundStyle(model.themeColor(.mutedForeground)).wrappingSettingsCaption()
+            Section(L("Subscription usage")) {
+                Toggle(isOn: $model.claudeUsageEnabled) {
+                    SettingsLabel(
+                        L("Show Claude Code usage in the Agents view"),
+                        help: L("Reads Claude Code’s sign-in from the Keychain and sends it only to Anthropic’s usage service. Trellis never stores, logs or renews it."))
+                }
+                Toggle(isOn: $model.codexUsageEnabled) {
+                    SettingsLabel(
+                        L("Show Codex usage in the Agents view"),
+                        help: L("Asks the Codex installed on this Mac (codex app-server) for its plan limits. Usage refreshes every 5 minutes while the Agents view is open."))
+                }
+            }
         }
-        // Not a Form, which insets itself: line up with the section title and divider like the other sections.
-        .padding(.top, 8).padding(.leading, 16)
+        .settingsFormStyle()
         .onAppear { model.refreshAgentAvailability() }
     }
 

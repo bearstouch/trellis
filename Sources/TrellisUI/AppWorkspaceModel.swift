@@ -1721,6 +1721,9 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.openInEditor = { [weak self] path, line, column in
             await self?.openLinkInEditor(paneID: pane.id, path: path, line: line, column: column) ?? false
         }
+        terminal.previewInEditor = { [weak self] path in
+            await self?.openLinkInEditor(paneID: pane.id, path: path, line: nil, column: nil, preview: true) ?? false
+        }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.
             guard let self, let terminal, self.snapshot.sessions[terminal.sessionID] != nil else { return }
