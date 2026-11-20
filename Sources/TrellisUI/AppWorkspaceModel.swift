@@ -423,6 +423,13 @@ public final class AppWorkspaceModel: ObservableObject {
     var agentPathCheckedAt: Date?
     /// Sessions whose launch ran the agent's installer first.
     var agentInstalling: Set<UUID> = []
+    /// FR-AG22: each opted-in agent's subscription usage, by agent ID; runtime only, never persisted.
+    @Published public internal(set) var agentUsage: [String: AgentUsageStatus] = [:]
+    public var agentUsageClient = AgentUsageClient.live
+    /// When each agent's usage was last asked for, and the earliest next ask after a 429.
+    var agentUsageAskedAt: [String: Date] = [:]
+    var agentUsageRetryAt: [String: Date] = [:]
+    var agentUsageInFlight: Set<String> = []
     /// Each host's OS from its helper (`linux`, `darwin`), for the installer that fits it.
     var remoteHostPlatforms: [UUID: String] = [:]
     var activityNow: () -> Date = Date.init
@@ -579,8 +586,16 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the Files view's search field should take keyboard focus.
     @Published public internal(set) var filesFocusRequest = 0
     var filesSearchTask: Task<Void, Never>?
+    /// A host's tree as the search in progress walked it (FR-FB09).
+    var filesSearchCache: (key: String, source: CachedTreeSource)?
+    /// A remote workspace host's files; injected by tests in place of the host's helper.
+    public var remoteFileAccess: ((UUID) -> (any RemoteFileAccess)?)?
     var filesGeneration = 0
     var filesStatusTask: Task<Void, Never>?
+    /// Copies dropped on or dragged from the Files view (FR-FB10–FR-FB14), with their progress and name conflicts.
+    public let fileTransfers = FileTransferCenter()
+    /// The limits one drop is held to; lowered by tests.
+    public var fileTransferLimits = FileTransferLimits()
     /// The Changes view's list, filter and folds (FR-GC02–FR-GC04): runtime only, never saved with the workspace.
     @Published public internal(set) var gitChanges = GitChangesState()
     /// Each space's Review tab (FR-GC05), and the spaces showing it in place of their terminal tabs. Never saved.
@@ -717,6 +732,9 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:] { didSet { if onLiveEvents != nil, remoteLinks != oldValue { liveRemoteLinksChanged(from: oldValue) } } }
     /// Remote sessions closed while their host was unreachable, hung up once it is reachable again.
     var pendingRemoteHangups: [UUID: Set<UUID>] = [:]
+    /// How long a host's broker may take to answer after a reconnect: each re-attach's share (FR-RW08) and the session list.
+    /// Tests shorten it rather than wait out a frozen broker.
+    var remoteReplyTimeout: Duration = .seconds(5)
     /// Automatic reconnects (FR-RW07); its clock, sleep and randomness are injectable for tests.
     public private(set) lazy var remoteReconnector: RemoteReconnector = {
         let reconnector = RemoteReconnector()
@@ -1713,6 +1731,9 @@ public final class AppWorkspaceModel: ObservableObject {
         }
         terminal.openInEditor = { [weak self] path, line, column in
             await self?.openLinkInEditor(paneID: pane.id, path: path, line: line, column: column) ?? false
+        }
+        terminal.previewInEditor = { [weak self] path in
+            await self?.openLinkInEditor(paneID: pane.id, path: path, line: nil, column: nil, preview: true) ?? false
         }
         terminal.onOutputData = { [weak self, weak terminal] data in
             // Late output from a closed or replaced session must not recreate its journal.

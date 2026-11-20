@@ -52,6 +52,9 @@ public final class RemoteHostsModel: ObservableObject {
     /// This state directory's client ID (FR-RW13); nil when it couldn't be created, which disables the actions.
     public var clientID: String?
     public var sshExecutable = "/usr/bin/ssh"
+    /// How long the ping after wake or a network change may go unanswered before the link counts as lost (FR-RW07);
+    /// tests shorten it rather than wait out a silently dead link.
+    public var linkCheckTimeout: Duration = .seconds(5)
     public var environment: () -> [String: String] = { ProcessInfo.processInfo.environment }
     public var askpass: AskpassBroker?
     public var savedPassword: (@Sendable (UUID, UInt64) async -> Data?)?
@@ -223,7 +226,7 @@ public final class RemoteHostsModel: ObservableObject {
     }
 
     /// After wake or a network change: every connected link pings now (FR-RW07).
-    public func checkWorkspaceLinks() { workspaceLinks.values.forEach { $0.checkNow() } }
+    public func checkWorkspaceLinks() { workspaceLinks.values.forEach { $0.checkNow(timeout: linkCheckTimeout) } }
 
     /// Quit or window close: every workspace link ends; nothing is sent to the hosts' sessions (FR-RW06).
     /// Drops one host's link; its panes see the link go down and the caller decides what happens next.

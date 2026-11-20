@@ -155,5 +155,5 @@ Each Mac's sessions are its own: two Macs using the same host see only their own
 - If you start a restored remote pane by hand before Trellis has reconnected it, the start fails because the helper still runs that session. Reconnect instead.
 - If the host doesn't answer within 5 seconds when a new session starts, the pane shows that it failed even if the shell did start. That session is then offered with **Stop Them** / **Leave Running**.
 - Only the Mac that started a set of sessions can attach to them.
-- Opening links to remote files, editing remote task files and general file transfer aren't included.
+- You can browse a host's files and open them read-only from the [Files view](files.md#on-a-remote-workspace). Opening links to remote files from the terminal, editing or saving remote files, the Changes view and general file transfer aren't included.
 - Automation can open remote workspaces, reconnect them, install or remove the helper (with the grant's permission or the host's automatic install) and work with their sessions. See the [automation API](../api/methods.md#remote-workspaces).

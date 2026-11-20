@@ -323,6 +323,7 @@ final class TailscaleTests: XCTestCase {
         let url = "https://studio.tail1a2b.ts.net:8443/mcp"
         XCTAssertEqual(
             MCPClientSetup.claudeCode.snippet(url: url), #"claude mcp add --transport http trellis https://studio.tail1a2b.ts.net:8443/mcp --header "Authorization: Bearer <TOKEN>""#)
+        XCTAssertEqual(MCPClientSetup.opencode.snippet(url: url), #"opencode mcp add trellis --global --url https://studio.tail1a2b.ts.net:8443/mcp --header "Authorization=Bearer <TOKEN>""#)
         XCTAssertEqual(MCPClientSetup.codex.snippet(url: url), "[mcp_servers.trellis]\nurl = \"\(url)\"\nbearer_token_env_var = \"TRELLIS_TOKEN\"\n")
         let json = try? JSONSerialization.jsonObject(with: Data(MCPClientSetup.json.snippet(url: url).utf8)) as? [String: Any]
         let server = (json?["mcpServers"] as? [String: Any])?["trellis"] as? [String: Any]

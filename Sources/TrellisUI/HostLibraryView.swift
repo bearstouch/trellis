@@ -73,8 +73,8 @@ public struct HostLibraryView: View {
                 }
                 .padding(28)
                 Divider().padding(.horizontal, 28)
-                ScrollView { editor.padding(28) }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                editor.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                footer
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .foregroundStyle(workspace.themeColor(.foreground))
@@ -99,58 +99,59 @@ public struct HostLibraryView: View {
         }
     }
 
-    @ViewBuilder private var editor: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    /// Grouped like a settings pane (Settings → Sessions): label and help on the left, the control on the right.
+    private var editor: some View {
+        Form {
             if model.loadFailed {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(HostListModel.message(for: .readOnly)).font(.callout)
+                Section {
+                    SettingsNote(text: HostListModel.message(for: .readOnly))
                     Button(L("Reset Host Library")) {
                         Task { message = await model.resetUnreadable() ? L("The unreadable file was kept beside the new library.") : L("The host library could not be reset.") }
                     }
                 }
             }
-            field(L("Name"), text: $draft.name, error: errors[.name], prompt: L("Production API"))
-            field(L("SSH alias or hostname"), text: $draft.destination, error: errors[.destination], prompt: L("prod-api or api.example.com"))
-            HStack(alignment: .top) {
+            Section(L("Host")) {
+                field(L("Name"), text: $draft.name, error: errors[.name], prompt: L("Production API"))
+                field(L("SSH alias or hostname"), text: $draft.destination, error: errors[.destination], prompt: L("prod-api or api.example.com"))
                 field(L("User (optional)"), text: $draft.user, error: errors[.user], prompt: "deploy")
-                field(L("Port (optional)"), text: $draft.port, error: errors[.port], prompt: "22").frame(width: 130)
+                field(L("Port (optional)"), text: $draft.port, error: errors[.port], prompt: "22", width: 90, trailing: true)
+                field(L("Identity file (optional)"), text: $draft.identityFile, error: errors[.identityFile], prompt: "/Users/you/.ssh/id_ed25519", monospaced: true) {
+                    Button(L("Choose…"), action: chooseIdentity).accessibilityLabel(L("Choose identity file"))
+                }
+                field(L("Tags (comma-separated)"), text: $draft.tags, error: errors[.tags], prompt: "prod, api")
+                SettingsNote(text: L("Trellis never stores key contents. Changes apply to future connections only."))
             }
-            HStack(alignment: .bottom) {
-                field(L("Identity file (optional)"), text: $draft.identityFile, error: errors[.identityFile], prompt: "/Users/you/.ssh/id_ed25519")
-                Button(L("Choose…"), action: chooseIdentity).accessibilityLabel(L("Choose identity file"))
-            }
-            field(L("Tags (comma-separated)"), text: $draft.tags, error: errors[.tags], prompt: "prod, api")
             passwordSection
-            Text(L("Trellis never stores key contents. Changes apply to future connections only."))
-                .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
-            if let message { Text(message).font(.caption).accessibilityIdentifier("hosts.result") }
             if let host = editing, let remote = model.remote {
                 RemoteHelperSection(host: host, remote: remote, workspace: workspace, disabled: hasUnsavedChanges(host))
             }
             if let host = editing {
-                HStack {
-                    Button(L("Connect in New Tab")) { model.onConnect?(host, .newTab) }
-                        .accessibilityHint(L("Starts a new ssh process for %@", host.name))
-                    Button(L("Connect in New Space")) { model.onConnect?(host, .newSpace) }
-                        .accessibilityHint(L("Opens a new space and starts a new ssh process for %@", host.name))
-                    if model.remote != nil, let open = model.onOpenRemoteWorkspace {
-                        Button(L("Open Remote Workspace")) { open(host) }
-                            .accessibilityHint(L("Opens a space whose sessions run on %@ and keep running when the connection drops", host.name))
+                Section(L("Connect")) {
+                    HStack {
+                        Button(L("Connect in New Tab")) { model.onConnect?(host, .newTab) }
+                            .accessibilityHint(L("Starts a new ssh process for %@", host.name))
+                        Button(L("Connect in New Space")) { model.onConnect?(host, .newSpace) }
+                            .accessibilityHint(L("Opens a new space and starts a new ssh process for %@", host.name))
+                        if model.remote != nil, let open = model.onOpenRemoteWorkspace {
+                            Button(L("Open Remote Workspace")) { open(host) }
+                                .accessibilityHint(L("Opens a space whose sessions run on %@ and keep running when the connection drops", host.name))
+                        }
                     }
-                }
-                .disabled(model.onConnect == nil || hasUnsavedChanges(host))
-                if hasUnsavedChanges(host) {
-                    Text(L("Save or revert your changes before connecting.")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
+                    .disabled(model.onConnect == nil || hasUnsavedChanges(host))
+                    if hasUnsavedChanges(host) { SettingsNote(text: L("Save or revert your changes before connecting.")) }
                 }
             }
-            HStack {
-                if editing != nil {
-                    Button(L("Delete…"), role: .destructive) { confirmingDelete = true }.disabled(saving)
-                }
-                Spacer()
-                Button(editing == nil ? L("Add Host") : L("Save Changes"), action: save)
-                    .keyboardShortcut(.defaultAction).disabled(saving || model.loadFailed)
+        }
+        .settingsFormStyle()
+    }
+
+    private var footer: some View {
+        SettingsFooter(message: message, identifier: "hosts.result") {
+            if editing != nil {
+                Button(L("Delete…"), role: .destructive) { confirmingDelete = true }.disabled(saving)
             }
+            Button(editing == nil ? L("Add Host") : L("Save Changes"), action: save)
+                .keyboardShortcut(.defaultAction).disabled(saving || model.loadFailed)
         }
     }
 
@@ -160,42 +161,43 @@ public struct HostLibraryView: View {
         draft != host.draft || !passwordDraft.isEmpty || (host.savedPassword.map { $0.requiresUserPresence != requiresUserPresence } ?? false)
     }
 
-    @ViewBuilder private var passwordSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(L("Password (optional)")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
+    private var passwordSection: some View {
+        let help = L(
+            "Stored only in this Mac’s Keychain and given to ssh only when it asks for this host’s password. Host-key checks and passphrases stay in the terminal. Changing the destination, user, port, or identity file removes it."
+        )
+        return Section(L("Password")) {
             if hasSavedPassword && !replacingPassword {
-                HStack {
-                    Label(L("Saved in Keychain"), systemImage: "key.fill").accessibilityLabel(L("Password saved in the Keychain"))
-                    Spacer()
-                    Button(L("Replace…")) { replacingPassword = true }.accessibilityLabel(L("Replace saved password"))
-                    Button(L("Remove"), role: .destructive, action: removePassword).accessibilityLabel(L("Remove saved password")).disabled(saving)
+                LabeledContent {
+                    HStack {
+                        Label(L("Saved in Keychain"), systemImage: "key.fill").accessibilityLabel(L("Password saved in the Keychain"))
+                        Button(L("Replace…")) { replacingPassword = true }.accessibilityLabel(L("Replace saved password"))
+                        Button(L("Remove"), role: .destructive, action: removePassword).accessibilityLabel(L("Remove saved password")).disabled(saving)
+                    }
+                } label: {
+                    SettingsLabel(L("Password (optional)"), help: help)
                 }
             } else {
-                HStack {
-                    SecureField(L("Password"), text: $passwordDraft, prompt: Text(hasSavedPassword ? L("New password") : L("Not saved")))
-                        .textFieldStyle(.roundedBorder).labelsHidden()
-                        .accessibilityLabel(hasSavedPassword ? L("New password") : L("Password"))
-                        .accessibilityValue(errors[.password].map { L("Error: %@", $0) } ?? "")
-                    if replacingPassword {
-                        Button(L("Cancel")) {
-                            replacingPassword = false; passwordDraft = ""; errors[.password] = nil
+                LabeledContent {
+                    HStack {
+                        SecureField(L("Password"), text: $passwordDraft, prompt: Text(hasSavedPassword ? L("New password") : L("Not saved")))
+                            .labelsHidden().frame(maxWidth: 220)
+                            .accessibilityLabel(hasSavedPassword ? L("New password") : L("Password"))
+                            .accessibilityValue(errors[.password].map { L("Error: %@", $0) } ?? "")
+                        if replacingPassword {
+                            Button(L("Cancel")) {
+                                replacingPassword = false; passwordDraft = ""; errors[.password] = nil
+                            }
                         }
                     }
-                }
-                if let error = errors[.password] {
-                    Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red).accessibilityHidden(true)
+                } label: {
+                    SettingsLabel(L("Password (optional)"), help: errors[.password] ?? help, helpColor: errors[.password] == nil ? nil : .red)
                 }
             }
             if hasSavedPassword || !passwordDraft.isEmpty {
-                Toggle(L("Require Touch ID or Mac password to use"), isOn: $requiresUserPresence)
-                    .accessibilityHint(L("Asks before each connection that uses the saved password"))
+                Toggle(isOn: $requiresUserPresence) {
+                    SettingsLabel(L("Require Touch ID or Mac password to use"), help: L("Asks before each connection that uses the saved password"))
+                }
             }
-            Text(
-                L(
-                    "Stored only in this Mac’s Keychain and given to ssh only when it asks for this host’s password. Host-key checks and passphrases stay in the terminal. Changing the destination, user, port, or identity file removes it."
-                )
-            )
-            .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -244,16 +246,22 @@ public struct HostLibraryView: View {
         .buttonStyle(.plain)
     }
 
-    private func field(_ title: String, text: Binding<String>, error: String?, prompt: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
-            TextField(title, text: text, prompt: Text(prompt)).textFieldStyle(.roundedBorder).labelsHidden()
-                .accessibilityLabel(title)
-                .accessibilityValue(error.map { L("%1$@. Error: %2$@", text.wrappedValue, $0) } ?? text.wrappedValue)
-            if let error {
-                Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true).accessibilityHidden(true)
+    /// A settings row: the label (with a field's error in red as its help), then the field and any trailing control.
+    private func field(
+        _ title: String, text: Binding<String>, error: String?, prompt: String, width: CGFloat = 260, trailing: Bool = false, monospaced: Bool = false,
+        @ViewBuilder accessory: () -> some View = { EmptyView() }
+    ) -> some View {
+        LabeledContent {
+            HStack {
+                TextField(title, text: text, prompt: Text(prompt)).labelsHidden()
+                    .font(monospaced ? .system(size: 12, design: .monospaced) : .body)
+                    .multilineTextAlignment(trailing ? .trailing : .leading).frame(maxWidth: width)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(error.map { L("%1$@. Error: %2$@", text.wrappedValue, $0) } ?? text.wrappedValue)
+                accessory()
             }
+        } label: {
+            SettingsLabel(title, help: error, helpColor: .red)
         }
     }
 
@@ -365,44 +373,47 @@ private struct RemoteHelperSection: View {
     var body: some View {
         let preferences = remote.preferences(host)
         let busy = remote.activity[host.id]
-        VStack(alignment: .leading, spacing: 6) {
-            Text(L("Remote helper")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
-            HStack(spacing: 6) {
-                Image(systemName: symbol(preferences.helper?.state)).accessibilityHidden(true)
-                Text(preferences.helper?.summary ?? L("Unknown (never checked)")).accessibilityIdentifier("hosts.helperStatus")
-                if let checked = preferences.helper?.checkedAt {
-                    Text(L("· checked %@", checked.formatted(.relative(presentation: .named)))).foregroundStyle(workspace.themeColor(.mutedForeground))
-                }
-            }
-            .font(.callout)
-            .accessibilityElement(children: .combine)
-            HStack {
-                Group {
+        Section(L("Remote helper")) {
+            LabeledContent {
+                HStack {
                     Button(L("Check Helper Status")) { Task { await remote.check(host) } }.accessibilityHint(L("Connects to %@ and reports the helper's status", host.name))
-                    Button(preferences.helper?.state == .outdated ? L("Update Helper…") : L("Install Trellis Helper…")) { Task { await remote.install(host) } }
-                        .disabled(preferences.helper?.state == .current || preferences.helper?.state == .unsupported)
-                    Button(L("Remove Helper…"), role: .destructive) { Task { await remote.remove(host) } }
-                        .disabled(!(preferences.helper?.state == .current || preferences.helper?.state == .outdated))
+                        .disabled(disabled || !remote.isAvailable || busy != nil)
+                    // Outside the disabled controls: a running action must stay cancellable.
+                    if busy != nil {
+                        ProgressView().controlSize(.small).accessibilityLabel(label(busy))
+                        Button(L("Cancel")) { remote.cancel(host) }
+                    }
                 }
-                .disabled(disabled || !remote.isAvailable || busy != nil)
-                // Outside the disabled group: a running action must stay cancellable.
-                if busy != nil {
-                    ProgressView().controlSize(.small).accessibilityLabel(label(busy))
-                    Button(L("Cancel")) { remote.cancel(host) }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: symbol(preferences.helper?.state)).accessibilityHidden(true)
+                    SettingsLabel(
+                        preferences.helper?.summary ?? L("Unknown (never checked)"),
+                        help: preferences.helper.flatMap(\.checkedAt).map { L("· checked %@", $0.formatted(.relative(presentation: .named))) })
                 }
+                .accessibilityElement(children: .combine).accessibilityIdentifier("hosts.helperStatus")
             }
-            Toggle(
-                L("Install helper automatically when opening a remote workspace"),
-                isOn: Binding(get: { preferences.autoInstall }, set: { value in Task { await remote.setAutoInstall(host, value) } })
-            ).accessibilityIdentifier("hosts.autoInstallHelper")
-            if let message = remote.messages[host.id] { Text(message).font(.caption).accessibilityIdentifier("hosts.helperResult") }
-            Text(L("The helper keeps sessions running on the host. It lives in ~/.trellis there and needs no administrator rights."))
-                .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
-        }
-        .sheet(item: $remote.console) { console in
-            RemoteConsoleSheet(console: console, background: workspace.terminalBackground, close: { remote.console = nil })
-                // A later link for the same host swaps the terminal in an open sheet, which onAppear would miss.
-                .onChange(of: ObjectIdentifier(console.terminal), initial: true) { console.terminal.applyPalette(workspace.effectiveTheme.terminal) }
+            // On one row, not the Section: a Section's modifiers apply to each of its rows, which would stack several sheets.
+            .sheet(item: $remote.console) { console in
+                RemoteConsoleSheet(console: console, background: workspace.terminalBackground, close: { remote.console = nil })
+                    // A later link for the same host swaps the terminal in an open sheet, which onAppear would miss.
+                    .onChange(of: ObjectIdentifier(console.terminal), initial: true) { console.terminal.applyPalette(workspace.effectiveTheme.terminal) }
+            }
+            HStack {
+                Spacer()
+                Button(preferences.helper?.state == .outdated ? L("Update Helper…") : L("Install Trellis Helper…")) { Task { await remote.install(host) } }
+                    .disabled(preferences.helper?.state == .current || preferences.helper?.state == .unsupported)
+                Button(L("Remove Helper…"), role: .destructive) { Task { await remote.remove(host) } }
+                    .disabled(!(preferences.helper?.state == .current || preferences.helper?.state == .outdated))
+            }
+            .disabled(disabled || !remote.isAvailable || busy != nil)
+            Toggle(isOn: Binding(get: { preferences.autoInstall }, set: { value in Task { await remote.setAutoInstall(host, value) } })) {
+                SettingsLabel(
+                    L("Install helper automatically when opening a remote workspace"),
+                    help: L("The helper keeps sessions running on the host. It lives in ~/.trellis there and needs no administrator rights."))
+            }
+            .accessibilityIdentifier("hosts.autoInstallHelper")
+            if let message = remote.messages[host.id] { SettingsNote(text: message).accessibilityIdentifier("hosts.helperResult") }
         }
     }
 

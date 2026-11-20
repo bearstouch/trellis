@@ -45,6 +45,8 @@ struct SearchableTerminalSurface: View {
     /// The terminal draws its own translucent background (FR-TH10), so only the margins are painted under it.
     var opacity = 1.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// No top inset: the pane header above already separates the first row.
+    private static let inset = EdgeInsets(top: 0, leading: 8, bottom: 4, trailing: 8)
     var body: some View {
         VStack(spacing: 0) {
             // Keyed by terminal: a reused surface (another tab of the same shape) must not keep the previous
@@ -53,10 +55,10 @@ struct SearchableTerminalSurface: View {
             // Opening/selecting a pane with an active find field must not let
             // the native terminal host steal that field's first responder.
             NativeTerminalSurface(terminal: terminal, isFocused: isFocused && !terminal.searchVisible)
-                .padding(8)
+                .padding(Self.inset)
                 .background {
                     if opacity < 1 {
-                        MarginFrame(insets: EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)).fill(background.opacity(opacity), style: FillStyle(eoFill: true))
+                        MarginFrame(insets: Self.inset).fill(background.opacity(opacity), style: FillStyle(eoFill: true))
                     } else {
                         background
                     }

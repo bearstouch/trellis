@@ -10,6 +10,7 @@ final class TerminalEditorLinkTests: XCTestCase {
     private final class Recorder {
         var opened: [String] = [], revealed: [String] = []
         var edited: [(String, Int?, Int?)] = []
+        var previewed: [String] = []
         var accepts = true
     }
 
@@ -24,6 +25,9 @@ final class TerminalEditorLinkTests: XCTestCase {
         native.revealURL = { recorder.revealed.append($0.path) }
         let files = [
             "/work/src/a.swift": FileFacts(resolvedPath: "/work/src/a.swift", kind: .regular),
+            "/work/README.md": FileFacts(resolvedPath: "/work/README.md", kind: .regular),
+            "/work/data.csv": FileFacts(resolvedPath: "/work/data.csv", kind: .regular),
+            "/elsewhere/notes.md": FileFacts(resolvedPath: "/elsewhere/notes.md", kind: .regular),
             "/work/run.sh": FileFacts(resolvedPath: "/work/run.sh", kind: .regular, isExecutable: true),
             "/elsewhere/b.txt": FileFacts(resolvedPath: "/elsewhere/b.txt", kind: .regular)
         ]
@@ -32,6 +36,10 @@ final class TerminalEditorLinkTests: XCTestCase {
         native.editorMayOpen = { $0.hasPrefix("/work/") }
         native.openInEditor = { path, line, column in
             recorder.edited.append((path, line, column))
+            return recorder.accepts
+        }
+        native.previewInEditor = { path in
+            recorder.previewed.append(path)
             return recorder.accepts
         }
         return (native, surface, recorder)
@@ -91,8 +99,50 @@ final class TerminalEditorLinkTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "src/a.swift", explicit: false, position: nil))).canEdit, "No editor, no item")
 
         surface.lastUserGesture = Date()
-        native.openLink(inside.click, inEditor: false)
+        native.openLink(inside.click, target: .app)
         await settle()
         XCTAssertEqual(recorder.opened, ["/work/src/a.swift"], "The menu's Open still means the default app")
+    }
+
+    func testTheMenuOffersAPreviewOnlyForMarkdownTheEditorMayOpen() throws {
+        let (native, _, _) = makeTerminal()
+        defer { native.adapter.detach() }
+        let readme = try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "README.md", explicit: false, position: nil)))
+        XCTAssertTrue(readme.canEdit)
+        XCTAssertTrue(readme.canPreview)
+        XCTAssertFalse(try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "src/a.swift", explicit: false, position: nil))).canPreview, "Only Markdown")
+        XCTAssertFalse(
+            try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "/elsewhere/notes.md", explicit: false, position: nil))).canPreview, "Only where the editor may open")
+        XCTAssertTrue(try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "data.csv", explicit: false, position: nil))).canPreview, "A table has a preview too")
+        native.previewInEditor = nil
+        XCTAssertFalse(try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "README.md", explicit: false, position: nil))).canPreview, "No preview, no item")
+    }
+
+    func testThePreviewItemOpensThePreviewAndFallsBackWhenRefused() async throws {
+        let (native, surface, recorder) = makeTerminal()
+        defer { native.adapter.detach() }
+        let readme = try XCTUnwrap(native.describeLink(TerminalLinkClick(link: "README.md", explicit: false, position: nil)))
+        native.openLink(readme.click, target: .preview)
+        await settle()
+        XCTAssertEqual(recorder.previewed, [], "Without a gesture nothing opens")
+
+        surface.lastUserGesture = Date()
+        native.openLink(readme.click, target: .preview)
+        await settle()
+        XCTAssertEqual(recorder.previewed, ["/work/README.md"])
+        XCTAssertEqual(recorder.edited.count, 0)
+        XCTAssertEqual(recorder.opened, [])
+
+        recorder.accepts = false
+        surface.lastUserGesture = Date()
+        native.openLink(readme.click, target: .preview)
+        await settle()
+        XCTAssertEqual(recorder.opened, ["/work/README.md"], "A file the editor refuses opens as before")
+
+        surface.lastUserGesture = Date()
+        native.openLink(TerminalLinkClick(link: "src/a.swift", explicit: false, position: nil), target: .preview)
+        await settle()
+        XCTAssertEqual(recorder.previewed.count, 2, "A non-Markdown file is never previewed")
+        XCTAssertEqual(recorder.opened.last, "/work/src/a.swift")
     }
 }

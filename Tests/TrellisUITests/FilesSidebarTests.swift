@@ -93,11 +93,14 @@ final class FilesSidebarTests: XCTestCase {
         model.publish(try await model.service.execute(.configureStoppedSession(paneID: remote, launch: .remoteShell(hostID: remoteSpace.remoteHostID!, directory: "/srv/app"))).snapshot)
         await model.selectSpace(remoteSpace.id)
         XCTAssertEqual(model.presentation.activePane?.id, remote)
-        XCTAssertEqual(model.sidebarUnavailableReason(.files), "Files shows only folders on this Mac.")
-        XCTAssertNil(model.sidebarUnavailableReason(.tasks), "Tasks still works there")
-        XCTAssertNil(model.visibleSidebarView, "Files hides on a remote workspace pane")
+        // FR-FB09: Files works on a remote workspace pane; with no link it lists nothing of this Mac's and says why.
+        XCTAssertNil(model.sidebarUnavailableReason(.files))
+        XCTAssertNil(model.sidebarUnavailableReason(.tasks), "Tasks works there too")
+        XCTAssertEqual(model.sidebarUnavailableReason(.changes), "Changes reads git only in panes on this Mac.")
+        XCTAssertEqual(model.visibleSidebarView, .files, "Files stays on a remote workspace pane")
         await model.refreshFiles(paneID: remote)
-        XCTAssertNil(model.files.root, "Nothing is listed for a remote pane")
+        XCTAssertNil(model.files.root, "A host that isn't connected lists nothing, least of all this Mac's /srv/app")
+        XCTAssertEqual(model.files.notice, "Not connected to Missing host. Its files show once it is connected.")
 
         await model.selectSpace(try XCTUnwrap(model.snapshot.spaces.first?.id))
         XCTAssertEqual(model.presentation.activePane?.id, local)
@@ -259,6 +262,12 @@ final class FilesSidebarTests: XCTestCase {
         XCTAssertEqual(recorder.opened.count, opened, "…not in VS Code")
         XCTAssertEqual(model.files.editor.id, "vscode", "The remembered app is kept")
 
+        try "a,b\n1,2\n".write(toFile: project + "/data.csv", atomically: true, encoding: .utf8)
+        await model.openFileOnDoubleClick(FileEntry(path: project + "/data.csv", isDirectory: false))
+        XCTAssertEqual(model.shownEditor?.fileName, "data.csv", "A table opens in an editor tab (FR-ED18)")
+        XCTAssertEqual(model.shownEditor?.showsPreview, true, "…on its preview")
+        XCTAssertEqual(recorder.opened.count, opened)
+
         await model.openFileOnDoubleClick(FileEntry(path: project + "/notes.log", isDirectory: false))
         XCTAssertEqual(recorder.opened.last?.0.path, project + "/notes.log", "Other files open in the remembered app")
         XCTAssertEqual(recorder.opened.last?.1?.lastPathComponent, "Visual Studio Code.app")
@@ -271,7 +280,7 @@ final class FilesSidebarTests: XCTestCase {
             XCTAssertEqual(recorder.opened.last?.0.path, project + "/" + name, name)
             XCTAssertEqual(recorder.opened.last?.1?.lastPathComponent, "Visual Studio Code.app", name)
         }
-        XCTAssertEqual(model.currentEditors.count, 1, "No tab for either")
+        XCTAssertEqual(model.currentEditors.count, 2, "No tab for either (App.swift and data.csv are the two open)")
         XCTAssertTrue(recorder.revealed.isEmpty)
         XCTAssertNil(model.errorMessage, "The refusal names the default app, which isn't used")
     }

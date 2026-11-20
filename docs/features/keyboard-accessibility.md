@@ -53,7 +53,8 @@ Rules for shortcuts:
 | --- | --- | --- |
 | Chrome mode | Light | System, Dark, Light |
 | Terminal font | JetBrains Mono 13 (bundled) | Sizes 8–48, with zoom |
-| Cursor | Block, not blinking | |
+| Cursor | Block | Block, Underline, Bar |
+| Blink cursor | Off | Off, Slow, Normal, Fast (FR-TX06); always steady under Reduce Motion |
 | Scrollback | 10,000 lines | 0–50,000, plus a 16 MiB cap |
 | Ligatures | On | On, Off (FR-TX01); visible only with fonts that have them, such as JetBrains Mono |
 | Bold as bright colors | On | On, Off (FR-TX03) |

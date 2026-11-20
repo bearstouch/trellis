@@ -375,7 +375,7 @@ extension AppWorkspaceModel {
             showGitChangesStatus(L("%@ was deleted; there's nothing to open.", file.name))
             return
         }
-        await openFile(FileEntry(path: path, isDirectory: false))
+        await openLocalFile(FileEntry(path: path, isDirectory: false))
     }
 
     public func copyGitChangePath(_ root: String, _ file: GitChangedFile, relative: Bool = false) {

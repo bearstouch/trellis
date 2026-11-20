@@ -27,14 +27,15 @@ struct EditorTabView: View {
                     font: editorFont, palette: model.effectiveTheme.terminal, issueLines: [], focusRequest: model.editorFocusRequest,
                     commands: ScratchpadEditorCommands(
                         saveFile: { Task { await model.saveEditor(tab.id) } }, goToLine: { beginGoToLine() },
-                        togglePreview: tab.isMarkdown ? { model.toggleEditorPreview(tab.id) } : nil),
+                        togglePreview: tab.hasPreview ? { model.toggleEditorPreview(tab.id) } : nil),
                     accessibilityName: L("Editor, %@", tab.fileName), contentNoun: L("file"), maximumBytes: EditorDocument.maximumBytes,
                     highlightsCurrentLine: true, jump: tab.jump, onJumped: { model.clearEditorJump(tab.id) },
-                    onCursor: { [cursor] in cursor.update(line: $0, column: $1) }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview
+                    onCursor: { [cursor] in cursor.update(line: $0, column: $1) }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview, editable: !tab.isReadOnly
                 )
-                // The source stays mounted under the preview, so its undo, cursor and scroll survive (FR-ED12).
+                // The source stays mounted under the preview, so its undo, cursor and scroll survive (FR-ED12, FR-ED17).
                 .opacity(tab.showsPreview ? 0 : 1).allowsHitTesting(!tab.showsPreview).accessibilityHidden(tab.showsPreview)
                 if tab.isMarkdown, tab.showsPreview { MarkdownPreviewView(model: model, tab: tab, visible: shown) }
+                if tab.isTable, tab.showsPreview { TablePreviewView(model: model, tab: tab, visible: shown) }
             }
         }
         .background(Color(nsColor: NSColor(rgb: model.effectiveTheme.terminal.background)))
@@ -73,26 +74,37 @@ struct EditorTabView: View {
                 Text(L("Unsaved")).font(.caption).padding(.horizontal, 7).padding(.vertical, 2)
                     .background(Capsule().fill(model.themeColor(.border).opacity(0.35)))
             }
+            if let host = tab.remoteHost {
+                Label(L("Read-only · %@", host.name), systemImage: "lock").font(.caption).padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Capsule().fill(model.themeColor(.border).opacity(0.35)))
+                    .help(L("This file is on %@. Trellis shows it and never changes it.", host.name))
+            }
             Spacer(minLength: 8)
             Text(tab.language.displayName).font(.caption).foregroundStyle(muted)
                 .padding(.horizontal, 7).padding(.vertical, 2).overlay(RoundedRectangle(cornerRadius: 4).stroke(model.themeColor(.border).opacity(0.6)))
                 .accessibilityLabel(L("Language: %@", tab.language.displayName))
-            if tab.isMarkdown { previewToggle }
+            if tab.hasPreview { previewToggle }
             if !tab.showsPreview {
                 EditorCursorButton(readout: cursor, color: NSColor(muted)) { beginGoToLine() }
                     .frame(width: EditorCursorButton.width, alignment: .trailing)
                     .popover(isPresented: $goToLineShown, arrowEdge: .bottom) { goToLinePopover }
             }
-            openWithMenu
-            Button {
-                model.revealFiles([URL(fileURLWithPath: tab.document.path)])
-            } label: {
-                Image(systemName: "folder")
+            if let host = tab.remoteHost {
+                // Nothing on this Mac opens, reveals or saves a host's file (FR-ED16).
+                Button(L("Reload")) { Task { await model.reloadEditor(tab.id) } }
+                    .controlSize(.small).disabled(!shown).help(L("Read %1$@ again from %2$@", tab.fileName, host.name))
+            } else {
+                openWithMenu
+                Button {
+                    model.revealFiles([URL(fileURLWithPath: tab.document.path)])
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.borderless).help(L("Reveal in Finder")).accessibilityLabel(L("Reveal %@ in Finder", tab.fileName))
+                Button(L("Save")) { Task { await model.saveEditor(tab.id) } }
+                    .controlSize(.small)
+                    .disabled(!shown || (!tab.isDirty && tab.banner != .deleted)).help(L("Save %@ (⌘S)", tab.fileName))
             }
-            .buttonStyle(.borderless).help(L("Reveal in Finder")).accessibilityLabel(L("Reveal %@ in Finder", tab.fileName))
-            Button(L("Save")) { Task { await model.saveEditor(tab.id) } }
-                .controlSize(.small)
-                .disabled(!shown || (!tab.isDirty && tab.banner != .deleted)).help(L("Save %@ (⌘S)", tab.fileName))
         }
         .padding(.horizontal, 14).padding(.vertical, 7).background(model.chromeFill(.surface))
     }
@@ -110,13 +122,13 @@ struct EditorTabView: View {
         .help(tab.document.path)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayPath)
-        .accessibilityValue(tab.isDirty ? L("unsaved") : "")
+        .accessibilityValue(tab.remoteHost.map { L("read-only, on %@", $0.name) } ?? (tab.isDirty ? L("unsaved") : ""))
     }
 
     private var openWithMenu: some View {
         Menu {
             ForEach(model.files.editors.filter { $0 != .trellisEditor && $0 != .newTab }) { app in
-                Button(app.name) { Task { await model.openFile(FileEntry(path: tab.document.path, isDirectory: false), in: app, remember: false) } }
+                Button(app.name) { Task { await model.openLocalFile(FileEntry(path: tab.document.path, isDirectory: false), in: app, remember: false) } }
             }
         } label: {
             Label(L("Open With"), systemImage: "arrow.up.forward.app")
@@ -125,7 +137,7 @@ struct EditorTabView: View {
         .onAppear { if model.files.editors.isEmpty { model.loadEditorChoices() } }
     }
 
-    /// Preview / Edit for a Markdown tab (FR-ED12); ⇧⌘V also works while the source has the keyboard.
+    /// Preview / Edit for a Markdown or table tab (FR-ED12, FR-ED17); ⇧⌘V also works while the source has the keyboard.
     private var previewToggle: some View {
         Button {
             model.toggleEditorPreview(tab.id)
@@ -133,7 +145,7 @@ struct EditorTabView: View {
             Label(tab.showsPreview ? L("Edit") : L("Preview"), systemImage: tab.showsPreview ? "pencil" : "eye")
         }
         .controlSize(.small).keyboardShortcut("v", modifiers: [.command, .shift]).disabled(!shown)
-        .help(tab.showsPreview ? L("Edit the source (⇧⌘V)") : L("Preview the Markdown (⇧⌘V)"))
+        .help(tab.showsPreview ? L("Edit the source (⇧⌘V)") : tab.isTable ? L("Preview the table (⇧⌘V)") : L("Preview the Markdown (⇧⌘V)"))
         .accessibilityValue(tab.showsPreview ? L("showing the preview") : L("showing the source"))
     }
 

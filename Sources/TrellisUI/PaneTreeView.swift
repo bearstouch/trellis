@@ -152,7 +152,7 @@ struct PaneTreeView: View {
                         Image(systemName: "xmark")
                     }
                     .buttonStyle(iconStyle).help(L("Close Pane")).accessibilityLabel(L("Close Pane"))
-                }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(model.themeColor(.mutedForeground))
+                }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(model.themeColor(.mutedForeground))
                     // No chrome fill: the header sits on the terminal's own background, so the pane reads as one surface (FR-P05, FR-TH10).
                     .padding(.horizontal, 9).frame(height: 30)
                     .background(model.terminalBackground.opacity(model.effectiveBackgroundOpacity))

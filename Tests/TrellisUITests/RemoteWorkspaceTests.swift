@@ -85,6 +85,53 @@ final class RemoteWorkspaceTests: XCTestCase {
         }
     }
 
+    /// FR-FB09, FR-ED16, FR-RW19 through the real helper: the host's project is listed, searched and a file read in
+    /// chunks into a read-only tab.
+    func testFilesListsTheHostsProjectAndOpensAFileReadOnlyThroughTheHelper() async throws {
+        let project = home + "/proj"
+        try FileManager.default.createDirectory(atPath: project + "/.git", withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: project + "/src/deep", withIntermediateDirectories: true)
+        try "let a = 1\n".write(toFile: project + "/src/deep/main.swift", atomically: true, encoding: .utf8)
+        // Longer than one chunk, so the read takes several requests.
+        let long = String(repeating: "0123456789abcdef\n", count: 45_000)
+        XCTAssertGreaterThan(long.utf8.count, BrokerProtocol.fileChunkLimit)
+        try long.write(toFile: project + "/big.txt", atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(atPath: project + "/loop", withDestinationPath: project)
+
+        let model = try makeModel()
+        _ = await model.loadWorkspace()
+        let opened = await model.openRemoteWorkspace(host: host, directory: project + "/src")
+        XCTAssertNotNil(opened)
+        let pane = try XCTUnwrap(model.presentation.activePane)
+        let terminal = try XCTUnwrap(model.terminals[pane.id])
+        try await until("the remote shell runs") { terminal.sessionState == .running }
+        XCTAssertEqual(model.remoteHosts?.workspaceConnection(host.id)?.protocolVersion, BrokerProtocol.version)
+
+        model.toggleSidebarView(.files)
+        XCTAssertEqual(model.visibleSidebarView, .files)
+        await model.refreshFiles(paneID: pane.id)
+        XCTAssertEqual(model.files.root, project, "The project above the pane's folder, found on the host")
+        XCTAssertEqual(model.files.host?.name, "build-box")
+        XCTAssertEqual(model.files.rows.map(\.entry.name), ["src", "big.txt", "loop"])
+        XCTAssertEqual(model.files.rows.last?.entry.isSymbolicLink, true, "A link to a folder is a link, never opened as one")
+        await model.toggleFilesFolder(project + "/src")
+        XCTAssertEqual(model.files.rows.map(\.entry.name), ["src", "deep", "big.txt", "loop"])
+
+        model.setFilesQuery("main")
+        await model.waitForFilesSearch()
+        XCTAssertEqual(model.files.search?.matches.map(\.entry.path), [project + "/src/deep/main.swift"])
+        model.setFilesQuery("")
+
+        await model.openFile(FileEntry(path: project + "/big.txt", isDirectory: false))
+        let tab = try XCTUnwrap(model.shownEditor)
+        XCTAssertEqual(tab.text, long, "Every chunk, in order")
+        XCTAssertTrue(tab.isReadOnly)
+        XCTAssertEqual(tab.remoteHost?.id, host.id)
+        await model.openFile(FileEntry(path: project + "/src", isDirectory: false))
+        XCTAssertEqual(model.errorMessage, "src can't be opened in Trellis. It isn't a regular file.")
+        XCTAssertEqual(try String(contentsOfFile: project + "/big.txt", encoding: .utf8), long, "Nothing on the host changed")
+    }
+
     func testOpenSplitInheritDetachOnQuitAndReattachAfterRelaunch() async throws {
         let model = try makeModel()
         _ = await model.loadWorkspace()

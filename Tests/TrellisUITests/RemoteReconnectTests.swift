@@ -198,6 +198,9 @@ final class RemoteReconnectTests: XCTestCase {
     /// An attach that times out on a live link leaves the helper sending its replay there: the retry has to use a new link,
     /// or the output would show twice. A frozen broker never answers; the pane is marked down to send it through `resume`.
     func testAnAttachThatTimesOutOnALiveLinkRetriesOnANewLinkAndShowsOutputOnce() async throws {
+        // The frozen broker never answers: a short reply timeout sees that without waiting the app's 5 s for the attach
+        // and again for the session list.
+        model.remoteReplyTimeout = .seconds(1)
         let terminal = try await openWithPendingOutput("first")
         try await until("the first command finished") { terminal.screenText.contains("first-42") }
         try terminal.adapter.send(Data("echo broker=$PPID.\r".utf8))
@@ -285,6 +288,8 @@ final class RemoteReconnectTests: XCTestCase {
 
     /// After sleep the link may be dead without having noticed: wake pings at once instead of waiting for the heartbeat.
     func testWakeFindsASilentlyDeadLinkAndReconnects() async throws {
+        // The frozen ssh never answers the ping: a short check timeout sees that without waiting the app's 5 s.
+        model.remoteHosts?.linkCheckTimeout = .seconds(1)
         let terminal = try await openWithPendingOutput("woke")
         guard case .success(let link) = await model.remoteHosts!.workspaceLink(host, interactive: false), let pid = link.processID else {
             return XCTFail("No link")
@@ -294,13 +299,14 @@ final class RemoteReconnectTests: XCTestCase {
         defer { kill(pid, SIGKILL); kill(pid, SIGCONT) }
         XCTAssertEqual(model.remoteLinks[host.id], .connected, "Nothing has noticed yet")
         model.remoteReconnector.didWake()
-        try await until("the wake check notices within its 5 s timeout", timeout: 10) { model.remoteLinks[host.id] != .connected }
+        try await until("the wake check notices within its timeout", timeout: 10) { model.remoteLinks[host.id] != .connected }
         try await until("reconnected on a new connection") { model.remoteLinks[host.id] == .connected }
         try await until("the missed output arrives") { terminal.screenText.contains("woke-42") }
     }
 
     /// A switch from Wi-Fi to Ethernet keeps the Mac online but can strand the connection: any path update checks links.
     func testANetworkChangeWhileOnlineFindsASilentlyDeadLink() async throws {
+        model.remoteHosts?.linkCheckTimeout = .seconds(1)
         let terminal = try await openWithPendingOutput("moved")
         guard case .success(let link) = await model.remoteHosts!.workspaceLink(host, interactive: false), let pid = link.processID else {
             return XCTFail("No link")
@@ -308,7 +314,7 @@ final class RemoteReconnectTests: XCTestCase {
         kill(pid, SIGSTOP)
         defer { kill(pid, SIGKILL); kill(pid, SIGCONT) }
         model.remoteReconnector.networkChanged(online: true)
-        try await until("the path update notices within its 5 s timeout", timeout: 10) { model.remoteLinks[host.id] != .connected }
+        try await until("the path update notices within its timeout", timeout: 10) { model.remoteLinks[host.id] != .connected }
         try await until("reconnected on a new connection") { model.remoteLinks[host.id] == .connected }
         try await until("the missed output arrives") { terminal.screenText.contains("moved-42") }
     }

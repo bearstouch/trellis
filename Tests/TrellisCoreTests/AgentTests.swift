@@ -7,11 +7,12 @@ import XCTest
 final class AgentCatalogTests: XCTestCase {
     func testTheBundledAgentsAreClaudeCodePiAndCodex() {
         let agents = AgentCatalog.bundled()
-        XCTAssertEqual(agents.map(\.id), ["trellis-claude-code", "trellis-pi", "trellis-codex"])
-        XCTAssertEqual(agents.map(\.executable), ["claude", "pi", "codex"])
-        XCTAssertEqual(agents.map(\.integration), [.claudeHooks, .piExtension, .codexNotify])
+        XCTAssertEqual(agents.map(\.id), ["trellis-claude-code", "trellis-pi", "trellis-codex", "trellis-opencode"])
+        XCTAssertEqual(agents.map(\.executable), ["claude", "pi", "codex", "opencode"])
+        XCTAssertEqual(agents.map(\.integration), [.claudeHooks, .piExtension, .codexNotify, .opencodePlugin])
         XCTAssertTrue(agents.allSatisfy { $0.isBuiltIn && $0.install["darwin"] != nil && $0.install["linux"] != nil && !$0.resumeArguments.isEmpty })
         XCTAssertNotNil(AgentCatalog.bundledFile(AgentCommand.piExtensionName), "The pi extension ships beside the definitions")
+        XCTAssertNotNil(AgentCatalog.bundledFile(AgentCommand.opencodePluginName), "So does OpenCode's plugin, in its own folder")
     }
 
     func testACommandNameMatchesAnAgentOnlyExactly() {
@@ -33,7 +34,7 @@ final class AgentCatalogTests: XCTestCase {
             "path.agent.json": try JSONEncoder().encode(AgentDefinition(id: "path", name: "Path", executable: "../../bin/sh"))
         ])
         let snapshot = AgentCatalog.load(userDirectory: URL(fileURLWithPath: "/agents"), bundled: AgentCatalog.bundled(), files: files)
-        XCTAssertEqual(snapshot.definitions.map(\.id), ["trellis-claude-code", "trellis-pi", "trellis-codex", "aider"])
+        XCTAssertEqual(snapshot.definitions.map(\.id), ["trellis-claude-code", "trellis-pi", "trellis-codex", "trellis-opencode", "aider"])
         XCTAssertEqual(snapshot.iconDirectories["aider"], URL(fileURLWithPath: "/agents"))
         XCTAssertEqual(Set(snapshot.issues.map(\.filename)), ["wrong-name.agent.json", "trellis-mine.agent.json", "broken.agent.json", "path.agent.json"])
         XCTAssertTrue(snapshot.issues.first { $0.filename == "trellis-mine.agent.json" }!.message.contains("reserved"))
@@ -76,8 +77,9 @@ final class AgentCatalogTests: XCTestCase {
         XCTAssertEqual(icons["trellis-claude-code"], .image("trellis-claude-code.svg", fullColor: true))
         XCTAssertEqual(icons["trellis-codex"], .image("trellis-codex.svg"), "The OpenAI mark is black alone, so it takes the tab's tint")
         XCTAssertEqual(icons["trellis-pi"], .monogram("π"))
+        XCTAssertEqual(icons["trellis-opencode"], .image("trellis-opencode.svg"))
         let directory = try XCTUnwrap(AgentCatalog.bundledDirectory)
-        for file in ["trellis-claude-code.svg", "trellis-codex.svg"] {
+        for file in ["trellis-claude-code.svg", "trellis-codex.svg", "trellis-opencode.svg"] {
             let data = try Data(contentsOf: directory.appendingPathComponent(file))
             XCTAssertLessThanOrEqual(data.count, 32_768, file)
             XCTAssertFalse(String(decoding: data, as: UTF8.self).lowercased().contains("<script"), file)
@@ -109,7 +111,8 @@ final class AgentCatalogTests: XCTestCase {
     }
 
     func testTheTileIsLitFromAboveAndItsMarkReadsOnIt() {
-        XCTAssertEqual(Dictionary(uniqueKeysWithValues: AgentCatalog.bundled().map { ($0.id, $0.tile) }), ["trellis-claude-code": "#D97757", "trellis-codex": "#1A1C20", "trellis-pi": "#F1E9DA"])
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: AgentCatalog.bundled().map { ($0.id, $0.tile) }), ["trellis-claude-code": "#D97757", "trellis-codex": "#1A1C20", "trellis-pi": "#F1E9DA", "trellis-opencode": "#211E1E"])
         let clay = AgentTileStyle(tile: "#D97757"), cream = AgentTileStyle(tile: "#F1E9DA")
         XCTAssertEqual(clay.mark.hex, "#FFFFFF"); XCTAssertEqual(cream.mark.hex, "#2B2622")
         XCTAssertGreaterThan(clay.top.relativeLuminance, clay.bottom.relativeLuminance)
@@ -153,7 +156,7 @@ final class AgentCommandTests: XCTestCase {
     func testCodexReportsTurnsThroughNotifyAndPiThroughItsExtension() throws {
         let codex = AgentCommand(definition: try agent("trellis-codex"), resume: true, hookHelper: helper)
         XCTAssertEqual(codex.words, ["env", "codex", "-c", #"notify=["\#(helper)","agent-hook","done"]"#, "resume", "--last"])
-        let pi = AgentCommand(definition: try agent("trellis-pi"), hookHelper: helper, piExtension: "/b/trellis-pi-extension.ts")
+        let pi = AgentCommand(definition: try agent("trellis-pi"), hookHelper: helper, integrationFile: "/b/trellis-pi-extension.ts")
         XCTAssertEqual(pi.words, ["env", "TRELLIS_AGENT_HOOK=" + helper, "pi", "-e", "/b/trellis-pi-extension.ts"])
         XCTAssertEqual(AgentCommand(definition: try agent("trellis-pi")).words, ["env", "pi"], "Without the helper the agent runs plain")
     }
@@ -162,7 +165,7 @@ final class AgentCommandTests: XCTestCase {
         let claude = AgentCommand(definition: try agent("trellis-claude-code"), hookHelper: helper)
         XCTAssertEqual(claude.wiring.environment, [])
         XCTAssertEqual(claude.wiring.arguments, Array(claude.words[2...3]))
-        let pi = AgentCommand(definition: try agent("trellis-pi"), hookHelper: helper, piExtension: "/b/trellis-pi-extension.ts").wiring
+        let pi = AgentCommand(definition: try agent("trellis-pi"), hookHelper: helper, integrationFile: "/b/trellis-pi-extension.ts").wiring
         XCTAssertEqual(pi.environment, ["TRELLIS_AGENT_HOOK=" + helper])
         XCTAssertEqual(pi.arguments, ["-e", "/b/trellis-pi-extension.ts"])
         XCTAssertTrue(AgentCommand(definition: try agent("trellis-codex")).wiring == ([], []), "no helper, no wiring")
@@ -171,8 +174,8 @@ final class AgentCommandTests: XCTestCase {
 
     func testARemotePiWritesItsExtensionFirstAndEveryWordIsQuoted() throws {
         let command = AgentCommand(
-            definition: try agent("trellis-pi"), hookHelper: "/home/me/.trellis/remote/abc/trellis-broker", piExtension: "/home/me/.trellis/agents/x.ts",
-            piExtensionSource: "a 'quoted' $HOME")
+            definition: try agent("trellis-pi"), hookHelper: "/home/me/.trellis/remote/abc/trellis-broker", integrationFile: "/home/me/.trellis/agents/x.ts",
+            integrationFileSource: "a 'quoted' $HOME")
         XCTAssertEqual(
             command.line,
             "mkdir -p /home/me/.trellis/agents; printf '%s' 'a '\\''quoted'\\'' $HOME' > /home/me/.trellis/agents/x.ts; exec env TRELLIS_AGENT_HOOK=/home/me/.trellis/remote/abc/trellis-broker pi -e /home/me/.trellis/agents/x.ts"
@@ -180,6 +183,40 @@ final class AgentCommandTests: XCTestCase {
         XCTAssertEqual(AgentCommand.quote("it's"), #"'it'\''s'"#)
         XCTAssertEqual(AgentCommand.quote(""), "''")
         XCTAssertEqual(AgentCommand.quote("--continue"), "--continue")
+    }
+
+    func testOpenCodeRunsItsOwnServerWithTrellisPluginWithoutTouchingTheUsersConfig() throws {
+        let plugin = "/b/Agents/trellis-opencode/index.js"
+        let command = AgentCommand(definition: try agent("trellis-opencode"), resume: true, hookHelper: helper, integrationFile: plugin)
+        XCTAssertEqual(
+            command.words,
+            ["env", "TRELLIS_AGENT_HOOK=" + helper, #"OPENCODE_CONFIG_CONTENT={"plugins":["/b/Agents/trellis-opencode"]}"#, "opencode", "--standalone", "--continue"])
+        XCTAssertEqual(command.wiring.arguments, ["--standalone"], "A private server per pane inherits the pane's hook channel")
+        XCTAssertEqual(AgentCommand(definition: try agent("trellis-opencode")).words, ["env", "opencode"], "Without the helper the agent runs plain")
+        XCTAssertTrue(AgentCommand(definition: try agent("trellis-opencode"), hookHelper: helper).wiring == ([], []), "OpenCode needs its plugin")
+        XCTAssertEqual(AgentCommand.integrationFileName(.opencodePlugin), AgentCommand.opencodePluginName)
+        XCTAssertNil(AgentCommand.integrationFileName(.claudeHooks))
+        XCTAssertTrue(AgentIntegration.opencodePlugin.reportsPrompts, "Return never counts as working: the plugin says when a turn starts")
+        // A folder with spaces and quotes stays valid JSON and one shell word.
+        let odd = AgentCommand(definition: try agent("trellis-opencode"), hookHelper: helper, integrationFile: #"/Apps/Trellis "Beta"/it's/index.js"#)
+        let config = try XCTUnwrap(odd.wiring.environment.last?.split(separator: "=", maxSplits: 1).last)
+        let plugins = try XCTUnwrap((try JSONSerialization.jsonObject(with: Data(config.utf8)) as? [String: [String]])?["plugins"])
+        XCTAssertEqual(plugins, [#"/Apps/Trellis "Beta"/it's"#])
+        for shell in ["/bin/sh", "/bin/zsh", "/bin/bash"] {
+            let output = try run(shell, ["-c", odd.line.replacingOccurrences(of: "exec env ", with: "printf '%s\\n' ")])
+            XCTAssertEqual(output.split(separator: "\n").map(String.init), Array(odd.words.dropFirst()), shell)
+        }
+    }
+
+    func testARemoteOpenCodeWritesItsPluginFolderFirst() throws {
+        let command = AgentCommand(
+            definition: try agent("trellis-opencode"), hookHelper: "/home/me/.trellis/remote/abc/trellis-broker",
+            integrationFile: "/home/me/.trellis/agents/trellis-opencode/index.js", integrationFileSource: "export default {}")
+        XCTAssertTrue(
+            command.line.hasPrefix(
+                "mkdir -p /home/me/.trellis/agents/trellis-opencode; printf '%s' 'export default {}' > /home/me/.trellis/agents/trellis-opencode/index.js; exec env "),
+            command.line)
+        XCTAssertTrue(command.line.hasSuffix(" opencode --standalone"))
     }
 
     func testTheLoginShellReadsItsInteractiveFilesWhereAgentsUsuallyGetOnPath() {
@@ -436,5 +473,84 @@ final class ProjectAgentTests: XCTestCase {
         let capture = try XCTUnwrap(ProjectCapture.capture(space: space.id, snapshot: snapshot, home: "/Users/me") { _ in "/tmp/shop" })
         XCTAssertEqual(capture.project.tabs.first?.root.panes.first?.pane.agent, "trellis-claude-code")
         XCTAssertTrue(capture.warnings.isEmpty)
+    }
+}
+
+/// FR-AG21: OpenCode's plugin, run under Node against a fake OpenCode and a fake helper. Skipped where Node isn't
+/// installed; the binary itself was checked by hand (docs/features/agents.md, Known limits).
+final class OpenCodePluginTests: XCTestCase {
+    private func node() throws -> String {
+        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init) + ["/opt/homebrew/bin", "/usr/local/bin"]
+        guard let node = AgentPathProbe.resolve("node", path: path) else { throw XCTSkip("Node isn't installed") }
+        return node
+    }
+
+    func testTheRootSessionsTurnsReachTheHelperInOrderAndSubagentsOnlyAskForYou() throws {
+        let node = try node()
+        let plugin = try XCTUnwrap(AgentCatalog.bundledFile(AgentCommand.opencodePluginName))
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-opencode-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let log = folder.appendingPathComponent("hook.log").path
+        let helper = folder.appendingPathComponent("helper").path
+        // The helper sleeps on "working" so an unordered plugin would log "done" first.
+        try "#!/bin/sh\n[ \"$2\" = working ] && sleep 0.15\nprintf '%s %s\\n' \"$2\" \"$(cat)\" >> '\(log)'\n".write(toFile: helper, atomically: true, encoding: .utf8)
+        chmod(helper, 0o700)
+        let script = folder.appendingPathComponent("run.mjs")
+        try """
+        import plugin, { trellisEvent } from \(String(reflecting: plugin.path));
+        const e = (type, data) => ({ type, data });
+        const events = [
+          e("session.execution.started", { sessionID: "root" }), e("session.execution.started", { sessionID: "child" }),
+          e("permission.asked", { sessionID: "root", id: "per_1" }), e("permission.replied", { sessionID: "root" }),
+          e("form.created", { form: { sessionID: "root" } }), e("form.cancelled", { sessionID: "root" }),
+          e("session.text.delta", { sessionID: "root" }), e("permission.asked", { sessionID: "child", id: "per_2" }),
+          e("permission.replied", { sessionID: "child" }), e("session.execution.succeeded", { sessionID: "child" }),
+          e("session.execution.succeeded", { sessionID: "root" }), e("session.execution.failed", { sessionID: "root" }),
+        ];
+        const sessions = { root: { model: { id: "claude-opus-5-5", variant: "high" } }, child: { parentID: "root" } };
+        await plugin.setup({
+          session: { get: async ({ sessionID }) => sessions[sessionID] },
+          event: { subscribe: () => (async function* () { for (const x of events) yield x; })() },
+        });
+        const reasons = ["user", "shutdown", "superseded", "inactivity"].map((reason) => trellisEvent(e("session.execution.interrupted", { reason })));
+        console.log(JSON.stringify(reasons));
+        """.write(to: script, atomically: true, encoding: .utf8)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: node)
+        process.arguments = [script.path]
+        process.environment = ["TRELLIS_AGENT_HOOK": helper, "TRELLIS_AGENT_NONCE": String(repeating: "a", count: 32), "PATH": "/usr/bin:/bin"]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        let printed = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertEqual(printed.trimmingCharacters(in: .whitespacesAndNewlines), #"["start","end",null,"done"]"#, "You stopping a turn isn't Done")
+        let lines = try String(contentsOfFile: log, encoding: .utf8).split(separator: "\n").map(String.init)
+        XCTAssertEqual(
+            lines,
+            [
+                "start ", "working ", #"info {"model":"claude-opus-5-5","effort":{"level":"high"}}"#, "needs-input ", "working ", "needs-input ", "working ",
+                "needs-input ", "working ", "done ", "error "
+            ])
+    }
+
+    func testThePluginDoesNothingOutsideATrellisPane() throws {
+        let node = try node()
+        let plugin = try XCTUnwrap(AgentCatalog.bundledFile(AgentCommand.opencodePluginName))
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: node)
+        process.arguments = [
+            "--input-type=module", "-e",
+            "const p = (await import(\(String(reflecting: plugin.path)))).default; console.log(await p.setup({ event: { subscribe() { throw new Error('subscribed'); } } }) === undefined);"
+        ]
+        process.environment = ["PATH": "/usr/bin:/bin"]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        let printed = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        XCTAssertEqual(printed.trimmingCharacters(in: .whitespacesAndNewlines), "true")
     }
 }

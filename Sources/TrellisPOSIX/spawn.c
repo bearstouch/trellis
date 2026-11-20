@@ -480,3 +480,14 @@ int trellis_run_capture(const char *executable, char *const argv[], char *const 
     }
     return reaped == child ? status : -1;
 }
+
+int trellis_rename_noreplace(int from_dir, const char *from, int to_dir, const char *to) {
+#if defined(__APPLE__)
+    return renameatx_np(from_dir, from, to_dir, to, RENAME_EXCL) == 0 ? 0 : errno;
+#elif defined(SYS_renameat2)
+    return syscall(SYS_renameat2, from_dir, from, to_dir, to, 1 /* RENAME_NOREPLACE */) == 0 ? 0 : errno;
+#else
+    (void)from_dir; (void)from; (void)to_dir; (void)to;
+    return ENOSYS;
+#endif
+}

@@ -74,7 +74,7 @@ public enum BrokerRemoteFiles {
                 case .symlink: .symlink
                 case .socket, .other: .other
                 }
-            return BrokerPathInfo(path: path, kind: kind, owned: entry.uid == uid, size: entry.size, realPath: BrokerFiles.realPath(path))
+            return BrokerPathInfo(path: path, kind: kind, owned: entry.uid == uid, size: entry.size, realPath: BrokerFiles.realPath(path), mode: Int(entry.mode & 0o7777))
         }
     }
 }

@@ -28,6 +28,8 @@ public enum EditorLanguage {
     public static let xml = language("xml", "XML", "xml", .markup)
     public static let yaml = language("yaml", "YAML", "yaml", .yaml)
     public static let toml = language("toml", "TOML", "toml", .toml)
+    public static let csv = language("csv", "CSV", "csv", .plain)
+    public static let tsv = language("tsv", "TSV", "tsv", .plain)
 
     private static let byExtension: [String: ScratchpadLanguage] = {
         var map: [String: ScratchpadLanguage] = [:]
@@ -52,6 +54,8 @@ public enum EditorLanguage {
         add(xml, "xml plist svg xib storyboard entitlements csproj xsd xsl")
         add(yaml, "yaml yml")
         add(toml, "toml")
+        add(csv, "csv")
+        add(tsv, "tsv tab")
         return map
     }()
 
@@ -73,13 +77,19 @@ public enum EditorLanguage {
         return detect(fileName: "code." + (fenceAliases[name] ?? name), firstLine: "")
     }
 
-    /// Whether `fileName` is source code or config the editor highlights, by full name or extension (not by `#!` line): a
-    /// double click in Files opens such a file in an editor tab whatever app **Open in** remembers (FR-ED09).
+    /// Whether `fileName` is source code, config or a table the editor knows, by full name or extension (not by `#!` line): a
+    /// double click in Files opens such a file in an editor tab whatever app **Open in** remembers (FR-ED09, FR-ED18).
     public static func isCode(fileName: String) -> Bool {
         if byName[fileName] != nil { return true }
         let ext = (fileName as NSString).pathExtension.lowercased()
         return !ext.isEmpty && byExtension[ext] != nil
     }
+
+    /// Languages with a rendered preview: Markdown (FR-ED12) and tables (FR-ED17).
+    public static func hasPreview(_ language: ScratchpadLanguage) -> Bool { language.id == markdown.id || isTable(language) }
+    public static func isTable(_ language: ScratchpadLanguage) -> Bool { language.id == csv.id || language.id == tsv.id }
+    /// A CSV or TSV file by its name, which opens on its table preview from Files (FR-ED18).
+    public static func isTable(fileName: String) -> Bool { isTable(detect(fileName: fileName, firstLine: "")) }
 
     /// The language of `fileName`: by full name, then extension, then (for a file with no extension) its `#!` line.
     public static func detect(fileName: String, firstLine: String) -> ScratchpadLanguage {

@@ -38,6 +38,8 @@ struct ScratchpadEditor: NSViewRepresentable {
     var highlightLimit = Int.max
     /// False while the editor is mounted but not shown: focus requests are noted, not acted on.
     var acceptsFocus = true
+    /// False for a read-only editor tab (FR-ED16): the text can be selected, searched and copied, not changed.
+    var editable = true
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -104,6 +106,7 @@ struct ScratchpadEditor: NSViewRepresentable {
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = true
+        textView.isEditable = editable
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -121,7 +124,10 @@ struct ScratchpadEditor: NSViewRepresentable {
         textView.string = text
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        // Never auto-hiding: where the scroller takes width (a mouse, or "Always" in System Settings), showing it narrowed the
+        // text, the new width threw the layout away, the unmeasured text fit again and hid it, and so on inside one draw,
+        // freezing the app on a file a little taller than the editor. Overlay scrollers take no width and fade by themselves.
+        scroll.autohidesScrollers = false
         scroll.borderType = .noBorder
         let ruler = ScratchpadLineRuler(textView: textView)
         scroll.verticalRulerView = ruler

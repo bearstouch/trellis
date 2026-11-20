@@ -457,6 +457,28 @@ final class EditorTabTests: XCTestCase {
     }
 
     @MainActor
+    func testTerminalLinksCanOpenAMarkdownPreview() async throws {
+        let (model, pane, _) = try await makeModel()
+        defer { cleanUp(model) }
+        let opened = await model.openLinkInEditor(paneID: pane, path: project + "/README.md", line: nil, column: nil, preview: true)
+        XCTAssertTrue(opened)
+        let readme = try XCTUnwrap(model.shownEditor)
+        XCTAssertTrue(readme.isMarkdown)
+        XCTAssertTrue(readme.showsPreview, "A new tab opens on its preview")
+
+        model.toggleEditorPreview(readme.id)
+        XCTAssertFalse(try XCTUnwrap(model.editorTab(readme.id)).showsPreview)
+        _ = await model.openLinkInEditor(paneID: pane, path: project + "/README.md", line: nil, column: nil, preview: true)
+        XCTAssertEqual(model.currentEditors.count, 1, "The open tab is reused")
+        XCTAssertTrue(try XCTUnwrap(model.editorTab(readme.id)).showsPreview, "…and switches to its preview")
+
+        _ = await model.openLinkInEditor(paneID: pane, path: project + "/Sources/App.swift", line: nil, column: nil, preview: true)
+        XCTAssertFalse(try XCTUnwrap(model.shownEditor).showsPreview, "Only Markdown has a preview")
+        let outside = await model.openLinkInEditor(paneID: pane, path: scratch.appendingPathComponent("other/x.md").path, line: nil, column: nil, preview: true)
+        XCTAssertFalse(outside, "Outside the project, the link opens as before")
+    }
+
+    @MainActor
     func testMarkdownTabsToggleAPreviewThatKeepsEditingWorking() async throws {
         let (model, _, _) = try await makeModel()
         defer { cleanUp(model) }
@@ -483,6 +505,46 @@ final class EditorTabTests: XCTestCase {
         model.showEditorSource(readme)
         XCTAssertFalse(try XCTUnwrap(model.editorTab(readme)).showsPreview)
         XCTAssertGreaterThan(model.editorFocusRequest, focus, "Back to the source gives it the keyboard")
+    }
+
+    @MainActor
+    func testTablesToggleAPreviewAndOpenOnItFromFiles() async throws {
+        let (model, pane, _) = try await makeModel()
+        defer { cleanUp(model) }
+        try "name,qty\nnut,3\n".write(toFile: project + "/parts.csv", atomically: true, encoding: .utf8)
+        try "name\tqty\nnut\t3\n".write(toFile: project + "/parts.tsv", atomically: true, encoding: .utf8)
+        try "plain\n".write(toFile: project + "/notes.txt", atomically: true, encoding: .utf8)
+        await model.openInEditor(path: project + "/notes.txt")
+        let plain = try XCTUnwrap(model.shownEditor?.id)
+        model.toggleEditorPreview(plain)
+        XCTAssertFalse(try XCTUnwrap(model.editorTab(plain)).showsPreview, "Plain text has no preview")
+
+        await model.openInEditor(path: project + "/parts.tsv")
+        let tsv = try XCTUnwrap(model.shownEditor)
+        XCTAssertTrue(tsv.isTable && tsv.hasPreview)
+        XCTAssertFalse(tsv.showsPreview, "Opened from code, a table shows its source")
+        model.toggleEditorPreview(tsv.id)
+        XCTAssertTrue(try XCTUnwrap(model.editorTab(tsv.id)).showsPreview)
+
+        // Files opens a table on its preview (FR-ED18); ⌘S still saves while it shows.
+        await model.refreshFiles(paneID: pane)
+        await model.openFile(FileEntry(path: project + "/parts.csv", isDirectory: false))
+        let csv = try XCTUnwrap(model.shownEditor)
+        XCTAssertEqual(csv.fileName, "parts.csv")
+        XCTAssertTrue(csv.showsPreview)
+        model.updateEditorText(csv.id, "name,qty\nbolt,9\n")
+        let saved = await model.saveEditor(csv.id)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(try String(contentsOfFile: project + "/parts.csv", encoding: .utf8), "name,qty\nbolt,9\n")
+        model.showEditorSource(csv.id)
+        await model.openFile(FileEntry(path: project + "/parts.csv", isDirectory: false))
+        XCTAssertEqual(model.currentEditors.filter { $0.fileName == "parts.csv" }.count, 1, "The open tab is reused")
+        XCTAssertTrue(try XCTUnwrap(model.editorTab(csv.id)).showsPreview, "…and switched to its preview")
+
+        // Terminal links preview a table too (FR-ED15).
+        model.showEditorSource(tsv.id)
+        _ = await model.openLinkInEditor(paneID: pane, path: project + "/parts.tsv", line: nil, column: nil, preview: true)
+        XCTAssertTrue(try XCTUnwrap(model.editorTab(tsv.id)).showsPreview)
     }
 
     @MainActor

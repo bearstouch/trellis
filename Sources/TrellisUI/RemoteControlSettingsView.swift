@@ -35,66 +35,9 @@ struct RemoteControlSettingsView: View {
     private var devicesValid: Bool { !restrictDevices || !draft.allowedDevices.isEmpty }
 
     var body: some View {
-        Form {
-            Section {
-                Toggle(L("Enable MCP server"), isOn: $draft.mcpEnabled)
-                Text(
-                    L("Lets agents such as Claude Code control Trellis through the Model Context Protocol. Each agent signs in with an automation grant token, and the grant limits what it can do.")
-                )
-                .font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                Picker(L("Interface"), selection: $draft.bindAddress) {
-                    ForEach(addressOptions, id: \.address) { Text($0.label).tag($0.address) }
-                }
-                .accessibilityHint(L("The network address the MCP server accepts connections on."))
-                TextField(L("Port (1024–65535)"), value: $port, format: .number.grouping(.never))
-                    .accessibilityLabel(L("Port"))
-                if !portValid { Label(L("Use a port from 1024 to 65535."), systemImage: "exclamationmark.circle").font(.caption) }
-                if draft.isLoopback {
-                    Text(L("Only programs on this Mac can connect.")).font(.caption).foregroundStyle(.secondary)
-                } else if IPAddressLiteral(draft.bindAddress)?.isTailnet == true {
-                    Label(
-                        L("Devices in your tailnet can reach this server. Tailscale encrypts the traffic, but the server uses plain HTTP. Share over Tailscale below for HTTPS and an allowed-devices list."),
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .font(.caption)
-                } else {
-                    Label(
-                        L("Other devices on the network can reach this server. Requests use plain HTTP, so grant tokens are sent unencrypted."),
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .font(.caption)
-                }
-            } header: {
-                sectionHeader(L("Listen on"))
-            }
-            tailscaleSection
-            Section {
-                statusRow
-                if let text = shareStatusText { shareStatusRow(text) }
-                HStack {
-                    Button(L("Copy Endpoint URL")) { copy(model.remoteControlClientURL) }
-                        .disabled(!model.remoteControl.mcpEnabled)
-                    Menu(L("Copy Client Setup")) {
-                        Button(L("Claude Code command")) { copy(MCPClientSetup.claudeCode.snippet(url: model.remoteControlClientURL)) }
-                        Button(L("Codex (config.toml)")) { copy(MCPClientSetup.codex.snippet(url: model.remoteControlClientURL)) }
-                        Button(L("Generic MCP JSON")) { copy(MCPClientSetup.json.snippet(url: model.remoteControlClientURL)) }
-                    }
-                    .fixedSize()
-                    .disabled(!model.remoteControl.mcpEnabled)
-                    .help(L("Replace <TOKEN> with a grant token, or set TRELLIS_TOKEN for Codex. Tokens are shown only once, when the grant is created."))
-                }
-                HStack(spacing: 4) {
-                    Text(L("Agents need a grant token.")).font(.caption).foregroundStyle(.secondary)
-                    if let showAutomation { Button(L("Create a grant in Automation…"), action: showAutomation).buttonStyle(.link).font(.caption) }
-                }
-            } header: {
-                sectionHeader(L("Status"))
-            }
-            if let message { Text(message).font(.caption).padding(.top, 8) }
-            HStack {
-                Spacer()
+        VStack(spacing: 0) {
+            form
+            SettingsFooter(message: message) {
                 Button(L("Apply")) {
                     let settings = candidate
                     let alreadyExposed = model.remoteControl.mcpEnabled && model.remoteControl.bindAddress == settings.bindAddress
@@ -108,9 +51,7 @@ struct RemoteControlSettingsView: View {
                 }
                 .disabled(!portValid || !devicesValid || !candidate.isValid || (candidate == model.remoteControl && !retryable))
             }
-            .padding(.top, 12)
         }
-        .padding(16)
         .alert(L("Allow connections from the network?"), isPresented: $confirmingNetwork) {
             Button(L("Cancel"), role: .cancel) {}
             Button(L("Allow Network Access"), role: .destructive) { commit(candidate) }
@@ -133,6 +74,68 @@ struct RemoteControlSettingsView: View {
         .onChange(of: model.remoteControl) { _, value in reset(to: value) }
     }
 
+    /// Spoken and visible, not color-only: how far the chosen address reaches.
+    private var exposureNote: String {
+        if draft.isLoopback { return L("Only programs on this Mac can connect.") }
+        return IPAddressLiteral(draft.bindAddress)?.isTailnet == true
+            ? L("Devices in your tailnet can reach this server. Tailscale encrypts the traffic, but the server uses plain HTTP. Share over Tailscale below for HTTPS and an allowed-devices list.")
+            : L("Other devices on the network can reach this server. Requests use plain HTTP, so grant tokens are sent unencrypted.")
+    }
+
+    private var form: some View {
+        Form {
+            Section(L("MCP server")) {
+                Toggle(isOn: $draft.mcpEnabled) {
+                    SettingsLabel(
+                        L("Enable MCP server"),
+                        help: L("Lets agents such as Claude Code control Trellis through the Model Context Protocol. Each agent signs in with an automation grant token, and the grant limits what it can do."))
+                }
+                Picker(selection: $draft.bindAddress) {
+                    ForEach(addressOptions, id: \.address) { Text($0.label).tag($0.address) }
+                } label: {
+                    SettingsLabel(L("Listen on"), help: exposureNote, helpColor: draft.isLoopback ? nil : model.themeColor(.warning))
+                }
+                .accessibilityHint(L("The network address the MCP server accepts connections on."))
+                LabeledContent {
+                    TextField(L("Port"), value: $port, format: .number.grouping(.never))
+                        .labelsHidden().multilineTextAlignment(.trailing).frame(maxWidth: 90)
+                        .accessibilityLabel(L("Port"))
+                } label: {
+                    SettingsLabel(
+                        L("Port (1024–65535)"), help: portValid ? nil : L("Use a port from 1024 to 65535."),
+                        helpColor: portValid ? nil : model.themeColor(.warning))
+                }
+            }
+            tailscaleSection
+            Section {
+                statusRow
+                if let text = shareStatusText { shareStatusRow(text) }
+                LabeledContent {
+                    HStack {
+                        Button(L("Copy Endpoint URL")) { copy(model.remoteControlClientURL) }
+                            .disabled(!model.remoteControl.mcpEnabled)
+                        Menu(L("Copy Client Setup")) {
+                            Button(L("Claude Code command")) { copy(MCPClientSetup.claudeCode.snippet(url: model.remoteControlClientURL)) }
+                            Button(L("Codex (config.toml)")) { copy(MCPClientSetup.codex.snippet(url: model.remoteControlClientURL)) }
+                            Button(L("OpenCode command")) { copy(MCPClientSetup.opencode.snippet(url: model.remoteControlClientURL)) }
+                            Button(L("Generic MCP JSON")) { copy(MCPClientSetup.json.snippet(url: model.remoteControlClientURL)) }
+                        }
+                        .fixedSize()
+                        .disabled(!model.remoteControl.mcpEnabled)
+                    }
+                } label: {
+                    SettingsLabel(
+                        L("Agents need a grant token."),
+                        help: L("Replace <TOKEN> with a grant token, or set TRELLIS_TOKEN for Codex. Tokens are shown only once, when the grant is created."))
+                }
+                if let showAutomation { Button(L("Create a grant in Automation…"), action: showAutomation).buttonStyle(.link) }
+            } header: {
+                Text(L("Status"))
+            }
+        }
+        .settingsFormStyle()
+    }
+
     // MARK: - Tailscale
 
     private var connectedStatus: TailscaleStatus? {
@@ -152,37 +155,33 @@ struct RemoteControlSettingsView: View {
                     .accessibilityHint(L("Reads Tailscale's status and devices again."))
             }
             if connectedStatus != nil || draft.tailscaleShare {
-                Toggle(L("Share over Tailscale"), isOn: $draft.tailscaleShare)
-                    .disabled(!canShare)
-                    .accessibilityHint(L("Publishes the MCP server to devices in your tailnet over HTTPS with tailscale serve."))
-                if !draft.isLoopback {
-                    Text(L("Sharing needs a loopback interface. Tailscale forwards requests to it.")).font(.caption).foregroundStyle(.secondary)
-                } else if !draft.mcpEnabled {
-                    Text(L("Turn on the MCP server to share it.")).font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draft.tailscaleShare) {
+                    SettingsLabel(
+                        L("Share over Tailscale"),
+                        help: !draft.isLoopback
+                            ? L("Sharing needs a loopback interface. Tailscale forwards requests to it.")
+                            : !draft.mcpEnabled
+                                ? L("Turn on the MCP server to share it.") : L("Publishes the MCP server to devices in your tailnet over HTTPS with tailscale serve."))
                 }
+                .disabled(!canShare)
                 if draft.tailscaleShare {
-                    Picker(L("HTTPS port"), selection: $draft.tailscalePort) {
+                    Picker(selection: $draft.tailscalePort) {
                         ForEach(RemoteControlSettings.tailscalePorts, id: \.self) { Text(verbatim: "\($0)").tag($0) }
+                    } label: {
+                        SettingsLabel(
+                            L("HTTPS port"), help: L("Devices in your tailnet can reach this. Tailscale encrypts the traffic. It is never shared publicly (no Funnel)."))
                     }
-                    Text(L("Devices in your tailnet can reach this. Tailscale encrypts the traffic. It is never shared publicly (no Funnel)."))
-                        .font(.caption).foregroundStyle(.secondary)
                     Picker(L("Allowed devices"), selection: $restrictDevices) {
                         Text(L("Any device in my tailnet")).tag(false)
                         Text(L("Only these devices")).tag(true)
                     }
                     .pickerStyle(.radioGroup)
-                    .padding(.top, 6)
                     if restrictDevices { deviceList }
                 }
             }
         } header: {
-            sectionHeader(L("Tailscale"))
+            Text(L("Tailscale"))
         }
-    }
-
-    /// A plain macOS Form puts no space above a section title, so each group gets its own.
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title).font(.headline).padding(.top, 14).padding(.bottom, 2).accessibilityAddTraits(.isHeader)
     }
 
     private var tailscaleStatusRow: some View {

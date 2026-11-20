@@ -94,10 +94,9 @@ extension AppWorkspaceModel {
 
     /// What a shell function adds to each agent with live state: the same wiring as a launched agent (FR-AG08).
     func typedAgentWirings(helper: String) -> [TypedAgentWiring] {
-        let piExtension = AgentCatalog.bundledFile(AgentCommand.piExtensionName)?.path
-        return agentCatalog.definitions.compactMap { definition in
+        agentCatalog.definitions.compactMap { definition in
             guard definition.integration != .none else { return nil }
-            let wiring = AgentCommand(definition: definition, hookHelper: helper, piExtension: piExtension).wiring
+            let wiring = AgentCommand(definition: definition, hookHelper: helper, integrationFile: Self.bundledIntegrationFile(definition.integration)).wiring
             return TypedAgentWiring(executable: (definition.executable as NSString).lastPathComponent, environment: wiring.environment, arguments: wiring.arguments)
         }
     }
@@ -347,7 +346,7 @@ extension AppWorkspaceModel {
         }
         let command = AgentCommand(
             definition: definition, resume: agent.resume, hookHelper: hook == nil ? nil : sessionBroker?.hookHelperPath,
-            piExtension: AgentCatalog.bundledFile(AgentCommand.piExtensionName)?.path)
+            integrationFile: Self.bundledIntegrationFile(definition.integration))
         var line = command.line
         if agentInstallPanes.remove(paneID) != nil, let recipe = definition.install["darwin"] {
             line = recipe.command + " && " + line
@@ -363,15 +362,15 @@ extension AppWorkspaceModel {
     }
 
     /// FR-AG12: the host's helper runs the agent in the account's login shell and gives it its own hook socket. The pi
-    /// extension is written beside the helper first, since the host has no copy of the app bundle.
+    /// extension or OpenCode plugin is written under `~/.trellis/agents/` first, since the host has no copy of the app bundle.
     func remoteAgentRequest(_ agent: AgentLaunch, paneID: UUID, sessionID: UUID, info: BrokerHostInfo, hostID: UUID) -> BrokerLoginRequest? {
         guard let definition = agentCatalog.definition(agent.agentID) else { return nil }
         remoteHostPlatforms[hostID] = info.os
         let hooks = definition.integration != .none
         let command = AgentCommand(
             definition: definition, resume: agent.resume, hookHelper: hooks ? info.executable : nil,
-            piExtension: info.home + "/.trellis/agents/" + AgentCommand.piExtensionName,
-            piExtensionSource: AgentCatalog.bundledFile(AgentCommand.piExtensionName).flatMap { try? String(contentsOf: $0, encoding: .utf8) })
+            integrationFile: AgentCommand.integrationFileName(definition.integration).map { info.home + "/.trellis/agents/" + $0 },
+            integrationFileSource: AgentCommand.integrationFileName(definition.integration).flatMap(AgentCatalog.bundledFile).flatMap { try? String(contentsOf: $0, encoding: .utf8) })
         var line = command.line
         if agentInstallPanes.remove(paneID) != nil, let recipe = definition.install[info.os] {
             line = recipe.command + " && " + line
@@ -382,6 +381,11 @@ extension AppWorkspaceModel {
             sessionID: sessionID, shell: nil, directory: Self.hostPath(agent.directory, home: info.home), environment: LocalLaunchValidator.terminalEnvironment,
             integration: nil, columns: 80, rows: 24,
             command: AgentShell.remoteCommand(shell: info.shell, line: line), agentHooks: hooks)
+    }
+
+    /// The bundled pi extension or OpenCode plugin an integration loads on this Mac.
+    static func bundledIntegrationFile(_ integration: AgentIntegration) -> String? {
+        AgentCommand.integrationFileName(integration).flatMap(AgentCatalog.bundledFile)?.path
     }
 
     /// Sessions the broker doesn't hold report here: a socket in a fresh owner-only folder, made on first use.

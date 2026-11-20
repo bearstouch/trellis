@@ -89,7 +89,14 @@ public final class BrokerServer: @unchecked Sendable {
         var pending = 0
         var closing = false
         var lastActivity: Date
+        /// Upload temporary files this client started and hasn't finished (FR-RW20), removed if it goes.
+        var uploads: Set<Upload> = []
         init(io: DispatchIO, now: Date) { self.io = io; lastActivity = now }
+    }
+
+    private struct Upload: Hashable, Sendable {
+        let directory: String
+        let temp: String
     }
 
     private let configuration: Configuration
@@ -114,6 +121,8 @@ public final class BrokerServer: @unchecked Sendable {
     private var hostInfo: BrokerHostInfo?
     private var baseEnvironment: [String: String] = [:]
     private var installRoot: String?
+    /// Folders already swept for stale upload files (FR-RW20), so a drop of many files lists each folder once.
+    private var sweptFolders: Set<String> = []
 
     public init(configuration: Configuration, now: @escaping @Sendable () -> Date = Date.init) {
         self.configuration = configuration
@@ -225,6 +234,8 @@ public final class BrokerServer: @unchecked Sendable {
         guard let connection = client else { return }
         client = nil
         connection.io.close(flags: .stop)
+        let uploads = connection.uploads
+        if !uploads.isEmpty { DispatchQueue.global(qos: .utility).async { for upload in uploads { BrokerRemoteWrite.abort(directory: upload.directory, temp: upload.temp) } } }
         core.clientDisconnected()
         detachSessions()
         setPaused(false)
@@ -251,6 +262,47 @@ public final class BrokerServer: @unchecked Sendable {
             }
         }
         if connection.pending > Self.backpressureLimit { setPaused(true) }
+    }
+
+    /// Runs `work` off the server queue and answers only the client that asked: a takeover's request IDs start again, so a
+    /// late reply could resolve its unrelated request.
+    private func answerOffQueue(_ requestID: UInt64?, _ work: @escaping @Sendable () -> BrokerMessage) {
+        let asker = client
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let message = work()
+            guard let server = self else { return }
+            server.queue.async {
+                guard let asker, server.client === asker else { return }
+                server.reply(requestID, message)
+            }
+        }
+    }
+
+    /// Like `answerOffQueue`, and keeps the client's upload temporary files known (FR-RW20): one `beginWrite` made is kept
+    /// until `finishWrite` succeeds or `abortWrite` runs (`settles`), and one made for a client already gone is removed.
+    private func answerWrite(_ requestID: UInt64?, directory: String, settles temp: String? = nil, _ work: @escaping @Sendable () -> BrokerMessage) {
+        let asker = client
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let message = work()
+            let orphan: @Sendable () -> Void = { if case .writeStarted(let made) = message { BrokerRemoteWrite.abort(directory: directory, temp: made) } }
+            guard let server = self else { return orphan() }
+            server.queue.async {
+                guard let asker, server.client === asker else { return DispatchQueue.global(qos: .utility).async { orphan() } }
+                switch message {
+                case .writeStarted(let made): asker.uploads.insert(Upload(directory: directory, temp: made))
+                case .ok: if let temp { asker.uploads.remove(Upload(directory: directory, temp: temp)) }
+                default: break
+                }
+                server.reply(requestID, message)
+            }
+        }
+    }
+
+    private static func answer(_ result: Result<Void, BrokerRemoteWrite.Failure>) -> BrokerMessage {
+        switch result {
+        case .success: .ok
+        case .failure(let failure): .failed(code: failure.rawValue, errno: 0)
+        }
     }
 
     /// A reply too large for one frame fails alone; sent, it would end the connection and every session's link with it.
@@ -301,6 +353,7 @@ public final class BrokerServer: @unchecked Sendable {
     private func respond(to envelope: BrokerEnvelope) {
         let id = envelope.requestID
         let remote = isRemote && client?.version ?? 0 >= 2
+        let writes = isRemote && client?.version ?? 0 >= BrokerProtocol.writeVersion
         switch envelope.message {
         case .spawn(let request):
             reply(id, spawn(request))
@@ -327,6 +380,39 @@ public final class BrokerServer: @unchecked Sendable {
                     server.reply(id, .gitState(status))
                 }
             }
+        case .listDirectories(let paths) where remote && client?.version ?? 0 >= BrokerProtocol.browseVersion:
+            // Off the server queue, like git: a slow network folder must not hold up sessions.
+            answerOffQueue(id) { BrokerRemoteBrowse.list(paths).map { .directories($0) } ?? .failed(code: "INVALID_REQUEST", errno: EINVAL) }
+        case .readFileChunk(let path, let offset, let length) where remote && client?.version ?? 0 >= BrokerProtocol.browseVersion:
+            answerOffQueue(id) {
+                switch BrokerRemoteBrowse.read(path, offset: offset, length: length) {
+                case .success(let chunk): .fileChunk(data: chunk.data, size: chunk.size, modified: chunk.modified)
+                case .failure(let failure): .failed(code: failure.rawValue, errno: 0)
+                }
+            }
+        case .makeDirectory(let path, let mode) where writes:
+            answerOffQueue(id) { Self.answer(BrokerRemoteWrite.makeDirectory(path, mode: mode)) }
+        case .beginWrite(let directory) where writes:
+            let sweep = sweptFolders.insert(directory).inserted
+            answerWrite(id, directory: directory) {
+                switch BrokerRemoteWrite.begin(directory: directory, sweep: sweep) {
+                case .success(let temp): .writeStarted(temp: temp)
+                case .failure(let failure): .failed(code: failure.rawValue, errno: 0)
+                }
+            }
+        case .writeFileChunk(let directory, let temp, let offset, let data) where writes:
+            answerOffQueue(id) { Self.answer(BrokerRemoteWrite.write(directory: directory, temp: temp, offset: offset, data: data)) }
+        case .finishWrite(let directory, let temp, let name, let mode, let size, let replace) where writes:
+            answerWrite(id, directory: directory, settles: temp) {
+                Self.answer(BrokerRemoteWrite.finish(directory: directory, temp: temp, name: name, mode: mode, size: size, replace: replace))
+            }
+        case .abortWrite(let directory, let temp) where writes:
+            answerWrite(id, directory: directory, settles: temp) {
+                BrokerRemoteWrite.abort(directory: directory, temp: temp)
+                return .ok
+            }
+        case .renamePath(let from, let to) where writes:
+            answerOffQueue(id) { Self.answer(BrokerRemoteWrite.rename(from: from, to: to)) }
         case .list:
             reply(id, .sessions(sessions.values.map(\.record).sorted { $0.sessionID.uuidString < $1.sessionID.uuidString }))
         case .attach(let sessionID, let columns, let rows, let since):
@@ -639,6 +725,7 @@ public final class BrokerServer: @unchecked Sendable {
 
     private func exitNow() {
         agentReceiver?.stop()
+        for upload in client?.uploads ?? [] { BrokerRemoteWrite.abort(directory: upload.directory, temp: upload.temp) }
         let path = configuration.socketPath
         if BrokerFiles.isOwnedSocket(path) {
             unlink(path)

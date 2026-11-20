@@ -1,8 +1,8 @@
 # Coding agents
 
-Trellis runs coding agents such as Claude Code, pi and Codex in panes of their own and shows on the tab what each one is doing: working, waiting for you, done or failed. You can leave several agents working in different tabs and spaces and see at a glance which one needs you.
+Trellis runs coding agents such as Claude Code, pi, Codex and OpenCode in panes of their own and shows on the tab what each one is doing: working, waiting for you, done or failed. You can leave several agents working in different tabs and spaces and see at a glance which one needs you.
 
-Claude Code, pi and Codex are built in. You can add any other terminal-based agent with a small definition file.
+Claude Code, pi, Codex and OpenCode are built in. You can add any other terminal-based agent with a small definition file.
 
 ## Open an agent
 
@@ -33,7 +33,7 @@ A stopped, exited or failed pane is reused straight away. A running shell is rep
 
 ## What the tab shows
 
-While an agent runs, its tab shows the agent's icon in place of the terminal icon: Claude Code's mark in its orange, the OpenAI mark for Codex, and a π for pi. The icon goes back to the terminal icon when the agent exits.
+While an agent runs, its tab shows the agent's icon in place of the terminal icon: Claude Code's mark in its orange, the OpenAI mark for Codex, a square mark for OpenCode, and a π for pi. The icon goes back to the terminal icon when the agent exits.
 
 | Tab | Meaning |
 | --- | --- |
@@ -58,6 +58,17 @@ For Claude Code, the row also shows the model in place of the agent's name ("Ard
 ### Notifications
 
 With desktop notifications allowed and **Settings → Agents → Notify me when an agent needs me or finishes while its pane is out of view** on, Trellis posts "<agent> needs you" or "<agent> finished" when that happens in a pane you can't see. The notification's subtitle names the space and tab.
+
+### Subscription usage
+
+The Agents view can show how much of your Claude Code and Codex plans you have used. Turn it on per agent in **Settings → Agents → Subscription usage**: **Show Claude Code usage in the Agents view** and **Show Codex usage in the Agents view**. Both are off until you turn them on.
+
+A **Usage** section then appears below **Running**, with a card for each agent: its plan, a **Session** meter for the 5-hour window and a **Weekly** meter, each with the percentage used and when it resets. Some plans have other windows, such as a model's own weekly limit or Codex Free's monthly one; they show under their own names. A bar turns amber from 80% and red from 95%, and the percentage is always written next to it.
+
+Usage refreshes when you open the view and every 5 minutes while it stays open. The **↻** button refreshes it now. If a refresh fails, the last values stay, dimmed and marked **Stale**.
+
+- **Claude Code:** Trellis reads Claude Code's own sign-in from the Keychain and sends it only to Anthropic's usage service. It never stores or renews it. macOS may ask once whether `security` can read the item. If the sign-in has expired, the card asks you to open Claude Code, which renews it.
+- **Codex:** Trellis asks the Codex installed on this Mac for its limits (`codex app-server`). Codex signed in with an API key has no plan limits to show.
 
 ## Agents you type in a shell
 
@@ -94,8 +105,9 @@ Trellis never uploads or bundles an agent. In the Agents view, an agent found mi
 | Claude Code | `claude` | Claude Code hooks, passed with `--settings` | `--continue` | `curl -fsSL https://claude.ai/install.sh \| bash` |
 | pi | `pi` | A small extension loaded with `-e` | `--continue` | `npm install -g @mariozechner/pi-coding-agent` |
 | Codex | `codex` | `notify` (set with `-c`), plus its bell and notifications for approvals | `resume --last` | `npm install -g @openai/codex` |
+| OpenCode (2.x) | `opencode` | A small plugin, loaded into the pane's own OpenCode server | `--continue` | `curl -fsSL https://opencode.ai/v2/install \| bash && export PATH="$HOME/.opencode/bin:$PATH"` (the installer puts it in `~/.opencode/bin`, which the launching shell doesn't have on `PATH` yet) |
 
-Their IDs are `trellis-claude-code`, `trellis-pi` and `trellis-codex`. **Settings → Agents** lists them as **Built-in**, with how each reports its state.
+Their IDs are `trellis-claude-code`, `trellis-pi`, `trellis-codex` and `trellis-opencode`. **Settings → Agents** lists them as **Built-in**, with how each reports its state.
 
 ### How an agent starts
 
@@ -106,6 +118,7 @@ The wiring that lets an agent report its state is passed on its command line. Tr
 - **Claude Code** gets extra hooks through `--settings`. Your own settings and hooks still apply.
 - **Codex** gets `notify` through `-c`, which reports each finished turn. Codex has no hook for a new prompt or an approval, so pressing Return in its pane counts as working, and its bell or notification counts as needs you.
 - **pi** loads a small extension with `-e`. On a remote host, Trellis puts it in `~/.trellis/agents/` first.
+- **OpenCode** starts with `--standalone`, so the pane gets its own OpenCode server, and Trellis adds a small plugin to that server through `OPENCODE_CONFIG_CONTENT`. OpenCode merges it with your own configuration, so your plugins and settings still apply. The tab shows working when a turn starts, needs you when OpenCode asks for a permission or asks you a question, and done or error when the turn ends. On a remote host, Trellis puts the plugin in `~/.trellis/agents/` first.
 
 Where the agent says nothing, Trellis uses the terminal's own signals: a bell, a desktop notification or a password prompt means it needs you, and a progress report means it is working.
 
@@ -150,7 +163,7 @@ A definition written for a newer Trellis keeps working: an `integration` or `ico
 
 ## Trust and safety
 
-- Trellis never edits your agent configuration. Claude Code's hooks and Codex's `notify` are passed on the command line, and pi's extension is a file that ships with Trellis (or lives in `~/.trellis/agents/` on a host).
+- Trellis never edits your agent configuration. Claude Code's hooks and Codex's `notify` are passed on the command line, pi's extension is a file that ships with Trellis (or lives in `~/.trellis/agents/` on a host), and OpenCode's plugin is named only for the pane's own OpenCode server.
 - The channel an agent uses to report its state can only set its own pane's state. It carries an event name and nothing else: no prompt, tool argument or other text from the conversation reaches Trellis, and it gives the agent no access to Trellis's automation.
 - Trellis never treats terminal output as instructions. It only reads the agent's state reports and the terminal's usual signals.
 - Installers are the vendors' own commands from the definition, shown in full before anything runs, and run in your shell where you can see and answer them. A definition in your Agents folder can name any installer, so only add definitions you trust.
@@ -160,6 +173,7 @@ A definition written for a newer Trellis keeps working: an `integration` or `ico
 - Claude Code needs a version that supports `--settings` and the `PermissionRequest` hook for live state; with an older one, the tab relies on the terminal's own signals.
 - Codex reports only finished turns. **Working** comes from pressing Return, so pressing Return in one of its menus can show working until the next turn ends.
 - pi has no approvals, so it never reports **Needs you** by itself.
+- OpenCode runs with its own server in each pane, so other OpenCode clients (the web view, `opencode pair`) don't see that session live while it runs. It is saved as usual, and you can pick it up afterwards with `--continue`. Live state needs OpenCode 2.x; with 1.x the tab relies on the terminal's own signals.
 - Your interactive shell startup files run before the agent starts. One that waits for input holds the agent until you answer it in the pane.
 - On a remote host, Trellis learns that an agent is missing only when it fails to start; it doesn't check ahead.
 - After Trellis reconnects to a pane that kept running, the tab shows the agent's last reported state; **Done** then counts as seen.

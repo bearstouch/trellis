@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0-beta.1] - 2026-11-20
+
+The first 1.4 beta.
+
+### Added
+
+- **Preview CSV and TSV files as a table:** a CSV or TSV editor tab now has the same **Preview** button and ⇧⌘V as Markdown, showing the file as a native table in your theme with a fixed header and row numbers. Click a header to sort (the file never changes), drag to resize columns, and ⌘C copies the selected rows. Double-clicking a CSV or TSV in **Files** opens it on its table, and a terminal link to one offers **Preview in Trellis Editor**. Even a 2 MB file shows in about a tenth of a second. See [Editor](docs/features/editor.md#table-preview).
+- **Drag files in and out of Files:** drop files or folders from Finder on a folder in the **Files** view to copy them there, or drag a row onto Finder or the desktop to copy it out. This works on this Mac and on a remote workspace's host, in both directions. Hold ⌘ to move instead of copy on the same machine. A taken name asks to replace (or merge a folder), keep both or skip, a bar shows progress with a Stop button, and one drag copies up to 2 GB and 10,000 items. Copying to a host needs its helper updated once (Hosts → **Update Helper…**). See [Files](docs/features/files.md#copying-files).
+- **Files for remote workspaces:** the **Files** view now works in remote workspace panes. It shows the project on the host as the same searchable tree, and opening a file shows it in a read-only editor tab; **New Tab Here** opens a tab in that folder on the host. Trellis lists and reads through its helper on the host and never changes anything there. Hosts set up before this need **Update Helper…** in Hosts once. See [Files](docs/features/files.md#on-a-remote-workspace).
+- **OpenCode is a built-in agent:** the **Agents** view, the command palette, projects and automation can open OpenCode 2.x, and its tab shows when it is working, needs you (a permission request or a question) or is done, like Claude Code. Trellis starts it with its own server per pane and adds a small plugin to that server, without editing your OpenCode configuration. A missing OpenCode offers its installer, and Settings → Remote Control → **Copy Client Setup** has an `opencode mcp add` command. See [Coding agents](docs/features/agents.md).
+- **Subscription usage in the Agents view:** turn on **Show Claude Code usage** or **Show Codex usage** in Settings → Agents, and the **Agents** view gets a **Usage** section below **Running** with how much of each plan's session (5-hour) and weekly limits you have used, and when they reset. Both are off by default. Claude Code's usage is read with its own sign-in from the Keychain, which Trellis never stores or renews; Codex's comes from the Codex installed on this Mac. See [Coding agents](docs/features/agents.md).
+- **Preview Markdown from the terminal:** right-click a Markdown file path that a command printed, inside the pane's project or current folder, and choose **Preview in Trellis Editor** to open it in an editor tab already showing its rendered preview. See [Editor](docs/features/editor.md).
+- **Redesigned Settings:** every Settings pane now groups its options into titled sections, with each option's explanation under its name and the control beside it. **Application appearance** is chosen from three tiles that preview the light and dark themes each mode uses, instead of a segmented control, and **Language** has moved down, just above the terminal text options.
+- **Cursor blink speed:** **Blink cursor** in Settings → Appearance is now a choice of Off, Slow, Normal and Fast instead of an on/off switch. Normal is the speed the cursor blinked at before; the setting applies live under both renderers.
+
+### Changed
+
+- **Hosts and Projects match Settings:** the Hosts and Projects windows now group their fields into titled sections like Settings, with each field's explanation or error under its name and the field beside it, and their main buttons in a bar at the bottom. **Discover SSH Aliases** lists aliases as checkbox rows the same way.
+- **Larger pane header text:** the bar above each pane (its title, folder, status, buttons and icons) now uses 12-point text instead of 10, so it is easier to read.
+- **Tighter terminal padding:** the pane header already sets the first row apart, so terminals no longer have a top margin and keep 4 points at the bottom; the sides stay at 8.
+
+### Fixed
+
+- **Editor freeze with always-visible scroll bars:** with a mouse attached, or **Show scroll bars** set to **Always** in System Settings, opening a file a little taller than the editor could freeze Trellis. The editor's scroll bar now stays in place instead of hiding when the text fits; with the default trackpad scroll bars nothing looks different.
+
 ## [1.3.0] - 2026-11-17
 
 The stable 1.3 release. Coming from 1.2.0, you also get everything listed under the 1.3 betas: automation API protocol 2 (a breaking change for scripts and agents; read [Migration from v1](docs/api/migration.md) first), editor tabs with a Markdown preview, Trellis in Portuguese, French and Spanish, copying to the clipboard from programs over SSH, sharing the MCP server over Tailscale, grant presets and editable grants, an idle timeout for kept sessions, a toggle for `.gitignore`'d files, and faster Files, editor and pane drawing.
@@ -476,7 +501,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.4.0-beta.1...HEAD
+[1.4.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.3.0...v1.4.0-beta.1
 [1.3.0]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...v1.3.0
 [1.3.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.2...v1.3.0-beta.3
 [1.3.0-beta.2]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.1...v1.3.0-beta.2

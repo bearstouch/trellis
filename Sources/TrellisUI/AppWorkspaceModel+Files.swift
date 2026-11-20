@@ -2,23 +2,40 @@ import AppKit
 import Foundation
 import TrellisCore
 
-/// What the Files view shows (FR-FB02–FR-FB06). Runtime only: nothing here is saved with the workspace.
+/// The remote workspace host whose files the Files view shows (FR-FB09).
+public struct FilesHost: Equatable, Sendable {
+    public let id: UUID
+    public let name: String
+    /// The account's home folder there, for `~` in shown paths.
+    public let home: String
+}
+
+/// What the Files view shows (FR-FB02–FR-FB06, FR-FB09). Runtime only: nothing here is saved with the workspace.
 public struct FilesBrowserState: Equatable, Sendable {
     public enum Folder: Equatable, Sendable {
         case loaded([FileEntry])
         case unreadable
     }
 
-    /// One visible line of the tree: an entry, or the note under a folder that couldn't be read.
+    /// One visible line of the tree: an entry, or a note under a folder: it couldn't be read, or it holds more entries
+    /// than a host lists (FR-FB09).
     public struct Row: Identifiable, Equatable, Sendable {
         public let entry: FileEntry
         public let depth: Int
         public let unreadable: Bool
-        public var id: String { unreadable ? entry.path + "\u{0}unreadable" : entry.path }
+        public var truncated = false
+        public var isNote: Bool { unreadable || truncated }
+        public var id: String { unreadable ? entry.path + "\u{0}unreadable" : truncated ? entry.path + "\u{0}truncated" : entry.path }
     }
 
     public internal(set) var paneID: UUID?
-    /// The project root the tree shows; nil when the focused pane has no local folder.
+    /// The host the tree is read from; nil for this Mac.
+    public internal(set) var host: FilesHost?
+    /// Why a remote tree is missing or may be stale, in words (FR-FB09).
+    public internal(set) var notice: String?
+    /// Folders a host listed only in part.
+    public internal(set) var truncated: Set<String> = [] { didSet { if truncated != oldValue { rebuildRows() } } }
+    /// The project root the tree shows; nil when the focused pane has no folder to show.
     public internal(set) var root: String? { didSet { if root != oldValue { rebuildRows() } } }
     public internal(set) var folders: [String: Folder] = [:] { didSet { rebuildRows() } }
     public internal(set) var expanded: Set<String> = [] { didSet { if expanded != oldValue { rebuildRows() } } }
@@ -50,7 +67,15 @@ public struct FilesBrowserState: Equatable, Sendable {
 
     public init() {}
 
+    /// The app remembered for this Mac's files; Changes, review and editor tabs use it too.
     public var editor: EditorApp { editors.first { $0.id == editorID } ?? .trellisEditor }
+    /// What the tree opens with: a host's files open only in Trellis, since nothing on this Mac can reach them.
+    public var treeEditor: EditorApp { host != nil ? .trellisEditor : editor }
+    /// What **Open in** lists: the installed editors, or for a host an editor tab and a tab there.
+    public var offeredEditors: [EditorApp] { host != nil ? [.trellisEditor, .newTab] : editors }
+
+    /// Open folders are remembered per project and machine: a host's `/srv/app` isn't this Mac's.
+    static func rootKey(_ root: String, host: FilesHost?) -> String { (host?.id.uuidString ?? "") + "\u{0}" + root }
 
     private mutating func rebuildRows() {
         var rows: [Row] = []
@@ -61,6 +86,7 @@ public struct FilesBrowserState: Equatable, Sendable {
                     rows.append(Row(entry: entry, depth: depth, unreadable: false))
                     if entry.isDirectory, expanded.contains(entry.path) { add(entry.path, depth: depth + 1) }
                 }
+                if truncated.contains(folder) { rows.append(Row(entry: FileEntry(path: folder, isDirectory: true), depth: depth, unreadable: false, truncated: true)) }
             case .unreadable?:
                 rows.append(Row(entry: FileEntry(path: folder, isDirectory: true), depth: depth, unreadable: true))
             case nil: break
@@ -68,7 +94,7 @@ public struct FilesBrowserState: Equatable, Sendable {
         }
         if let root { add(root, depth: 0) }
         self.rows = rows
-        treeEntries = rows.filter { !$0.unreadable }.map(\.entry)
+        treeEntries = rows.filter { !$0.isNote }.map(\.entry)
         treeIndex = Dictionary(treeEntries.enumerated().map { ($1.path, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
@@ -91,13 +117,23 @@ public enum FilePathStyle: Sendable { case absolute, relative, name }
 @MainActor public final class FilesBrowserModel: ObservableObject {
     @Published public internal(set) var state = FilesBrowserState() { didSet { marks.update(from: oldValue, to: state) } }
     let marks = FilesLineMarks()
+    /// The folder a drag hovers (FR-FB10); not part of the state, so hovering redraws only the lines it touches.
+    private(set) var dropTarget: String?
     public init() {}
+
+    func setDropTarget(_ folder: String?) {
+        guard folder != dropTarget else { return }
+        marks.setDropTarget(from: dropTarget, to: folder)
+        dropTarget = folder
+    }
 }
 
 /// Whether one tree line is selected and, for a folder, open. Each line watches its own.
 @MainActor final class FilesLineMark: ObservableObject {
     @Published fileprivate(set) var selected: Bool
     @Published fileprivate(set) var expanded: Bool
+    /// A drag hovers this folder (FR-FB10).
+    @Published fileprivate(set) var dropTarget = false
     fileprivate init(selected: Bool, expanded: Bool) { (self.selected, self.expanded) = (selected, expanded) }
 }
 
@@ -115,6 +151,11 @@ public enum FilePathStyle: Sendable { case absolute, relative, name }
         let mark = FilesLineMark(selected: state.selection == path, expanded: state.expanded.contains(path))
         held[path] = Held(mark: mark)
         return mark
+    }
+
+    fileprivate func setDropTarget(from old: String?, to new: String?) {
+        if let old, let mark = held[old]?.mark { mark.dropTarget = false }
+        if let new, let mark = held[new]?.mark { mark.dropTarget = true }
     }
 
     fileprivate func update(from old: FilesBrowserState, to new: FilesBrowserState) {
@@ -149,14 +190,15 @@ extension AppWorkspaceModel {
         filesGeneration &+= 1
         let generation = filesGeneration
         if reloadEditors || files.editors.isEmpty { loadEditorChoices() }
-        guard presentation.activePane?.id == paneID, sidebarUnavailableReason(.files) == nil, let directory = paneDirectory(paneID) else {
-            resetFiles(paneID: paneID, root: nil)
-            return
-        }
+        // Reload reads a host's tree again for search too.
+        if reloadEditors { filesSearchCache = nil }
+        guard presentation.activePane?.id == paneID, sidebarUnavailableReason(.files) == nil else { return resetFiles(paneID: paneID, root: nil) }
+        if let hostID = remoteHostID(paneID: paneID) { return await refreshRemoteFiles(paneID: paneID, hostID: hostID, generation: generation) }
+        guard let directory = paneDirectory(paneID) else { return resetFiles(paneID: paneID, root: nil) }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let root = await Task.detached(priority: .userInitiated) { Self.filesRoot(directory: directory, home: home) }.value
         guard generation == filesGeneration else { return }
-        if files.root != root { resetFiles(paneID: paneID, root: root) }
+        if files.root != root || files.host != nil || files.notice != nil { resetFiles(paneID: paneID, root: root) }
         files.paneID = paneID
         let listing = fileListing, showHidden = files.showHidden, showIgnored = files.showIgnored
         let wanted = [root] + files.expanded.sorted()
@@ -167,12 +209,92 @@ extension AppWorkspaceModel {
             for folder in wanted { folders[folder] = Self.listFolder(folder, root: root, listing: listing, showHidden: showHidden, ignore: applied) }
             return (ignore, folders)
         }.value
-        guard generation == filesGeneration, files.root == root, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
+        guard generation == filesGeneration, files.root == root, files.host == nil, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
         // A folder opened while this read ran keeps the listing it got; dropping it would leave it open but empty.
         for (path, folder) in files.folders where folders[path] == nil && files.expanded.contains(path) { folders[path] = folder }
         files.ignore = ignore
         files.folders = folders
         if !files.query.isEmpty { startFilesSearch() }
+    }
+
+    // MARK: A remote workspace's files (FR-FB09)
+
+    /// The connected host's files, through its helper; nil while the host isn't connected.
+    func remoteFiles(_ hostID: UUID) -> (any RemoteFileAccess)? {
+        if let remoteFileAccess { return remoteFileAccess(hostID) }
+        return remoteHosts?.workspaceConnection(hostID).flatMap { BrokerFileAccess(connection: $0) }
+    }
+
+    /// The host a remote workspace pane runs on.
+    func remoteHostID(paneID: UUID) -> UUID? { snapshot.panes[paneID].flatMap { snapshot.sessions[$0.sessionID]?.launch.remoteHostID } }
+
+    /// A remote workspace pane's folder on its host: where its shell says it is, else where it was started.
+    func remotePaneDirectory(_ paneID: UUID) -> String? {
+        if let directory = remoteWorkingDirectory(paneID: paneID) { return directory }
+        switch snapshot.panes[paneID].flatMap({ snapshot.sessions[$0.sessionID] })?.launch {
+        case .remoteShell(_, let directory)?: return directory
+        case .agent(let agent)? where agent.hostID != nil: return agent.directory
+        default: return nil
+        }
+    }
+
+    /// What re-reads the tree: the pane, its folder (a `cd` re-roots it, FR-FB02) and, for a host, whether it is connected.
+    public func filesRefreshKey(paneID: UUID) -> [String?] {
+        guard let hostID = remoteHostID(paneID: paneID) else { return [paneID.uuidString, paneDirectory(paneID)] }
+        return [paneID.uuidString, remotePaneDirectory(paneID), hostID.uuidString, remoteLinks[hostID] == .connected ? "connected" : "down"]
+    }
+
+    private func refreshRemoteFiles(paneID: UUID, hostID: UUID, generation: Int) async {
+        let name = remoteHostName(hostID)
+        func disconnected() {
+            // The tree already read stays while the link is down; it says it may be stale.
+            if files.host?.id == hostID, files.root != nil {
+                files.paneID = paneID
+                files.notice = L("Not connected to %@. The tree shows what was last read.", name)
+            } else {
+                resetFiles(paneID: paneID, root: nil, notice: L("Not connected to %@. Its files show once it is connected.", name))
+            }
+        }
+        guard let access = remoteFiles(hostID) else { return disconnected() }
+        guard access.browses else { return resetFiles(paneID: paneID, root: nil, notice: L("Update the Trellis helper on %@ to browse its files.", name)) }
+        let host = FilesHost(id: hostID, name: name, home: access.home)
+        let root = await access.projectRoot(containing: remotePaneDirectory(paneID) ?? access.home)
+        guard generation == filesGeneration else { return }
+        // The link went down while the root was asked for: the answer is a guess, and the tree already read stays.
+        guard remoteFiles(hostID) != nil else { return disconnected() }
+        if files.root != root || files.host != host { resetFiles(paneID: paneID, root: root, host: host) }
+        files.paneID = paneID
+        files.notice = nil
+        let showHidden = files.showHidden, showIgnored = files.showIgnored
+        let wanted = [root] + files.expanded.sorted()
+        let ignore = await FileBrowser.ignorePatterns(root: root, source: access)
+        let listed = await access.contents(of: wanted)
+        guard generation == filesGeneration, files.root == root, files.host == host, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
+        var folders: [String: FilesBrowserState.Folder] = [:], truncated = Set<String>()
+        for folder in wanted {
+            // No answer (the link went down mid-read) isn't "can't read": a folder already listed stays as it was.
+            if listed[folder] == nil, let known = files.folders[folder] {
+                folders[folder] = known
+                if files.truncated.contains(folder) { truncated.insert(folder) }
+                continue
+            }
+            let read = Self.folder(listed[folder], root: root, showHidden: showHidden, ignore: showIgnored ? .none : ignore)
+            folders[folder] = read.folder
+            if read.truncated { truncated.insert(folder) }
+        }
+        for (path, folder) in files.folders where folders[path] == nil && files.expanded.contains(path) {
+            folders[path] = folder
+            if files.truncated.contains(path) { truncated.insert(path) }
+        }
+        files.ignore = ignore
+        files.truncated = truncated
+        files.folders = folders
+        if !files.query.isEmpty { startFilesSearch() }
+    }
+
+    nonisolated static func folder(_ listing: FolderListing?, root: String, showHidden: Bool, ignore: IgnorePatterns) -> (folder: FilesBrowserState.Folder, truncated: Bool) {
+        guard case .entries(let entries, let truncated)? = listing else { return (.unreadable, false) }
+        return (.loaded(FileBrowser.visible(entries, root: root, showHidden: showHidden, ignore: ignore)), truncated)
     }
 
     /// The installed editors and the remembered choice, shared by Files and Changes (FR-FB05, FR-GC07). Looked up when a
@@ -183,14 +305,16 @@ extension AppWorkspaceModel {
         files.editorID = preferences.string(forKey: Self.filesEditorKey) ?? EditorApp.trellisEditor.id
     }
 
-    private func resetFiles(paneID: UUID, root: String?) {
+    private func resetFiles(paneID: UUID, root: String?, host: FilesHost? = nil, notice: String? = nil) {
         filesSearchTask?.cancel()
-        if let old = files.root { files.expandedByRoot[old] = files.expanded }
+        filesSearchCache = nil
+        if let old = files.root { files.expandedByRoot[FilesBrowserState.rootKey(old, host: files.host)] = files.expanded }
         var state = FilesBrowserState()
         (state.paneID, state.root, state.showHidden, state.showIgnored) = (paneID, root, files.showHidden, files.showIgnored)
+        (state.host, state.notice) = (host, notice)
         (state.editors, state.editorID, state.status, state.editorAppURLs) = (files.editors, files.editorID, files.status, files.editorAppURLs)
         state.expandedByRoot = files.expandedByRoot
-        state.expanded = root.flatMap { files.expandedByRoot[$0] } ?? []
+        state.expanded = root.flatMap { files.expandedByRoot[FilesBrowserState.rootKey($0, host: host)] } ?? []
         files = state
     }
 
@@ -208,8 +332,16 @@ extension AppWorkspaceModel {
         files.expanded.insert(path)
         guard files.folders[path] == nil, let root = files.root else { return }
         let listing = fileListing, showHidden = files.showHidden, showIgnored = files.showIgnored, ignore = files.effectiveIgnore
+        if let host = files.host {
+            let listed = await remoteFiles(host.id)?.contents(of: [path])[path]
+            guard files.root == root, files.host == host, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
+            let read = Self.folder(listed, root: root, showHidden: showHidden, ignore: ignore)
+            if read.truncated { files.truncated.insert(path) } else { files.truncated.remove(path) }
+            files.folders[path] = read.folder
+            return
+        }
         let folder = await Task.detached(priority: .userInitiated) { Self.listFolder(path, root: root, listing: listing, showHidden: showHidden, ignore: ignore) }.value
-        guard files.root == root, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
+        guard files.root == root, files.host == nil, files.showHidden == showHidden, files.showIgnored == showIgnored else { return }
         files.folders[path] = folder
     }
 
@@ -219,6 +351,7 @@ extension AppWorkspaceModel {
         guard files.showHidden != show else { return }
         files.showHidden = show
         files.folders = [:]
+        files.truncated = []
         if let paneID = files.paneID { await refreshFiles(paneID: paneID) }
     }
 
@@ -227,6 +360,7 @@ extension AppWorkspaceModel {
         guard files.showIgnored != show else { return }
         files.showIgnored = show
         files.folders = [:]
+        files.truncated = []
         if let paneID = files.paneID { await refreshFiles(paneID: paneID) }
     }
 
@@ -256,15 +390,24 @@ extension AppWorkspaceModel {
         let query = files.query
         guard let root = files.root, query.contains(where: { !$0.isWhitespace }) else {
             (files.search, files.searching) = (nil, false)
+            // A cleared field ends the search a host's tree was remembered for.
+            filesSearchCache = nil
             return
         }
         files.searching = true
         let listing = fileListing, showHidden = files.showHidden, ignore = files.effectiveIgnore
+        let source = files.host.flatMap { remoteSearchSource(host: $0, root: root) }
+        // A host that isn't connected has nothing to search; the results say so by being empty.
+        let remote = files.host != nil
         filesSearchTask = Task { [weak self] in
             // Typing settles before the walk starts, so each letter doesn't start one.
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled else { return }
-            let work = Task.detached(priority: .userInitiated) { FileBrowser.search(query, root: root, listing: listing, showHidden: showHidden, ignore: ignore) }
+            let work = Task.detached(priority: .userInitiated) {
+                if let source { return await FileBrowser.search(query, root: root, source: source, showHidden: showHidden, ignore: ignore) }
+                if remote { return FileSearchResult(query: query, matches: [], truncated: false) }
+                return FileBrowser.search(query, root: root, listing: listing, showHidden: showHidden, ignore: ignore)
+            }
             let result = await withTaskCancellationHandler {
                 await work.value
             } onCancel: {
@@ -275,6 +418,17 @@ extension AppWorkspaceModel {
             self.files.searching = false
             self.files.selection = result.matches.first?.entry.path
         }
+    }
+
+    /// One walk of the host's tree serves every letter of a search: the listings are remembered until the field is
+    /// cleared, the tree is reloaded, or the root, host or toggles change.
+    private func remoteSearchSource(host: FilesHost, root: String) -> CachedTreeSource? {
+        let key = [host.id.uuidString, root, files.showHidden ? "h" : "", files.showIgnored ? "i" : ""].joined(separator: "\u{0}")
+        if let cache = filesSearchCache, cache.key == key { return cache.source }
+        guard let access = remoteFiles(host.id), access.browses else { return nil }
+        let source = CachedTreeSource(access)
+        filesSearchCache = (key, source)
+        return source
     }
 
     /// Waits for the search in flight; for tests.
@@ -288,13 +442,21 @@ extension AppWorkspaceModel {
     public func filesEditorAppURL(_ editor: EditorApp) -> URL? { files.editorAppURLs[editor.id] }
 
     /// Opens a file or folder (the root when nil) in `editor`, or in the remembered one. Choosing an editor remembers it.
+    /// From the Files view: a host's tree opens on the host (FR-FB09), this Mac's as ``openLocalFile(_:in:remember:)``.
     public func openFile(_ entry: FileEntry?, in editor: EditorApp? = nil, remember: Bool = true) async {
+        if let host = files.host { return await openRemoteFile(entry, host: host, in: editor ?? files.treeEditor) }
+        await openLocalFile(entry, in: editor, remember: remember)
+    }
+
+    /// Opens a file or folder on this Mac, whatever tree Files is showing: Changes, review and editor tabs open through here.
+    public func openLocalFile(_ entry: FileEntry?, in editor: EditorApp? = nil, remember: Bool = true) async {
         if let editor, remember {
             files.editorID = editor.id
             preferences.set(editor.id, forKey: Self.filesEditorKey)
         }
         let editor = editor ?? files.editor
-        guard let entry = entry ?? files.root.map({ FileEntry(path: $0, isDirectory: true) }) else { return }
+        // With nothing named, the project folder: only this Mac's, never a host's path.
+        guard let entry = entry ?? (files.host == nil ? files.root.map { FileEntry(path: $0, isDirectory: true) } : nil) else { return }
         let url = URL(fileURLWithPath: entry.path, isDirectory: entry.isDirectory)
         switch editor.id {
         case EditorApp.finder.id, EditorApp.defaultApp.id:
@@ -317,16 +479,29 @@ extension AppWorkspaceModel {
         }
     }
 
-    /// A double click on a file: code opens in an editor tab whatever app is remembered (FR-ED09), and isn't remembered;
+    /// A host's file opens in a read-only editor tab (FR-ED16); a folder, or **New Tab Here**, opens a tab in that folder on
+    /// the host. No app on this Mac is offered, and the remembered choice isn't changed.
+    private func openRemoteFile(_ entry: FileEntry?, host: FilesHost, in editor: EditorApp) async {
+        guard let entry = entry ?? files.root.map({ FileEntry(path: $0, isDirectory: true) }) else { return }
+        if entry.isDirectory || editor == .newTab {
+            let folder = entry.isDirectory ? entry.path : (entry.path as NSString).deletingLastPathComponent
+            return await openTabForDirectory(folder.isEmpty ? "/" : folder, target: .host(host.id))
+        }
+        await openRemoteInEditor(hostID: host.id, path: entry.path, projectRoot: files.root, preview: EditorLanguage.isTable(fileName: entry.name))
+    }
+
+    /// A double click on a file: code opens in an editor tab whatever app is remembered (FR-ED09), a table on its preview
+    /// (FR-ED18), and isn't remembered;
     /// anything else, a link to a folder, and code the editor refuses (FR-ED02) open in the remembered app, as **Open in** does.
     public func openFileOnDoubleClick(_ entry: FileEntry) async {
+        guard files.host == nil else { return await openFile(entry, in: .trellisEditor) }
         let path = entry.path
         guard files.editor != .trellisEditor, !entry.isDirectory, EditorLanguage.isCode(fileName: entry.name),
             await Task.detached(priority: .userInitiated, operation: { !Self.isFolder(path) }).value
         else { return await openFile(entry) }
         // The refusal names the default app; the remembered one opens instead, so it isn't shown.
         let message = errorMessage
-        guard await !openInEditor(path: path, projectRoot: files.root) else { return }
+        guard await !openInEditor(path: path, projectRoot: files.root, preview: EditorLanguage.isTable(fileName: entry.name)) else { return }
         errorMessage = message
         await openFile(entry)
     }
@@ -338,11 +513,11 @@ extension AppWorkspaceModel {
 
     /// Opens a file or folder in an app the user picked; it isn't remembered.
     public func openFile(_ entry: FileEntry?, withApp app: URL) {
-        guard let path = entry?.path ?? files.root else { return }
+        guard files.host == nil, let path = entry?.path ?? files.root else { return }
         openFileInApp(URL(fileURLWithPath: path), app)
     }
 
-    public func revealFile(_ entry: FileEntry) { revealFiles([URL(fileURLWithPath: entry.path)]) }
+    public func revealFile(_ entry: FileEntry) { if files.host == nil { revealFiles([URL(fileURLWithPath: entry.path)]) } }
 
     // MARK: Copy and insert (FR-FB06)
 
@@ -354,7 +529,7 @@ extension AppWorkspaceModel {
         case .name: text = entry.name
         }
         copyToPasteboard(text)
-        showFilesStatus(L("Copied %@", style == .absolute ? Self.abbreviatingHome(text) : text))
+        showFilesStatus(L("Copied %@", style == .absolute ? Self.abbreviatingHome(text, home: files.host?.home) : text))
     }
 
     /// Inserts the path, quoted for the shell, at the focused pane's prompt through the paste route; nothing runs.
@@ -382,8 +557,9 @@ extension AppWorkspaceModel {
         }
     }
 
-    nonisolated static func abbreviatingHome(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+    /// `home`: a host's home folder; nil for this Mac's.
+    nonisolated static func abbreviatingHome(_ path: String, home: String? = nil) -> String {
+        let home = home ?? FileManager.default.homeDirectoryForCurrentUser.path
         return path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
     }
 }

@@ -306,7 +306,7 @@
         func testAnUnattachedSilentSessionIsEndedAfterTheConfiguredTime() async throws {
             let launcher = try launcher()
             let (socket, first) = try await start(launcher)
-            XCTAssertEqual(first.protocolVersion, 4)
+            XCTAssertEqual(first.protocolVersion, BrokerProtocol.version)
             XCTAssertTrue(first.configure(sessionIdleTimeout: 1))
             let sink = Sink()
             let quiet = try await spawn(first, "printf 'ready\\n'; exec sleep 600", sink: sink)
