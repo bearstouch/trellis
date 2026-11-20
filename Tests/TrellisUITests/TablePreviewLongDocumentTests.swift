@@ -45,7 +45,13 @@ final class TablePreviewLongDocumentTests: XCTestCase {
         try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shell)
     }
 
-    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: scratch) }
+    override func tearDownWithError() throws {
+        trace("tearDown")
+        try? FileManager.default.removeItem(at: scratch)
+    }
+
+    /// Temporary: CI buffers stdout, so progress goes to stderr to show where a run stops.
+    private func trace(_ step: String) { FileHandle.standardError.write(Data("TRACE TablePreview \(name) \(step)\n".utf8)) }
 
     @MainActor private func tables(in view: NSView) -> [NSTableView] { ((view as? CopyingTableView).map { [$0] } ?? []) + view.subviews.flatMap { tables(in: $0) } }
 
@@ -80,6 +86,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
     }
 
     func testSortedOrderPutsEmptyCellsLastAndKeepsTies() {
+        trace("start")
         func table(_ rows: [[String]]) -> DelimitedTable { DelimitedTable(header: ["h"], rows: rows, numericColumns: []) }
         let numbers = table([["10"], [""], ["9"], ["10"], ["-1"], []])
         XCTAssertEqual(DelimitedTableView.Coordinator.sortedOrder(numbers, column: 0, numeric: true, ascending: true), [4, 2, 0, 3, 1, 5], "A row without the cell sorts as empty")
@@ -92,6 +99,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
     /// A sort still running when the rows change never applies to the new rows; ⌘C copies the shown rows, quoted as needed.
     @MainActor
     func testANewerTableWinsOverASortStillRunningAndCopyQuotes() async throws {
+        trace("start")
         let model = try await makeModel()
         defer {
             model.terminals.values.forEach {
@@ -125,6 +133,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
 
     @MainActor
     func testThePreviewIsDrawnAgainOnlyWhenItsTableOrThemeChange() async throws {
+        trace("start")
         let model = try await makeModel()
         defer {
             model.terminals.values.forEach {
@@ -145,6 +154,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
 
     @MainActor
     func testATableAtTheSizeLimitShowsSortsAndIgnoresUnrelatedChanges() async throws {
+        trace("start")
         let model = try await makeModel()
         defer {
             model.terminals.values.forEach {
@@ -163,6 +173,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             host.layoutSubtreeIfNeeded()
             XCTAssertTrue(tables(in: host).isEmpty, "\(name): nothing is parsed or built while the source is shown, so typing costs what it does in any file")
 
+            trace("\(name) show")
             // Time until the table shows.
             var started = ContinuousClock.now
             model.toggleEditorPreview(tab.id)
@@ -180,6 +191,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             XCTAssertLessThan(built, 120, "\(name): only the rows on screen are built")
             XCTAssertLessThan(appear, 5000)
 
+            trace("\(name) unrelated")
             // An unrelated change in the app redraws the tab's chrome, not the rows.
             let reloads = coordinator.reloads
             started = ContinuousClock.now
@@ -192,6 +204,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             XCTAssertEqual(coordinator.reloads, reloads, "\(name): a change elsewhere doesn't load the rows again")
             model.errorMessage = nil
 
+            trace("\(name) scroll")
             // A 2,000 pt scroll step.
             let scroll = try XCTUnwrap(tableView.enclosingScrollView)
             started = ContinuousClock.now
@@ -200,6 +213,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             host.displayIfNeeded()
             let scrollStep = milliseconds(since: started)
 
+            trace("\(name) sort")
             // Sorting by amount, largest first: the view reorders, the text doesn't.
             let text = try XCTUnwrap(model.editorTab(tab.id)).text
             started = ContinuousClock.now
@@ -214,6 +228,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             tableView.sortDescriptors = [NSSortDescriptor(key: "c1", ascending: true)]
             try await waitFor(in: host) { coordinator.order.map { $0 != order } ?? false }
             let sortText = milliseconds(since: started)
+            trace("\(name) sortwork")
             // The sorts themselves, without the polling above (whose sleeps overshoot by tens of milliseconds).
             started = ContinuousClock.now
             _ = DelimitedTableView.Coordinator.sortedOrder(coordinator.table, column: 3, numeric: true, ascending: false)
@@ -222,6 +237,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             _ = DelimitedTableView.Coordinator.sortedOrder(coordinator.table, column: 1, numeric: false, ascending: true)
             let sortTextWork = milliseconds(since: started)
 
+            trace("\(name) edit")
             // An edit while the source is shown, then the preview again.
             model.toggleEditorPreview(tab.id)
             host.layoutSubtreeIfNeeded()
