@@ -86,7 +86,7 @@ file. A quoted empty value (`""`) on its own line is a row. The first row is the
 a short row shows empty cells and every column of a long row is kept. At most 100 000 rows and 1 000 columns are shown,
 with a note naming the limit that was reached.
 
-The table is native, in the theme's colors and terminal font: a fixed header, a row number column (the record's number
+The table is native, in the theme's colors and terminal font: a fixed header with centered titles, a row number column (the record's number
 after the header, which differs from the line number when a quoted cell spans lines), resizable columns, and a line break in a cell shown as `↵` with the whole value in its tooltip. A column whose
 every non-empty cell is a plain, finite decimal number aligns to the right. Clicking a header sorts by that column, again to
 reverse it: numbers by value, text as Finder sorts names, empty cells last, equal cells in file order. Sorting changes

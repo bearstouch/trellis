@@ -190,7 +190,7 @@ struct DelimitedTableView: NSViewRepresentable {
             number.title = "#"
             number.headerToolTip = L("Row number")
             number.headerCell.setAccessibilityLabel(L("Row number"))
-            number.headerCell.alignment = .right
+            number.headerCell.alignment = .center
             number.headerCell.font = headerFont
             number.width = rowNumberWidth()
             number.minWidth = number.width
@@ -205,8 +205,7 @@ struct DelimitedTableView: NSViewRepresentable {
                 column.title = title
                 column.headerToolTip = title
                 column.headerCell.font = headerFont
-                let numeric = table.numericColumns.contains(index)
-                column.headerCell.alignment = numeric ? .right : .left
+                column.headerCell.alignment = .center
                 column.sortDescriptorPrototype = NSSortDescriptor(key: "c\(index)", ascending: true)
                 let characters = sample.reduce(min(title.count, 40)) { max($0, index < $1.count ? min($1[index].utf8.count, 40) : 0) }
                 column.width = max(60, CGFloat(max(3, characters)) * digitWidth + 2 * Self.padding + 8)

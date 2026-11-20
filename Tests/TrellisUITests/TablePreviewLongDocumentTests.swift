@@ -172,7 +172,8 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             let coordinator = try XCTUnwrap(tableView.delegate as? DelimitedTableView.Coordinator)
             XCTAssertEqual(tableView.numberOfRows, rows)
             XCTAssertEqual(tableView.tableColumns.count, 9, "\(name): a row number column and the file's eight")
-            XCTAssertEqual(tableView.tableColumns[4].headerCell.alignment, .right, "\(name): a numeric column aligns right")
+            XCTAssertTrue(tableView.tableColumns.allSatisfy { $0.headerCell.alignment == .center }, "\(name): every header is centered")
+            XCTAssertEqual(coordinator.table.numericColumns, [0, 3, 4], "\(name): id, amount and score are numeric, so their cells align right")
             XCTAssertEqual(tableView.frame.height, CGFloat(rows) * tableView.rowHeight, accuracy: 1, "\(name): the scroller is exact at once")
             var built = 0
             tableView.enumerateAvailableRowViews { _, _ in built += 1 }
