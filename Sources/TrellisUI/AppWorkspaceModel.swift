@@ -732,6 +732,9 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var remoteLinks: [UUID: RemoteLinkDisplay] = [:] { didSet { if onLiveEvents != nil, remoteLinks != oldValue { liveRemoteLinksChanged(from: oldValue) } } }
     /// Remote sessions closed while their host was unreachable, hung up once it is reachable again.
     var pendingRemoteHangups: [UUID: Set<UUID>] = [:]
+    /// How long a host's broker may take to answer after a reconnect: each re-attach's share (FR-RW08) and the session list.
+    /// Tests shorten it rather than wait out a frozen broker.
+    var remoteReplyTimeout: Duration = .seconds(5)
     /// Automatic reconnects (FR-RW07); its clock, sleep and randomness are injectable for tests.
     public private(set) lazy var remoteReconnector: RemoteReconnector = {
         let reconnector = RemoteReconnector()

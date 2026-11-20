@@ -122,11 +122,12 @@ public final class RemoteSessionTransport: TerminalProcessTransport, BrokerSessi
     /// replay (up to 4 MiB), so the batch is capped and each attach's timeout covers the replays queued ahead of it, as one
     /// attach alone had before. Results are in the order given.
     public static let resumeBatch = 4
-    public static func resume(_ sessions: [(RemoteSessionTransport, TerminalSize)], on next: BrokerConnection) async -> [Bool] {
+    /// `attachTimeout` is one attach's share; tests shorten it to see a frozen broker time out without waiting seconds.
+    public static func resume(_ sessions: [(RemoteSessionTransport, TerminalSize)], on next: BrokerConnection, attachTimeout: Duration = .seconds(5)) async -> [Bool] {
         var results: [Bool] = []
         for start in stride(from: 0, to: sessions.count, by: resumeBatch) {
             let batch = sessions[start..<min(start + resumeBatch, sessions.count)]
-            let timeout = Duration.seconds(5) * batch.count
+            let timeout = attachTimeout * batch.count
             // All of a batch are sent before any is awaited; each task stays on the main actor, like a single resume.
             let resuming = batch.map { transport, size in Task { await transport.resume(on: next, size: size, timeout: timeout) } }
             for task in resuming { results.append(await task.value) }

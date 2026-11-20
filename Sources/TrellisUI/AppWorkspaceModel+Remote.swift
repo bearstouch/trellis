@@ -268,7 +268,7 @@ extension AppWorkspaceModel {
         let hungUp = pendingRemoteHangups.removeValue(forKey: hostID) ?? []
         for id in hungUp { connection.post(.signal(sessionID: id, signal: SIGHUP)) }
         let resumable = remoteTerminals(hostID).compactMap { terminal in terminal.remoteTransport.flatMap { transport in terminalSize(terminal).map { (transport, $0) } } }
-        _ = await RemoteSessionTransport.resume(resumable, on: connection)
+        _ = await RemoteSessionTransport.resume(resumable, on: connection, attachTimeout: remoteReplyTimeout)
         // A session just hung up can still be listed as running; it is never offered as an orphan.
         await adoptRemoteSessions(hostID: hostID, connection: connection, ignoring: hungUp)
         return nil
@@ -282,7 +282,7 @@ extension AppWorkspaceModel {
     /// Restored, stopped panes adopt the sessions the host's helper kept; ended ones show their replay; running ones no
     /// pane claims are offered Stop Them / Leave Running once per app run.
     private func adoptRemoteSessions(hostID: UUID, connection: BrokerConnection, ignoring hungUp: Set<UUID>) async {
-        guard case .sessions(let records)? = try? await connection.request(.list) else { return }
+        guard case .sessions(let records)? = try? await connection.request(.list, timeout: remoteReplyTimeout) else { return }
         let panes = Dictionary(snapshot.panes.values.map { ($0.sessionID, $0.id) }, uniquingKeysWith: { first, _ in first })
         var orphans: [UUID] = []
         for record in records where !hungUp.contains(record.sessionID) {
