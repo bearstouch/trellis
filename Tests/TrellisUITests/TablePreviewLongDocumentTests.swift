@@ -5,9 +5,9 @@ import TrellisCore
 import TrellisTerminal
 @testable import TrellisUI
 
-/// The table preview at the editor's size limit (FR-ED17, FR-ED19): only the rows on screen are built, the scroller is
-/// exact at once, sorting reorders the view and never the text, and a change elsewhere in the app doesn't reload it. The
-/// times printed are what the commit records; run with `-c release` for the optimized numbers.
+/// The table preview (FR-ED17, FR-ED19): only the rows on screen are built, the scroller is exact at once, sorting
+/// reorders the view and never the text, and a change elsewhere in the app doesn't reload it. Small files run always; the
+/// 2 MB benchmark, whose printed times the docs record, only with TRELLIS_BENCH=1.
 final class TablePreviewLongDocumentTests: XCTestCase {
     private var scratch: URL!
     private var project: String!
@@ -37,7 +37,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
         let manager = FileManager.default
         project = scratch.appendingPathComponent("project").path
         for folder in ["bin", "state", "project/.git"] { try manager.createDirectory(at: scratch.appendingPathComponent(folder), withIntermediateDirectories: true) }
-        try Self.sample(rows: Self.limitRows).write(toFile: project + "/long.csv", atomically: true, encoding: .utf8)
         try Self.sample(rows: 30).write(toFile: project + "/short.csv", atomically: true, encoding: .utf8)
         try Self.sample(rows: 30).replacingOccurrences(of: ",", with: "\t").write(toFile: project + "/short.tsv", atomically: true, encoding: .utf8)
         shell = scratch.appendingPathComponent("bin/sh").path
@@ -45,13 +44,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
         try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shell)
     }
 
-    override func tearDownWithError() throws {
-        trace("tearDown")
-        try? FileManager.default.removeItem(at: scratch)
-    }
-
-    /// Temporary: CI buffers stdout, so progress goes to stderr to show where a run stops.
-    private func trace(_ step: String) { FileHandle.standardError.write(Data("TRACE TablePreview \(name) \(step)\n".utf8)) }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: scratch) }
 
     @MainActor private func tables(in view: NSView) -> [NSTableView] { ((view as? CopyingTableView).map { [$0] } ?? []) + view.subviews.flatMap { tables(in: $0) } }
 
@@ -86,7 +79,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
     }
 
     func testSortedOrderPutsEmptyCellsLastAndKeepsTies() {
-        trace("start")
         func table(_ rows: [[String]]) -> DelimitedTable { DelimitedTable(header: ["h"], rows: rows, numericColumns: []) }
         let numbers = table([["10"], [""], ["9"], ["10"], ["-1"], []])
         XCTAssertEqual(DelimitedTableView.Coordinator.sortedOrder(numbers, column: 0, numeric: true, ascending: true), [4, 2, 0, 3, 1, 5], "A row without the cell sorts as empty")
@@ -99,7 +91,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
     /// A sort still running when the rows change never applies to the new rows; ⌘C copies the shown rows, quoted as needed.
     @MainActor
     func testANewerTableWinsOverASortStillRunningAndCopyQuotes() async throws {
-        trace("start")
         let model = try await makeModel()
         defer {
             model.terminals.values.forEach {
@@ -133,7 +124,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
 
     @MainActor
     func testThePreviewIsDrawnAgainOnlyWhenItsTableOrThemeChange() async throws {
-        trace("start")
         let model = try await makeModel()
         defer {
             model.terminals.values.forEach {
@@ -153,8 +143,22 @@ final class TablePreviewLongDocumentTests: XCTestCase {
     }
 
     @MainActor
+    func testSmallTablesShowSortAndIgnoreUnrelatedChanges() async throws {
+        try await exercise([("short.tsv", 30), ("short.csv", 30)])
+    }
+
+    /// The 2 MB benchmark FR-ED19 records; opt-in with TRELLIS_BENCH=1 so CI and the normal suite stay fast. For the
+    /// optimized numbers: `TRELLIS_BENCH=1 swift test -c release -Xswiftc -enable-testing --filter TablePreviewLongDocumentTests`.
+    @MainActor
     func testATableAtTheSizeLimitShowsSortsAndIgnoresUnrelatedChanges() async throws {
-        trace("start")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["TRELLIS_BENCH"] == "1", "set TRELLIS_BENCH=1")
+        try Self.sample(rows: Self.limitRows).write(toFile: project + "/long.csv", atomically: true, encoding: .utf8)
+        try await exercise([("long.csv", Self.limitRows)])
+    }
+
+    /// Opens each file, shows its table and times it: what FR-ED19 checks and the benchmark prints.
+    @MainActor
+    private func exercise(_ files: [(String, Int)]) async throws {
         let model = try await makeModel()
         defer {
             model.terminals.values.forEach {
@@ -162,7 +166,7 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             }
         }
 
-        for (name, rows) in [("short.tsv", 30), ("short.csv", 30), ("long.csv", Self.limitRows)] {
+        for (name, rows) in files {
             let opened = await model.openInEditor(path: project + "/" + name, projectRoot: project)
             XCTAssertTrue(opened)
             let tab = try XCTUnwrap(model.editorTabs.values.joined().first { $0.fileName == name })
@@ -173,7 +177,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             host.layoutSubtreeIfNeeded()
             XCTAssertTrue(tables(in: host).isEmpty, "\(name): nothing is parsed or built while the source is shown, so typing costs what it does in any file")
 
-            trace("\(name) show")
             // Time until the table shows.
             var started = ContinuousClock.now
             model.toggleEditorPreview(tab.id)
@@ -191,7 +194,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             XCTAssertLessThan(built, 120, "\(name): only the rows on screen are built")
             XCTAssertLessThan(appear, 5000)
 
-            trace("\(name) unrelated")
             // An unrelated change in the app redraws the tab's chrome, not the rows.
             let reloads = coordinator.reloads
             started = ContinuousClock.now
@@ -204,7 +206,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             XCTAssertEqual(coordinator.reloads, reloads, "\(name): a change elsewhere doesn't load the rows again")
             model.errorMessage = nil
 
-            trace("\(name) scroll")
             // A 2,000 pt scroll step.
             let scroll = try XCTUnwrap(tableView.enclosingScrollView)
             started = ContinuousClock.now
@@ -213,7 +214,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             host.displayIfNeeded()
             let scrollStep = milliseconds(since: started)
 
-            trace("\(name) sort")
             // Sorting by amount, largest first: the view reorders, the text doesn't.
             let text = try XCTUnwrap(model.editorTab(tab.id)).text
             started = ContinuousClock.now
@@ -228,7 +228,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             tableView.sortDescriptors = [NSSortDescriptor(key: "c1", ascending: true)]
             try await waitFor(in: host) { coordinator.order.map { $0 != order } ?? false }
             let sortText = milliseconds(since: started)
-            trace("\(name) sortwork")
             // The sorts themselves, without the polling above (whose sleeps overshoot by tens of milliseconds).
             started = ContinuousClock.now
             _ = DelimitedTableView.Coordinator.sortedOrder(coordinator.table, column: 3, numeric: true, ascending: false)
@@ -237,7 +236,6 @@ final class TablePreviewLongDocumentTests: XCTestCase {
             _ = DelimitedTableView.Coordinator.sortedOrder(coordinator.table, column: 1, numeric: false, ascending: true)
             let sortTextWork = milliseconds(since: started)
 
-            trace("\(name) edit")
             // An edit while the source is shown, then the preview again.
             model.toggleEditorPreview(tab.id)
             host.layoutSubtreeIfNeeded()
