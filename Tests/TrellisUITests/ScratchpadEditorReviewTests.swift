@@ -7,6 +7,22 @@ import TrellisCore
 /// The text view bridge under typing and model updates (editor typing performance review).
 final class ScratchpadEditorReviewTests: XCTestCase {
     @MainActor private final class Box { var text = "" }
+    /// Every window a test opens. Their text views hold up to 2 MB; left open, a later redraw lays it all out again, which
+    /// froze CI for the rest of the run. Each is emptied and closed after its test.
+    nonisolated(unsafe) private var windows: [NSWindow] = []
+
+    override func tearDown() {
+        let open = windows
+        windows = []
+        MainActor.assumeIsolated {
+            for window in open {
+                for case let text as NSTextView in window.contentView?.subviews ?? [] { text.string = "" }
+                window.contentView = nil
+                window.close()
+            }
+        }
+        super.tearDown()
+    }
 
     @MainActor
     private func makeEditor(_ box: Box, window: NSWindow, language: ScratchpadLanguage = .markdown) -> (ScratchpadTextView, ScratchpadEditor.Coordinator, (String) -> ScratchpadEditor) {
@@ -30,6 +46,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let box = Box()
         let (textView, coordinator, editor) = makeEditor(box, window: window)
         coordinator.apply(editor("hello"), force: true)
@@ -68,6 +85,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let comment = ScratchpadEditor.Coordinator.color(.comment, palette: .builtIn)
 
         let small = Box()
@@ -128,6 +146,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let box = Box()
         let (textView, coordinator, editor) = makeEditor(box, window: window)
         var cursor: (Int, Int)?
@@ -155,6 +174,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let readout = EditorCursorReadout()
         let button = EditorCursorButton.Button(title: "", target: nil, action: nil)
         readout.button = button
@@ -181,6 +201,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         let storage = NSTextStorage(), layout = ScratchpadEditor.makeLayoutManager()
         storage.addLayoutManager(layout)
@@ -216,6 +237,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let readout = EditorCursorReadout()
         let button = EditorCursorButton.Button(title: "", target: nil, action: nil)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -247,6 +269,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         host.frame = NSRect(x: 0, y: 0, width: 600, height: 600)
         let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         window.contentView = host
         host.layoutSubtreeIfNeeded()
         let button = try XCTUnwrap(readout.button)
@@ -304,6 +327,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let box = Box()
         let (textView, coordinator, editor) = makeEditor(box, window: window)
         let start = String(repeating: "let señal = \"🙂\" // ñ\n", count: 20_000)
