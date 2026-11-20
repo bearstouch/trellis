@@ -7,8 +7,8 @@ import TrellisCore
 /// The text view bridge under typing and model updates (editor typing performance review).
 final class ScratchpadEditorReviewTests: XCTestCase {
     @MainActor private final class Box { var text = "" }
-    /// Every window a test opens. Their text views hold up to 2 MB; left open, a later redraw lays it all out again, which
-    /// froze CI for the rest of the run. Each is emptied and closed after its test.
+    /// Every window a test opens. Their text views hold up to 2 MB, so each is emptied and closed after its test rather
+    /// than left for later tests' redraws to lay out again.
     nonisolated(unsafe) private var windows: [NSWindow] = []
 
     override func tearDown() {
