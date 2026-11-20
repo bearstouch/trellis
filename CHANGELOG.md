@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Preview CSV and TSV files as a table:** a CSV or TSV editor tab now has the same **Preview** button and ⇧⌘V as Markdown, showing the file as a native table in your theme with a fixed header and row numbers. Click a header to sort (the file never changes), drag to resize columns, and ⌘C copies the selected rows. Double-clicking a CSV or TSV in **Files** opens it on its table, and a terminal link to one offers **Preview in Trellis Editor**. Even a 2 MB file shows in about a tenth of a second. See [Editor](docs/features/editor.md#table-preview).
 - **Drag files in and out of Files:** drop files or folders from Finder on a folder in the **Files** view to copy them there, or drag a row onto Finder or the desktop to copy it out. This works on this Mac and on a remote workspace's host, in both directions. Hold ⌘ to move instead of copy on the same machine. A taken name asks to replace (or merge a folder), keep both or skip, a bar shows progress with a Stop button, and one drag copies up to 2 GB and 10,000 items. Copying to a host needs its helper updated once (Hosts → **Update Helper…**). See [Files](docs/features/files.md#copying-files).
 - **Files for remote workspaces:** the **Files** view now works in remote workspace panes. It shows the project on the host as the same searchable tree, and opening a file shows it in a read-only editor tab; **New Tab Here** opens a tab in that folder on the host. Trellis lists and reads through its helper on the host and never changes anything there. Hosts set up before this need **Update Helper…** in Hosts once. See [Files](docs/features/files.md#on-a-remote-workspace).
 - **OpenCode is a built-in agent:** the **Agents** view, the command palette, projects and automation can open OpenCode 2.x, and its tab shows when it is working, needs you (a permission request or a question) or is done, like Claude Code. Trellis starts it with its own server per pane and adds a small plugin to that server, without editing your OpenCode configuration. A missing OpenCode offers its installer, and Settings → Remote Control → **Copy Client Setup** has an `opencode mcp add` command. See [Coding agents](docs/features/agents.md).
@@ -20,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Hosts and Projects match Settings:** the Hosts and Projects windows now group their fields into titled sections like Settings, with each field's explanation or error under its name and the field beside it, and their main buttons in a bar at the bottom. **Discover SSH Aliases** lists aliases as checkbox rows the same way.
 - **Larger pane header text:** the bar above each pane (its title, folder, status, buttons and icons) now uses 12-point text instead of 10, so it is easier to read.
+
+### Fixed
+
+- **Editor freeze with always-visible scroll bars:** with a mouse attached, or **Show scroll bars** set to **Always** in System Settings, opening a file a little taller than the editor could freeze Trellis. The editor's scroll bar now stays in place instead of hiding when the text fits; with the default trackpad scroll bars nothing looks different.
 
 ## [1.3.0] - 2026-11-17
 

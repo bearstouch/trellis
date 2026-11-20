@@ -7,6 +7,22 @@ import TrellisCore
 /// The text view bridge under typing and model updates (editor typing performance review).
 final class ScratchpadEditorReviewTests: XCTestCase {
     @MainActor private final class Box { var text = "" }
+    /// Every window a test opens. Their text views hold up to 2 MB, so each is emptied and closed after its test rather
+    /// than left for later tests' redraws to lay out again.
+    nonisolated(unsafe) private var windows: [NSWindow] = []
+
+    override func tearDown() {
+        let open = windows
+        windows = []
+        MainActor.assumeIsolated {
+            for window in open {
+                for case let text as NSTextView in window.contentView?.subviews ?? [] { text.string = "" }
+                window.contentView = nil
+                window.close()
+            }
+        }
+        super.tearDown()
+    }
 
     @MainActor
     private func makeEditor(_ box: Box, window: NSWindow, language: ScratchpadLanguage = .markdown) -> (ScratchpadTextView, ScratchpadEditor.Coordinator, (String) -> ScratchpadEditor) {
@@ -30,6 +46,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let box = Box()
         let (textView, coordinator, editor) = makeEditor(box, window: window)
         coordinator.apply(editor("hello"), force: true)
@@ -68,6 +85,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let comment = ScratchpadEditor.Coordinator.color(.comment, palette: .builtIn)
 
         let small = Box()
@@ -128,6 +146,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let box = Box()
         let (textView, coordinator, editor) = makeEditor(box, window: window)
         var cursor: (Int, Int)?
@@ -155,6 +174,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let readout = EditorCursorReadout()
         let button = EditorCursorButton.Button(title: "", target: nil, action: nil)
         readout.button = button
@@ -181,6 +201,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         let storage = NSTextStorage(), layout = ScratchpadEditor.makeLayoutManager()
         storage.addLayoutManager(layout)
@@ -216,6 +237,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let readout = EditorCursorReadout()
         let button = EditorCursorButton.Button(title: "", target: nil, action: nil)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -247,6 +269,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         host.frame = NSRect(x: 0, y: 0, width: 600, height: 600)
         let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         window.contentView = host
         host.layoutSubtreeIfNeeded()
         let button = try XCTUnwrap(readout.button)
@@ -304,6 +327,7 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windows.append(window)
         let box = Box()
         let (textView, coordinator, editor) = makeEditor(box, window: window)
         let start = String(repeating: "let señal = \"🙂\" // ñ\n", count: 20_000)
@@ -321,5 +345,54 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         XCTAssertEqual(Array(box.text.utf8), Array(expected.utf8))
         XCTAssertEqual(coordinator.synced, expected)
         XCTAssertTrue(box.text.isContiguousUTF8)
+    }
+
+    /// With scrollers that take width (a mouse, or "Always" in System Settings; CI runners too), an auto-hiding scroller on
+    /// text a little taller than the editor never settled: showing it narrowed the text, the new width threw the layout
+    /// away, the unmeasured text fit again and hid it, and so on inside one draw. That froze the app, and CI.
+    @MainActor
+    func testAScrollerThatTakesWidthSettlesOnTextNearTheEditorsHeight() throws {
+        _ = NSApplication.shared
+        let box = Box()
+        let editor = ScratchpadEditor(
+            text: Binding(get: { box.text }, set: { box.text = $0 }), language: .markdown, font: .monospacedSystemFont(ofSize: 13, weight: .regular), palette: .builtIn,
+            issueLines: [], focusRequest: 0, commands: ScratchpadEditorCommands())
+        let host = NSHostingView(rootView: editor.frame(width: 600, height: 400))
+        host.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        windows.append(window)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        func scrollView(in view: NSView) -> NSScrollView? { (view as? NSScrollView).flatMap { $0.documentView is ScratchpadTextView ? $0 : nil } ?? view.subviews.lazy.compactMap { scrollView(in: $0) }.first }
+        let scroll = try XCTUnwrap(scrollView(in: host))
+        let textView = try XCTUnwrap(scroll.documentView as? ScratchpadTextView)
+        let scroller = try XCTUnwrap(scroll.verticalScroller)
+        scroll.scrollerStyle = .legacy
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        var changes = 0
+        let observation = scroller.observe(\.isHidden) { _, _ in changes += 1 }
+        defer { observation.invalidate() }
+
+        // From text that clearly fits to text that clearly doesn't, so some counts sit just past the editor's height.
+        var heights: [Int: CGFloat] = [:]
+        for lines in 10...45 {
+            textView.string = String(repeating: "a line of text\n", count: lines)
+            changes = 0
+            var widths: [CGFloat] = []
+            for _ in 0..<12 {
+                host.layoutSubtreeIfNeeded()
+                // Drawn for real, as a window on screen is: only drawing lays the text out and sizes the text view.
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                widths.append(scroll.contentView.frame.width)
+            }
+            heights[lines] = textView.frame.height
+            XCTAssertLessThanOrEqual(changes, 1, "\(lines) lines: the scroller shows or hides once at most, then stays")
+            XCTAssertEqual(Set(widths.suffix(6)).count, 1, "\(lines) lines: the text's width settles")
+        }
+        // What the check above rests on: the scroller still takes width, and the texts went from fitting to overflowing.
+        XCTAssertEqual(scroll.scrollerStyle, .legacy)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(heights[10]), scroll.contentSize.height, "The shortest text fits")
+        XCTAssertGreaterThan(try XCTUnwrap(heights[45]), scroll.contentSize.height, "and the longest doesn't")
     }
 }

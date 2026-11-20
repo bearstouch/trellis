@@ -9,14 +9,14 @@ syntax highlighting in your theme's colors, find and <kbd>⌘</kbd><kbd>S</kbd>.
 
 ## Open a file
 
-- **From Files:** double-click a file in the [Files](files.md) view, or select it and press <kbd>Return</kbd>. Double-clicking a code file (Swift, TypeScript, Markdown, a `Dockerfile` and so on) always opens it here, even when you chose another app in **Open in**.
+- **From Files:** double-click a file in the [Files](files.md) view, or select it and press <kbd>Return</kbd>. Double-clicking a code file (Swift, TypeScript, Markdown, a `Dockerfile` and so on) always opens it here, even when you chose another app in **Open in**. A CSV or TSV file opens here too, already showing it as a [table](#preview-csv-and-tsv-as-a-table).
   **Trellis Editor** is the default in **Open in**; if you chose another app there, right-click the file and choose
   **Open in Trellis Editor**.
 - **From the terminal:** hold <kbd>⌘</kbd> and click a file path that a command printed, such as
   `Sources/App.swift:12:5` from a compiler. If the file is inside the pane's project or current folder, it opens in an
   editor tab with the cursor on that line and column. Right-click the path for **Open in Trellis Editor**, or **Open**
-  to use the file's default app instead. For a Markdown file, **Preview in Trellis Editor** opens the tab already
-  showing the rendered preview.
+  to use the file's default app instead. For a Markdown, CSV or TSV file, **Preview in Trellis Editor** opens the
+  tab already showing the rendered preview.
 
 The tab appears after the space's terminal tabs. Opening a file that is already open in the space switches to its tab.
 
@@ -31,7 +31,7 @@ app instead, and Trellis tells you why. Paths outside the project, and files in 
 | <kbd>⌘</kbd><kbd>S</kbd> or **Save** | Save the file |
 | <kbd>⌘</kbd><kbd>L</kbd>, or click **Ln, Col** in the header | Go to a line |
 | <kbd>⌘</kbd><kbd>F</kbd>, <kbd>⌘</kbd><kbd>G</kbd>, <kbd>⇧</kbd><kbd>⌘</kbd><kbd>G</kbd> | Find, next, previous |
-| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>V</kbd> | Markdown: switch between Preview and Edit |
+| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>V</kbd> | Markdown, CSV and TSV: switch between Preview and Edit |
 | <kbd>⌘</kbd><kbd>W</kbd> | Close the editor tab |
 | **Open With** in the header | Open the file in another editor |
 
@@ -70,6 +70,23 @@ Links work by clicking:
 - Anything else does nothing.
 
 Images are never loaded, from the web or from disk: each one shows as its description instead.
+
+## Preview CSV and TSV as a table
+
+A CSV or TSV file's tab has the same **Preview** button and <kbd>⇧</kbd><kbd>⌘</kbd><kbd>V</kbd>. Its preview is a table
+in your theme's colors and terminal font, with the first row as the header and a column of row numbers. As with
+Markdown, it shows your unsaved changes and <kbd>⌘</kbd><kbd>S</kbd> still saves.
+
+- **Sort:** click a column's header to sort by it, and click again to reverse. Numbers sort by value, text the way
+  Finder sorts names, and empty cells go last. Sorting only changes what you see, never the file.
+- **Resize:** drag the edge of a column's header.
+- **Copy:** select rows and press <kbd>⌘</kbd><kbd>C</kbd> to copy them as tab-separated text, ready to paste into a
+  spreadsheet.
+
+Quoted values can contain commas, quotes and line breaks; a value with a line break shows `↵`, and pointing at it shows
+the whole value. A CSV whose first line has more semicolons than commas, as some spreadsheets write, is read with
+semicolons. Columns of numbers align to the right. Even a 2 MB file shows at once and scrolls smoothly; past 100,000 rows
+or 1,000 columns, a note says only the first ones are shown.
 
 ## Colors and languages
 
