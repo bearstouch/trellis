@@ -60,6 +60,7 @@ struct FilesSidebarView: View {
                 toolbar(root: root)
                 if let notice = model.files.notice { noticeLabel(notice).padding(.horizontal, 12).padding(.bottom, 6) }
                 if searching { results } else { tree }
+                FilesTransferPanel(center: model.fileTransfers, palette: FilesPalette(model))
                 if let status = model.files.status {
                     Label(status, systemImage: "checkmark.circle.fill").font(.caption).lineLimit(1).truncationMode(.middle)
                         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -192,14 +193,16 @@ struct FilesSidebarView: View {
         let files = model.files
         return FileRow(
             model: model, entry: entry, depth: depth, title: title, subtitle: subtitle, selected: files.selection == entry.path,
-            expanded: files.expanded.contains(entry.path), editor: files.treeEditor, editors: files.offeredEditors, remote: files.host != nil, palette: palette
+            expanded: files.expanded.contains(entry.path), dropTarget: false, dropFolder: nil, editor: files.treeEditor, editors: files.offeredEditors, remote: files.host != nil,
+            palette: palette
         ).equatable()
     }
 
     private var tree: some View {
         let files = model.files
         return ScrollViewReader { proxy in
-            FilesTree(model: model, browser: browser, rows: files.rows, editor: files.treeEditor, editors: files.offeredEditors, remote: files.host != nil, palette: FilesPalette(model)).equatable()
+            FilesTree(model: model, browser: browser, root: files.root ?? "/", rows: files.rows, editor: files.treeEditor, editors: files.offeredEditors, remote: files.host != nil, palette: FilesPalette(model))
+                .equatable()
                 .focusable().focused($listFocused).focusEffectDisabled()
                 .onKeyPress(phases: .down) { handleKey($0) }
                 .onChange(of: files.selection) { _, path in if let path { proxy.scrollTo(path) } }
@@ -303,6 +306,7 @@ private struct FilesList<Content: View>: View {
 private struct FilesTree: View, Equatable {
     let model: AppWorkspaceModel
     let browser: FilesBrowserModel
+    let root: String
     let rows: [FilesBrowserState.Row]
     let editor: EditorApp
     let editors: [EditorApp]
@@ -310,7 +314,7 @@ private struct FilesTree: View, Equatable {
     let palette: FilesPalette
 
     nonisolated static func == (a: FilesTree, b: FilesTree) -> Bool {
-        a.rows == b.rows && a.editor == b.editor && a.editors == b.editors && a.remote == b.remote && a.palette == b.palette
+        a.root == b.root && a.rows == b.rows && a.editor == b.editor && a.editors == b.editors && a.remote == b.remote && a.palette == b.palette
     }
 
     var body: some View {
@@ -320,6 +324,20 @@ private struct FilesTree: View, Equatable {
                     .filesListRow(spacing: 0)
             }
         }
+        // The list's empty room takes a drop into the root (FR-FB10); a line takes it into its own folder.
+        .onDrop(of: FilesDropDelegate.types, delegate: FilesDropDelegate(model: model, folder: root))
+        .overlay { FilesRootDropOutline(mark: browser.marks.mark(for: root, in: browser.state), accent: palette.accent) }
+    }
+}
+
+/// The tree outlined while a drag hovers the root or a file directly in it.
+private struct FilesRootDropOutline: View {
+    @ObservedObject var mark: FilesLineMark
+    let accent: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6).strokeBorder(accent, lineWidth: 2).padding(2).opacity(mark.dropTarget ? 1 : 0).allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -332,6 +350,11 @@ private struct FilesTreeLine: View {
     let editors: [EditorApp]
     let remote: Bool
     let palette: FilesPalette
+
+    static func parent(_ path: String) -> String {
+        let parent = (path as NSString).deletingLastPathComponent
+        return parent.isEmpty ? "/" : parent
+    }
 
     var body: some View {
         // One view whichever branch draws: a line that could be either made the list count every row's views again each
@@ -346,7 +369,8 @@ private struct FilesTreeLine: View {
             } else {
                 FileRow(
                     model: model, entry: row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil, selected: mark.selected, expanded: mark.expanded,
-                    editor: editor, editors: editors, remote: remote, palette: palette
+                    dropTarget: mark.dropTarget, dropFolder: row.entry.isDirectory ? row.entry.path : FilesTreeLine.parent(row.entry.path), editor: editor, editors: editors,
+                    remote: remote, palette: palette
                 ).equatable()
             }
         }
@@ -380,6 +404,10 @@ private struct FileRow: View, Equatable {
     let subtitle: String?
     let selected: Bool
     let expanded: Bool
+    /// A drag hovers this folder (FR-FB10).
+    let dropTarget: Bool
+    /// Where a drop on this line goes: the folder, or a file's folder; nil in search results, which take no drop.
+    let dropFolder: String?
     let editor: EditorApp
     let editors: [EditorApp]
     /// A host's file (FR-FB09): nothing on this Mac opens or reveals it.
@@ -389,7 +417,7 @@ private struct FileRow: View, Equatable {
 
     nonisolated static func == (a: FileRow, b: FileRow) -> Bool {
         a.entry == b.entry && a.depth == b.depth && a.title == b.title && a.subtitle == b.subtitle && a.selected == b.selected && a.expanded == b.expanded
-            && a.editor == b.editor && a.editors == b.editors && a.remote == b.remote && a.palette == b.palette
+            && a.dropTarget == b.dropTarget && a.dropFolder == b.dropFolder && a.editor == b.editor && a.editors == b.editors && a.remote == b.remote && a.palette == b.palette
     }
 
     /// What opening this row does, in words.
@@ -438,18 +466,19 @@ private struct FileRow: View, Equatable {
         .padding(.leading, CGFloat(depth) * 16 + 6).padding(.trailing, 6).padding(.vertical, subtitle == nil ? 0 : 3)
         .frame(minHeight: subtitle == nil ? Self.height : Self.resultHeight)
         .background(RoundedRectangle(cornerRadius: 5).fill(background(selected: selected)))
-        .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? palette.accent.opacity(0.5) : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(dropTarget ? palette.accent : selected ? palette.accent.opacity(0.5) : .clear, lineWidth: dropTarget ? 2 : 1))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         // A single tap answering every click: one that waited to rule out a double click (`exclusively(before:)`) held each
         // click back for the system's double-click interval. The second click of a double click is told apart by its count.
         .onTapGesture { clicked(count: Self.currentClickCount) }
-        // A host's path is dragged as text: as a file URL, Finder or another app would act on this Mac's file of that path.
-        .onDrag { remote ? NSItemProvider(object: entry.path as NSString) : NSItemProvider(object: URL(fileURLWithPath: entry.path) as NSURL) }
+        // A host's row drags as a file promise from an AppKit anchor (FR-FB11): as a file URL, Finder would act on this
+        // Mac's file of that path. This Mac's row drags as its file.
+        .modifier(FileRowDrag(model: model, entry: entry, remote: remote, dropFolder: dropFolder))
         .contextMenu { menu }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(entry.name)
-        .accessibilityValue(spokenValue(expanded: expanded))
+        .accessibilityValue(dropTarget ? L("drop target") : spokenValue(expanded: expanded))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { activate() }
         .accessibilityAction(named: L("Copy Path")) { model.copyFilePath(entry) }
@@ -522,5 +551,25 @@ private struct FileRow: View, Equatable {
         Divider()
         Button(L("Insert Path in Terminal")) { model.insertFilePath(entry) }
         Button(entry.isDirectory ? L("Type cd to This Folder") : L("Type cd to Its Folder")) { model.typeChangeDirectory(entry) }
+    }
+}
+
+/// How a Files line drags and takes drops (FR-FB06, FR-FB10, FR-FB11).
+private struct FileRowDrag: ViewModifier {
+    let model: AppWorkspaceModel
+    let entry: FileEntry
+    let remote: Bool
+    let dropFolder: String?
+
+    func body(content: Content) -> some View {
+        let dragged = Group {
+            if remote {
+                content.background(RemoteRowDragAnchor(drag: RemoteRowDrag(model: model, entry: entry)))
+            } else {
+                content.onDrag { NSItemProvider(object: URL(fileURLWithPath: entry.path) as NSURL) }
+            }
+        }
+        // Search results take no drop: their folders aren't on screen to show where it would go.
+        if let dropFolder { dragged.onDrop(of: FilesDropDelegate.types, delegate: FilesDropDelegate(model: model, folder: dropFolder)) } else { dragged }
     }
 }

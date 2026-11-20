@@ -195,7 +195,7 @@ final class BrokerBridgeTests: XCTestCase {
         old.close()
         let link = try link()
         guard case .welcome(let version, _, _) = try link.hello(clientID: clientID, maximumVersion: BrokerProtocol.version) else { return XCTFail("No welcome") }
-        XCTAssertEqual(version, 5)
+        XCTAssertEqual(version, BrokerProtocol.version)
         guard case .directories(let listings) = try link.request(.listDirectories(paths: [home + "/app", home + "/nope"])) else { return XCTFail("No listing") }
         XCTAssertEqual(listings.map(\.state), [.ok, .unreadable])
         XCTAssertEqual(Set(listings[0].entries), [BrokerDirectoryEntry(name: "src", kind: .directory), BrokerDirectoryEntry(name: "notes.txt", kind: .file)])
@@ -204,6 +204,36 @@ final class BrokerBridgeTests: XCTestCase {
         XCTAssertEqual(size, 5)
         XCTAssertEqual(try link.request(.readFileChunk(path: home + "/app/src", offset: 0, length: 3)), .failed(code: "NOT_ALLOWED", errno: 0))
         XCTAssertEqual(try link.request(.listDirectories(paths: ["app"])), .failed(code: "INVALID_REQUEST", errno: EINVAL))
+    }
+
+    /// FR-RW20: a dropped file and folder are written through the bridge, only for a client that speaks version 6, and an
+    /// unfinished upload's temporary file goes with its link.
+    func testDroppedFilesAreWrittenThroughTheBridgeFromVersion6() throws {
+        try FileManager.default.createDirectory(atPath: home + "/app", withIntermediateDirectories: true)
+        let old = try link()
+        _ = try old.hello(clientID: clientID, maximumVersion: 5)
+        XCTAssertEqual(try old.request(.beginWrite(directory: home + "/app")), .failed(code: "UNSUPPORTED", errno: 0))
+        XCTAssertEqual(try old.request(.makeDirectory(path: home + "/app/new", mode: 0o755)), .failed(code: "UNSUPPORTED", errno: 0))
+        old.close()
+        let link = try link()
+        _ = try link.hello(clientID: clientID, maximumVersion: BrokerProtocol.version)
+        XCTAssertEqual(try link.request(.makeDirectory(path: home + "/app/docs", mode: 0o755)), .ok)
+        // Larger than one chunk, written last chunk first.
+        let bytes = Data((0..<(BrokerProtocol.fileChunkLimit + 1000)).map { UInt8($0 % 251) })
+        guard case .writeStarted(let temp) = try link.request(.beginWrite(directory: home + "/app/docs")) else { return XCTFail("No temp") }
+        let split = BrokerProtocol.fileChunkLimit
+        XCTAssertEqual(try link.request(.writeFileChunk(directory: home + "/app/docs", temp: temp, offset: Int64(split), data: bytes[split...])), .ok)
+        XCTAssertEqual(try link.request(.writeFileChunk(directory: home + "/app/docs", temp: temp, offset: 0, data: bytes[..<split])), .ok)
+        XCTAssertEqual(
+            try link.request(.finishWrite(directory: home + "/app/docs", temp: temp, name: "data.bin", mode: 0o640, size: Int64(bytes.count), replace: false)), .ok)
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: home + "/app/docs/data.bin")), bytes)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: home + "/app/docs/data.bin")[.posixPermissions] as? Int, 0o640)
+        guard case .writeStarted(let unfinished) = try link.request(.beginWrite(directory: home + "/app/docs")) else { return XCTFail("No temp") }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: home + "/app/docs/" + unfinished))
+        link.close()
+        let deadline = Date().addingTimeInterval(5)
+        while FileManager.default.fileExists(atPath: home + "/app/docs/" + unfinished), Date() < deadline { usleep(50_000) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: home + "/app/docs/" + unfinished), "A link that goes takes its unfinished upload with it")
     }
 
     func testTheBridgeRunsOnlyFromItsOwnerOnlyInstallRoot() throws {

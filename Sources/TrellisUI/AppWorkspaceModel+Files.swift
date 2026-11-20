@@ -117,13 +117,23 @@ public enum FilePathStyle: Sendable { case absolute, relative, name }
 @MainActor public final class FilesBrowserModel: ObservableObject {
     @Published public internal(set) var state = FilesBrowserState() { didSet { marks.update(from: oldValue, to: state) } }
     let marks = FilesLineMarks()
+    /// The folder a drag hovers (FR-FB10); not part of the state, so hovering redraws only the lines it touches.
+    private(set) var dropTarget: String?
     public init() {}
+
+    func setDropTarget(_ folder: String?) {
+        guard folder != dropTarget else { return }
+        marks.setDropTarget(from: dropTarget, to: folder)
+        dropTarget = folder
+    }
 }
 
 /// Whether one tree line is selected and, for a folder, open. Each line watches its own.
 @MainActor final class FilesLineMark: ObservableObject {
     @Published fileprivate(set) var selected: Bool
     @Published fileprivate(set) var expanded: Bool
+    /// A drag hovers this folder (FR-FB10).
+    @Published fileprivate(set) var dropTarget = false
     fileprivate init(selected: Bool, expanded: Bool) { (self.selected, self.expanded) = (selected, expanded) }
 }
 
@@ -141,6 +151,11 @@ public enum FilePathStyle: Sendable { case absolute, relative, name }
         let mark = FilesLineMark(selected: state.selection == path, expanded: state.expanded.contains(path))
         held[path] = Held(mark: mark)
         return mark
+    }
+
+    fileprivate func setDropTarget(from old: String?, to new: String?) {
+        if let old, let mark = held[old]?.mark { mark.dropTarget = false }
+        if let new, let mark = held[new]?.mark { mark.dropTarget = true }
     }
 
     fileprivate func update(from old: FilesBrowserState, to new: FilesBrowserState) {

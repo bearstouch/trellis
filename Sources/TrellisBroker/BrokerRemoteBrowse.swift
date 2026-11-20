@@ -69,7 +69,7 @@ public enum BrokerRemoteBrowse {
         return (BrokerDirectoryListing(path: path, state: .ok, entries: entries, truncated: truncated), cutByBytes)
     }
 
-    private static func name(of entry: UnsafeMutablePointer<dirent>) -> String? {
+    static func name(of entry: UnsafeMutablePointer<dirent>) -> String? {
         withUnsafePointer(to: &entry.pointee.d_name) { tuple in
             tuple.withMemoryRebound(to: UInt8.self, capacity: MemoryLayout.size(ofValue: tuple.pointee)) { bytes in
                 String(bytes: UnsafeBufferPointer(start: bytes, count: strlen(UnsafeRawPointer(bytes).assumingMemoryBound(to: CChar.self))), encoding: .utf8)
