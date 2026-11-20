@@ -21,8 +21,9 @@ start off, are kept for the session and are never saved. Files reads only
 to anchor a pattern to the root. Negations (`!`) are skipped, and nested `.gitignore` files and global excludes are not
 read.
 
-Files works only for panes on this Mac. Its icon is dimmed for SSH panes and [remote workspace](remote-workspaces.md)
-panes, whose files Trellis can't list.
+Files works for panes on this Mac and for [remote workspace](remote-workspaces.md) panes, whose project is listed on
+the host through the Trellis helper there (see [On a remote workspace](#on-a-remote-workspace)). Its icon is dimmed for
+SSH panes, whose files Trellis can't list.
 
 ## Using it
 
@@ -49,17 +50,42 @@ and **New Tab Here** (a Trellis tab in the file's folder). **Other App…** pick
 Finder reveals a file and opens a folder. Finder and **Default App** never run anything: an app, a script, an executable or
 another launchable file is revealed in Finder instead, as for [terminal links](terminal.md) (FR-L03).
 
+## On a remote workspace
+
+In a remote workspace pane the tree is the project **on the host**: the nearest folder with `.git` or `.trellis` above the
+folder the pane's shell is in (or the folder it was started in, or the account's home folder, until the shell reports
+one). The line under the header names the host. The tree, the toggles, search, the copy commands, **Insert Path** and
+**Type cd** work as on this Mac, with the host's paths.
+
+What differs:
+
+- **Opening is read-only.** Return, a double click or **Open in** opens a file in a [read-only editor tab](editor.md)
+  (FR-ED16). **Open in** lists only Trellis Editor and **New Tab Here**; Finder, the editors on this Mac, **Open With**,
+  **Other App…** and **Reveal in Finder** aren't offered, since no app here can reach the file. Opening a folder, or
+  **New Tab Here** on a file, opens a tab in that folder on the host. The app remembered for this Mac's files isn't changed.
+- **Nothing on the host is written.** Trellis lists folders and reads the files you open, and nothing else.
+- **A dragged row is text.** Dragging a row carries the host's path as plain text, not as a file: dropped on Finder or
+  another app, a file URL would name this Mac's file at that path. A pane takes only dropped files, so use **Insert Path**.
+- **A folder with more than 10,000 entries** shows the first 10,000 the host returned and says so. A name that isn't
+  UTF-8 is left out.
+- **Search** asks the host for one level of the tree per request and keeps what it listed until the field is cleared,
+  so later letters don't ask again. **Reload**, a cleared field or another project reads the host again.
+- **While the host isn't connected** the tree already read stays, with "Not connected to <host>. The tree shows what
+  was last read."; it is read again when the link is back. A host whose helper predates this shows "Update the Trellis
+  helper on <host> to browse its files." (Hosts → **Update Helper…**).
+
 ## Requirements
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| FR-FB01 | Show Files in the dock, for panes on this Mac. | The dock's first icon is Files (a folder), with Toggle Files (⌥⌘F, rebindable, starting unbound when the chord is already taken) in the View menu, Settings → Keyboard and the command palette. Showing it puts the keyboard in its search field. For SSH and remote workspace panes the icon is dimmed with the reason "Files shows only folders on this Mac.", and the view hides until a local pane is focused (FR-SB04). Showing and hiding it never changes the saved workspace. |
+| FR-FB01 | Show Files in the dock, for panes on this Mac and remote workspace panes. | The dock's first icon is Files (a folder), with Toggle Files (⌥⌘F, rebindable, starting unbound when the chord is already taken) in the View menu, Settings → Keyboard and the command palette. Showing it puts the keyboard in its search field. For SSH panes the icon is dimmed with the reason "Files isn't available in SSH panes.", and the view hides until a pane it applies to is focused (FR-SB04). Showing and hiding it never changes the saved workspace. |
 | FR-FB02 | Root the tree at the focused pane's project. | A pane in a folder inside a `.git` or `.trellis` project shows the project; outside one, the pane's folder. A `cd` or a focus change re-roots it. A pane with no local folder shows "No folder". The root never goes above the home folder for a folder inside it. |
 | FR-FB03 | List folders as they open, safely. | Folders come first, then files, in natural name order. A folder is read when first opened, off the main thread. `.git`, build and dependency folders are always left out; `.gitignore`'d entries follow the ignored-files toggle and hidden files the eye toggle, independently, in the tree and in search. A symbolic link is listed but never opened as a folder, so the tree can't loop. A folder that can't be read shows "Can't read this folder" under it and the rest of the tree stays. Open folders are kept per project for the session (never saved); **Collapse All** closes them and **Reload** reads them again. |
 | FR-FB04 | Search the project by file name. | Typing searches every file under the root (skipping what the tree skips), off the main thread, a moment after typing stops; a newer query cancels the older search. Results show the name with matched letters in bold accent and the folder relative to the root; the best match is selected. The search stops after 20 000 files and says "in the first 20,000 files"; at most 200 results show. Esc or clearing the field shows the tree again. |
 | FR-FB05 | Open in an editor. | Only installed apps are offered; they are looked up when Files first shows and again on **Reload**, not on every pane switch or `cd`. **Open in** and Return open the selection, or the project folder, in the remembered app (Trellis Editor until another is chosen, FR-ED09); choosing an app from the menu opens with it and remembers it in preferences. An app that is no longer installed shows "<App> isn't installed on this Mac." and opens nothing. Finder and **Default App** reveal, never open, what FR-L03 would only reveal (apps, packages, scripts, executables); a FIFO or device opens nothing. **New Tab Here** opens a local tab in the folder. |
 | FR-FB06 | Copy and insert paths. | Copy Path, Copy Relative Path and Copy Name put exactly that text on the pasteboard and show "Copied …" for two seconds, announced to VoiceOver. Insert Path and dragging a row send the path through the [paste route](terminal.md) quoted for the shell (as a Finder drop); Type cd types the command without Return. Nothing runs by itself. |
 | FR-FB07 | Make the tree accessible. | Every row is one element named after its file, with the value "file" or "folder, expanded/collapsed" (and its folder in search), the selected trait, a default action (open the file, or open/close the folder) and named **Copy Path** and **Insert Path in Terminal** actions. Every icon button has a label and a tooltip; state is in words, not color alone. |
+| FR-FB09 | Browse a remote workspace's files. | In a remote workspace pane the tree is rooted at the project on the host holding the shell's authenticated folder (FR-RW05), else the folder the pane was started in, else the account's home there; the header names the host. Folders are listed by the host's helper when they open (FR-RW19), with the same order, skipped names, toggles and `.gitignore` rules as FR-FB03; a link is never opened as a folder; a folder cut at 10,000 entries says "Only the first 10,000 entries are shown". Search (FR-FB04) asks the host one request per tree level and reuses the listings until the field is cleared, the tree is reloaded or the root changes. **Open in** offers only Trellis Editor, which opens a read-only tab (FR-ED16), and **New Tab Here**, which opens a tab in that folder on the host; a folder opens a tab too; no app on this Mac is offered or remembered, and Finder is never asked to reveal a host's path. Copy, Insert Path and Type cd use the host's paths; a dragged row carries the path as plain text, never as a file URL, which another app would resolve on this Mac. While the host isn't connected, or its link drops while the tree is being read, the tree already read stays (same root, same listings) with a notice in words and is read again when the link returns; a helper below protocol 5 is never asked and the view says to update it. Open folders are kept per host and project. Nothing on the host is written, and nothing read is saved on this Mac. |
 | FR-FB08 | Stay smooth in a long folder. | In a folder with thousands of files the tree's scroll height is right before any row is drawn (a tree line is 24 pt and a search result 40 pt, unless a name needs a taller font), so the scroller and the rows under the pointer don't move as scrolling draws them. Moving the selection redraws the two lines it touches, not the list, and a change elsewhere in the app redraws no line; the list is rebuilt only when its rows change, as when a folder opens or closes. The search count stays above the results instead of scrolling with them. |
 
 ## Verification
@@ -67,7 +93,8 @@ another launchable file is revealed in Finder instead, as for [terminal links](t
 | Area | How it's checked |
 | --- | --- |
 | Listing, ignore rules, links, search (FR-FB03, FR-FB04) | `FileBrowserTests`: order, skipped and hidden names, `.gitignore` patterns, a `.gitignore` that isn't a regular file, a link never being a folder, an unreadable folder, ranking, path queries, the file and result limits. |
-| Dock, root, tree, search, Open in, copy and insert (FR-FB01–FR-FB06) | `FilesSidebarTests`: dimming on a remote workspace pane and coming back with focus, the project root from a subfolder, lazy folders and selection, the hidden toggle, the ignored-files toggle apart from it, an unreadable folder, search through unopened folders, installed editors and the remembered choice, Finder revealing, an app bundle and a script revealed rather than opened, a missing app, New Tab Here, the three copy styles and a quoted inserted path. |
+| Dock, root, tree, search, Open in, copy and insert (FR-FB01–FR-FB06) | `FilesSidebarTests`: staying on a remote workspace pane whose host isn't connected, listing nothing of this Mac's and saying why, the project root from a subfolder, lazy folders and selection, the hidden toggle, the ignored-files toggle apart from it, an unreadable folder, search through unopened folders, installed editors and the remembered choice, Finder revealing, an app bundle and a script revealed rather than opened, a missing app, New Tab Here, the three copy styles and a quoted inserted path. |
+| Remote workspace files (FR-FB09) | `RemoteFilesSidebarTests`, with the host's files behind an injected reader: the project root from a subfolder, folders read when opened and one request for the root and the open folders, the toggles, search asking one request per level and reusing the walk until the field is cleared, the not-connected and old-helper notices and a tree that stays while the link is down, the truncation note, the two **Open in** choices, a read-only tab, a refused file opening nothing, Finder and other apps never used, **New Tab Here** on the host, copied paths, and a pane on this Mac showing its own tree again. `RemoteFilesSidebarReviewTests`: a link that drops while the root is asked for or while folders are listed leaves the tree already read. A row dragged as text: **pending** (manual). `FileBrowserTests`: the level-by-level walk finds what the local walk finds. `RemoteWorkspaceTests`: through the fake `ssh` and the real helper, the host's project is listed, a link is never a folder, search finds a file in an unopened folder and a file longer than one chunk opens whole. Against a real host: **pending**. |
 | Long folders (FR-FB08) | `FilesSidebarLongFolderTests`: the hosted view's scroll height with 2 000 files, before and while scrolling and after a far selection; a selection move and other state changes telling only the lines they touch, an opened folder telling its own line, and marks surviving a move to another project while unused ones are dropped. |
 | Shortcut (FR-FB01) | `KeyboardShortcutTests`: ⌥⌘F default, View menu, yielding to a saved chord. |
 | The view in the app, keyboard, VoiceOver (FR-FB01–FR-FB08) | Manual: **pending** (the native view's layout, mouse and keyboard use, real editors opening, dragging a row onto a pane, VoiceOver walk of the tree). |

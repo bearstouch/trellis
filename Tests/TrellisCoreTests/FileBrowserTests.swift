@@ -107,6 +107,36 @@ final class FileBrowserTests: XCTestCase {
         XCTAssertFalse(capped.truncated)
     }
 
+    /// FR-FB09: the walk a remote tree uses asks a level at a time and finds what the local walk finds.
+    func testTheSourceWalkFindsWhatTheListingWalkFinds() async {
+        let ignore = IgnorePatterns(gitignore: "build/\n*.log\n")
+        let source = ListingTreeSource(project)
+        for (query, showHidden, patterns) in [("sidebar", false, ignore), ("sidebar", false, .none), ("docs/side", false, ignore), ("e", true, .none), ("zzz", false, ignore)] {
+            let local = FileBrowser.search(query, root: "/p", listing: project, showHidden: showHidden, ignore: patterns)
+            let remote = await FileBrowser.search(query, root: "/p", source: source, showHidden: showHidden, ignore: patterns)
+            XCTAssertEqual(remote, local, query)
+        }
+        let cut = await FileBrowser.search("s", root: "/p", source: source, showHidden: false, ignore: .none, fileLimit: 3, resultLimit: 1)
+        XCTAssertEqual(cut, FileBrowser.search("s", root: "/p", listing: project, showHidden: false, ignore: .none, fileLimit: 3, resultLimit: 1))
+        XCTAssertTrue(cut.truncated)
+        let patterns = await FileBrowser.ignorePatterns(root: "/p", source: ListingTreeSource(FakeListing(tree: [:], texts: ["/p/.gitignore": "build/\n*.log\n"])))
+        XCTAssertEqual(patterns, ignore)
+    }
+
+    func testTheSourceWalkAsksForEachLevelAtOnceAndSkipsUnreadableFolders() async {
+        actor Asked { var rounds: [[String]] = []; func add(_ round: [String]) { rounds.append(round) } }
+        struct Recording: FileTreeSource {
+            let inner: ListingTreeSource, asked: Asked
+            func contents(of directories: [String]) async -> [String: FolderListing] { await asked.add(directories); var listed = await inner.contents(of: directories); listed["/p/Sources"] = .unreadable; return listed }
+            func text(at path: String) async -> String? { nil }
+        }
+        let asked = Asked()
+        let result = await FileBrowser.search("sidebar", root: "/p", source: Recording(inner: ListingTreeSource(project), asked: asked), showHidden: false, ignore: .none)
+        let rounds = await asked.rounds
+        XCTAssertEqual(rounds, [["/p"], ["/p/docs", "/p/Sources"], ["/p/docs/build"]], "One request per level; a link and the skipped folders are never asked for")
+        XCTAssertEqual(result.matches.map(\.entry.name), ["sidebar.md", "sidebar.html"], "The unreadable folder is skipped, the rest searched")
+    }
+
     func testRelativePath() {
         XCTAssertEqual(FileBrowser.relativePath("/p/a/b.txt", root: "/p"), "a/b.txt")
         XCTAssertEqual(FileBrowser.relativePath("/p/a/b.txt", root: "/p/"), "a/b.txt")

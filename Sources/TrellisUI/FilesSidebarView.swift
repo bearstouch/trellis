@@ -12,8 +12,8 @@ struct FilesSidebarView: View {
     let paneID: UUID
     @FocusState private var searchFocused: Bool
     @FocusState private var listFocused: Bool
-    /// A `cd` re-roots the tree (FR-FB02).
-    private var refreshKey: [String?] { [paneID.uuidString, model.paneDirectory(paneID)] }
+    /// A `cd` re-roots the tree (FR-FB02); a host's link coming back reads it again (FR-FB09).
+    private var refreshKey: [String?] { model.filesRefreshKey(paneID: paneID) }
     private var searching: Bool { model.files.query.contains { !$0.isWhitespace } }
 
     private var hiddenToggle: some View {
@@ -58,6 +58,7 @@ struct FilesSidebarView: View {
             Divider().overlay(model.separatorOverlay)
             if let root = model.files.root {
                 toolbar(root: root)
+                if let notice = model.files.notice { noticeLabel(notice).padding(.horizontal, 12).padding(.bottom, 6) }
                 if searching { results } else { tree }
                 if let status = model.files.status {
                     Label(status, systemImage: "checkmark.circle.fill").font(.caption).lineLimit(1).truncationMode(.middle)
@@ -67,9 +68,11 @@ struct FilesSidebarView: View {
                         .padding(.horizontal, 12).padding(.bottom, 6).transition(.opacity)
                 }
                 Divider().overlay(model.separatorOverlay)
-                Text(L("↩ Open in %@ · ⇧⌘C Copy Path · ⌥↩ Insert in terminal", model.files.editor.name))
+                Text(model.files.host == nil ? L("↩ Open in %@ · ⇧⌘C Copy Path · ⌥↩ Insert in terminal", model.files.treeEditor.name) : L("↩ Open read-only · ⇧⌘C Copy Path · ⌥↩ Insert in terminal"))
                     .font(.caption).foregroundStyle(muted).lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 8)
+            } else if let notice = model.files.notice {
+                noticeLabel(notice).padding(12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L("No folder")).font(.headline)
@@ -86,6 +89,15 @@ struct FilesSidebarView: View {
         .onChange(of: model.files.status) { _, status in
             if let status { AccessibilityNotification.Announcement(status).post() }
         }
+        .onChange(of: model.files.notice) { _, notice in
+            if let notice { AccessibilityNotification.Announcement(notice).post() }
+        }
+    }
+
+    /// Why a host's tree is missing or may be stale (FR-FB09): words and a symbol.
+    private func noticeLabel(_ notice: String) -> some View {
+        Label(notice, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(model.themeColor(.mutedForeground))
+            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Search field and Open in
@@ -93,9 +105,9 @@ struct FilesSidebarView: View {
     private func toolbar(root: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text(AppWorkspaceModel.abbreviatingHome(root)).font(.system(size: 11, design: .monospaced)).foregroundStyle(model.themeColor(.foreground))
+                Text(AppWorkspaceModel.abbreviatingHome(root, home: model.files.host?.home)).font(.system(size: 11, design: .monospaced)).foregroundStyle(model.themeColor(.foreground))
                     .lineLimit(1).truncationMode(.head).help(root)
-                Text(L("· follows the focused pane")).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1).fixedSize()
+                Text(model.files.host.map { L("· on %@", $0.name) } ?? L("· follows the focused pane")).font(.caption).foregroundStyle(model.themeColor(.mutedForeground)).lineLimit(1).fixedSize()
             }.accessibilityElement(children: .combine)
             HStack(spacing: 8) {
                 TextField(L("Search files…"), text: Binding(get: { model.files.query }, set: { model.setFilesQuery($0) }))
@@ -107,26 +119,37 @@ struct FilesSidebarView: View {
     }
 
     private var openInMenu: some View {
-        let editor = model.files.editor
+        let editor = model.files.treeEditor
         let target = model.files.selectedEntry
         return Menu {
-            ForEach(model.files.editors) { app in
+            ForEach(model.files.offeredEditors) { app in
                 Button {
                     Task { await model.openFile(target, in: app) }
                 } label: {
                     editorLabel(app, checked: app.id == editor.id)
                 }
             }
-            Divider()
-            Button(L("Other App…")) { chooseOtherApp(for: target) }
+            // No app on this Mac can open a host's file.
+            if model.files.host == nil {
+                Divider()
+                Button(L("Other App…")) { chooseOtherApp(for: target) }
+            }
         } label: {
             editorLabel(editor, checked: false, title: L("Open in"))
         } primaryAction: {
             Task { await model.openFile(target) }
         }
         .menuStyle(.button).fixedSize().controlSize(.regular)
-        .help(target.map { L("Open %1$@ in %2$@; the arrow chooses another app", $0.name, editor.name) } ?? L("Open the project folder in %@; the arrow chooses another app", editor.name))
+        .help(openInHelp(target, editor: editor))
         .accessibilityLabel(L("Open in %@", editor.name))
+    }
+
+    private func openInHelp(_ target: FileEntry?, editor: EditorApp) -> String {
+        if let host = model.files.host {
+            guard let target, !target.isDirectory else { return L("Open a tab in this folder on %@", host.name) }
+            return L("Open %1$@ read-only from %2$@", target.name, host.name)
+        }
+        return target.map { L("Open %1$@ in %2$@; the arrow chooses another app", $0.name, editor.name) } ?? L("Open the project folder in %@; the arrow chooses another app", editor.name)
     }
 
     @ViewBuilder private func editorLabel(_ app: EditorApp, checked: Bool, title: String? = nil) -> some View {
@@ -169,14 +192,14 @@ struct FilesSidebarView: View {
         let files = model.files
         return FileRow(
             model: model, entry: entry, depth: depth, title: title, subtitle: subtitle, selected: files.selection == entry.path,
-            expanded: files.expanded.contains(entry.path), editor: files.editor, editors: files.editors, palette: palette
+            expanded: files.expanded.contains(entry.path), editor: files.treeEditor, editors: files.offeredEditors, remote: files.host != nil, palette: palette
         ).equatable()
     }
 
     private var tree: some View {
         let files = model.files
         return ScrollViewReader { proxy in
-            FilesTree(model: model, browser: browser, rows: files.rows, editor: files.editor, editors: files.editors, palette: FilesPalette(model)).equatable()
+            FilesTree(model: model, browser: browser, rows: files.rows, editor: files.treeEditor, editors: files.offeredEditors, remote: files.host != nil, palette: FilesPalette(model)).equatable()
                 .focusable().focused($listFocused).focusEffectDisabled()
                 .onKeyPress(phases: .down) { handleKey($0) }
                 .onChange(of: files.selection) { _, path in if let path { proxy.scrollTo(path) } }
@@ -283,16 +306,17 @@ private struct FilesTree: View, Equatable {
     let rows: [FilesBrowserState.Row]
     let editor: EditorApp
     let editors: [EditorApp]
+    let remote: Bool
     let palette: FilesPalette
 
     nonisolated static func == (a: FilesTree, b: FilesTree) -> Bool {
-        a.rows == b.rows && a.editor == b.editor && a.editors == b.editors && a.palette == b.palette
+        a.rows == b.rows && a.editor == b.editor && a.editors == b.editors && a.remote == b.remote && a.palette == b.palette
     }
 
     var body: some View {
         FilesList(rowHeight: FileRow.height) {
             ForEach(rows) { row in
-                FilesTreeLine(model: model, mark: browser.marks.mark(for: row.entry.path, in: browser.state), row: row, editor: editor, editors: editors, palette: palette)
+                FilesTreeLine(model: model, mark: browser.marks.mark(for: row.entry.path, in: browser.state), row: row, editor: editor, editors: editors, remote: remote, palette: palette)
                     .filesListRow(spacing: 0)
             }
         }
@@ -306,19 +330,23 @@ private struct FilesTreeLine: View {
     let row: FilesBrowserState.Row
     let editor: EditorApp
     let editors: [EditorApp]
+    let remote: Bool
     let palette: FilesPalette
 
     var body: some View {
         // One view whichever branch draws: a line that could be either made the list count every row's views again each
         // time one line was redrawn.
         ZStack {
-            if row.unreadable {
-                Label(L("Can't read this folder"), systemImage: "exclamationmark.triangle").font(.caption)
+            if row.isNote {
+                Label(
+                    row.unreadable ? L("Can't read this folder") : L("Only the first %@ entries are shown", BrokerLimits.directoryEntries.formatted()),
+                    systemImage: row.unreadable ? "exclamationmark.triangle" : "ellipsis.circle"
+                ).font(.caption)
                     .foregroundStyle(palette.muted).padding(.leading, CGFloat(row.depth) * 16 + 26).frame(maxWidth: .infinity, alignment: .leading).frame(height: FileRow.height)
             } else {
                 FileRow(
                     model: model, entry: row.entry, depth: row.depth, title: AttributedString(row.entry.name), subtitle: nil, selected: mark.selected, expanded: mark.expanded,
-                    editor: editor, editors: editors, palette: palette
+                    editor: editor, editors: editors, remote: remote, palette: palette
                 ).equatable()
             }
         }
@@ -354,12 +382,20 @@ private struct FileRow: View, Equatable {
     let expanded: Bool
     let editor: EditorApp
     let editors: [EditorApp]
+    /// A host's file (FR-FB09): nothing on this Mac opens or reveals it.
+    let remote: Bool
     let palette: FilesPalette
     @State private var hovering = false
 
     nonisolated static func == (a: FileRow, b: FileRow) -> Bool {
         a.entry == b.entry && a.depth == b.depth && a.title == b.title && a.subtitle == b.subtitle && a.selected == b.selected && a.expanded == b.expanded
-            && a.editor == b.editor && a.editors == b.editors && a.palette == b.palette
+            && a.editor == b.editor && a.editors == b.editors && a.remote == b.remote && a.palette == b.palette
+    }
+
+    /// What opening this row does, in words.
+    private var openTitle: String {
+        guard remote else { return L("Open in %@", editor.name) }
+        return entry.isDirectory ? L("New Tab Here") : L("Open Read-Only")
     }
 
     var body: some View {
@@ -394,7 +430,7 @@ private struct FileRow: View, Equatable {
                     } label: {
                         Image(systemName: "arrow.up.forward.app")
                     }
-                    .help(L("Open in %@", editor.name)).accessibilityLabel(L("Open %1$@ in %2$@", entry.name, editor.name))
+                    .help(openTitle).accessibilityLabel(remote ? "\(openTitle), \(entry.name)" : L("Open %1$@ in %2$@", entry.name, editor.name))
                 }
             }
         }
@@ -408,7 +444,8 @@ private struct FileRow: View, Equatable {
         // A single tap answering every click: one that waited to rule out a double click (`exclusively(before:)`) held each
         // click back for the system's double-click interval. The second click of a double click is told apart by its count.
         .onTapGesture { clicked(count: Self.currentClickCount) }
-        .onDrag { NSItemProvider(object: URL(fileURLWithPath: entry.path) as NSURL) }
+        // A host's path is dragged as text: as a file URL, Finder or another app would act on this Mac's file of that path.
+        .onDrag { remote ? NSItemProvider(object: entry.path as NSString) : NSItemProvider(object: URL(fileURLWithPath: entry.path) as NSURL) }
         .contextMenu { menu }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(entry.name)
@@ -465,15 +502,19 @@ private struct FileRow: View, Equatable {
     }
 
     @ViewBuilder private var menu: some View {
-        Button(L("Open in %@", editor.name)) { Task { await model.openFile(entry) } }
-        // An editor tab is one click away whichever app is remembered; choosing it here isn't remembered (FR-ED09).
-        if editor != .trellisEditor, !entry.isDirectory {
-            Button(L("Open in %@", EditorApp.trellisEditor.name)) { Task { await model.openFile(entry, in: .trellisEditor, remember: false) } }
+        Button(openTitle) { Task { await model.openFile(entry) } }
+        if remote {
+            if !entry.isDirectory { Button(L("New Tab Here")) { Task { await model.openFile(entry, in: .newTab) } } }
+        } else {
+            // An editor tab is one click away whichever app is remembered; choosing it here isn't remembered (FR-ED09).
+            if editor != .trellisEditor, !entry.isDirectory {
+                Button(L("Open in %@", EditorApp.trellisEditor.name)) { Task { await model.openFile(entry, in: .trellisEditor, remember: false) } }
+            }
+            Menu(L("Open With")) {
+                ForEach(editors) { app in Button(app.name) { Task { await model.openFile(entry, in: app) } } }
+            }
+            Button(L("Reveal in Finder")) { model.revealFile(entry) }
         }
-        Menu(L("Open With")) {
-            ForEach(editors) { app in Button(app.name) { Task { await model.openFile(entry, in: app) } } }
-        }
-        Button(L("Reveal in Finder")) { model.revealFile(entry) }
         Divider()
         Button(L("Copy Path")) { model.copyFilePath(entry) }
         Button(L("Copy Relative Path")) { model.copyFilePath(entry, style: .relative) }

@@ -11,7 +11,7 @@ The tree starts at the focused pane's **project**: the nearest folder, at or abo
 
 When you `cd` in the pane, or focus another pane, the tree moves with it. The root is shown above the tree, with `~` for your home folder. A pane with no local folder shows "No folder".
 
-Files works only for panes on this Mac. Its icon is dimmed for [SSH](ssh-hosts.md) panes and [remote workspace](remote-workspaces.md) panes, because Trellis can't list their files.
+Files works for panes on this Mac and for [remote workspace](remote-workspaces.md) panes, where it shows the project on the host (see [On a remote workspace](#on-a-remote-workspace)). Its icon is dimmed for [SSH](ssh-hosts.md) panes, because Trellis can't list their files.
 
 ## What's left out
 
@@ -65,6 +65,21 @@ If the app you chose has since been removed, Trellis says it isn't installed on 
 Trellis confirms a copy with a short "Copied …" message. Inserting a path only types it; nothing is run until you press Return.
 
 Right-click a row for more: **Open in** your chosen app, **Open With**, **Reveal in Finder**, **Copy Path**, **Copy Relative Path**, **Copy Name**, **Insert Path in Terminal**, and **Type cd to This Folder** (or **Type cd to Its Folder** on a file), which types `cd '<folder>'` at the prompt without pressing Return.
+
+## On a remote workspace
+
+In a remote workspace pane, Files shows the project **on the host**, found the same way from the folder the pane's shell is in. The line under the header names the host. The tree, search, the hidden and ignored toggles, the copy commands, **Insert Path in Terminal** and **Type cd** work as they do on this Mac, with the host's paths.
+
+A few things are different:
+
+- **Files open read-only.** <kbd>Return</kbd>, a double click or **Open in** shows the file in a [read-only editor tab](editor.md#read-only-files-from-a-remote-workspace). **Open in** offers only **Trellis Editor** and **New Tab Here**; Finder and the editors on this Mac aren't offered, because they can't reach a file on the host.
+- **A folder opens a tab.** Opening a folder, or choosing **New Tab Here** on a file, opens a new tab in that folder on the host.
+- **Trellis never changes anything on the host.** It lists the folders you open and reads the files you open, through the Trellis helper there.
+- **Dragging a row carries text.** A row dragged out of a host's tree is its path as plain text, not a file, so another app never mistakes it for a file on this Mac. To put the path at a prompt, use **Insert Path in Terminal**.
+- **Very long folders are cut short.** A folder with more than 10,000 entries shows the first 10,000 and says so.
+- **The host must be connected.** While it isn't, the tree you already had stays, with a note that it may be out of date, and it is read again when the connection is back.
+
+If Files says "Update the Trellis helper on … to browse its files.", open **Hosts**, select the host and choose **Update Helper…**.
 
 ## Limits
 

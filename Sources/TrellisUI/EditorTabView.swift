@@ -30,7 +30,7 @@ struct EditorTabView: View {
                         togglePreview: tab.isMarkdown ? { model.toggleEditorPreview(tab.id) } : nil),
                     accessibilityName: L("Editor, %@", tab.fileName), contentNoun: L("file"), maximumBytes: EditorDocument.maximumBytes,
                     highlightsCurrentLine: true, jump: tab.jump, onJumped: { model.clearEditorJump(tab.id) },
-                    onCursor: { [cursor] in cursor.update(line: $0, column: $1) }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview
+                    onCursor: { [cursor] in cursor.update(line: $0, column: $1) }, highlightLimit: EditorDocument.maximumHighlightedBytes, acceptsFocus: shown && !tab.showsPreview, editable: !tab.isReadOnly
                 )
                 // The source stays mounted under the preview, so its undo, cursor and scroll survive (FR-ED12).
                 .opacity(tab.showsPreview ? 0 : 1).allowsHitTesting(!tab.showsPreview).accessibilityHidden(tab.showsPreview)
@@ -73,6 +73,11 @@ struct EditorTabView: View {
                 Text(L("Unsaved")).font(.caption).padding(.horizontal, 7).padding(.vertical, 2)
                     .background(Capsule().fill(model.themeColor(.border).opacity(0.35)))
             }
+            if let host = tab.remoteHost {
+                Label(L("Read-only · %@", host.name), systemImage: "lock").font(.caption).padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Capsule().fill(model.themeColor(.border).opacity(0.35)))
+                    .help(L("This file is on %@. Trellis shows it and never changes it.", host.name))
+            }
             Spacer(minLength: 8)
             Text(tab.language.displayName).font(.caption).foregroundStyle(muted)
                 .padding(.horizontal, 7).padding(.vertical, 2).overlay(RoundedRectangle(cornerRadius: 4).stroke(model.themeColor(.border).opacity(0.6)))
@@ -83,16 +88,22 @@ struct EditorTabView: View {
                     .frame(width: EditorCursorButton.width, alignment: .trailing)
                     .popover(isPresented: $goToLineShown, arrowEdge: .bottom) { goToLinePopover }
             }
-            openWithMenu
-            Button {
-                model.revealFiles([URL(fileURLWithPath: tab.document.path)])
-            } label: {
-                Image(systemName: "folder")
+            if let host = tab.remoteHost {
+                // Nothing on this Mac opens, reveals or saves a host's file (FR-ED16).
+                Button(L("Reload")) { Task { await model.reloadEditor(tab.id) } }
+                    .controlSize(.small).disabled(!shown).help(L("Read %1$@ again from %2$@", tab.fileName, host.name))
+            } else {
+                openWithMenu
+                Button {
+                    model.revealFiles([URL(fileURLWithPath: tab.document.path)])
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.borderless).help(L("Reveal in Finder")).accessibilityLabel(L("Reveal %@ in Finder", tab.fileName))
+                Button(L("Save")) { Task { await model.saveEditor(tab.id) } }
+                    .controlSize(.small)
+                    .disabled(!shown || (!tab.isDirty && tab.banner != .deleted)).help(L("Save %@ (⌘S)", tab.fileName))
             }
-            .buttonStyle(.borderless).help(L("Reveal in Finder")).accessibilityLabel(L("Reveal %@ in Finder", tab.fileName))
-            Button(L("Save")) { Task { await model.saveEditor(tab.id) } }
-                .controlSize(.small)
-                .disabled(!shown || (!tab.isDirty && tab.banner != .deleted)).help(L("Save %@ (⌘S)", tab.fileName))
         }
         .padding(.horizontal, 14).padding(.vertical, 7).background(model.chromeFill(.surface))
     }
@@ -110,13 +121,13 @@ struct EditorTabView: View {
         .help(tab.document.path)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayPath)
-        .accessibilityValue(tab.isDirty ? L("unsaved") : "")
+        .accessibilityValue(tab.remoteHost.map { L("read-only, on %@", $0.name) } ?? (tab.isDirty ? L("unsaved") : ""))
     }
 
     private var openWithMenu: some View {
         Menu {
             ForEach(model.files.editors.filter { $0 != .trellisEditor && $0 != .newTab }) { app in
-                Button(app.name) { Task { await model.openFile(FileEntry(path: tab.document.path, isDirectory: false), in: app, remember: false) } }
+                Button(app.name) { Task { await model.openLocalFile(FileEntry(path: tab.document.path, isDirectory: false), in: app, remember: false) } }
             }
         } label: {
             Label(L("Open With"), systemImage: "arrow.up.forward.app")

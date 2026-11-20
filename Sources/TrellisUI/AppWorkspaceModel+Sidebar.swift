@@ -69,8 +69,6 @@ extension AppWorkspaceModel {
         let machine = paneContext(paneID).machine
         if machine == .ssh { return L("%@ isn't available in SSH panes.", view.title) }
         if view == .scratchpad, machine != .local { return L("The scratchpad runs only in panes on this Mac.") }
-        // The remote helper reads only allow-listed files; it can't list folders (FR-FB01).
-        if view == .files, machine != .local { return L("Files shows only folders on this Mac.") }
         if view == .changes, machine != .local { return L("Changes reads git only in panes on this Mac.") }
         return nil
     }

@@ -45,6 +45,31 @@ public struct LocalFileListing: FileListing {
     }
 }
 
+/// One folder as a ``FileTreeSource`` read it.
+public enum FolderListing: Equatable, Sendable {
+    /// `truncated`: the folder holds more entries than the source returns.
+    case entries([FileEntry], truncated: Bool)
+    case unreadable
+}
+
+/// Lists folders that take a round trip to read, several at a time: a remote workspace's host (FR-FB09).
+public protocol FileTreeSource: Sendable {
+    /// Each asked folder's direct children; a folder missing from the answer counts as unreadable.
+    func contents(of directories: [String]) async -> [String: FolderListing]
+    /// A text file's contents, for the root's `.gitignore`; nil when it is missing or unreadable.
+    func text(at path: String) async -> String?
+}
+
+/// A ``FileListing`` asked as a ``FileTreeSource``; for tests and for comparing the two walks.
+public struct ListingTreeSource: FileTreeSource {
+    let listing: any FileListing
+    public init(_ listing: any FileListing) { self.listing = listing }
+    public func contents(of directories: [String]) async -> [String: FolderListing] {
+        Dictionary(directories.map { ($0, (try? listing.contents(of: $0)).map { .entries($0, truncated: false) } ?? .unreadable) }, uniquingKeysWith: { first, _ in first })
+    }
+    public func text(at path: String) async -> String? { listing.text(at: path) }
+}
+
 /// The simple `.gitignore` patterns the Files view honors (FR-FB03, FR-FB04): one per line, `#` comments, a trailing `/` for
 /// folders only, a leading `/` or an inner `/` anchors to the root, otherwise the name matches at any depth. Negations
 /// (`!`) are not supported and are skipped, so a file can only be hidden by a pattern, never shown by one.
@@ -102,7 +127,17 @@ public enum FileBrowser {
 
     /// The children of `directory` the tree shows, sorted.
     public static func children(of directory: String, root: String, listing: any FileListing, showHidden: Bool, ignore: IgnorePatterns) throws -> [FileEntry] {
-        sorted(try listing.contents(of: directory).filter { isShown($0, showHidden: showHidden) && !ignore.ignores(relativePath: relativePath($0.path, root: root), isDirectory: $0.isDirectory) })
+        visible(try listing.contents(of: directory), root: root, showHidden: showHidden, ignore: ignore)
+    }
+
+    /// The entries of one folder the tree shows, sorted.
+    public static func visible(_ entries: [FileEntry], root: String, showHidden: Bool, ignore: IgnorePatterns) -> [FileEntry] {
+        sorted(entries.filter { isShown($0, showHidden: showHidden) && !ignore.ignores(relativePath: relativePath($0.path, root: root), isDirectory: $0.isDirectory) })
+    }
+
+    /// The root's ignore patterns, from its `.gitignore`, through a source.
+    public static func ignorePatterns(root: String, source: any FileTreeSource) async -> IgnorePatterns {
+        await source.text(at: (root == "/" ? "" : root) + "/.gitignore").map(IgnorePatterns.init(gitignore:)) ?? .none
     }
 
     /// The root's ignore patterns, from its `.gitignore`.
@@ -134,15 +169,50 @@ public enum FileBrowser {
                 if entry.isDirectory { queue.append(entry.path); continue }
                 visited += 1
                 if visited > fileLimit { truncated = true; break walk }
-                let relative = relativePath(entry.path, root: root)
-                guard let match = FuzzyMatch.match(query, in: byPath ? relative : entry.name) else { continue }
-                // Name positions are offsets into the name, so a path match is shown without highlights.
-                matches.append(FileSearchMatch(entry: entry, relativeFolder: (relative as NSString).deletingLastPathComponent, score: match.score, namePositions: byPath ? [] : match.positions))
+                if let match = match(query, entry: entry, root: root, byPath: byPath) { matches.append(match) }
             }
         }
-        matches.sort { $0.score != $1.score ? $0.score > $1.score : $0.entry.path.count < $1.entry.path.count }
-        if matches.count > resultLimit { matches.removeLast(matches.count - resultLimit) }
-        return FileSearchResult(query: query, matches: matches, truncated: truncated)
+        return FileSearchResult(query: query, matches: ranked(matches, limit: resultLimit), truncated: truncated)
+    }
+
+    private static func match(_ query: String, entry: FileEntry, root: String, byPath: Bool) -> FileSearchMatch? {
+        let relative = relativePath(entry.path, root: root)
+        guard let match = FuzzyMatch.match(query, in: byPath ? relative : entry.name) else { return nil }
+        // Name positions are offsets into the name, so a path match is shown without highlights.
+        return FileSearchMatch(entry: entry, relativeFolder: (relative as NSString).deletingLastPathComponent, score: match.score, namePositions: byPath ? [] : match.positions)
+    }
+
+    private static func ranked(_ found: [FileSearchMatch], limit: Int) -> [FileSearchMatch] {
+        var matches = found.sorted { $0.score != $1.score ? $0.score > $1.score : $0.entry.path.count < $1.entry.path.count }
+        if matches.count > limit { matches.removeLast(matches.count - limit) }
+        return matches
+    }
+
+    /// ``search(_:root:listing:showHidden:ignore:fileLimit:resultLimit:)`` over a source that answers a round trip at a
+    /// time (FR-FB09): each level of the tree is asked for at once, in the same order, so both walks find the same files.
+    public static func search(
+        _ query: String, root: String, source: any FileTreeSource, showHidden: Bool, ignore: IgnorePatterns,
+        fileLimit: Int = searchFileLimit, resultLimit: Int = searchResultLimit
+    ) async -> FileSearchResult {
+        let byPath = query.contains("/")
+        var matches: [FileSearchMatch] = []
+        var level = [root], visited = 0, truncated = false
+        walk: while !level.isEmpty {
+            if Task.isCancelled { break }
+            let listed = await source.contents(of: level)
+            var next: [String] = []
+            for directory in level {
+                guard case .entries(let entries, _)? = listed[directory] else { continue }
+                for entry in visible(entries, root: root, showHidden: showHidden, ignore: ignore) {
+                    if entry.isDirectory { next.append(entry.path); continue }
+                    visited += 1
+                    if visited > fileLimit { truncated = true; break walk }
+                    if let match = match(query, entry: entry, root: root, byPath: byPath) { matches.append(match) }
+                }
+            }
+            level = next
+        }
+        return FileSearchResult(query: query, matches: ranked(matches, limit: resultLimit), truncated: truncated)
     }
 }
 
@@ -161,6 +231,7 @@ public struct FileSearchResult: Equatable, Sendable {
     public let matches: [FileSearchMatch]
     /// The walk stopped at the file limit, so a match may be missing.
     public let truncated: Bool
+    public init(query: String, matches: [FileSearchMatch], truncated: Bool) { self.query = query; self.matches = matches; self.truncated = truncated }
 }
 
 /// An app the Files view can open a file in (FR-FB05). Finder reveals a file and opens a folder; `defaultApp` opens with

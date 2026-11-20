@@ -81,6 +81,12 @@ Highlighting covers Swift, Python, JavaScript and TypeScript, JSON, Go, Rust, C,
 Ruby, shell scripts, Markdown, YAML, TOML, HTML and XML, and CSS. The language comes from the file name, or from a `#!`
 line for scripts without an extension. Other files are shown as plain text.
 
+## Read-only files from a remote workspace
+
+Opening a file from the [Files view](files.md#on-a-remote-workspace) of a remote workspace pane shows it in an editor tab marked **Read-only** with the host's name. Trellis reads the file through its helper on the host and keeps it only in the tab.
+
+You can scroll, select, copy, search and, for Markdown, preview it. You can't type in it or save it, and there is no **Open With** or **Reveal in Finder**, since the file isn't on this Mac. **Reload** reads it again from the host. The same limits apply as for local files: UTF-8 text up to 2 MB; anything else doesn't open, and Trellis tells you why.
+
 ## Limits
 
 - Editor tabs are temporary. They aren't saved with your workspace and don't come back after you quit Trellis.
