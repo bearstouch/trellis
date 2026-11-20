@@ -567,6 +567,7 @@
   "Hide ignored files": "Masquer les fichiers ignorés",
   "Home folder": "Dossier de départ",
   "Hooks": "Hooks",
+  "Host": "Hôte",
   "Host %@": "Hôte %@",
   "Host added.": "Hôte ajouté.",
   "Host deleted. SSH files and open sessions were not changed.": "Hôte supprimé. Les fichiers SSH et les sessions ouvertes n’ont pas été modifiés.",

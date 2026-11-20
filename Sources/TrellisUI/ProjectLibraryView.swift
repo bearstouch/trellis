@@ -54,8 +54,8 @@ public struct ProjectLibraryView: View {
                 }
                 .padding(28)
                 Divider().padding(.horizontal, 28)
-                if showsJSON { jsonEditor.padding(28) } else { form.padding(.horizontal, 28).padding(.vertical, 18) }
-                footer.padding(.horizontal, 28).padding(.bottom, 20)
+                if showsJSON { jsonEditor.padding(28) } else { form.padding(.leading, 28).padding(.top, 18) }
+                footer
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .foregroundStyle(workspace.themeColor(.foreground))
@@ -182,7 +182,7 @@ public struct ProjectLibraryView: View {
                     .accessibilityElement(children: .contain).accessibilityLabel(L("Project layout"))
             }
             .frame(width: 330)
-            ScrollView { detail.frame(maxWidth: .infinity, alignment: .leading) }
+            detail
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
@@ -245,11 +245,12 @@ public struct ProjectLibraryView: View {
         Button(action: action) { Image(systemName: symbol).frame(width: 18, height: 16) }.help(title).accessibilityLabel(title)
     }
 
-    @ViewBuilder private var detail: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    /// The selected outline row's settings, grouped like a settings pane.
+    private var detail: some View {
+        Form {
             if model.loadFailed {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(ProjectListModel.message(for: .readOnly)).font(.callout)
+                Section {
+                    SettingsNote(text: ProjectListModel.message(for: .readOnly))
                     Button(L("Reset Project Library")) {
                         Task { message = await model.resetUnreadable() ? L("The unreadable file was kept beside the new library.") : L("The project library could not be reset.") }
                     }
@@ -266,18 +267,23 @@ public struct ProjectLibraryView: View {
                 }
             default: EmptyView()
             }
-            ForEach(warnings, id: \.self) { Label($0, systemImage: "exclamationmark.triangle").font(.caption).fixedSize(horizontal: false, vertical: true) }
+            if !warnings.isEmpty {
+                Section {
+                    ForEach(warnings, id: \.self) { Label($0, systemImage: "exclamationmark.triangle").font(.subheadline).fixedSize(horizontal: false, vertical: true) }
+                }
+            }
         }
+        .settingsFormStyle()
     }
 
     @ViewBuilder private var projectDetail: some View {
-        Text(L("Project")).font(.headline)
-        field(L("Name"), text: Binding(get: { draft.name }, set: { draft.name = $0 }), error: issue(.project, .name), prompt: L("Shop"))
-        VStack(alignment: .leading, spacing: 3) {
-            Text(L("Notes (optional)")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
-            TextEditor(text: Binding(get: { draft.notes ?? "" }, set: { draft.notes = $0 })).font(.body).frame(height: 70)
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(workspace.themeColor(.border))).accessibilityLabel(L("Notes"))
-            errorLabel(issue(.project, .notes))
+        Section(L("Project")) {
+            field(L("Name"), text: Binding(get: { draft.name }, set: { draft.name = $0 }), error: issue(.project, .name), prompt: L("Shop"))
+            VStack(alignment: .leading, spacing: 6) {
+                SettingsLabel(L("Notes (optional)"), help: issue(.project, .notes), helpColor: .red)
+                TextEditor(text: Binding(get: { draft.notes ?? "" }, set: { draft.notes = $0 })).font(.body).frame(height: 70)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(workspace.themeColor(.border))).accessibilityLabel(L("Notes"))
+            }
         }
         repositoryFields(
             L("Project repository"), note: L("The project folder itself is a checkout."), repository: draft.repository, at: .project,
@@ -286,41 +292,44 @@ public struct ProjectLibraryView: View {
 
     @ViewBuilder private func tabDetail(_ index: Int) -> some View {
         let tab = draft.tabs[index]
-        Text(L("Tab")).font(.headline)
-        field(L("Title"), text: Binding(get: { tab.title }, set: { draft.tabs[index].title = $0 }), error: issue(.tab(index), .title), prompt: L("API"))
-        Picker(L("Color"), selection: Binding(get: { tab.color }, set: { draft.tabs[index].color = $0 })) {
-            Text(L("None")).tag(TabColor?.none)
-            ForEach(TabColor.allCases, id: \.self) { color in
-                Label {
-                    Text(color.displayName)
-                } icon: {
-                    color.swatchImage
-                }.tag(TabColor?.some(color))
+        Section(L("Tab")) {
+            field(L("Title"), text: Binding(get: { tab.title }, set: { draft.tabs[index].title = $0 }), error: issue(.tab(index), .title), prompt: L("API"))
+            Picker(L("Color"), selection: Binding(get: { tab.color }, set: { draft.tabs[index].color = $0 })) {
+                Text(L("None")).tag(TabColor?.none)
+                ForEach(TabColor.allCases, id: \.self) { color in
+                    Label {
+                        Text(color.displayName)
+                    } icon: {
+                        color.swatchImage
+                    }.tag(TabColor?.some(color))
+                }
             }
+            field(
+                L("Folder (optional)"), text: optional(Binding(get: { tab.directory }, set: { draft.tabs[index].directory = $0 })), error: issue(.tab(index), .directory),
+                prompt: "api", monospaced: true, note: L("Where the tab's panes without a folder start, relative to the project folder."))
         }
-        .frame(width: 240)
-        field(
-            L("Folder (optional)"), text: optional(Binding(get: { tab.directory }, set: { draft.tabs[index].directory = $0 })), error: issue(.tab(index), .directory),
-            prompt: "api", note: L("Where the tab's panes without a folder start, relative to the project folder."))
         repositoryFields(
             L("Tab repository"), note: L("The tab's folder is a checkout."), repository: tab.repository, at: .tab(index), set: { draft.tabs[index].repository = $0 })
     }
 
     @ViewBuilder private func paneDetail(_ pane: ProjectPane, tab: Int, path: [Int]) -> some View {
         let at = ProjectDefinition.Place.node(tab: tab, path: path)
-        Text(L("Pane")).font(.headline)
-        field(L("Title (optional)"), text: optional(Binding(get: { pane.title }, set: { value in draft.updatePane(tab: tab, path: path) { $0.title = value } })), error: issue(at, .title), prompt: L("API server"))
-        field(
-            L("Folder (optional)"), text: optional(Binding(get: { pane.directory }, set: { value in draft.updatePane(tab: tab, path: path) { $0.directory = value } })),
-            error: issue(at, .directory), prompt: draft.tabs[tab].directory ?? "api",
-            note: L("Relative to the project folder chosen at launch. Empty uses the tab's folder."))
-        agentPicker(pane, tab: tab, path: path, at: at)
-        if pane.agent == nil {
+        Section(L("Pane")) {
             field(
-                L("Command (optional)"), text: optional(Binding(get: { pane.command }, set: { value in draft.updatePane(tab: tab, path: path) { $0.command = value } })),
-                error: issue(at, .command), prompt: "make dev", monospaced: true, note: L("Typed into the shell after its first prompt."))
-        } else if let error = issue(at, .command) {
-            Text(error).font(.caption).foregroundStyle(.red)
+                L("Title (optional)"), text: optional(Binding(get: { pane.title }, set: { value in draft.updatePane(tab: tab, path: path) { $0.title = value } })),
+                error: issue(at, .title), prompt: L("API server"))
+            field(
+                L("Folder (optional)"), text: optional(Binding(get: { pane.directory }, set: { value in draft.updatePane(tab: tab, path: path) { $0.directory = value } })),
+                error: issue(at, .directory), prompt: draft.tabs[tab].directory ?? "api", monospaced: true,
+                note: L("Relative to the project folder chosen at launch. Empty uses the tab's folder."))
+            agentPicker(pane, tab: tab, path: path, at: at)
+            if pane.agent == nil {
+                field(
+                    L("Command (optional)"), text: optional(Binding(get: { pane.command }, set: { value in draft.updatePane(tab: tab, path: path) { $0.command = value } })),
+                    error: issue(at, .command), prompt: "make dev", monospaced: true, note: L("Typed into the shell after its first prompt."))
+            } else if let error = issue(at, .command) {
+                Text(error).font(.subheadline).foregroundStyle(.red)
+            }
         }
         repositoryFields(
             L("Pane repository"), note: L("The pane's folder is a checkout."), repository: pane.repository, at: at,
@@ -330,63 +339,62 @@ public struct ProjectLibraryView: View {
     /// FR-PL10: the pane runs a shell or an agent from the catalog; an ID the catalog no longer has stays selectable, named as missing.
     @ViewBuilder private func agentPicker(_ pane: ProjectPane, tab: Int, path: [Int], at: ProjectDefinition.Place) -> some View {
         let catalog = workspace.agentCatalog.definitions
-        VStack(alignment: .leading, spacing: 3) {
-            Picker(
-                L("Runs"),
-                selection: Binding(
-                    get: { pane.agent },
-                    set: { value in
-                        draft.updatePane(tab: tab, path: path) {
-                            $0.agent = value; if value != nil { $0.command = nil }
-                        }
-                    })
-            ) {
-                Text(L("Shell")).tag(String?.none)
-                ForEach(catalog) { agent in Text(agent.name).tag(String?.some(agent.id)) }
-                if let id = pane.agent, !catalog.contains(where: { $0.id == id }) { Text(L("%@ (not in Settings → Agents)", id)).tag(String?.some(id)) }
-            }
-            .frame(width: 320)
-            Text(
-                pane.agent == nil
-                    ? L("A login shell; add a command to type into it.")
-                    : L("Opens the agent in this pane's folder, with its live state on the tab. A pane runs an agent or a command, not both.")
-            )
-            .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
-            if let error = issue(at, .agent) { Text(error).font(.caption).foregroundStyle(.red) }
+        let help =
+            pane.agent == nil
+            ? L("A login shell; add a command to type into it.")
+            : L("Opens the agent in this pane's folder, with its live state on the tab. A pane runs an agent or a command, not both.")
+        Picker(
+            selection: Binding(
+                get: { pane.agent },
+                set: { value in
+                    draft.updatePane(tab: tab, path: path) {
+                        $0.agent = value; if value != nil { $0.command = nil }
+                    }
+                })
+        ) {
+            Text(L("Shell")).tag(String?.none)
+            ForEach(catalog) { agent in Text(agent.name).tag(String?.some(agent.id)) }
+            if let id = pane.agent, !catalog.contains(where: { $0.id == id }) { Text(L("%@ (not in Settings → Agents)", id)).tag(String?.some(id)) }
+        } label: {
+            SettingsLabel(L("Runs"), help: issue(at, .agent) ?? help, helpColor: issue(at, .agent) == nil ? nil : .red)
         }
+        .accessibilityLabel(L("Runs")).accessibilityHint(issue(at, .agent).map { L("Error: %@", $0) } ?? help)
     }
 
     @ViewBuilder private func splitDetail(axis: SplitAxis, ratio: Double, tab: Int, path: [Int]) -> some View {
-        Text(L("Split")).font(.headline)
-        SegmentedPicker(L("Direction"), selection: axis, options: [(.x, L("Side by side")), (.y, L("Top and bottom"))]) { draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio) }
-            .frame(width: 280)
-        VStack(alignment: .leading, spacing: 3) {
-            Text(L("First pane's share: %d%%", Int((ratio * 100).rounded()))).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
-            Slider(value: Binding(get: { ratio }, set: { draft.updateSplit(tab: tab, path: path, axis: axis, ratio: ($0 * 100).rounded() / 100) }), in: 0.1...0.9)
-                .frame(width: 280).accessibilityLabel(L("First pane's share"))
+        Section(L("Split")) {
+            LabeledContent {
+                SegmentedPicker(L("Direction"), selection: axis, options: [(.x, L("Side by side")), (.y, L("Top and bottom"))]) {
+                    draft.updateSplit(tab: tab, path: path, axis: $0, ratio: ratio)
+                }
+                .fixedSize()
+            } label: {
+                SettingsLabel(L("Direction"))
+            }
+            LabeledContent {
+                Slider(value: Binding(get: { ratio }, set: { draft.updateSplit(tab: tab, path: path, axis: axis, ratio: ($0 * 100).rounded() / 100) }), in: 0.1...0.9)
+                    .labelsHidden().frame(maxWidth: 240).accessibilityLabel(L("First pane's share"))
+            } label: {
+                SettingsLabel(L("First pane's share: %d%%", Int((ratio * 100).rounded())))
+            }
         }
     }
 
     @ViewBuilder private func repositoryFields(
         _ title: String, note: String, repository: ProjectRepository?, at: ProjectDefinition.Place, set: @escaping (ProjectRepository?) -> Void
     ) -> some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(note, isOn: Binding(get: { repository != nil }, set: { set($0 ? ProjectRepository(url: "") : nil) }))
-                if let repository {
-                    field(
-                        L("URL"), text: Binding(get: { repository.url }, set: { set(ProjectRepository(url: $0, branch: repository.branch)) }), error: issue(at, .repositoryURL),
-                        prompt: "git@github.com:acme/api.git", monospaced: true)
-                    field(
-                        L("Branch (optional)"), text: optional(Binding(get: { repository.branch }, set: { set(ProjectRepository(url: repository.url, branch: $0)) })),
-                        error: issue(at, .repositoryBranch), prompt: L("The remote's default"))
-                    Text(L("Cloned by Set Up when its folder is missing, with the target's own git and credentials."))
-                        .font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true)
-                }
+        Section(title) {
+            Toggle(isOn: Binding(get: { repository != nil }, set: { set($0 ? ProjectRepository(url: "") : nil) })) {
+                SettingsLabel(note, help: L("Cloned by Set Up when its folder is missing, with the target's own git and credentials."))
             }
-            .padding(6)
-        } label: {
-            Text(title)
+            if let repository {
+                field(
+                    L("URL"), text: Binding(get: { repository.url }, set: { set(ProjectRepository(url: $0, branch: repository.branch)) }), error: issue(at, .repositoryURL),
+                    prompt: "git@github.com:acme/api.git", monospaced: true)
+                field(
+                    L("Branch (optional)"), text: optional(Binding(get: { repository.branch }, set: { set(ProjectRepository(url: repository.url, branch: $0)) })),
+                    error: issue(at, .repositoryBranch), prompt: L("The remote's default"))
+            }
         }
     }
 
@@ -440,17 +448,13 @@ public struct ProjectLibraryView: View {
     // MARK: Footer
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let message { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("projects.result") }
-            HStack {
-                if stored != nil { Button(L("Delete…"), role: .destructive) { confirmingDelete = true }.disabled(saving || model.loadFailed) }
-                Spacer()
-                if isDirty, stored != nil { Text(L("Unsaved changes")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)) }
-                Button(stored == nil ? L("Add Project") : L("Save")) { save() }.keyboardShortcut("s", modifiers: .command)
-                    .disabled(saving || model.loadFailed || (!showsJSON && !issues.isEmpty))
-                Button(L("Launch…")) { if let stored { model.onLaunch?(stored) } }.keyboardShortcut(.defaultAction)
-                    .disabled(stored == nil || isDirty || model.onLaunch == nil).help(isDirty ? L("Save the project before launching it") : L("Choose where to run the project"))
-            }
+        SettingsFooter(message: message, identifier: "projects.result") {
+            if stored != nil { Button(L("Delete…"), role: .destructive) { confirmingDelete = true }.disabled(saving || model.loadFailed) }
+            if isDirty, stored != nil { Text(L("Unsaved changes")).font(.subheadline).foregroundStyle(workspace.themeColor(.mutedForeground)) }
+            Button(stored == nil ? L("Add Project") : L("Save")) { save() }.keyboardShortcut("s", modifiers: .command)
+                .disabled(saving || model.loadFailed || (!showsJSON && !issues.isEmpty))
+            Button(L("Launch…")) { if let stored { model.onLaunch?(stored) } }.keyboardShortcut(.defaultAction)
+                .disabled(stored == nil || isDirty || model.onLaunch == nil).help(isDirty ? L("Save the project before launching it") : L("Choose where to run the project"))
         }
     }
 
@@ -598,20 +602,14 @@ public struct ProjectLibraryView: View {
         Binding(get: { binding.wrappedValue ?? "" }, set: { binding.wrappedValue = $0.isEmpty ? nil : $0 })
     }
 
+    /// A settings row: the label with its note as help (a field's error replaces it, in red), then the field.
     private func field(_ title: String, text: Binding<String>, error: String?, prompt: String, monospaced: Bool = false, note: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
-            TextField(title, text: text, prompt: Text(prompt)).textFieldStyle(.roundedBorder).labelsHidden()
+        LabeledContent {
+            TextField(title, text: text, prompt: Text(prompt)).labelsHidden().frame(maxWidth: 240)
                 .font(monospaced ? .system(size: 12, design: .monospaced) : .body)
                 .accessibilityLabel(title).accessibilityValue(error.map { L("%1$@. Error: %2$@", text.wrappedValue, $0) } ?? text.wrappedValue)
-            if let note { Text(note).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground)).fixedSize(horizontal: false, vertical: true) }
-            errorLabel(error)
-        }
-    }
-
-    @ViewBuilder private func errorLabel(_ error: String?) -> some View {
-        if let error {
-            Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true).accessibilityHidden(true)
+        } label: {
+            SettingsLabel(title, help: error ?? note, helpColor: error == nil ? nil : .red)
         }
     }
 }

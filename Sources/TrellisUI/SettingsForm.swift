@@ -38,10 +38,11 @@ struct SettingsNote: View {
 /// The bar under a settings form that holds its result message and main buttons.
 struct SettingsFooter<Buttons: View>: View {
     var message: String?
+    var identifier = "settings.result"
     @ViewBuilder var buttons: Buttons
     var body: some View {
         HStack(spacing: 8) {
-            if let message { Text(message).font(.subheadline).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("settings.result") }
+            if let message { Text(message).font(.subheadline).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(identifier) }
             Spacer(minLength: 0)
             buttons
         }

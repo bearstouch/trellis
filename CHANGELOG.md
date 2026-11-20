@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Hosts and Projects match Settings:** the Hosts and Projects windows now group their fields into titled sections like Settings, with each field's explanation or error under its name and the field beside it, and their main buttons in a bar at the bottom. **Discover SSH Aliases** lists aliases as checkbox rows the same way.
 - **Larger pane header text:** the bar above each pane (its title, folder, status, buttons and icons) now uses 12-point text instead of 10, so it is easier to read.
 
 ## [1.3.0] - 2026-11-17

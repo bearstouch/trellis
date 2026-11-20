@@ -15,9 +15,9 @@ struct AliasDiscoveryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L("Discover SSH Aliases")).font(.headline)
+            Text(L("Discover SSH Aliases")).font(.system(size: 22, weight: .semibold))
             Text(L("Reads literal Host names from ~/.ssh/config without changing it. Each alias is saved as its destination, so ssh keeps applying your configuration."))
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             switch outcome {
             case nil: ProgressView(L("Reading ~/.ssh/config…"))
             case .failure(let failure):
@@ -27,19 +27,22 @@ struct AliasDiscoveryView: View {
                 if result.aliases.isEmpty {
                     Text(L("No literal aliases were found.")).foregroundStyle(.secondary)
                 } else {
-                    List(result.aliases, id: \.name) { alias in
-                        let exists = saved.contains(alias.name)
-                        Toggle(isOn: binding(alias.name)) {
-                            HStack {
-                                Text(alias.name)
-                                Spacer()
-                                Text(exists ? L("Already saved") : L("Line %@", String(alias.line))).font(.caption).foregroundStyle(.secondary)
+                    Form {
+                        Section {
+                            ForEach(result.aliases, id: \.name) { alias in
+                                let exists = saved.contains(alias.name)
+                                Toggle(isOn: binding(alias.name)) {
+                                    SettingsLabel(alias.name, help: exists ? L("Already saved") : L("Line %@", String(alias.line)))
+                                }
+                                .toggleStyle(.checkbox).disabled(exists)
+                                .accessibilityValue(exists ? L("Already saved") : selected.contains(alias.name) ? L("Selected") : L("Not selected"))
                             }
+                        } header: {
+                            Text(verbatim: "~/.ssh/config")
                         }
-                        .disabled(exists)
-                        .accessibilityValue(exists ? L("Already saved") : selected.contains(alias.name) ? L("Selected") : L("Not selected"))
                     }
-                    .frame(minHeight: 160).accessibilityLabel(L("Discovered aliases"))
+                    .settingsFormStyle()
+                    .frame(minHeight: 220).accessibilityLabel(L("Discovered aliases"))
                 }
                 if !result.warnings.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {

@@ -8,7 +8,7 @@ struct ProjectLaunchSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L("Launch “%@”", session.project.name)).font(.headline)
+            Text(L("Launch “%@”", session.project.name)).font(.system(size: 22, weight: .semibold))
             if showsChoice {
                 Picker(L("Target"), selection: Binding(get: { session.target }, set: { model.setProjectLaunchTarget(session, $0) })) {
                     Label(L("This Mac"), systemImage: "desktopcomputer").tag(ProjectTarget.local)
