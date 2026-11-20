@@ -147,10 +147,25 @@ public struct LocalTransferEndpoint: TransferSource, TransferDestination {
         do throws(FileTransferFailure) {
             try Self.rename(path, to: target, replace: replace)
         } catch .crossDevice {
-            // Another volume: copied, then removed only once the copy is whole, as Finder moves.
-            if replace, item(target)?.kind != .directory { unlink(target) }
-            do { try FileManager.default.moveItem(atPath: path, toPath: target) } catch { throw Self.item(target) != nil ? .exists : .unwritable }
+            try Self.moveAcrossVolumes(path, to: target, replace: replace)
         }
+    }
+
+    /// Another volume: copied whole under a temporary name beside the target, then moved over it in one step, and only
+    /// then is the original removed. A failure at any point leaves both the original and what the target held.
+    static func moveAcrossVolumes(_ path: String, to target: String, replace: Bool) throws(FileTransferFailure) {
+        let folder = (target as NSString).deletingLastPathComponent
+        let temp = join(folder.isEmpty ? "/" : folder, ".trellis-upload-" + (0..<8).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined())
+        do { try FileManager.default.copyItem(atPath: path, toPath: temp) } catch {
+            try? FileManager.default.removeItem(atPath: temp)
+            throw item(path) == nil ? .missing : .unwritable
+        }
+        do throws(FileTransferFailure) { try rename(temp, to: target, replace: replace) } catch {
+            try? FileManager.default.removeItem(atPath: temp)
+            throw error
+        }
+        // The copy is in place; an original that can't be removed is left, so nothing is lost.
+        try? FileManager.default.removeItem(atPath: path)
     }
 
     private func item(_ path: String) -> TransferItem? { Self.item(path) }

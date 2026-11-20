@@ -289,4 +289,25 @@ final class FileTransferTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile: root + "/a", encoding: .utf8), "new")
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: root + "/a")[.posixPermissions] as? Int, 0o600)
     }
+
+    /// A move to another volume never removes what the target held before the moved copy is whole and in place.
+    func testAMoveAcrossVolumesKeepsTheTargetUntilTheCopyIsInPlace() async throws {
+        let root = try temporaryFolder()
+        try Data("new".utf8).write(to: URL(fileURLWithPath: root + "/a.txt"))
+        try Data("old".utf8).write(to: URL(fileURLWithPath: root + "/b.txt"))
+        // A source that can't be copied: the target keeps what it held.
+        XCTAssertThrowsError(try LocalTransferEndpoint.moveAcrossVolumes(root + "/missing.txt", to: root + "/b.txt", replace: true))
+        XCTAssertEqual(try String(contentsOfFile: root + "/b.txt", encoding: .utf8), "old")
+        // A target that can't be replaced (a folder): the original stays.
+        try FileManager.default.createDirectory(atPath: root + "/dir", withIntermediateDirectories: false)
+        XCTAssertThrowsError(try LocalTransferEndpoint.moveAcrossVolumes(root + "/a.txt", to: root + "/dir", replace: true))
+        XCTAssertEqual(try String(contentsOfFile: root + "/a.txt", encoding: .utf8), "new")
+        // Not asked to replace: a taken name is refused and nothing changes.
+        XCTAssertThrowsError(try LocalTransferEndpoint.moveAcrossVolumes(root + "/a.txt", to: root + "/b.txt", replace: false))
+        XCTAssertEqual(try String(contentsOfFile: root + "/b.txt", encoding: .utf8), "old")
+        try LocalTransferEndpoint.moveAcrossVolumes(root + "/a.txt", to: root + "/b.txt", replace: true)
+        XCTAssertEqual(try String(contentsOfFile: root + "/b.txt", encoding: .utf8), "new")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root + "/a.txt"))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root).sorted(), ["b.txt", "dir"], "No temporary copy is left behind")
+    }
 }
