@@ -41,9 +41,19 @@ public protocol RemoteFileAccess: FileTreeSource {
     func projectRoot(containing directory: String) async -> String
     /// A regular file's bytes, refused above `limit`.
     func read(_ path: String, limit: Int) async -> Result<RemoteFileContents, RemoteFileFailure>
+    /// False when the host's helper predates writing dropped files (FR-RW20); nothing is written then.
+    var writes: Bool { get }
+    /// The host's files as a copy reads them (FR-FB11); nil when it can't be browsed.
+    func transferSource() -> (any TransferSource)?
+    /// The host's files as a copy writes them (FR-FB10); nil unless ``writes``.
+    func transferDestination() -> (any TransferDestination)?
 }
 
 extension RemoteFileAccess {
+    public var writes: Bool { false }
+    public func transferSource() -> (any TransferSource)? { nil }
+    public func transferDestination() -> (any TransferDestination)? { nil }
+
     public func text(at path: String) async -> String? {
         guard case .success(let contents) = await read(path, limit: 256 * 1024) else { return nil }
         return String(data: contents.data, encoding: .utf8)
@@ -55,6 +65,7 @@ struct BrokerFileAccess: RemoteFileAccess {
     let connection: BrokerConnection
     let home: String
     let browses: Bool
+    let writes: Bool
     /// A listing or a read of a slow folder may take longer than a control request.
     static let timeout = Duration.seconds(20)
     /// Path bytes per request, as for `stat`: escaped as JSON, still well inside a frame.
@@ -65,7 +76,11 @@ struct BrokerFileAccess: RemoteFileAccess {
         self.connection = connection
         self.home = home
         browses = connection.protocolVersion >= BrokerProtocol.browseVersion
+        writes = connection.protocolVersion >= BrokerProtocol.writeVersion
     }
+
+    func transferSource() -> (any TransferSource)? { browses ? BrokerTransferEndpoint(connection: connection) : nil }
+    func transferDestination() -> (any TransferDestination)? { writes ? BrokerTransferEndpoint(connection: connection) : nil }
 
     @MainActor func projectRoot(containing directory: String) async -> String {
         let facts = RemoteFacts(connection: connection), home = home
@@ -132,6 +147,96 @@ struct BrokerFileAccess: RemoteFileAccess {
             }
         }
         return .failure(.unreadable)
+    }
+}
+
+/// A host's side of a copy (FR-FB10, FR-FB11, FR-RW20), over its helper. Never asked to write unless the helper
+/// negotiated protocol 6: an older one would drop the link, and every session on it, at a request it doesn't know.
+struct BrokerTransferEndpoint: TransferSource, TransferDestination {
+    let connection: BrokerConnection
+
+    @MainActor private func ask(_ message: BrokerMessage) async throws(FileTransferFailure) -> BrokerMessage {
+        guard let reply = try? await connection.request(message, timeout: BrokerFileAccess.timeout) else { throw .disconnected }
+        if case .failed(let code, _) = reply { throw code == "UNSUPPORTED" ? .notAllowed : code == "INVALID_REQUEST" ? .notAllowed : FileTransferFailure(code: code) }
+        return reply
+    }
+
+    @MainActor private func requireWrites() throws(FileTransferFailure) {
+        guard connection.protocolVersion >= BrokerProtocol.writeVersion else { throw .notAllowed }
+    }
+
+    @MainActor func describe(_ paths: [String]) async throws(FileTransferFailure) -> [TransferItem] {
+        var items: [TransferItem] = []
+        for start in stride(from: 0, to: paths.count, by: BrokerProtocol.statLimit) {
+            guard case .pathInfo(let infos) = try await ask(.stat(paths: Array(paths[start..<min(start + BrokerProtocol.statLimit, paths.count)]))) else { throw .disconnected }
+            for info in infos where info.kind != .missing {
+                let kind: TransferItemKind =
+                    switch info.kind {
+                    case .file: .file
+                    case .directory: .directory
+                    case .symlink: .symlink
+                    default: .other
+                    }
+                items.append(TransferItem(path: info.path, kind: kind, size: info.size, mode: info.mode.map { $0 & 0o777 }))
+            }
+        }
+        return items
+    }
+
+    @MainActor func children(of folder: String) async throws(FileTransferFailure) -> [TransferItem] {
+        guard case .directories(let listings) = try await ask(.listDirectories(paths: [folder])), let listing = listings.first else { throw .disconnected }
+        guard listing.state == .ok else { throw .unreadable }
+        // A folder the helper cuts short holds more than one drop may copy.
+        guard !listing.truncated else { throw .tooManyItems }
+        return try await describe(listing.entries.map { (folder == "/" ? "" : folder) + "/" + $0.name })
+    }
+
+    @MainActor func read(_ path: String, offset: Int64, length: Int) async throws(FileTransferFailure) -> TransferChunk {
+        guard case .fileChunk(let data, let size, let modified) = try await ask(.readFileChunk(path: path, offset: offset, length: min(length, BrokerProtocol.fileChunkLimit))) else {
+            throw .disconnected
+        }
+        return TransferChunk(data: data, size: size, modified: modified)
+    }
+
+    @MainActor func existing(in folder: String) async throws(FileTransferFailure) -> [String: TransferItemKind] {
+        guard case .directories(let listings) = try await ask(.listDirectories(paths: [folder])), let listing = listings.first else { throw .disconnected }
+        guard listing.state == .ok else { throw .unwritable }
+        guard !listing.truncated else { throw .tooManyItems }
+        return Dictionary(
+            listing.entries.map { entry -> (String, TransferItemKind) in
+                (entry.name, entry.kind == .directory ? .directory : entry.kind == .symlink ? .symlink : entry.kind == .file ? .file : .other)
+            }, uniquingKeysWith: { first, _ in first })
+    }
+
+    @MainActor func makeDirectory(_ path: String, mode: Int) async throws(FileTransferFailure) {
+        try requireWrites()
+        _ = try await ask(.makeDirectory(path: path, mode: mode))
+    }
+
+    @MainActor func begin(in folder: String) async throws(FileTransferFailure) -> String {
+        try requireWrites()
+        guard case .writeStarted(let temp) = try await ask(.beginWrite(directory: folder)) else { throw .disconnected }
+        return temp
+    }
+
+    @MainActor func write(_ temp: String, in folder: String, offset: Int64, data: Data) async throws(FileTransferFailure) {
+        try requireWrites()
+        _ = try await ask(.writeFileChunk(directory: folder, temp: temp, offset: offset, data: data))
+    }
+
+    @MainActor func finish(_ temp: String, in folder: String, name: String, mode: Int, size: Int64, replace: Bool) async throws(FileTransferFailure) {
+        try requireWrites()
+        _ = try await ask(.finishWrite(directory: folder, temp: temp, name: name, mode: mode, size: size, replace: replace))
+    }
+
+    @MainActor func abort(_ temp: String, in folder: String) async {
+        guard connection.protocolVersion >= BrokerProtocol.writeVersion else { return }
+        _ = try? await connection.request(.abortWrite(directory: folder, temp: temp), timeout: BrokerFileAccess.timeout)
+    }
+
+    @MainActor func move(_ path: String, to target: String, replace: Bool) async throws(FileTransferFailure) {
+        try requireWrites()
+        _ = try await ask(.renamePath(from: path, to: target))
     }
 }
 

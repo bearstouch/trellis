@@ -592,6 +592,10 @@ public final class AppWorkspaceModel: ObservableObject {
     public var remoteFileAccess: ((UUID) -> (any RemoteFileAccess)?)?
     var filesGeneration = 0
     var filesStatusTask: Task<Void, Never>?
+    /// Copies dropped on or dragged from the Files view (FR-FB10–FR-FB14), with their progress and name conflicts.
+    public let fileTransfers = FileTransferCenter()
+    /// The limits one drop is held to; lowered by tests.
+    public var fileTransferLimits = FileTransferLimits()
     /// The Changes view's list, filter and folds (FR-GC02–FR-GC04): runtime only, never saved with the workspace.
     @Published public internal(set) var gitChanges = GitChangesState()
     /// Each space's Review tab (FR-GC05), and the spaces showing it in place of their terminal tabs. Never saved.

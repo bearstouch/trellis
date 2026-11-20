@@ -42,4 +42,8 @@ int trellis_run_capture(const char *executable, char *const argv[], char *const 
                         size_t *length, int timeout_ms);
 /// `uname` system name and machine, NUL-terminated. Returns 0 or an errno.
 int trellis_uname(char *system, size_t system_size, char *machine, size_t machine_size);
+/// Renames `from` (relative to `from_dir`) to `to` (relative to `to_dir`) only when `to` doesn't exist, atomically
+/// (`renameatx_np(RENAME_EXCL)` on Darwin, `renameat2(RENAME_NOREPLACE)` on Linux). Returns 0 or an errno; ENOSYS, EINVAL or
+/// ENOTSUP when the system or file system can't refuse atomically (FR-RW20).
+int trellis_rename_noreplace(int from_dir, const char *from, int to_dir, const char *to);
 #endif

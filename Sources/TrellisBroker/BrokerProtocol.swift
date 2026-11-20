@@ -9,8 +9,8 @@
 public enum BrokerProtocol {
     /// The highest version this build speaks; v2 adds remote workspaces (FR-RW01–FR-RW17), v3 a login request that runs a
     /// project's setup command instead of an interactive shell (FR-RW18), v4 `configure` (FR-R08), v5 folder listings and
-    /// file reads for the Files view (FR-RW19).
-    public static let version = 5
+    /// file reads for the Files view (FR-RW19), v6 writing files dropped on the Files view (FR-RW20).
+    public static let version = 6
     /// The lowest version this build still speaks, so an updated app keeps a running older broker's sessions.
     public static let minimumVersion = 1
     public static let helperName = "trellis-broker"
@@ -47,7 +47,13 @@ public enum BrokerProtocol {
     public static let directoryReplyBudget = 400_000
     /// The estimated size no `directories` reply exceeds, so a folder of long names is cut short instead of outgrowing a frame.
     public static let directoryReplyLimit = 900_000
-    /// One `fileChunk` never carries more (base64 in JSON keeps it inside a frame).
+    /// The version that writes dropped files (FR-RW20); the app never sends those requests to an older helper.
+    public static let writeVersion = 6
+    /// An upload's temporary file is this prefix and 16 hex digits, in the folder it is written to.
+    public static let uploadTempPrefix = ".trellis-upload-"
+    /// A temporary file older than this, left by a broker that ended mid-upload, is removed.
+    public static let uploadTempStaleAge: Int64 = 86_400
+    /// One `fileChunk` or `writeFileChunk` never carries more (base64 in JSON keeps it inside a frame).
     public static let fileChunkLimit = 524_288
     /// Printed by `bridge` before the first frame; anything a login script printed before it is discarded.
     public static let syncPrefix = "TRELLIS-SYNC-1 "
@@ -213,8 +219,10 @@ public struct BrokerPathInfo: Codable, Equatable, Sendable {
     public var size: Int64
     /// The symlink-resolved path when it exists.
     public var realPath: String?
-    public init(path: String, kind: Kind, owned: Bool, size: Int64, realPath: String?) {
-        self.path = path; self.kind = kind; self.owned = owned; self.size = size; self.realPath = realPath
+    /// v6: the permission bits (`0o7777`); absent from older brokers.
+    public var mode: Int?
+    public init(path: String, kind: Kind, owned: Bool, size: Int64, realPath: String?, mode: Int? = nil) {
+        self.path = path; self.kind = kind; self.owned = owned; self.size = size; self.realPath = realPath; self.mode = mode
     }
 }
 
@@ -336,6 +344,20 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     case readFileChunk(path: String, offset: Int64, length: Int)
     /// `size` and `modified` (nanoseconds since 1970) describe the whole file, so a reader notices a change between chunks.
     case fileChunk(data: Data, size: Int64, modified: Int64)
+    // v6 (remote brokers only; FR-RW20). Answered by `ok` or `failed` unless noted.
+    /// A new folder; `EXISTS` when the name is taken.
+    case makeDirectory(path: String, mode: Int)
+    /// Creates an upload's temporary file in `directory`; answered by `writeStarted`.
+    case beginWrite(directory: String)
+    case writeStarted(temp: String)
+    /// At most `fileChunkLimit` bytes at `offset` of an upload's temporary file.
+    case writeFileChunk(directory: String, temp: String, offset: Int64, data: Data)
+    /// Moves a temporary file of exactly `size` bytes to `name` with `mode`; without `replace`, `EXISTS` keeps it for another name.
+    case finishWrite(directory: String, temp: String, name: String, mode: Int, size: Int64, replace: Bool)
+    /// Removes an upload's temporary file; always `ok`.
+    case abortWrite(directory: String, temp: String)
+    /// Moves an entry; never replaces one.
+    case renamePath(from: String, to: String)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {
