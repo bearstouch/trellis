@@ -185,9 +185,11 @@ public actor FileTransferRun {
     // MARK: Copy
 
     public func copy(_ paths: [String], into folder: String) async -> FileTransferReport {
-        let roots: [Node]
-        do throws(FileTransferFailure) { roots = try await plan(paths, into: folder) } catch {
-            result.stopped = error
+        // Plain `do` blocks and initialized vars here: Swift 6.3's optimizer crashed on typed-throws `do` blocks that
+        // initialized a `let` declared outside them.
+        var roots: [Node] = []
+        do { roots = try await plan(paths, into: folder) } catch {
+            result.stopped = Self.failure(error, or: .unreadable)
             return result
         }
         do {
@@ -304,7 +306,7 @@ public actor FileTransferRun {
             switch item.kind {
             case .directory:
                 if !target.merge {
-                    do throws(FileTransferFailure) { try await destination.makeDirectory(path, mode: item.mode) } catch .exists {
+                    do { try await destination.makeDirectory(path, mode: item.mode) } catch FileTransferFailure.exists {
                         // Made since the folder was listed: merged into, as if it had been chosen.
                     }
                     known[folder, default: [:]][target.name] = .directory
@@ -338,47 +340,69 @@ public actor FileTransferRun {
     }
 
     /// The name the file took: another when `name` was taken since the folder was listed.
+    /// Split in three small steps: Swift 6.3's `MandatoryAllocBoxToStack` crashed on these as one function (loops over
+    /// awaits inside a `do` whose `catch` awaits too).
     private func copyFile(_ item: TransferItem, to name: String, in folder: String, replace: Bool) async throws -> String {
         let temp = try await destination.begin(in: folder)
         do {
-            var written: Int64 = 0
-            if bothLocal, let size = try await destination.copyLocalFile(item.path, into: temp, in: folder) {
-                written = size
-                progress.bytesDone += size
-            } else {
-                var stamp: (Int64, Int64)?
-                while true {
-                    try Task.checkCancellation()
-                    let chunk = try await source.read(item.path, offset: written, length: limits.chunk)
-                    if let stamp, stamp != (chunk.size, chunk.modified) { throw FileTransferFailure.changed }
-                    stamp = (chunk.size, chunk.modified)
-                    guard !chunk.data.isEmpty else { break }
-                    // A file that grew past what was planned can't take the copy over its limit.
-                    guard progress.bytesDone + Int64(chunk.data.count) <= limits.totalBytes else { throw FileTransferFailure.tooLarge }
-                    try await destination.write(temp, in: folder, offset: written, data: chunk.data)
-                    written += Int64(chunk.data.count)
-                    progress.bytesDone += Int64(chunk.data.count)
-                    tick()
-                    if written >= chunk.size { break }
-                }
-            }
-            var name = name
-            for attempt in 0..<100 {
-                do throws(FileTransferFailure) {
-                    try await destination.finish(temp, in: folder, name: name, mode: item.mode, size: written, replace: replace)
-                    return name
-                } catch .exists where attempt < 99 {
-                    // Taken since the folder was listed: kept beside it.
-                    known[folder, default: [:]][name] = .file
-                    name = FileTransferNaming.keepBoth(item.name, taken: Set(known[folder, default: [:]].keys))
-                }
-            }
-            throw FileTransferFailure.exists
+            let written = try await fill(temp, in: folder, from: item)
+            return try await settle(temp, in: folder, as: name, item: item, size: written, replace: replace)
         } catch {
             await destination.abort(temp, in: folder)
             throw error
         }
     }
+
+    /// Writes the item's bytes into the temporary file; the bytes written.
+    private func fill(_ temp: String, in folder: String, from item: TransferItem) async throws -> Int64 {
+        if bothLocal, let size = try await destination.copyLocalFile(item.path, into: temp, in: folder) {
+            progress.bytesDone += size
+            return size
+        }
+        var written: Int64 = 0, size: Int64 = -1, modified: Int64 = -1, done = false
+        while !done {
+            try Task.checkCancellation()
+            let chunk = try await source.read(item.path, offset: written, length: limits.chunk)
+            if size >= 0, size != chunk.size || modified != chunk.modified { throw FileTransferFailure.changed }
+            (size, modified) = (chunk.size, chunk.modified)
+            if chunk.data.isEmpty { break }
+            // A file that grew past what was planned can't take the copy over its limit.
+            if progress.bytesDone + Int64(chunk.data.count) > limits.totalBytes { throw FileTransferFailure.tooLarge }
+            try await destination.write(temp, in: folder, offset: written, data: chunk.data)
+            written += Int64(chunk.data.count)
+            progress.bytesDone += Int64(chunk.data.count)
+            tick()
+            done = written >= chunk.size
+        }
+        return written
+    }
+
+    /// Moves the finished temporary file to its name, or beside it when the name was taken since the folder was listed.
+    private func settle(_ temp: String, in folder: String, as name: String, item: TransferItem, size: Int64, replace: Bool) async throws -> String {
+        var name = name, attempts = 0
+        while true {
+            let taken = await finished(temp, in: folder, as: name, mode: item.mode, size: size, replace: replace)
+            guard let taken else { return name }
+            attempts += 1
+            guard taken == .exists, attempts < 100 else { throw taken }
+            known[folder, default: [:]][name] = .file
+            name = FileTransferNaming.keepBoth(item.name, taken: Set(known[folder, default: [:]].keys))
+        }
+    }
+
+    /// nil when the file is in place, else why not.
+    private func finished(_ temp: String, in folder: String, as name: String, mode: Int, size: Int64, replace: Bool) async -> FileTransferFailure? {
+        do {
+            try await destination.finish(temp, in: folder, name: name, mode: mode, size: size, replace: replace)
+            return nil
+        } catch {
+            return Self.failure(error, or: .unwritable)
+        }
+    }
+
+    /// What a plain `do` caught, as a failure: Swift 6.4 infers the typed error there, 6.3 doesn't, so this reads the
+    /// same (and warns on neither).
+    private static func failure(_ error: any Error, or fallback: FileTransferFailure) -> FileTransferFailure { error as? FileTransferFailure ?? fallback }
 
     private func tick() {
         let now = ContinuousClock.now
@@ -393,9 +417,9 @@ public actor FileTransferRun {
     /// removed when nothing is left in it.
     public func move(_ paths: [String], into folder: String) async -> FileTransferReport {
         guard sameMachine else { return await copy(paths, into: folder) }
-        let items: [TransferItem]
-        do throws(FileTransferFailure) { items = try await source.describe(paths) } catch {
-            result.stopped = error
+        var items: [TransferItem] = []
+        do { items = try await source.describe(paths) } catch {
+            result.stopped = Self.failure(error, or: .unreadable)
             return result
         }
         for missing in Set(paths).subtracting(items.map(\.path)) { result.failures[missing] = .missing }
@@ -433,9 +457,9 @@ public actor FileTransferRun {
         }
         let path = Self.join(folder, target.name)
         if target.merge {
-            let children: [TransferItem]
-            do throws(FileTransferFailure) { children = try await source.children(of: item.path) } catch {
-                result.failures[item.path] = error
+            var children: [TransferItem] = []
+            do { children = try await source.children(of: item.path) } catch {
+                result.failures[item.path] = Self.failure(error, or: .unreadable)
                 return nil
             }
             for child in children {
@@ -445,14 +469,15 @@ public actor FileTransferRun {
             await destination.removeEmptyFolder(item.path)
             return path
         }
-        do throws(FileTransferFailure) {
+        do {
             try await destination.move(item.path, to: path, replace: target.replace)
             known[folder, default: [:]][target.name] = item.kind
             result.copied += 1
             return path
         } catch {
-            if error == .disconnected { throw error }
-            result.failures[item.path] = error
+            let failure = Self.failure(error, or: .unwritable)
+            if failure == .disconnected { throw failure }
+            result.failures[item.path] = failure
             return nil
         }
     }
