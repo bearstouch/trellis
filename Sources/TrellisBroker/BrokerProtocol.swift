@@ -8,8 +8,9 @@
 /// where the length counts the kind byte and the payload.
 public enum BrokerProtocol {
     /// The highest version this build speaks; v2 adds remote workspaces (FR-RW01–FR-RW17), v3 a login request that runs a
-    /// project's setup command instead of an interactive shell (FR-RW18), v4 `configure` (FR-R08).
-    public static let version = 4
+    /// project's setup command instead of an interactive shell (FR-RW18), v4 `configure` (FR-R08), v5 folder listings and
+    /// file reads for the Files view (FR-RW19).
+    public static let version = 5
     /// The lowest version this build still speaks, so an updated app keeps a running older broker's sessions.
     public static let minimumVersion = 1
     public static let helperName = "trellis-broker"
@@ -38,6 +39,16 @@ public enum BrokerProtocol {
     /// The longest idle timeout `configure` accepts, in seconds (FR-R08); the app offers at most 96 hours.
     public static let sessionIdleTimeoutLimit = 30 * 86_400
     public static let statLimit = 256
+    /// The version that lists folders and reads files for the Files view (FR-RW19).
+    public static let browseVersion = 5
+    /// A folder's listing stops after this many entries and says so.
+    public static let directoryEntryLimit = 10_000
+    /// The estimated size of one `directories` reply; folders that don't fit come back `deferred` and are asked again.
+    public static let directoryReplyBudget = 400_000
+    /// The estimated size no `directories` reply exceeds, so a folder of long names is cut short instead of outgrowing a frame.
+    public static let directoryReplyLimit = 900_000
+    /// One `fileChunk` never carries more (base64 in JSON keeps it inside a frame).
+    public static let fileChunkLimit = 524_288
     /// Printed by `bridge` before the first frame; anything a login script printed before it is discarded.
     public static let syncPrefix = "TRELLIS-SYNC-1 "
 }
@@ -207,6 +218,27 @@ public struct BrokerPathInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// One entry of a listed folder (FR-RW19). A symbolic link is reported as a link, whatever it points to.
+public struct BrokerDirectoryEntry: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case file, directory, symlink, other }
+    public var name: String
+    public var kind: Kind
+    public init(name: String, kind: Kind) { self.name = name; self.kind = kind }
+}
+
+public struct BrokerDirectoryListing: Codable, Equatable, Sendable {
+    /// `deferred`: not read because the reply was full; ask again.
+    public enum State: String, Codable, Sendable { case ok, unreadable, deferred }
+    public var path: String
+    public var state: State
+    public var entries: [BrokerDirectoryEntry]
+    /// The folder holds more entries than were sent.
+    public var truncated: Bool
+    public init(path: String, state: State, entries: [BrokerDirectoryEntry] = [], truncated: Bool = false) {
+        self.path = path; self.state = state; self.entries = entries; self.truncated = truncated
+    }
+}
+
 public struct BrokerSessionRecord: Codable, Equatable, Sendable {
     public var sessionID: UUID
     public var processID: Int32
@@ -296,6 +328,14 @@ public enum BrokerMessage: Codable, Equatable, Sendable {
     /// (FR-R08); 0 means never, nil leaves it as it is. Kept after the client goes; answered by `ok`. A broker that was
     /// never told (or is older than v4) ends nothing.
     case configure(sessionIdleTimeout: Int? = nil)
+    // v5 (remote brokers only).
+    /// At most `statLimit` absolute folders (FR-RW19); answered by `directories` in the same order.
+    case listDirectories(paths: [String])
+    case directories([BrokerDirectoryListing])
+    /// Up to `fileChunkLimit` bytes of a regular file from `offset`; answered by `fileChunk` or `failed`.
+    case readFileChunk(path: String, offset: Int64, length: Int)
+    /// `size` and `modified` (nanoseconds since 1970) describe the whole file, so a reader notices a change between chunks.
+    case fileChunk(data: Data, size: Int64, modified: Int64)
 }
 
 public struct BrokerEnvelope: Codable, Equatable, Sendable {

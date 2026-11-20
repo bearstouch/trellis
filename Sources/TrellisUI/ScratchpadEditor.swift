@@ -38,6 +38,8 @@ struct ScratchpadEditor: NSViewRepresentable {
     var highlightLimit = Int.max
     /// False while the editor is mounted but not shown: focus requests are noted, not acted on.
     var acceptsFocus = true
+    /// False for a read-only editor tab (FR-ED16): the text can be selected, searched and copied, not changed.
+    var editable = true
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -104,6 +106,7 @@ struct ScratchpadEditor: NSViewRepresentable {
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = true
+        textView.isEditable = editable
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.isAutomaticQuoteSubstitutionEnabled = false

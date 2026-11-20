@@ -93,11 +93,14 @@ final class FilesSidebarTests: XCTestCase {
         model.publish(try await model.service.execute(.configureStoppedSession(paneID: remote, launch: .remoteShell(hostID: remoteSpace.remoteHostID!, directory: "/srv/app"))).snapshot)
         await model.selectSpace(remoteSpace.id)
         XCTAssertEqual(model.presentation.activePane?.id, remote)
-        XCTAssertEqual(model.sidebarUnavailableReason(.files), "Files shows only folders on this Mac.")
-        XCTAssertNil(model.sidebarUnavailableReason(.tasks), "Tasks still works there")
-        XCTAssertNil(model.visibleSidebarView, "Files hides on a remote workspace pane")
+        // FR-FB09: Files works on a remote workspace pane; with no link it lists nothing of this Mac's and says why.
+        XCTAssertNil(model.sidebarUnavailableReason(.files))
+        XCTAssertNil(model.sidebarUnavailableReason(.tasks), "Tasks works there too")
+        XCTAssertEqual(model.sidebarUnavailableReason(.changes), "Changes reads git only in panes on this Mac.")
+        XCTAssertEqual(model.visibleSidebarView, .files, "Files stays on a remote workspace pane")
         await model.refreshFiles(paneID: remote)
-        XCTAssertNil(model.files.root, "Nothing is listed for a remote pane")
+        XCTAssertNil(model.files.root, "A host that isn't connected lists nothing, least of all this Mac's /srv/app")
+        XCTAssertEqual(model.files.notice, "Not connected to Missing host. Its files show once it is connected.")
 
         await model.selectSpace(try XCTUnwrap(model.snapshot.spaces.first?.id))
         XCTAssertEqual(model.presentation.activePane?.id, local)

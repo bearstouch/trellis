@@ -482,10 +482,10 @@ public struct WorkspaceRootView: View {
         .contentShape(Rectangle())
         .onHover { hoveredEditorTab = $0 ? tab.id : (hoveredEditorTab == tab.id ? nil : hoveredEditorTab) }
         .onTapGesture { model.selectEditor(tab.id) }
-        .help(tab.document.path)
+        .help(tab.remoteHost.map { L("%1$@ on %2$@, read-only", tab.document.path, $0.name) } ?? tab.document.path)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("Editor tab, %@", title))
-        .accessibilityValue(tab.isDirty ? L("unsaved") : "")
+        .accessibilityValue(tab.remoteHost.map { L("read-only, on %@", $0.name) } ?? (tab.isDirty ? L("unsaved") : ""))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : [.isButton])
         .accessibilityAction { model.selectEditor(tab.id) }
     }

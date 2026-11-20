@@ -586,6 +586,10 @@ public final class AppWorkspaceModel: ObservableObject {
     /// Bumped when the Files view's search field should take keyboard focus.
     @Published public internal(set) var filesFocusRequest = 0
     var filesSearchTask: Task<Void, Never>?
+    /// A host's tree as the search in progress walked it (FR-FB09).
+    var filesSearchCache: (key: String, source: CachedTreeSource)?
+    /// A remote workspace host's files; injected by tests in place of the host's helper.
+    public var remoteFileAccess: ((UUID) -> (any RemoteFileAccess)?)?
     var filesGeneration = 0
     var filesStatusTask: Task<Void, Never>?
     /// The Changes view's list, filter and folds (FR-GC02–FR-GC04): runtime only, never saved with the workspace.

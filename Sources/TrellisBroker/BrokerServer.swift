@@ -253,6 +253,20 @@ public final class BrokerServer: @unchecked Sendable {
         if connection.pending > Self.backpressureLimit { setPaused(true) }
     }
 
+    /// Runs `work` off the server queue and answers only the client that asked: a takeover's request IDs start again, so a
+    /// late reply could resolve its unrelated request.
+    private func answerOffQueue(_ requestID: UInt64?, _ work: @escaping @Sendable () -> BrokerMessage) {
+        let asker = client
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let message = work()
+            guard let server = self else { return }
+            server.queue.async {
+                guard let asker, server.client === asker else { return }
+                server.reply(requestID, message)
+            }
+        }
+    }
+
     /// A reply too large for one frame fails alone; sent, it would end the connection and every session's link with it.
     private func reply(_ requestID: UInt64?, _ message: BrokerMessage) {
         guard
@@ -325,6 +339,16 @@ public final class BrokerServer: @unchecked Sendable {
                 server.queue.async {
                     guard let asker, server.client === asker else { return }
                     server.reply(id, .gitState(status))
+                }
+            }
+        case .listDirectories(let paths) where remote && client?.version ?? 0 >= BrokerProtocol.browseVersion:
+            // Off the server queue, like git: a slow network folder must not hold up sessions.
+            answerOffQueue(id) { BrokerRemoteBrowse.list(paths).map { .directories($0) } ?? .failed(code: "INVALID_REQUEST", errno: EINVAL) }
+        case .readFileChunk(let path, let offset, let length) where remote && client?.version ?? 0 >= BrokerProtocol.browseVersion:
+            answerOffQueue(id) {
+                switch BrokerRemoteBrowse.read(path, offset: offset, length: length) {
+                case .success(let chunk): .fileChunk(data: chunk.data, size: chunk.size, modified: chunk.modified)
+                case .failure(let failure): .failed(code: failure.rawValue, errno: 0)
                 }
             }
         case .list:

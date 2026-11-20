@@ -122,6 +122,109 @@ final class BrokerRemoteTests: XCTestCase {
         XCTAssertNil(BrokerRemoteFiles.describe(Array(repeating: "/", count: BrokerProtocol.statLimit + 1)))
     }
 
+    // MARK: Files view (FR-RW19)
+
+    private func browseFolder() throws -> String {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("trellis-browse-\(UUID().uuidString)").resolvingSymlinksInPath().path
+        try FileManager.default.createDirectory(atPath: root + "/src/deep", withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: root) }
+        return root
+    }
+
+    func testVersionFiveMessagesRoundTrip() throws {
+        let messages: [BrokerMessage] = [
+            .listDirectories(paths: ["/a", "/b"]),
+            .directories([
+                BrokerDirectoryListing(path: "/a", state: .ok, entries: [BrokerDirectoryEntry(name: "x", kind: .symlink)], truncated: true), BrokerDirectoryListing(path: "/b", state: .deferred)
+            ]),
+            .readFileChunk(path: "/a/x", offset: 5, length: 9), .fileChunk(data: Data([1, 2]), size: 7, modified: 1_700_000_000_000_000_001)
+        ]
+        for message in messages { XCTAssertEqual(try BrokerFrame.control(BrokerEnvelope(requestID: 3, message: message)).envelope?.message, message) }
+    }
+
+    func testListingNamesEntriesAndNeverFollowsALink() throws {
+        let root = try browseFolder()
+        try Data("a".utf8).write(to: URL(fileURLWithPath: root + "/a.txt"))
+        try FileManager.default.createSymbolicLink(atPath: root + "/link", withDestinationPath: root + "/src")
+        XCTAssertEqual(mkfifo(root + "/pipe", 0o600), 0)
+        let listings = try XCTUnwrap(BrokerRemoteBrowse.list([root, root + "/link", root + "/missing", root + "/a.txt"]))
+        XCTAssertEqual(listings.map(\.path), [root, root + "/link", root + "/missing", root + "/a.txt"], "In the order asked")
+        XCTAssertEqual(listings[0].state, .ok)
+        XCTAssertFalse(listings[0].truncated)
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: listings[0].entries.map { ($0.name, $0.kind) }), ["a.txt": .file, "link": .symlink, "pipe": .other, "src": .directory],
+            "A link is a link, never a folder; no . or ..")
+        XCTAssertEqual(listings[1].state, .unreadable, "A link to a folder isn't listed through")
+        XCTAssertEqual(listings[2].state, .unreadable)
+        XCTAssertEqual(listings[3].state, .unreadable, "A file isn't a folder")
+    }
+
+    func testListingRefusesPathsThatAreNotNormalizedAndAbsolute() {
+        for path in ["relative", "/a/../b", "/a/./b", "/a//b", "/a/", "", "/a\0b"] { XCTAssertNil(BrokerRemoteBrowse.list([path]), path) }
+        XCTAssertNotNil(BrokerRemoteBrowse.list(["/"]))
+        XCTAssertNil(BrokerRemoteBrowse.list(Array(repeating: "/", count: BrokerProtocol.statLimit + 1)))
+        if case .failure(let failure) = BrokerRemoteBrowse.read("/etc/../etc/hosts", offset: 0, length: 10) { XCTAssertEqual(failure, .notAllowed) } else { XCTFail("read a path with ..") }
+    }
+
+    func testAnUnreadableFolderIsReportedAndTheRestStillListed() throws {
+        let root = try browseFolder()
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: root + "/src/deep")
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root + "/src/deep") }
+        try XCTSkipIf(geteuid() == 0, "root reads every folder")
+        let listings = try XCTUnwrap(BrokerRemoteBrowse.list([root + "/src/deep", root + "/src"]))
+        XCTAssertEqual(listings.map(\.state), [.unreadable, .ok])
+        XCTAssertEqual(listings[1].entries, [BrokerDirectoryEntry(name: "deep", kind: .directory)])
+    }
+
+    func testLongFoldersAreCutShortAndFullRepliesDeferTheRest() throws {
+        let root = try browseFolder()
+        for index in 0..<30 { try Data().write(to: URL(fileURLWithPath: root + "/src/file-\(index)")) }
+        let cut = try XCTUnwrap(BrokerRemoteBrowse.list([root + "/src"], entryLimit: 10))
+        XCTAssertEqual(cut[0].entries.count, 10)
+        XCTAssertTrue(cut[0].truncated, "More entries than the limit")
+        // The first folder fills the budget, so the others wait for another request.
+        let full = try XCTUnwrap(BrokerRemoteBrowse.list([root + "/src", root, root + "/src/deep"], budget: 100))
+        XCTAssertEqual(full.map(\.state), [.ok, .deferred, .deferred])
+        XCTAssertEqual(full[0].entries.count, 31)
+        XCTAssertFalse(full[0].truncated)
+        // A later folder that only fits in part is deferred, not shown cut: asked alone it is whole.
+        let partial = try XCTUnwrap(BrokerRemoteBrowse.list([root, root + "/src"], byteLimit: 600))
+        XCTAssertEqual(partial.map(\.state), [.ok, .deferred])
+        // Alone, a folder too long for a frame is cut and says so.
+        let alone = try XCTUnwrap(BrokerRemoteBrowse.list([root + "/src"], byteLimit: 600))
+        XCTAssertEqual(alone[0].state, .ok)
+        XCTAssertTrue(alone[0].truncated)
+        XCTAssertLessThan(alone[0].entries.count, 31)
+    }
+
+    func testFileChunksCoverTheFileAndDescribeIt() throws {
+        let root = try browseFolder()
+        let bytes = Data((0..<1000).map { UInt8($0 % 251) })
+        try bytes.write(to: URL(fileURLWithPath: root + "/data.bin"))
+        try FileManager.default.createSymbolicLink(atPath: root + "/data-link", withDestinationPath: root + "/data.bin")
+        let first = try BrokerRemoteBrowse.read(root + "/data.bin", offset: 0, length: 400).get()
+        let rest = try BrokerRemoteBrowse.read(root + "/data.bin", offset: 400, length: 4000).get()
+        XCTAssertEqual(first.data + rest.data, bytes)
+        XCTAssertEqual(first.size, 1000)
+        XCTAssertEqual(first.modified, rest.modified)
+        XCTAssertGreaterThan(first.modified, 0)
+        XCTAssertEqual(try BrokerRemoteBrowse.read(root + "/data.bin", offset: 1000, length: 10).get().data, Data(), "Past the end")
+        XCTAssertEqual(try BrokerRemoteBrowse.read(root + "/data-link", offset: 0, length: 4000).get().data, bytes, "A link to a regular file is read")
+    }
+
+    func testOnlyRegularFilesAreRead() throws {
+        let root = try browseFolder()
+        XCTAssertEqual(mkfifo(root + "/pipe", 0o600), 0)
+        func failure(_ path: String) -> BrokerRemoteFiles.Failure? { if case .failure(let failure) = BrokerRemoteBrowse.read(path, offset: 0, length: 10) { failure } else { nil } }
+        XCTAssertEqual(failure(root + "/pipe"), .notAllowed, "A FIFO is refused without waiting for a writer")
+        XCTAssertEqual(failure(root + "/src"), .notAllowed, "A folder")
+        XCTAssertEqual(failure("/dev/zero"), .notAllowed, "A device")
+        XCTAssertEqual(failure(root + "/missing"), .notFound)
+        XCTAssertEqual(failure(root + "/pipe/x"), .notFound)
+        XCTAssertEqual(failure("relative"), .notAllowed)
+        XCTAssertEqual(try BrokerRemoteBrowse.read(root + "/missing", offset: -1, length: 1).map { _ in 0 }.get(default: 1), 1, "A negative offset")
+    }
+
     func testLogindPolicyIsDetectedAndLingeringOverridesIt() throws {
         let root = try temporaryDirectory()
         try FileManager.default.createDirectory(atPath: root + "/etc/systemd/logind.conf.d", withIntermediateDirectories: true)
@@ -199,4 +302,8 @@ final class BrokerRemoteTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(atPath: path) }
         return path
     }
+}
+
+extension Result {
+    fileprivate func get(default value: Success) -> Success { (try? get()) ?? value }
 }

@@ -184,6 +184,28 @@ final class BrokerBridgeTests: XCTestCase {
         XCTAssertEqual(infos.map(\.kind), [.directory, .missing])
     }
 
+    /// FR-RW19: folders are listed and opened files read through the bridge, only for a client that speaks version 5.
+    func testFoldersAreListedAndFilesReadThroughTheBridgeFromVersion5() throws {
+        try FileManager.default.createDirectory(atPath: home + "/app/src", withIntermediateDirectories: true)
+        try Data("hello".utf8).write(to: URL(fileURLWithPath: home + "/app/notes.txt"))
+        let old = try link()
+        _ = try old.hello(clientID: clientID, maximumVersion: 4)
+        XCTAssertEqual(try old.request(.listDirectories(paths: [home + "/app"])), .failed(code: "UNSUPPORTED", errno: 0))
+        XCTAssertEqual(try old.request(.readFileChunk(path: home + "/app/notes.txt", offset: 0, length: 10)), .failed(code: "UNSUPPORTED", errno: 0))
+        old.close()
+        let link = try link()
+        guard case .welcome(let version, _, _) = try link.hello(clientID: clientID, maximumVersion: BrokerProtocol.version) else { return XCTFail("No welcome") }
+        XCTAssertEqual(version, 5)
+        guard case .directories(let listings) = try link.request(.listDirectories(paths: [home + "/app", home + "/nope"])) else { return XCTFail("No listing") }
+        XCTAssertEqual(listings.map(\.state), [.ok, .unreadable])
+        XCTAssertEqual(Set(listings[0].entries), [BrokerDirectoryEntry(name: "src", kind: .directory), BrokerDirectoryEntry(name: "notes.txt", kind: .file)])
+        guard case .fileChunk(let data, let size, _) = try link.request(.readFileChunk(path: home + "/app/notes.txt", offset: 1, length: 3)) else { return XCTFail("No chunk") }
+        XCTAssertEqual(data, Data("ell".utf8))
+        XCTAssertEqual(size, 5)
+        XCTAssertEqual(try link.request(.readFileChunk(path: home + "/app/src", offset: 0, length: 3)), .failed(code: "NOT_ALLOWED", errno: 0))
+        XCTAssertEqual(try link.request(.listDirectories(paths: ["app"])), .failed(code: "INVALID_REQUEST", errno: EINVAL))
+    }
+
     func testTheBridgeRunsOnlyFromItsOwnerOnlyInstallRoot() throws {
         let built = try XCTUnwrap(Self.builtHelper())
         let process = Process()

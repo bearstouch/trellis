@@ -153,7 +153,7 @@ final class BrokerCoreTests: XCTestCase {
     }
 
     func testConfigureIsAVersion4MessageWithAnOptionalTimeout() throws {
-        XCTAssertEqual(BrokerProtocol.version, 4)
+        XCTAssertEqual(BrokerProtocol.version, 5)
         let encoded = String(decoding: try JSONEncoder().encode(BrokerEnvelope(requestID: nil, message: .configure(sessionIdleTimeout: 3600))), as: UTF8.self)
         XCTAssertEqual(encoded, #"{"message":{"configure":{"sessionIdleTimeout":3600}}}"#)
         let empty = try JSONDecoder().decode(BrokerEnvelope.self, from: Data(#"{"message":{"configure":{"later":1}}}"#.utf8))

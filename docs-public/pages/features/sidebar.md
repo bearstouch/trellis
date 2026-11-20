@@ -44,7 +44,7 @@ Not every view works with every kind of pane:
 | Focused pane | Files | Changes | Scratchpad | Tasks | Agents |
 | --- | --- | --- | --- | --- | --- |
 | A shell or agent on this Mac | Yes | Yes | Yes | Yes | Yes |
-| A shell or agent in a [remote workspace](remote-workspaces.md) | No | No | No | Yes | Yes |
+| A shell or agent in a [remote workspace](remote-workspaces.md) | Yes | No | No | Yes | Yes |
 | An [SSH](ssh-hosts.md) pane (a saved host, or a pane started straight into `ssh`, `mosh` or `autossh`) | No | No | No | No | No |
 
 When a view doesn't apply to the focused pane, its icon is dimmed and can't be clicked; hover it to see why. Its shortcut and menu item do nothing either. If the open view doesn't apply to a pane you focus, the sidebar hides, and it comes back when you focus a pane it applies to. With no pane focused, every icon is dimmed.
