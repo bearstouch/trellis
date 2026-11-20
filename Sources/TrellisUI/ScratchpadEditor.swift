@@ -124,7 +124,10 @@ struct ScratchpadEditor: NSViewRepresentable {
         textView.string = text
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        // Never auto-hiding: where the scroller takes width (a mouse, or "Always" in System Settings), showing it narrowed the
+        // text, the new width threw the layout away, the unmeasured text fit again and hid it, and so on inside one draw,
+        // freezing the app on a file a little taller than the editor. Overlay scrollers take no width and fade by themselves.
+        scroll.autohidesScrollers = false
         scroll.borderType = .noBorder
         let ruler = ScratchpadLineRuler(textView: textView)
         scroll.verticalRulerView = ruler

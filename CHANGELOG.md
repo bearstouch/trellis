@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Hosts and Projects match Settings:** the Hosts and Projects windows now group their fields into titled sections like Settings, with each field's explanation or error under its name and the field beside it, and their main buttons in a bar at the bottom. **Discover SSH Aliases** lists aliases as checkbox rows the same way.
 - **Larger pane header text:** the bar above each pane (its title, folder, status, buttons and icons) now uses 12-point text instead of 10, so it is easier to read.
 
+### Fixed
+
+- **Editor freeze with always-visible scroll bars:** with a mouse attached, or **Show scroll bars** set to **Always** in System Settings, opening a file a little taller than the editor could freeze Trellis. The editor's scroll bar now stays in place instead of hiding when the text fits; with the default trackpad scroll bars nothing looks different.
+
 ## [1.3.0] - 2026-11-17
 
 The stable 1.3 release. Coming from 1.2.0, you also get everything listed under the 1.3 betas: automation API protocol 2 (a breaking change for scripts and agents; read [Migration from v1](docs/api/migration.md) first), editor tabs with a Markdown preview, Trellis in Portuguese, French and Spanish, copying to the clipboard from programs over SSH, sharing the MCP server over Tailscale, grant presets and editable grants, an idle timeout for kept sessions, a toggle for `.gitignore`'d files, and faster Files, editor and pane drawing.

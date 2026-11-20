@@ -346,4 +346,53 @@ final class ScratchpadEditorReviewTests: XCTestCase {
         XCTAssertEqual(coordinator.synced, expected)
         XCTAssertTrue(box.text.isContiguousUTF8)
     }
+
+    /// With scrollers that take width (a mouse, or "Always" in System Settings; CI runners too), an auto-hiding scroller on
+    /// text a little taller than the editor never settled: showing it narrowed the text, the new width threw the layout
+    /// away, the unmeasured text fit again and hid it, and so on inside one draw. That froze the app, and CI.
+    @MainActor
+    func testAScrollerThatTakesWidthSettlesOnTextNearTheEditorsHeight() throws {
+        _ = NSApplication.shared
+        let box = Box()
+        let editor = ScratchpadEditor(
+            text: Binding(get: { box.text }, set: { box.text = $0 }), language: .markdown, font: .monospacedSystemFont(ofSize: 13, weight: .regular), palette: .builtIn,
+            issueLines: [], focusRequest: 0, commands: ScratchpadEditorCommands())
+        let host = NSHostingView(rootView: editor.frame(width: 600, height: 400))
+        host.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        windows.append(window)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        func scrollView(in view: NSView) -> NSScrollView? { (view as? NSScrollView).flatMap { $0.documentView is ScratchpadTextView ? $0 : nil } ?? view.subviews.lazy.compactMap { scrollView(in: $0) }.first }
+        let scroll = try XCTUnwrap(scrollView(in: host))
+        let textView = try XCTUnwrap(scroll.documentView as? ScratchpadTextView)
+        let scroller = try XCTUnwrap(scroll.verticalScroller)
+        scroll.scrollerStyle = .legacy
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        var changes = 0
+        let observation = scroller.observe(\.isHidden) { _, _ in changes += 1 }
+        defer { observation.invalidate() }
+
+        // From text that clearly fits to text that clearly doesn't, so some counts sit just past the editor's height.
+        var heights: [Int: CGFloat] = [:]
+        for lines in 10...45 {
+            textView.string = String(repeating: "a line of text\n", count: lines)
+            changes = 0
+            var widths: [CGFloat] = []
+            for _ in 0..<12 {
+                host.layoutSubtreeIfNeeded()
+                // Drawn for real, as a window on screen is: only drawing lays the text out and sizes the text view.
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                widths.append(scroll.contentView.frame.width)
+            }
+            heights[lines] = textView.frame.height
+            XCTAssertLessThanOrEqual(changes, 1, "\(lines) lines: the scroller shows or hides once at most, then stays")
+            XCTAssertEqual(Set(widths.suffix(6)).count, 1, "\(lines) lines: the text's width settles")
+        }
+        // What the check above rests on: the scroller still takes width, and the texts went from fitting to overflowing.
+        XCTAssertEqual(scroll.scrollerStyle, .legacy)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(heights[10]), scroll.contentSize.height, "The shortest text fits")
+        XCTAssertGreaterThan(try XCTUnwrap(heights[45]), scroll.contentSize.height, "and the longest doesn't")
+    }
 }
