@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Idle screensaver:** choose an animation in Settings → Appearance → **Screensaver**, and it covers the focused pane once that pane has had no input or output for the time you set in **Start after** (30 seconds to 1 hour, 5 minutes by default). There are five: **Digital Rain**, **Game of Life**, **Brian's Brain**, **Hex Spirals** and **ASCII Plasma**, all drawn in your theme's colours. Any key, click or pointer move brings the pane back, and the key isn't typed into it. It's off by default, shows a still frame with Reduce Motion, and never touches the session. See [Idle screensaver](docs/features/screensaver.md).
+
 ### Changed
 
 - **Connect button in Hosts:** the Hosts window now has a **Connect** button beside the host's title, with **Connect in New Tab**, **Connect in New Space** and **Open Remote Workspace** in its menu, so you no longer scroll past the host's details to connect. The **Connect** section at the bottom is gone. See [SSH hosts](docs/features/ssh-hosts.md).

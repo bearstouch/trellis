@@ -74,11 +74,16 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var language: AppLanguage = .system
     /// OSC 52 clipboard writes from programs (FR-C09); off unless the user allows them.
     public var clipboardWriteAccess: ClipboardWriteAccess = .off
+    /// The animation over an idle focused pane (FR-SS01); off unless chosen.
+    public var idleScreensaver: IdleScreensaverStyle = .off
+    /// One of `IdleScreensaverDelay.choices`.
+    public var idleScreensaverDelaySeconds = IdleScreensaverDelay.defaultSeconds
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, cursorBlinkSpeed, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
         case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, language, clipboardWriteAccess
+        case idleScreensaver, idleScreensaverDelaySeconds
     }
     /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
@@ -113,9 +118,13 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         language = (try? c.decodeIfPresent(AppLanguage.self, forKey: .language)) ?? .system
         // Settings saved before FR-C09, or naming a choice this build doesn't have, keep clipboard writes off.
         clipboardWriteAccess = (try? c.decodeIfPresent(ClipboardWriteAccess.self, forKey: .clipboardWriteAccess)) ?? .off
+        // Settings saved before FR-SS01, or naming a style or delay this build doesn't have, fall back to Off and the default delay.
+        idleScreensaver = (try? c.decodeIfPresent(IdleScreensaverStyle.self, forKey: .idleScreensaver)) ?? .off
+        idleScreensaverDelaySeconds = IdleScreensaverDelay.normalized(
+            (try? c.decodeIfPresent(Int.self, forKey: .idleScreensaverDelaySeconds)) ?? IdleScreensaverDelay.defaultSeconds)
     }
-    /// True when terminals must be updated: everything except chrome mode, theme selection, notifications, blur, language
-    /// and clipboard access (read by each pane when a write arrives).
+    /// True when terminals must be updated: everything except chrome mode, theme selection, notifications, blur, language,
+    /// clipboard access (read by each pane when a write arrives) and the screensaver (drawn over the pane, not by it).
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
@@ -124,6 +133,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         normalized.backgroundBlur = other.backgroundBlur
         normalized.language = other.language
         normalized.clipboardWriteAccess = other.clipboardWriteAccess
+        (normalized.idleScreensaver, normalized.idleScreensaverDelaySeconds) = (other.idleScreensaver, other.idleScreensaverDelaySeconds)
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {
@@ -133,6 +143,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var isValid: Bool {
         fontSize.isFinite && (8...48).contains(fontSize) && (0...50_000).contains(scrollbackLines)
             && Self.commandFinishedNotificationChoices.contains(commandFinishedNotificationSeconds)
+            && IdleScreensaverDelay.choices.contains(idleScreensaverDelaySeconds)
             && backgroundOpacity.isFinite && Self.backgroundOpacityRange.contains(backgroundOpacity)
             && [fontName, lightThemeID, darkThemeID].allSatisfy {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.utf8.count <= 256

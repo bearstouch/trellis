@@ -34,6 +34,23 @@ The font isn't part of a theme. Choose it with **Terminal font** on the same pag
 
 Switching or previewing a theme keeps your opacity.
 
+## Idle screensaver
+
+!!! note "New in 1.4"
+    The idle screensaver is new in 1.4.
+
+**Settings → Appearance → Screensaver** covers the focused pane with an animation when it has been idle: no typing, no output and no clicks for the time set in **Start after** (30 seconds to 1 hour, 5 minutes by default). It's **Off** by default. Choose from:
+
+- **Digital Rain**: falling columns of characters that spell out a message as they cross the middle.
+- **Game of Life**: Conway's cellular automaton, with gliders.
+- **Brian's Brain**: sparks that fire, fade and race across the pane.
+- **Hex Spirals**: hex digits that organize themselves into rotating spirals.
+- **ASCII Plasma**: flowing waves drawn with text characters.
+
+The settings page shows a preview of the one you pick. Each uses your theme's colors.
+
+Press any key, click, scroll or move the pointer to bring the pane back; the key you press isn't typed into the terminal. Your session keeps running underneath, and new output in the pane also brings it back. Output in other panes doesn't. With **Reduce Motion** on, the screensaver shows a still picture instead of moving.
+
 ## Manage themes
 
 **Settings → Themes** lists every theme under **Installed theme**. For the selected theme you can:
