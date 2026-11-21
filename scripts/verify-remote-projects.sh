@@ -141,7 +141,7 @@ check "Nothing written outside ~/.trellis (no other new dot-folders)" remote '[ 
 ask "The status line said Installed, up to date (Linux $(remote uname -m))"
 
 bold "2 · Open a remote workspace (FR-RW01, FR-RW04)"
-note "Same host → Open Remote Workspace. In the new space's pane run:"
+note "Same host → Connect → Open Remote Workspace. In the new space's pane run:"
 note "    cd /tmp && sleep 900 & for i in \$(seq 1 40); do echo line-\$i; sleep 1; done"
 pause
 check "The shell runs on the host (sleep 900 is there)" remote 'pgrep -u dev -f "sleep 900"'

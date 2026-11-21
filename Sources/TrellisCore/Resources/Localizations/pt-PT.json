@@ -363,6 +363,7 @@
   "Connect in New Space": "Ligar num novo espaço",
   "Connect in New Tab": "Ligar num novo separador",
   "Connect in a new tab, a new space or a split. Uses your own ssh and config.": "Ligue num novo separador, num novo espaço ou numa divisão. Usa o seu próprio ssh e a sua configuração.",
+  "Connect to %@": "Ligar a %@",
   "Connect to Host…": "Ligar a um host…",
   "Connected": "Ligado",
   "Connected as %1$@ (%2$@)": "Ligado como %1$@ (%2$@)",

@@ -25,7 +25,7 @@ flowchart LR
 
 ## Open a remote workspace
 
-Open **File → Hosts…**, select a host and choose **Open Remote Workspace**. You can also choose **Open Remote Workspace: <host>** in the command palette (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>P</kbd>).
+Open **File → Hosts…**, select a host, click **Connect** and choose **Open Remote Workspace**. You can also choose **Open Remote Workspace: <host>** in the command palette (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>P</kbd>).
 
 Trellis creates a space named after the host, with one tab whose shell runs there. The sidebar shows the host and the state of its connection. The space stays bound to the host when you relaunch Trellis.
 

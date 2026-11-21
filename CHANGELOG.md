@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Connect button in Hosts:** the Hosts window now has a **Connect** button beside the host's title, with **Connect in New Tab**, **Connect in New Space** and **Open Remote Workspace** in its menu, so you no longer scroll past the host's details to connect. The **Connect** section at the bottom is gone. See [SSH hosts](docs/features/ssh-hosts.md).
+
 ## [1.4.0-beta.1] - 2026-11-20
 
 The first 1.4 beta.

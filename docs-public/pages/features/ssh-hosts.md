@@ -28,7 +28,7 @@ The search field at the top of the list matches names, destinations, users and t
 
 ## Connect to a host
 
-Select a host and choose:
+Select a host, click **Connect** at the top right of the window, and choose:
 
 - **Connect in New Tab** to open it in a new tab of the current space.
 - **Connect in New Space** to open a new space named after the host, with one tab connected to it.

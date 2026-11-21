@@ -363,6 +363,7 @@
   "Connect in New Space": "Conectar en un espacio nuevo",
   "Connect in New Tab": "Conectar en una pestaña nueva",
   "Connect in a new tab, a new space or a split. Uses your own ssh and config.": "Conecta en una pestaña nueva, un espacio nuevo o una división. Usa tu propio ssh y su configuración.",
+  "Connect to %@": "Conectar a %@",
   "Connect to Host…": "Conectar con host…",
   "Connected": "Conectado",
   "Connected as %1$@ (%2$@)": "Conectado como %1$@ (%2$@)",
