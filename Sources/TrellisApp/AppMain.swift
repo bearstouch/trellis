@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var appearanceObserver: NSKeyValueObservation?
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
+    private var screensaverMonitor: Any?
     private var updater: SparkleUpdater?
     private var updates: UpdateSettingsModel?
     private var cliInstall: CLIInstallController?
@@ -71,6 +72,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         model.workspaceIsFrontmost = { [weak self] in NSApp.isActive && self?.window?.isKeyWindow == true }
         model.workspaceIsVisible = { [weak self] in self?.window?.occlusionState.contains(.visible) == true }
+        // FR-SS03: any key, click or scroll in the app restarts the idle countdown and dismisses the screensaver; the key that
+        // wakes the workspace window is not typed into the pane.
+        screensaverMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) {
+            [weak self] event in
+            let swallow = MainActor.assumeIsolated {
+                guard let self else { return false }
+                return self.model.noteUserEvent(keyInWorkspaceWindow: event.type == .keyDown && event.windowNumber == self.window?.windowNumber)
+            }
+            return swallow ? nil : event
+        }
         appearanceObserver = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) { [weak self] app, _ in
             MainActor.assumeIsolated {
                 self?.model.systemAppearanceDidChange(isDark: app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)

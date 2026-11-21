@@ -48,7 +48,13 @@ public final class AppWorkspaceModel: ObservableObject {
         didSet { if errorMessage != nil { diagnosticCodes = Array((diagnosticCodes + ["UI_ERROR"]).suffix(20)) } }
     }
     public private(set) var diagnosticCodes: [String] = []
-    @Published public private(set) var appearance = AppearanceSettings() { didSet { refreshLanguage() } }
+    @Published public private(set) var appearance = AppearanceSettings() {
+        didSet { refreshLanguage(); syncScreensaverTimer() }
+    }
+    /// The pane the idle screensaver currently covers (FR-SS02); nil while none shows.
+    @Published public internal(set) var screensaverPaneID: UUID?
+    var screensaverClock = IdleScreensaverClock(now: Date())
+    var screensaverTask: Task<Void, Never>?
     /// The Mac's preferred languages, read for the System choice (FR-LN01). Empty until the app sets it, so tests read English.
     public var systemLanguages: () -> [String] = { [] } { didSet { refreshLanguage() } }
     /// The `--language` launch choice; overrides the saved language without saving it.
@@ -1689,11 +1695,12 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.onOutput = { [weak self, weak terminal] in
             guard let self else { return }
             self.recordActivity(paneID: pane.id)
-            if let terminal, self.terminals[pane.id] === terminal { self.recordOutput(paneID: pane.id) }
+            if let terminal, self.terminals[pane.id] === terminal { self.recordOutput(paneID: pane.id); self.notePaneActivity(pane.id) }
         }
         terminal.onInput = { [weak self] in
             guard let self else { return }
             self.outputActivity.recordInput(pane.id, at: self.activityNow())
+            self.notePaneActivity(pane.id)
         }
         terminal.onReturnKey = { [weak self, weak terminal] in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }

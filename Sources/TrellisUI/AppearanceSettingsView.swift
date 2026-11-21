@@ -289,6 +289,29 @@ struct AppearanceSettingsView: View {
                         ForEach(TerminalBellStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
                 }
+                Section(L("Screensaver")) {
+                    Picker(selection: $draft.idleScreensaver) {
+                        Text(IdleScreensaverStyle.off.displayName).tag(IdleScreensaverStyle.off)
+                        Divider()
+                        ForEach(IdleScreensaverStyle.animations, id: \.self) { Text($0.displayName).tag($0) }
+                    } label: {
+                        SettingsLabel(
+                            L("Screensaver"),
+                            help: L("Covers the focused pane after it has had no input or output for a while. Any key, click or pointer move brings it back."))
+                    }
+                    .accessibilityIdentifier("settings.screensaver")
+                    Picker(selection: $draft.idleScreensaverDelaySeconds) {
+                        ForEach(IdleScreensaverDelay.choices, id: \.self) { Text(IdleScreensaverDelay.label(seconds: $0)).tag($0) }
+                    } label: {
+                        SettingsLabel(L("Start after"), help: L("How long the focused pane stays idle before the screensaver starts."))
+                    }
+                    .disabled(draft.idleScreensaver == .off).accessibilityIdentifier("settings.screensaverDelay")
+                    if draft.idleScreensaver != .off {
+                        ScreensaverCanvas(style: draft.idleScreensaver, palette: ScreensaverPalette(theme: model.effectiveTheme), animated: !model.reduceMotion)
+                            .frame(height: 160).clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
+                        if model.reduceMotion { SettingsNote(text: L("Reduce Motion is on, so the screensaver shows a still frame.")) }
+                    }
+                }
                 if let notice = model.appearanceNotice { Section { SettingsNote(text: notice) } }
             }
             .settingsFormStyle()
