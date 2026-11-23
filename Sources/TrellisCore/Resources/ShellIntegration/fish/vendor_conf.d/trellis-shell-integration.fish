@@ -22,6 +22,9 @@ end
 set -e TRELLIS_AGENT_SOCKET
 set -e TRELLIS_AGENT_NONCE
 set -e TRELLIS_AGENT_WIRING
+# The prompt chosen in Settings (FR-SI10); empty leaves the user's prompt alone.
+set -g __trellis_si_prompt_preset "$TRELLIS_PROMPT_PRESET"
+set -e TRELLIS_PROMPT_PRESET
 
 if status is-interactive; and test -n "$__trellis_si_nonce"; and test "$__trellis_si_version" = 1; and not set -q __trellis_si_installed
     set -g __trellis_si_installed 1
@@ -70,6 +73,101 @@ if status is-interactive; and test -n "$__trellis_si_nonce"; and test "$__trelli
             functions -q -- $exe; and continue
             function $exe
                 __trellis_si_agent (status current-function) $argv
+            end
+        end
+    end
+
+    if contains -- "$__trellis_si_prompt_preset" minimal classic directory compact git twoLine status clock lambda bracketed
+        # The checked-out branch, or a short commit when detached. Reads .git/HEAD itself: running git before every
+        # prompt is slow, and macOS's /usr/bin/git stub offers to install the developer tools.
+        function __trellis_si_git_branch
+            set -l d $PWD
+            while not test -e "$d/.git"
+                if test "$d" = /; or test -z "$d"
+                    return 1
+                end
+                set d (string replace -r '/[^/]*$' '' -- $d)
+                test -n "$d"; or set d /
+            end
+            set -l g "$d/.git"
+            if test -f "$g"
+                test -r "$g"; or return 1
+                read -l line <"$g"
+                string match -q 'gitdir: *' -- "$line"; or return 1
+                set g (string replace 'gitdir: ' '' -- "$line")
+                string match -q '/*' -- "$g"; or set g "$d/$g"
+            end
+            # A regular file only: a FIFO or device named HEAD in an unpacked archive would block every prompt.
+            test -f "$g/HEAD"; and test -r "$g/HEAD"; or return 1
+            read -l head <"$g/HEAD"
+            if string match -q 'ref: refs/heads/*' -- "$head"
+                string replace 'ref: refs/heads/' '' -- "$head"
+            else if string match -q 'ref: *' -- "$head"
+                string replace 'ref: ' '' -- "$head"
+            else if test -n "$head"
+                string sub -l 7 -- "$head"
+            else
+                return 1
+            end
+        end
+
+        # On the first prompt, after config.fish, so the preset replaces the user's fish_prompt (FR-SI10).
+        function __trellis_si_prompt_define --on-event fish_prompt
+            functions -e __trellis_si_prompt_define
+            function fish_prompt
+                set -l ret $status
+                set -l normal (set_color normal)
+                set -l ok (set_color -o green)
+                test $ret -eq 0; or set ok (set_color -o red)
+                set -l arrow "$ok""❯$normal"
+                # Control characters become `?`, so a directory or branch name can't send escape sequences.
+                set -l cwd (string replace -ra '[[:cntrl:]]' '?' -- "$PWD")
+                set -l p $cwd
+                set -l prefix (string sub -l (string length -- "$HOME/") -- "$cwd")
+                if test "$PWD" = "$HOME"
+                    set p '~'
+                else if test -n "$HOME"; and test "$HOME" != /; and test "$prefix" = "$HOME/"
+                    set p "~/"(string sub -s (math (string length -- "$HOME/") + 1) -- "$cwd")
+                end
+                set -l folder (string split -r -m 1 / -- $cwd)[-1]
+                test "$p" = '~'; and set folder '~'
+                test -n "$folder"; or set folder /
+                set -l user $USER
+                test -n "$user"; or set user (id -un)
+                set -l userhost "$user@"(string split -m 1 . -- $hostname)[1]
+                set -l branch ''
+                set -l name
+                if contains -- $__trellis_si_prompt_preset git twoLine; and set name (__trellis_si_git_branch)
+                    set branch " "(set_color magenta)"("(string replace -ra '[[:cntrl:]]' '?' -- "$name")")$normal"
+                end
+                switch $__trellis_si_prompt_preset
+                    case minimal
+                        printf '%s ' "$arrow"
+                    case classic
+                        printf '%s' (set_color -o green)"$userhost$normal:"(set_color -o blue)"$p$normal\$ "
+                    case directory
+                        printf '%s' (set_color cyan)"$p$normal $arrow "
+                    case compact
+                        printf '%s' (set_color -o blue)"$folder$normal $arrow "
+                    case git
+                        printf '%s' (set_color cyan)"$p$normal$branch $arrow "
+                    case twoLine
+                        printf '%s\n%s' (set_color brblack)"╭─ $normal"(set_color green)"$userhost$normal "(set_color -o blue)"$p$normal$branch" \
+                            (set_color brblack)"╰─$normal$arrow "
+                    case status
+                        if test $ret -eq 0
+                            printf '%s' (set_color green)"✔$normal"
+                        else
+                            printf '%s' (set_color -o red)"✘ $ret$normal"
+                        end
+                        printf '%s' " "(set_color cyan)"$p$normal ❯ "
+                    case clock
+                        printf '%s' (set_color brblack)"["(date +%H:%M)"]$normal "(set_color cyan)"$p$normal $arrow "
+                    case lambda
+                        printf '%s' (set_color -o yellow)"λ$normal "(set_color blue)"$folder$normal $ok""→$normal "
+                    case bracketed
+                        printf '%s' "["(set_color green)"$userhost$normal "(set_color blue)"$folder$normal]\$ "
+                end
             end
         end
     end

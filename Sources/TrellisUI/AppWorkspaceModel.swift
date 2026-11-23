@@ -1117,13 +1117,17 @@ public final class AppWorkspaceModel: ObservableObject {
                 switch request.launch {
                 case .shell(let directory):
                     configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory, environmentOverrides: environment)
+                    configuration.describeLoginShell()
                     configuration.shellIntegration = shellIntegration(for: configuration)
                 case .process(let executable, let arguments, let directory):
                     configuration = LocalLaunchConfiguration(
                         executable: executable, arguments: arguments, directory: directory ?? defaultDirectory, environmentOverrides: environment)
                     // `.shell` is frozen to `.process(shell, ["-l"])` before launch. Any frozen login shell qualifies, so
                     // panes started before the default shell changed keep integration on restart and restore.
-                    if arguments == ["-l"] { configuration.shellIntegration = shellIntegration(for: configuration) }
+                    if arguments == ["-l"] {
+                        configuration.describeLoginShell()
+                        configuration.shellIntegration = shellIntegration(for: configuration)
+                    }
                 case .remoteShell, .agent: return
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
@@ -1245,7 +1249,9 @@ public final class AppWorkspaceModel: ObservableObject {
         return .plan(
             kind: kind, arguments: configuration.arguments,
             inheritedEnvironment: configuration.inheritedEnvironment.merging(configuration.environmentOverrides) { $1 },
-            resourceDirectory: directory, nonce: ShellIntegrationInjection.makeNonce())
+            resourceDirectory: directory, nonce: ShellIntegrationInjection.makeNonce()
+        )?
+        .addingPromptPreset(appearance.shellPrompt)
     }
 
     public func setShellIntegrationEnabled(_ enabled: Bool) {

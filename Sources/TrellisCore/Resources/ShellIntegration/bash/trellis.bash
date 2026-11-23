@@ -9,8 +9,12 @@ __trellis_si_login="${TRELLIS_BASH_LOGIN-}"
 __trellis_si_agent_socket="${TRELLIS_AGENT_SOCKET-}"
 __trellis_si_agent_nonce="${TRELLIS_AGENT_NONCE-}"
 __trellis_si_agent_wiring="${TRELLIS_AGENT_WIRING-}"
-builtin unset TRELLIS_SHELL_INTEGRATION_NONCE TRELLIS_SHELL_INTEGRATION TRELLIS_BASH_LOGIN TRELLIS_AGENT_SOCKET TRELLIS_AGENT_NONCE TRELLIS_AGENT_WIRING
-builtin export -n __trellis_si_nonce __trellis_si_version __trellis_si_login __trellis_si_agent_socket __trellis_si_agent_nonce __trellis_si_agent_wiring 2>/dev/null
+# The prompt chosen in Settings (FR-SI10); empty leaves the user's prompt alone.
+__trellis_si_prompt_preset="${TRELLIS_PROMPT_PRESET-}"
+builtin unset TRELLIS_SHELL_INTEGRATION_NONCE TRELLIS_SHELL_INTEGRATION TRELLIS_BASH_LOGIN TRELLIS_AGENT_SOCKET TRELLIS_AGENT_NONCE TRELLIS_AGENT_WIRING \
+    TRELLIS_PROMPT_PRESET
+builtin export -n __trellis_si_nonce __trellis_si_version __trellis_si_login __trellis_si_agent_socket __trellis_si_agent_nonce __trellis_si_agent_wiring \
+    __trellis_si_prompt_preset 2>/dev/null
 
 if [ -n "$__trellis_si_login" ]; then
     [ -r /etc/profile ] && builtin source /etc/profile
@@ -44,8 +48,10 @@ if [[ $- == *i* && -n "$__trellis_si_nonce" && "$__trellis_si_version" == 1 && -
         REPLY="$out"
     }
 
+    __trellis_si_status=0
     __trellis_si_precmd() {
         local ret=$? REPLY
+        __trellis_si_status=$ret
         __trellis_si_ready=
         if [ -n "$__trellis_si_running" ]; then
             builtin printf '\033]133;D;%s;trellis=%s\007' "$ret" "$__trellis_si_nonce"
@@ -74,10 +80,96 @@ if [[ $- == *i* && -n "$__trellis_si_nonce" && "$__trellis_si_version" == 1 && -
         __trellis_si_running=1
     }
 
+    case "$__trellis_si_prompt_preset" in
+        minimal | classic | directory | compact | git | twoLine | status | clock | lambda | bracketed) ;;
+        *) __trellis_si_prompt_preset= ;;
+    esac
+
+    # The checked-out branch, or a short commit when detached, into REPLY. Reads .git/HEAD itself: running git
+    # before every prompt is slow, and macOS's /usr/bin/git stub offers to install the developer tools.
+    __trellis_si_git_branch() {
+        REPLY=
+        local d="$PWD" g line= head=
+        while [ ! -e "$d/.git" ]; do
+            if [ "$d" = / ] || [ -z "$d" ]; then return 1; fi
+            d="${d%/*}"
+            [ -n "$d" ] || d=/
+        done
+        g="$d/.git"
+        if [ -f "$g" ]; then
+            [ -r "$g" ] && { IFS= read -r line || [ -n "$line" ]; } < "$g"
+            case "$line" in "gitdir: "*) g="${line#gitdir: }" ;; *) return 1 ;; esac
+            case "$g" in /*) ;; *) g="$d/$g" ;; esac
+        fi
+        # A regular file only: a FIFO or device named HEAD in an unpacked archive would block every prompt.
+        [ -f "$g/HEAD" ] && [ -r "$g/HEAD" ] && { IFS= read -r head || [ -n "$head" ]; } < "$g/HEAD"
+        case "$head" in
+            "ref: refs/heads/"*) REPLY="${head#ref: refs/heads/}" ;;
+            "ref: "*) REPLY="${head#ref: }" ;;
+            *) REPLY="${head:0:7}" ;;
+        esac
+        [ -n "$REPLY" ]
+    }
+
+    # A value for PS1 in REPLY. With promptvars on, PS1 only names the variable: bash expands it when drawing the
+    # prompt and never re-evaluates the result, so a directory or branch name can't run code. Without promptvars,
+    # the text goes in with its backslashes doubled. Control characters become `?` first, so a name can't send the
+    # terminal escape sequences.
+    __trellis_si_prompt_value() {
+        builtin printf -v "$1" '%s' "${!1//[[:cntrl:]]/?}"
+        if builtin shopt -q promptvars; then REPLY="\${$1}"; else REPLY="${!1//\\/\\\\}"; fi
+    }
+
+    # Rebuilds PS1 for the chosen preset (FR-SI10). It runs after the user's PROMPT_COMMAND, so a theme can't undo
+    # it, then puts back the B mark, which must stay at the end.
+    __trellis_si_prompt() {
+        local ret=$? REPLY e='\[\033[' pwd= folder= branch=
+        local r="${e}0m\]" b="${e}1m\]" red="${e}31m\]" green="${e}32m\]" yellow="${e}33m\]" blue="${e}34m\]"
+        local magenta="${e}35m\]" cyan="${e}36m\]" gray="${e}90m\]" ok="${e}32m\]"
+        [ "$__trellis_si_status" = 0 ] || ok="$red"
+        local arrow="$b${ok}❯$r"
+        __trellis_si_p_path="$PWD"
+        if [ "$PWD" = "$HOME" ]; then
+            __trellis_si_p_path="~"
+        elif [ -n "$HOME" ] && [ "$HOME" != / ] && [ "${PWD#"$HOME"/}" != "$PWD" ]; then
+            __trellis_si_p_path="~/${PWD#"$HOME"/}"
+        fi
+        __trellis_si_p_folder="${PWD##*/}"
+        [ "$__trellis_si_p_path" = "~" ] && __trellis_si_p_folder="~"
+        [ -n "$__trellis_si_p_folder" ] || __trellis_si_p_folder=/
+        __trellis_si_prompt_value __trellis_si_p_path; pwd="$REPLY"
+        __trellis_si_prompt_value __trellis_si_p_folder; folder="$REPLY"
+        case "$__trellis_si_prompt_preset" in
+            git | twoLine)
+                if __trellis_si_git_branch; then
+                    __trellis_si_p_branch="$REPLY"
+                    __trellis_si_prompt_value __trellis_si_p_branch; branch=" $magenta($REPLY)$r"
+                fi
+                ;;
+        esac
+        case "$__trellis_si_prompt_preset" in
+            minimal) PS1="$arrow " ;;
+            classic) PS1="$b$green\u@\h$r:$b$blue$pwd$r\$ " ;;
+            directory) PS1="$cyan$pwd$r $arrow " ;;
+            compact) PS1="$b$blue$folder$r $arrow " ;;
+            git) PS1="$cyan$pwd$r$branch $arrow " ;;
+            twoLine) PS1="${gray}╭─ $r$green\u@\h$r $b$blue$pwd$r$branch\n${gray}╰─$r$arrow " ;;
+            status)
+                if [ "$__trellis_si_status" = 0 ]; then PS1="${green}✔$r"; else PS1="$b${red}✘ $__trellis_si_status$r"; fi
+                PS1="$PS1 $cyan$pwd$r ❯ "
+                ;;
+            clock) PS1="$gray[\A]$r $cyan$pwd$r $arrow " ;;
+            lambda) PS1="$b${yellow}λ$r $blue$folder$r $b${ok}→$r " ;;
+            bracketed) PS1="[$green\u@\h$r $blue$folder$r]\$ " ;;
+        esac
+        PS1="$PS1"'\[\033]133;B\007\]'
+        return $ret
+    }
+
     if [[ "$(builtin declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-        PROMPT_COMMAND=(__trellis_si_precmd "${PROMPT_COMMAND[@]}" __trellis_si_arm)
+        PROMPT_COMMAND=(__trellis_si_precmd "${PROMPT_COMMAND[@]}" ${__trellis_si_prompt_preset:+__trellis_si_prompt} __trellis_si_arm)
     else
-        PROMPT_COMMAND="__trellis_si_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}; __trellis_si_arm"
+        PROMPT_COMMAND="__trellis_si_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}${__trellis_si_prompt_preset:+; __trellis_si_prompt}; __trellis_si_arm"
     fi
 
     # Chain an existing DEBUG trap (bash-preexec and similar) instead of replacing it;

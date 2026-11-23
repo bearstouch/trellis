@@ -23,6 +23,7 @@ public struct ShellIntegrationInjection: Equatable, Sendable {
     public let scriptPath: String
 
     public static let agentWiringVariable = "TRELLIS_AGENT_WIRING"
+    public static let promptPresetVariable = "TRELLIS_PROMPT_PRESET"
 
     /// Plans injection for a login shell (`-l`) only; custom argument lists are left alone.
     public static func plan(
@@ -57,6 +58,14 @@ public struct ShellIntegrationInjection: Equatable, Sendable {
         guard let encoded = TypedAgentWiring.encode(wirings) else { return self }
         var environment = environment
         environment[Self.agentWiringVariable] = encoded
+        return Self(kind: kind, nonce: nonce, arguments: arguments, environment: environment, scriptPath: scriptPath)
+    }
+
+    /// The script sets this prompt after the user's startup files (FR-SI10); `none` changes nothing.
+    public func addingPromptPreset(_ preset: ShellPromptPreset) -> Self {
+        guard preset != .none else { return self }
+        var environment = environment
+        environment[Self.promptPresetVariable] = preset.rawValue
         return Self(kind: kind, nonce: nonce, arguments: arguments, environment: environment, scriptPath: scriptPath)
     }
 

@@ -8,7 +8,7 @@ Every pane in Trellis runs a real terminal session: your login shell by default,
 
 New local sessions use the shell and working directory set in **Settings → Sessions**:
 
-- **Shell** lists the shells on your Mac; choose **Other…** to type a path.
+- **Shell** lists the shells on your Mac; choose **Other…** to type a path. Press **Save** to apply it. In the panes it starts, `$SHELL` names that shell, and bash doesn't show macOS's "default interactive shell is now zsh" notice.
 - **Working directory** is the folder new sessions start in. Use an absolute path. A folder that doesn't exist or can't be opened is refused before anything starts.
 
 Click **Save** to apply them. They affect new sessions, not ones already running.

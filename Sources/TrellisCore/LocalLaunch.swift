@@ -43,6 +43,15 @@ public struct LocalLaunchConfiguration: Equatable, Sendable {
             directory: directory ?? FileManager.default.homeDirectoryForCurrentUser.path,
             environmentOverrides: environmentOverrides)
     }
+
+    /// What a local login shell is told about itself: `SHELL` names the shell actually started, so `echo $SHELL` and
+    /// programs that open a subshell from it (vim, tmux) agree with the pane, and bash skips macOS's "default interactive
+    /// shell is now zsh" notice, which a shell picked in Settings doesn't need. A pane's own value of either wins.
+    public mutating func describeLoginShell() {
+        var described = ["SHELL": executable]
+        if ShellIntegrationKind(executable: executable) == .bash { described["BASH_SILENCE_DEPRECATION_WARNING"] = "1" }
+        environmentOverrides.merge(described) { own, _ in own }
+    }
 }
 
 /// Where an agent session's hooks report and the nonce that names it (FR-AG08). The names match `BrokerProtocol`'s, which

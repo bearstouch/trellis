@@ -1322,6 +1322,14 @@ public struct LaunchSettingsView: View {
         }
         return model.shellIntegrationEnabled ? L("%@ supports shell integration.", name) : L("%@ supports shell integration; it's turned off below.", name)
     }
+    /// Spoken and visible: when the chosen prompt takes effect, or why it can't (FR-SI10).
+    private var promptHelp: String {
+        guard model.shellIntegrationEnabled else { return L("Needs shell integration, which is turned off above.") }
+        guard ShellIntegrationKind(executable: shell) != nil else { return L("Needs zsh, bash or fish; this shell keeps its own prompt.") }
+        return model.appearance.shellPrompt == .none
+            ? L("Your shell's own prompt, from your dotfiles.")
+            : L("For new sessions, including remote workspaces. Replaces the prompt your dotfiles set; your dotfiles aren't edited.")
+    }
     private var stopSessionsHelp: String {
         model.keepSessionsRunning
             ? L("Sessions run in a background helper: they keep running when you quit, close the window or Trellis stops unexpectedly, and reconnect next time. Logging out or restarting ends them.")
@@ -1365,6 +1373,17 @@ public struct LaunchSettingsView: View {
                             L("Shell integration (zsh, bash, fish)"), help: L("Tracks the directory, commands and prompts without editing your dotfiles. For new sessions."))
                     }
                     .accessibilityIdentifier("settings.shellIntegration")
+                    Picker(selection: appearanceSetting(\.shellPrompt)) {
+                        Text(ShellPromptPreset.none.displayName).tag(ShellPromptPreset.none)
+                        Divider()
+                        ForEach(ShellPromptPreset.allCases.filter { $0 != .none }, id: \.self) { Text($0.displayName).tag($0) }
+                    } label: {
+                        SettingsLabel(L("Prompt"), help: promptHelp)
+                    }
+                    .disabled(!model.shellIntegrationEnabled).accessibilityIdentifier("settings.shellPrompt")
+                    if model.shellIntegrationEnabled, model.appearance.shellPrompt != .none {
+                        ShellPromptPreview(preset: model.appearance.shellPrompt, theme: model.effectiveTheme, appearance: model.appearance)
+                    }
                     Toggle(isOn: Binding(get: { model.directoryHistoryEnabled }, set: { model.setDirectoryHistoryEnabled($0) })) {
                         SettingsLabel(
                             L("Remember directories"),
