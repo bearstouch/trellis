@@ -96,19 +96,17 @@ final class TerminalMetalRendererTests: XCTestCase {
         for width in [700, 853, 900] as [CGFloat] {
             // A draw is refused while a frame is in flight, so let earlier frames finish, then wait for this size's own.
             pump(0.3)
-            let presented = view.metalRendererStatus.presentedFrameCount
+            let before = try XCTUnwrap(view.metalSubmittedFramesForTesting).count
             view.setFrameSize(NSSize(width: width, height: 520))
-            // The resize only marks the view for display, and AppKit can take seconds to display a window that was never
-            // ordered in on a loaded CI runner. Drawing directly takes the same draw(in:) path, so the size check still holds.
+            // The resize's own display pass must draw it: drawMetalFrameNow() lets MTKView resize first, which hides the
+            // bug. Counts submitted frames, not presented ones: the window server reports presenting a window that was
+            // never ordered in whenever it likes, over ten seconds late on CI.
             let deadline = Date().addingTimeInterval(10)
-            var nextDraw = Date()
-            while view.metalRendererStatus.presentedFrameCount == presented, Date() < deadline {
-                if Date() >= nextDraw { view.drawMetalFrameNow(); nextDraw = Date().addingTimeInterval(0.5) }
-                pump(0.01)
-            }
-            XCTAssertNotEqual(view.metalRendererStatus.presentedFrameCount, presented, "a frame is presented after the resize to \(width)")
+            while try XCTUnwrap(view.metalSubmittedFramesForTesting).count == before, Date() < deadline { pump(0.01) }
+            let frame = try XCTUnwrap(view.metalSubmittedFramesForTesting)
+            XCTAssertGreaterThan(frame.count, before, "a frame is drawn after the resize to \(width)")
             let scale = layer.contentsScale
-            XCTAssertEqual(layer.drawableSize, CGSize(width: (width * scale).rounded(.up), height: (520 * scale).rounded(.up)), "width \(width)")
+            XCTAssertEqual(frame.drawableSize, CGSize(width: (width * scale).rounded(.up), height: (520 * scale).rounded(.up)), "width \(width)")
         }
     }
 
