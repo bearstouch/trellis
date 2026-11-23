@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Welcome tour updated for 1.4:** the last step picks the appearance from the same tiles as Settings and adds a **Shell prompt** choice with a live preview. The steps now cover the lock screen (⌃⌘L), the Hosts **Connect** button, Files on remote workspaces with drag and drop, agent subscription usage, Markdown and CSV previews, and the Changes view in the dock. Replay it from **Help → Welcome Tour**. See [Welcome tour](docs/features/welcome-tour.md).
 - **`$SHELL` matches the shell you picked:** a pane started with the shell chosen in Settings → Sessions now has `SHELL` set to that shell, so `echo $SHELL` and programs that open a subshell (vim, tmux) use it, not your account's login shell. bash no longer prints macOS's "The default interactive shell is now zsh" notice.
 - **Connect button in Hosts:** the Hosts window now has a **Connect** button beside the host's title, with **Connect in New Tab**, **Connect in New Space** and **Open Remote Workspace** in its menu, so you no longer scroll past the host's details to connect. The **Connect** section at the bottom is gone. See [SSH hosts](docs/features/ssh-hosts.md).
 

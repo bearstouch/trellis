@@ -99,6 +99,7 @@ final class WelcomeTourTests: XCTestCase {
         model.openWelcomeTour()
         model.goToWelcomeTourStep(.setup)
         model.setChromeModeFromWelcomeTour(.light)
+        model.setShellPromptFromWelcomeTour(.git)
         model.setKeepSessionsRunning(false)
         model.closeWelcomeTour()
         let saved = await model.flushWorkspaceSave()
@@ -106,6 +107,7 @@ final class WelcomeTourTests: XCTestCase {
         let restored = AppWorkspaceModel(store: try WorkspaceStore(), preferences: defaults, persistence: WorkspacePersistence(directory: directory))
         _ = await restored.loadWorkspace()
         XCTAssertEqual(restored.appearance.chromeMode, .light)
+        XCTAssertEqual(restored.appearance.shellPrompt, .git)
         XCTAssertFalse(restored.keepSessionsRunning)
     }
 
@@ -308,6 +310,23 @@ final class WelcomeTourTests: XCTestCase {
         XCTAssertEqual(model.appearance.chromeMode, .light)
     }
 
+    func testPromptPresetAppliesAtOnceAndClosingKeepsIt() async throws {
+        let model = try await makeModel()
+        XCTAssertEqual(model.appearance.shellPrompt, .none, "Shell default until chosen")
+        let chrome = model.appearance.chromeMode
+        model.openWelcomeTour()
+        model.goToWelcomeTourStep(.setup)
+        model.setShellPromptFromWelcomeTour(.twoLine)
+        XCTAssertEqual(model.appearance.shellPrompt, .twoLine)
+        XCTAssertEqual(model.appearance.chromeMode, chrome, "Only the prompt changes")
+        model.closeWelcomeTour()
+        XCTAssertEqual(model.appearance.shellPrompt, .twoLine)
+        model.openWelcomeTour()
+        XCTAssertEqual(model.appearance.shellPrompt, .twoLine, "Replaying changes nothing by itself")
+        model.setShellPromptFromWelcomeTour(.none)
+        XCTAssertEqual(model.appearance.shellPrompt, .none)
+    }
+
     func testCLIRowFollowsTheProbeAndInstallRefreshesIt() async throws {
         let model = try await makeModel()
         model.openWelcomeTour()
@@ -338,10 +357,20 @@ final class WelcomeTourTests: XCTestCase {
         XCTAssertNil(model.welcomeTourChord(.showHosts))
     }
 
+    func testLockRowFollowsItsBinding() async throws {
+        let model = try await makeModel()
+        XCTAssertEqual(model.welcomeTourChord(.lockWorkspace), "⌃⌘L")
+        var settings = model.keyboard
+        settings.shortcuts = settings.shortcuts.assigning(nil, to: .lockWorkspace)
+        XCTAssertEqual(model.saveKeyboardSettings(settings), [])
+        XCTAssertNil(model.welcomeTourChord(.lockWorkspace), "Unbound: the row shows its symbol instead")
+    }
+
     func testFilesRowNamesTheOtherDockChordsOrPointsToTheDock() async throws {
         let model = try await makeModel()
         XCTAssertEqual(model.welcomeTourChord(.toggleFiles), "⌥⌘F")
         XCTAssertTrue(model.welcomeTourSidebarDetail.hasSuffix("⌥⌘E, ⌥⌘T and ⌥⌘A open the scratchpad, tasks and agents."), model.welcomeTourSidebarDetail)
+        XCTAssertTrue(model.welcomeTourSidebarDetail.contains("on this Mac or a host, and preview Markdown and CSV files"), model.welcomeTourSidebarDetail)
         var settings = model.keyboard
         settings.shortcuts = settings.shortcuts.assigning(nil, to: .toggleTasks)
         XCTAssertEqual(model.saveKeyboardSettings(settings), [])
@@ -375,6 +404,8 @@ final class WelcomeTourTests: XCTestCase {
         model.openWelcomeTour()
         for mode in [ChromeMode.dark, .light] {
             model.setChromeModeFromWelcomeTour(mode)
+            // Both setup illustrations: the sample terminal, and the chosen prompt's preview.
+            model.setShellPromptFromWelcomeTour(mode == .dark ? .none : .twoLine)
             for size in [CGSize(width: 1280, height: 800), CGSize(width: 800, height: 600), CGSize(width: 400, height: 260)] {
                 for step in WelcomeTourStep.allCases {
                     model.goToWelcomeTourStep(step)
