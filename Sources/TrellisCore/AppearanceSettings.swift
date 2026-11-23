@@ -78,12 +78,14 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var idleScreensaver: IdleScreensaverStyle = .off
     /// One of `IdleScreensaverDelay.choices`.
     public var idleScreensaverDelaySeconds = IdleScreensaverDelay.defaultSeconds
+    /// The prompt new integrated shells get (FR-SI10); `none` leaves the shell's own prompt alone.
+    public var shellPrompt: ShellPromptPreset = .none
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, cursorBlinkSpeed, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
         case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, language, clipboardWriteAccess
-        case idleScreensaver, idleScreensaverDelaySeconds
+        case idleScreensaver, idleScreensaverDelaySeconds, shellPrompt
     }
     /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
@@ -122,9 +124,12 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         idleScreensaver = (try? c.decodeIfPresent(IdleScreensaverStyle.self, forKey: .idleScreensaver)) ?? .off
         idleScreensaverDelaySeconds = IdleScreensaverDelay.normalized(
             (try? c.decodeIfPresent(Int.self, forKey: .idleScreensaverDelaySeconds)) ?? IdleScreensaverDelay.defaultSeconds)
+        // Settings saved before FR-SI10, or naming a preset this build doesn't have, leave the shell's prompt alone.
+        shellPrompt = (try? c.decodeIfPresent(ShellPromptPreset.self, forKey: .shellPrompt)) ?? .none
     }
     /// True when terminals must be updated: everything except chrome mode, theme selection, notifications, blur, language,
-    /// clipboard access (read by each pane when a write arrives) and the screensaver (drawn over the pane, not by it).
+    /// clipboard access (read by each pane when a write arrives), the screensaver (drawn over the pane, not by it) and the
+    /// shell prompt (read when a shell starts).
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
@@ -134,6 +139,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         normalized.language = other.language
         normalized.clipboardWriteAccess = other.clipboardWriteAccess
         (normalized.idleScreensaver, normalized.idleScreensaverDelaySeconds) = (other.idleScreensaver, other.idleScreensaverDelaySeconds)
+        normalized.shellPrompt = other.shellPrompt
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {

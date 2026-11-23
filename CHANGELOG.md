@@ -10,8 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Idle screensaver:** choose an animation in Settings → Appearance → **Screensaver**, and it covers the focused pane once that pane has had no input or output for the time you set in **Start after** (30 seconds to 1 hour, 5 minutes by default). There are five: **Digital Rain**, **Game of Life**, **Brian's Brain**, **Hex Spirals** and **ASCII Plasma**, all drawn in your theme's colours. Any key, click or pointer move brings the pane back, and the key isn't typed into it. It's off by default, shows a still frame with Reduce Motion, and never touches the session. See [Idle screensaver](docs/features/screensaver.md).
 
+- **Prompt presets:** choose a ready-made shell prompt in Settings → Sessions → **Prompt**: Minimal, Classic, Full path, Folder name, Git branch, Two lines, Exit status, Clock, Lambda or Bracketed. A preview shows it in your theme's colors. It applies to new zsh, bash and fish shells, including remote workspaces, without editing your dotfiles. **Shell default**, the default, leaves your prompt alone. See [Shell integration](docs/features/shell-integration.md).
+
 ### Changed
 
+- **`$SHELL` matches the shell you picked:** a pane started with the shell chosen in Settings → Sessions now has `SHELL` set to that shell, so `echo $SHELL` and programs that open a subshell (vim, tmux) use it, not your account's login shell. bash no longer prints macOS's "The default interactive shell is now zsh" notice.
 - **Connect button in Hosts:** the Hosts window now has a **Connect** button beside the host's title, with **Connect in New Tab**, **Connect in New Space** and **Open Remote Workspace** in its menu, so you no longer scroll past the host's details to connect. The **Connect** section at the bottom is gone. See [SSH hosts](docs/features/ssh-hosts.md).
 
 ## [1.4.0-beta.1] - 2026-11-20

@@ -6,7 +6,7 @@ All requirements here are P0.
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| FR-S01 | Run configurable local shells with real PTY behavior. | The default login shell, Ctrl-C, Ctrl-D, job control, resizing and process exit all work. |
+| FR-S01 | Run configurable local shells with real PTY behavior. A local login shell gets `SHELL` set to the shell actually started, unless the pane sets its own, and bash also gets `BASH_SILENCE_DEPRECATION_WARNING=1`, so macOS's "default interactive shell is now zsh" notice doesn't appear for a shell chosen in Settings. | The default login shell, Ctrl-C, Ctrl-D, job control, resizing and process exit all work. With bash chosen in **Settings → Sessions → Shell**, a new tab shows no zsh notice and `echo $SHELL` prints `/bin/bash`, whatever the account's login shell. |
 | FR-S02 | Render ordinary terminal applications reliably. | Exercise vim, less, top, colors, the alternate screen, mouse reporting and Unicode. Text styles, ligatures and Unicode widths are detailed in FR-TX01–FR-TX04. |
 | FR-S03 | Show session status and exit code, and allow an explicit restart. | A process that exits with code 7 stays visible, and restarting gives a fresh session ID. |
 | FR-S04 | Keep bounded scrollback and search per pane. | Search forward and backward through retained text, and say when older output has been evicted. |

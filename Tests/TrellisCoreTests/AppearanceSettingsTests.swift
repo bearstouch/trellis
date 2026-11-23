@@ -47,6 +47,24 @@ final class AppearanceSettingsTests: XCTestCase {
             XCTAssertFalse(settings.terminalRenderingDiffers(from: AppearanceSettings()), "Changing it doesn't redraw terminals")
         }
     }
+    func testShellPromptDefaultsToTheShellsOwnForOlderOrUnknownSettings() throws {
+        XCTAssertEqual(AppearanceSettings().shellPrompt, ShellPromptPreset.none)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppearanceSettings())) as? [String: Any])
+        legacy["shellPrompt"] = nil; legacy["chromeMode"] = "light"
+        let older = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(older.shellPrompt, ShellPromptPreset.none, "Settings saved before FR-SI10 leave the prompt alone")
+        XCTAssertEqual(older.chromeMode, .light)
+        legacy["shellPrompt"] = "rainbow"
+        let unknown = try JSONDecoder().decode(AppearanceSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(unknown.shellPrompt, ShellPromptPreset.none, "A preset from a newer build falls back without losing the rest")
+        XCTAssertEqual(unknown.chromeMode, .light)
+        for preset in ShellPromptPreset.allCases {
+            var settings = AppearanceSettings(); settings.shellPrompt = preset
+            XCTAssertEqual(try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(settings)).shellPrompt, preset)
+            XCTAssertFalse(settings.terminalRenderingDiffers(from: AppearanceSettings()), "Only new shells read it")
+            XCTAssertTrue(settings.isValid)
+        }
+    }
     func testClipboardWritePolicyAllowsOnlyWhatTheSettingSays() {
         XCTAssertFalse(ClipboardWritePolicy.allows(.off, sshPane: true))
         XCTAssertFalse(ClipboardWritePolicy.allows(.off, sshPane: false))
