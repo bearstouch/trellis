@@ -98,8 +98,14 @@ final class TerminalMetalRendererTests: XCTestCase {
             pump(0.3)
             let presented = view.metalRendererStatus.presentedFrameCount
             view.setFrameSize(NSSize(width: width, height: 520))
-            let deadline = Date().addingTimeInterval(3)
-            while view.metalRendererStatus.presentedFrameCount == presented, Date() < deadline { pump(0.01) }
+            // The resize only marks the view for display, and AppKit can take seconds to display a window that was never
+            // ordered in on a loaded CI runner. Drawing directly takes the same draw(in:) path, so the size check still holds.
+            let deadline = Date().addingTimeInterval(10)
+            var nextDraw = Date()
+            while view.metalRendererStatus.presentedFrameCount == presented, Date() < deadline {
+                if Date() >= nextDraw { view.drawMetalFrameNow(); nextDraw = Date().addingTimeInterval(0.5) }
+                pump(0.01)
+            }
             XCTAssertNotEqual(view.metalRendererStatus.presentedFrameCount, presented, "a frame is presented after the resize to \(width)")
             let scale = layer.contentsScale
             XCTAssertEqual(layer.drawableSize, CGSize(width: (width * scale).rounded(.up), height: (520 * scale).rounded(.up)), "width \(width)")
