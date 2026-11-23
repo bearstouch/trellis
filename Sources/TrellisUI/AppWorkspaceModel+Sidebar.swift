@@ -49,6 +49,10 @@ public struct AgentSessionRow: Identifiable, Equatable, Sendable {
     public let agent: AgentDefinition
     public let tabTitle: String
     public let spaceName: String
+    /// The machine it runs on: "this Mac" or the host's name, with a link that isn't connected in words (FR-RW07).
+    public let machine: String
+    /// The machine's SF Symbol, as the pane header shows it.
+    public let machineSymbol: String
     /// The agent's state while its session runs; nil otherwise, and `status` names the session's state.
     public let state: AgentState?
     public let status: String
@@ -131,15 +135,19 @@ extension AppWorkspaceModel {
                     if let agent = agentDefinition(paneID: id) {
                         let state: AgentState? = terminal?.sessionState == .running ? agentStates[id]?.state ?? .ready : nil
                         let status = state?.label ?? SessionStatusText.describe(terminal?.sessionState ?? .stopped, exitCode: terminal?.exitCode)
+                        let machine = paneContext(id).machine
                         return AgentSessionRow(
-                            id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: status, typed: false,
+                            id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, machine: Self.machineWords(machine) + machine.linkText,
+                            machineSymbol: machine.symbol, state: state, status: status, typed: false,
                             settings: state == nil ? AgentSettings() : agentStates[id]?.settings ?? AgentSettings())
                     }
                     // Without hooks nothing reports its state, so it reads Running rather than a Ready it can't vouch for.
                     guard terminal?.sessionState == .running, let agent = detectedAgent(paneID: id) else { return nil }
                     let state = agentStates[id]?.state
+                    let machine = paneContext(id).machine
                     return AgentSessionRow(
-                        id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, state: state, status: state?.label ?? L("Running"), typed: true,
+                        id: id, agent: agent, tabTitle: displayTitle(tab), spaceName: space.name, machine: Self.machineWords(machine) + machine.linkText,
+                        machineSymbol: machine.symbol, state: state, status: state?.label ?? L("Running"), typed: true,
                         settings: agentStates[id]?.settings ?? AgentSettings())
                 }
             }
@@ -150,8 +158,11 @@ extension AppWorkspaceModel {
     public var agentTarget: (directory: String?, machine: String)? {
         guard let paneID = presentation.activePane?.id, snapshot.panes[paneID] != nil else { return nil }
         let context = paneContext(paneID)
-        return (context.directory, context.machine == .local ? L("this Mac") : context.machine.name)
+        return (context.directory, Self.machineWords(context.machine))
     }
+
+    /// A machine as the Agents view names it: "this Mac", or the host's name.
+    static func machineWords(_ machine: PaneMachine) -> String { machine == .local ? L("this Mac") : machine.name }
 
     /// True when the agent is known to be absent from the focused pane's machine (FR-AG07); never read from the status wording.
     public func agentIsMissing(_ agent: AgentDefinition) -> Bool {

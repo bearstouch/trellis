@@ -225,8 +225,12 @@ struct AgentsSidebarView: View {
                                 .help(L("Reasoning effort: %@", effort))
                         }
                     }
-                    Text(row.typed ? L("%1$@ · %2$@ · in a shell", row.spaceName, row.agentLabel) : "\(row.spaceName) · \(row.agentLabel)").font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
-                        .lineLimit(1)
+                    // The machine first, so a narrow sidebar shortens the agent's label rather than where it runs.
+                    HStack(spacing: 3) {
+                        Image(systemName: row.machineSymbol).imageScale(.small).accessibilityHidden(true)
+                        Text(row.typed ? L("%1$@ · %2$@ · %3$@ · in a shell", row.machine, row.spaceName, row.agentLabel) : "\(row.machine) · \(row.spaceName) · \(row.agentLabel)")
+                            .lineLimit(1)
+                    }.font(.caption2).foregroundStyle(model.themeColor(.mutedForeground))
                 }
                 Spacer(minLength: 4)
                 if row.state == .working {
@@ -242,7 +246,11 @@ struct AgentsSidebarView: View {
         .buttonStyle(.plain)
         .help(L("Show this agent's pane"))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(row.typed ? L("%1$@ in a shell, %2$@, %3$@", row.agent.name, row.tabTitle, row.spaceName) : "\(row.agent.name), \(row.tabTitle), \(row.spaceName)")
+        .accessibilityLabel(
+            row.typed
+                ? L("%1$@ in a shell, %2$@, %3$@, on %4$@", row.agent.name, row.tabTitle, row.spaceName, row.machine)
+                : L("%1$@, %2$@, %3$@, on %4$@", row.agent.name, row.tabTitle, row.spaceName, row.machine)
+        )
         .accessibilityValue(([row.status] + [row.settings.modelName, row.settings.effort.map { L("%@ effort", $0) }].compactMap { $0 }).joined(separator: ", ")).accessibilityHint(L("Shows this pane"))
         .accessibilityAddTraits(.isButton)
     }
