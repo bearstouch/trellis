@@ -389,6 +389,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     /// The blink timer's interval while it runs, for tests.
     var cursorBlinkTimerInterval: TimeInterval? { cursorBlinkTimer?.timeInterval }
 
+    /// Frames submitted to the GPU and the last one's drawable size in pixels, for tests. Unlike presentation, which
+    /// waits on the window server, this is known when `draw(in:)` returns.
+    private(set) var submittedFramesForTesting: (count: UInt64, drawableSize: CGSize) = (0, .zero)
+
     func invalidateForReplacement() {
         frameCoordinator.invalidate()
         cursorBlinkTimer?.invalidate()
@@ -536,6 +540,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             return
         }
         frameCoordinator.didSubmit(frameToken, commandBuffer: commandBuffer)
+        submittedFramesForTesting = (submittedFramesForTesting.count &+ 1, CGSize(width: drawable.texture.width, height: drawable.texture.height))
         commandBuffer.addCompletedHandler { [weak self] buffer in
             self?.frameCoordinator.complete(
                 frameToken,

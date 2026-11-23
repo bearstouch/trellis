@@ -19,8 +19,8 @@ Trellis runs one copy per user. Opening it again brings the existing window forw
 
 ## First launch and the welcome tour
 
-!!! note "New in 1.2"
-    The welcome tour first shipped in 1.2.
+!!! note "Updated in 1.4"
+    The welcome tour first shipped in 1.2. In 1.4 it also shows the lock screen, Files on hosts, the Connect button, agent usage and prompt presets, and picks the appearance from the same tiles as Settings.
 
 The first time Trellis opens on a Mac with no saved workspace, a short eight-step tour appears over the window. It covers spaces, tabs and splits; sessions that keep running; starting a project; remote work; coding agents; the keyboard; and making Trellis your own.
 
@@ -30,7 +30,8 @@ The first time Trellis opens on a Mac with no saved workspace, a short eight-ste
 
 The last step offers the settings most people choose first:
 
-- **Appearance**: **System**, **Dark** or **Light**.
+- **Appearance**: **System**, **Light** or **Dark**, from tiles that preview each mode's themes.
+- **Shell prompt**: a ready-made prompt for new zsh, bash and fish shells, previewed beside it (see [Shell integration](features/shell-integration.md)). **Shell default** leaves your own prompt alone.
 - **Keep sessions running after quit**: on by default (see [Sessions keep running](#sessions-keep-running)).
 - The `trellis` command-line tool, with an **Install** button, when it can be installed.
 

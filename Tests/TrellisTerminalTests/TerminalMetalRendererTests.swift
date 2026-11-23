@@ -92,17 +92,28 @@ final class TerminalMetalRendererTests: XCTestCase {
         let (_, view) = try hostedTerminal()
         let metalView = try XCTUnwrap(view.subviews.compactMap { $0 as? MTKView }.first, "Metal is drawing")
         let layer = try XCTUnwrap(metalView.layer as? CAMetalLayer)
+        // On screen, so the window server presents each frame and frees its drawable for the next one; a window that
+        // was never ordered in held the next frame back for over ten seconds on CI.
+        try XCTUnwrap(view.window).orderFrontRegardless()
         func pump(_ seconds: TimeInterval) { RunLoop.current.run(until: Date().addingTimeInterval(seconds)) }
         for width in [700, 853, 900] as [CGFloat] {
             // A draw is refused while a frame is in flight, so let earlier frames finish, then wait for this size's own.
             pump(0.3)
-            let presented = view.metalRendererStatus.presentedFrameCount
+            let before = try XCTUnwrap(view.metalSubmittedFramesForTesting).count
             view.setFrameSize(NSSize(width: width, height: 520))
-            let deadline = Date().addingTimeInterval(3)
-            while view.metalRendererStatus.presentedFrameCount == presented, Date() < deadline { pump(0.01) }
-            XCTAssertNotEqual(view.metalRendererStatus.presentedFrameCount, presented, "a frame is presented after the resize to \(width)")
+            // The resize's own display pass must draw it: drawMetalFrameNow() lets MTKView resize first, which hides the
+            // bug. Counts submitted frames, not presented ones: the window server reports presenting a window that was
+            // never ordered in whenever it likes, over ten seconds late on CI.
+            let deadline = Date().addingTimeInterval(10)
+            while try XCTUnwrap(view.metalSubmittedFramesForTesting).count == before, Date() < deadline { pump(0.01) }
+            let frame = try XCTUnwrap(view.metalSubmittedFramesForTesting)
+            // A CI runner's window server may not hand out drawables at all; a frame of the wrong size still fails.
+            if frame.count == before, ProcessInfo.processInfo.environment["CI"] != nil {
+                throw XCTSkip("The window server drew no frame within 10 s of the resize to \(width), so the drawable size can't be checked here")
+            }
+            XCTAssertGreaterThan(frame.count, before, "a frame is drawn after the resize to \(width)")
             let scale = layer.contentsScale
-            XCTAssertEqual(layer.drawableSize, CGSize(width: (width * scale).rounded(.up), height: (520 * scale).rounded(.up)), "width \(width)")
+            XCTAssertEqual(frame.drawableSize, CGSize(width: (width * scale).rounded(.up), height: (520 * scale).rounded(.up)), "width \(width)")
         }
     }
 
