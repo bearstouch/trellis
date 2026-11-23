@@ -312,6 +312,19 @@ struct AppearanceSettingsView: View {
                         if model.reduceMotion { SettingsNote(text: L("Reduce Motion is on, so the screensaver shows a still frame.")) }
                     }
                 }
+                Section(L("Lock screen")) {
+                    Picker(selection: $draft.lockScreen) {
+                        ForEach(LockScreenStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    } label: {
+                        SettingsLabel(
+                            L("Lock screen"),
+                            help: L("Shown while Trellis is locked (Window → Lock Trellis). Sessions keep running; unlocking asks for Touch ID or your password."))
+                    }
+                    .accessibilityIdentifier("settings.lockScreen")
+                    LockScreenView(style: draft.lockScreen, palette: ScreensaverPalette(theme: model.effectiveTheme), animated: !model.reduceMotion)
+                        .frame(height: 200).clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
+                    if model.reduceMotion { SettingsNote(text: L("Reduce Motion is on, so the lock screen shows a still frame.")) }
+                }
                 if let notice = model.appearanceNotice { Section { SettingsNote(text: notice) } }
             }
             .settingsFormStyle()

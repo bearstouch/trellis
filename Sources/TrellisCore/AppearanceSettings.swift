@@ -80,12 +80,14 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var idleScreensaverDelaySeconds = IdleScreensaverDelay.defaultSeconds
     /// The prompt new integrated shells get (FR-SI10); `none` leaves the shell's own prompt alone.
     public var shellPrompt: ShellPromptPreset = .none
+    /// The animation on the lock screen (FR-LK05).
+    public var lockScreen: LockScreenStyle = .defaultStyle
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case chromeMode, fontName, fontSize, cursorShape, cursorBlinks, cursorBlinkSpeed, scrollbackLines, lightThemeID, darkThemeID
         case fontLigatures, boldAsBright, allowBoldFont, allowItalicFont, blinkingText, bellStyle, desktopNotifications
         case commandFinishedNotificationSeconds, gpuRendering, backgroundOpacity, backgroundBlur, language, clipboardWriteAccess
-        case idleScreensaver, idleScreensaverDelaySeconds, shellPrompt
+        case idleScreensaver, idleScreensaverDelaySeconds, shellPrompt, lockScreen
     }
     /// Settings saved before the text-rendering, GPU, bell and notification keys existed load with their defaults.
     public init(from decoder: Decoder) throws {
@@ -126,10 +128,12 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
             (try? c.decodeIfPresent(Int.self, forKey: .idleScreensaverDelaySeconds)) ?? IdleScreensaverDelay.defaultSeconds)
         // Settings saved before FR-SI10, or naming a preset this build doesn't have, leave the shell's prompt alone.
         shellPrompt = (try? c.decodeIfPresent(ShellPromptPreset.self, forKey: .shellPrompt)) ?? .none
+        // Settings saved before FR-LK05, or naming a style this build doesn't have, use the default lock screen.
+        lockScreen = (try? c.decodeIfPresent(LockScreenStyle.self, forKey: .lockScreen)) ?? .defaultStyle
     }
     /// True when terminals must be updated: everything except chrome mode, theme selection, notifications, blur, language,
-    /// clipboard access (read by each pane when a write arrives), the screensaver (drawn over the pane, not by it) and the
-    /// shell prompt (read when a shell starts).
+    /// clipboard access (read by each pane when a write arrives), the screensaver and lock screen (drawn over the panes, not
+    /// by them) and the shell prompt (read when a shell starts).
     public func terminalRenderingDiffers(from other: Self) -> Bool {
         var normalized = self
         (normalized.chromeMode, normalized.lightThemeID, normalized.darkThemeID) = (other.chromeMode, other.lightThemeID, other.darkThemeID)
@@ -140,6 +144,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         normalized.clipboardWriteAccess = other.clipboardWriteAccess
         (normalized.idleScreensaver, normalized.idleScreensaverDelaySeconds) = (other.idleScreensaver, other.idleScreensaverDelaySeconds)
         normalized.shellPrompt = other.shellPrompt
+        normalized.lockScreen = other.lockScreen
         return normalized != other
     }
     mutating func migrateLegacyThemeIDs() {

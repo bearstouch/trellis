@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Idle screensaver:** choose an animation in Settings → Appearance → **Screensaver**, and it covers the focused pane once that pane has had no input or output for the time you set in **Start after** (30 seconds to 1 hour, 5 minutes by default). There are five: **Digital Rain**, **Game of Life**, **Brian's Brain**, **Hex Spirals** and **ASCII Plasma**, all drawn in your theme's colours. Any key, click or pointer move brings the pane back, and the key isn't typed into it. It's off by default, shows a still frame with Reduce Motion, and never touches the session. See [Idle screensaver](docs/features/screensaver.md).
 
+- **Lock screen:** click the lock at the right end of the status bar or choose **Window → Lock Trellis** (⌃⌘L) to cover the whole Trellis window while people are around. Sessions keep running, keys never reach a terminal, and Touch ID or your Mac password unlocks it. Pick the animation in Settings → Appearance → **Lock screen**: **Vault Dial** (the default), **Redacted Shell**, **Cipher Wall**, **Ridgelines** or **Signal Lost**, all in your theme's colours. It's a privacy cover, not a replacement for the macOS lock screen. See [Lock screen](docs/features/lock-screen.md).
+
 - **Prompt presets:** choose a ready-made shell prompt in Settings → Sessions → **Prompt**: Minimal, Classic, Full path, Folder name, Git branch, Two lines, Exit status, Clock, Lambda or Bracketed. A preview shows it in your theme's colors. It applies to new zsh, bash and fish shells, including remote workspaces, without editing your dotfiles. **Shell default**, the default, leaves your prompt alone. See [Shell integration](docs/features/shell-integration.md).
 
 ### Changed

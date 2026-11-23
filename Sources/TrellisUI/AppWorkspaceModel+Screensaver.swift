@@ -38,7 +38,7 @@ extension AppWorkspaceModel {
 
     /// The focused pane of the active tab, while the window shows and nothing modal sits over the workspace.
     var screensaverEligiblePane: UUID? {
-        guard workspaceIsVisible(), !welcomeTourVisible, !commandPaletteVisible, editingTabID == nil, !isRestoring, recoveryMessage == nil,
+        guard !isLocked, workspaceIsVisible(), !welcomeTourVisible, !commandPaletteVisible, editingTabID == nil, !isRestoring, recoveryMessage == nil,
             let id = presentation.activePane?.id, terminals[id] != nil
         else { return nil }
         return id

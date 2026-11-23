@@ -81,8 +81,29 @@ final class ScreensaverPainter {
         return made
     }
 
+    /// The phosphor glow (FR-LK05): a soft shadow in the ink's own colour, only over dark backgrounds.
+    private func withGlow(_ on: Bool, _ ink: CGColor, palette: ScreensaverPalette, in ctx: CGContext, _ body: () -> Void) {
+        guard on, palette.isDark else { body(); return }
+        ctx.saveGState(); ctx.setShadow(offset: .zero, blur: 7, color: ink.copy(alpha: 0.75)); body(); ctx.restoreGState()
+    }
+
     /// Draws into an unflipped context of the given height; frames use top-left coordinates.
     func paint(_ frame: ScreensaverFrame, palette: ScreensaverPalette, in ctx: CGContext, height: CGFloat) {
+        // Paths keep their recorded order: a filled polygon may hide what an earlier path drew (Ridgelines).
+        let points = frame.pathPoints
+        for path in frame.paths {
+            let cg = CGMutablePath()
+            cg.addLines(between: points[path.points].map { CGPoint(x: $0.x, y: height - $0.y) })
+            let ink = color(palette[path.ink], level: level(path.alpha))
+            if let width = path.lineWidth {
+                ctx.setLineWidth(width); ctx.setLineJoin(.round); ctx.setLineCap(.round); ctx.setStrokeColor(ink)
+                withGlow(path.glow, ink, palette: palette, in: ctx) {
+                    ctx.addPath(cg); ctx.strokePath()
+                }
+            } else {
+                cg.closeSubpath(); ctx.setFillColor(ink); ctx.addPath(cg); ctx.fillPath()
+            }
+        }
         // Batches keep their arrays between frames, so a steady animation allocates nothing per frame.
         Self.clear(&fillBatches) { $0.removeAll(keepingCapacity: true) }
         for fill in frame.fills {
@@ -98,14 +119,27 @@ final class ScreensaverPainter {
         }
         for glyph in frame.glyphs {
             guard let entry = entry(glyph) else { continue }
-            let key = entry.font << 16 | glyph.ink.rawValue << 8 | level(glyph.alpha)
+            let key = entry.font << 16 | (glyph.glow ? 1 << 15 : 0) | glyph.ink.rawValue << 8 | level(glyph.alpha)
             glyphBatches[key, default: Batch()].glyphs.append(entry.glyph)
             glyphBatches[key, default: Batch()].points.append(CGPoint(x: glyph.x - entry.advance / 2, y: height - glyph.y - entry.ascent))
         }
         ctx.textMatrix = .identity
         for (key, batch) in glyphBatches where !batch.glyphs.isEmpty {
-            ctx.setFillColor(color(palette[ScreensaverPalette.Ink(rawValue: (key >> 8) & 0xFF)!], level: key & 0xFF))
-            CTFontDrawGlyphs(fonts[key >> 16], batch.glyphs, batch.points, batch.glyphs.count, ctx)
+            let ink = color(palette[ScreensaverPalette.Ink(rawValue: (key >> 8) & 0x3F)!], level: key & 0xFF)
+            ctx.setFillColor(ink)
+            withGlow(key & 1 << 15 != 0, ink, palette: palette, in: ctx) { CTFontDrawGlyphs(fonts[key >> 16], batch.glyphs, batch.points, batch.glyphs.count, ctx) }
+        }
+    }
+}
+
+/// What a screensaver canvas draws: an idle screensaver (FR-SS01) or a lock screen (FR-LK05).
+enum ScreensaverContent: Hashable {
+    case idle(IdleScreensaverStyle), lock(LockScreenStyle)
+    var isOff: Bool { self == .idle(.off) }
+    @MainActor func makeScene(size: CGSize, seed: UInt64) -> ScreensaverScene? {
+        switch self {
+        case .idle(let style): style.makeScene(size: size, seed: seed)
+        case .lock(let style): style.makeScene(size: size, seed: seed)
         }
     }
 }
@@ -115,7 +149,9 @@ final class ScreensaverPainter {
 @MainActor
 final class ScreensaverNSView: NSView {
     var onPointerMoved: (() -> Void)?
-    private var style = IdleScreensaverStyle.off
+    /// Set for the lock screen: a click asks to unlock, and no click or scroll reaches what lies beneath (FR-LK03).
+    var onMouseDown: (() -> Void)?
+    private var style = ScreensaverContent.idle(.off)
     private var palette: ScreensaverPalette?
     private var animated = true
     private var scene: ScreensaverScene?
@@ -127,7 +163,7 @@ final class ScreensaverNSView: NSView {
 
     override var isOpaque: Bool { true }
 
-    func configure(style: IdleScreensaverStyle, palette: ScreensaverPalette, animated: Bool) {
+    func configure(style: ScreensaverContent, palette: ScreensaverPalette, animated: Bool) {
         if style != self.style { self.style = style; scene = nil }
         if animated != self.animated { self.animated = animated; scene = nil }
         if palette != self.palette { self.palette = palette }
@@ -147,12 +183,17 @@ final class ScreensaverNSView: NSView {
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self))
     }
     override func mouseMoved(with event: NSEvent) { onPointerMoved?() }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { onMouseDown != nil }
+    override func mouseDown(with event: NSEvent) { if let onMouseDown { onMouseDown() } else { super.mouseDown(with: event) } }
+    override func rightMouseDown(with event: NSEvent) { if let onMouseDown { onMouseDown() } else { super.rightMouseDown(with: event) } }
+    override func otherMouseDown(with event: NSEvent) { if let onMouseDown { onMouseDown() } else { super.otherMouseDown(with: event) } }
+    override func scrollWheel(with event: NSEvent) { if onMouseDown == nil { super.scrollWheel(with: event) } }
     override func isAccessibilityElement() -> Bool { false }
 
     func stop() { timer?.invalidate(); timer = nil; scene = nil }
 
     private func syncTimer() {
-        let run = window != nil && animated && style != .off
+        let run = window != nil && animated && !style.isOff
         if run, timer == nil {
             lastTick = 0
             let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.tick() } }
@@ -197,18 +238,25 @@ final class ScreensaverNSView: NSView {
 }
 
 struct ScreensaverCanvas: NSViewRepresentable {
-    let style: IdleScreensaverStyle
+    let content: ScreensaverContent
     let palette: ScreensaverPalette
     let animated: Bool
     var onPointerMoved: (() -> Void)?
+    var onMouseDown: (() -> Void)?
+    init(style: IdleScreensaverStyle, palette: ScreensaverPalette, animated: Bool, onPointerMoved: (() -> Void)? = nil) {
+        content = .idle(style); self.palette = palette; self.animated = animated; self.onPointerMoved = onPointerMoved
+    }
+    init(lock: LockScreenStyle, palette: ScreensaverPalette, animated: Bool, onMouseDown: (() -> Void)? = nil) {
+        content = .lock(lock); self.palette = palette; self.animated = animated; self.onMouseDown = onMouseDown
+    }
     func makeNSView(context: Context) -> ScreensaverNSView {
         let view = ScreensaverNSView()
         updateNSView(view, context: context)
         return view
     }
     func updateNSView(_ view: ScreensaverNSView, context: Context) {
-        view.onPointerMoved = onPointerMoved
-        view.configure(style: style, palette: palette, animated: animated)
+        view.onPointerMoved = onPointerMoved; view.onMouseDown = onMouseDown
+        view.configure(style: content, palette: palette, animated: animated)
     }
     static func dismantleNSView(_ view: ScreensaverNSView, coordinator: ()) { view.stop() }
 }

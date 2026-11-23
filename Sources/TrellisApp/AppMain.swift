@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var settingsCloseObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
     private var screensaverMonitor: Any?
+    /// Auxiliary windows hidden while the workspace is locked, shown again after unlocking (FR-LK02).
+    private var hiddenWhileLocked: [NSWindow] = []
+    private weak var responderBeforeLock: NSView?
     private var updater: SparkleUpdater?
     private var updates: UpdateSettingsModel?
     private var cliInstall: CLIInstallController?
@@ -72,13 +75,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         model.workspaceIsFrontmost = { [weak self] in NSApp.isActive && self?.window?.isKeyWindow == true }
         model.workspaceIsVisible = { [weak self] in self?.window?.occlusionState.contains(.visible) == true }
+        // FR-LK: the same Touch ID / password gate saved host passwords use. Checked once; a Mac without one can't lock.
+        model.lockGate = LocalAuthenticationGate()
+        let canAuthenticate = LocalAuthenticationGate.isAvailable
+        model.lockAvailable = { canAuthenticate }
+        model.onLockChanged = { [weak self] locked in self?.workspaceLockChanged(locked) }
         // FR-SS03: any key, click or scroll in the app restarts the idle countdown and dismisses the screensaver; the key that
         // wakes the workspace window is not typed into the pane.
-        screensaverMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) {
+        screensaverMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .mouseMoved]) {
             [weak self] event in
             let swallow = MainActor.assumeIsolated {
                 guard let self else { return false }
-                return self.model.noteUserEvent(keyInWorkspaceWindow: event.type == .keyDown && event.windowNumber == self.window?.windowNumber)
+                let inWorkspace = event.windowNumber == self.window?.windowNumber, keyInWorkspace = event.type == .keyDown && inWorkspace
+                // FR-LK03, FR-LK04: while locked no key reaches a pane or a menu shortcut; it asks to unlock instead. Pointer
+                // motion never reaches a pane either (a TUI's mouse reporting, link hover): panes track it under the lock screen.
+                if self.model.isLocked {
+                    if keyInWorkspace { self.model.requestUnlock() }
+                    return keyInWorkspace || (event.type == .mouseMoved && inWorkspace)
+                }
+                if event.type == .mouseMoved { return false }
+                return self.model.noteUserEvent(keyInWorkspaceWindow: keyInWorkspace)
             }
             return swallow ? nil : event
         }
@@ -349,7 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let windows = submenu(
             L("Window"),
             [
-                nil, .previousSpace, .nextSpace, .previousTab, .nextTab, nil,
+                nil, .previousSpace, .nextSpace, .previousTab, .nextTab, nil, .lockWorkspace, nil,
                 .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectTab9
             ])
         windows.submenu?.insertItem(withTitle: L("Enter Full Screen"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "", at: 0)
@@ -430,6 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .previousSpace: selectRelativeSpace(-1)
         case .nextTab: Task { await model.selectAdjacentTab(1) }
         case .previousTab: Task { await model.selectAdjacentTab(-1) }
+        case .lockWorkspace: model.lockWorkspace()
         default: break
         }
     }
@@ -458,6 +475,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func validateShortcut(_ action: ShortcutAction) -> Bool {
         let presentation = model.presentation
+        // FR-LK03: nothing changes the workspace behind the lock screen.
+        if model.isLocked { return false }
+        // FR-LK01: a sheet on the workspace window would show above the lock screen.
+        if action == .lockWorkspace { return model.lockUnavailableReason == nil && window?.attachedSheet == nil }
         // FR-ON04: the tour is modal, with no shortcut of its own. ⌘W can still close an auxiliary window such as Settings.
         if model.welcomeTourVisible { return [.closePane, .closeTab].contains(action) && NSApp.keyWindow != nil && NSApp.keyWindow !== window }
         // The palette is modal: menu shortcuts mustn't change the workspace (or steal its field's focus) behind it.
@@ -507,6 +528,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        // FR-LK02, FR-LK03: Settings, the tour, diagnostics, import/export and the CLI sheet stay closed behind the lock.
+        if model.isLocked, menuItem.action != #selector(performShortcut(_:)), menuItem.action != #selector(aboutAction) { return false }
         if menuItem.action == #selector(performShortcut(_:)) {
             guard let raw = menuItem.representedObject as? String, let action = ShortcutAction(rawValue: raw) else { return false }
             if action == .toggleSidebar { menuItem.title = model.sidebarCollapsed ? L("Show Sidebar") : L("Hide Sidebar") }
@@ -519,6 +542,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return NSApp.target(forAction: NSSelectorFromString("selectAllTerminalText:")) != nil
             || NSApp.target(forAction: #selector(NSText.selectAll(_:))) != nil
     }
+    /// FR-LK02, FR-LK03: locking hides the other Trellis windows and takes the keyboard from the terminal; unlocking brings
+    /// both back.
+    private func workspaceLockChanged(_ locked: Bool) {
+        if locked {
+            hiddenWhileLocked = [settingsWindow, hostsWindow, projectsWindow].compactMap { $0 }.filter(\.isVisible)
+            for other in hiddenWhileLocked { other.orderOut(nil) }
+            responderBeforeLock = window?.firstResponder as? NSView
+            window?.makeKeyAndOrderFront(nil)
+            window?.makeFirstResponder(nil)
+        } else {
+            for other in hiddenWhileLocked { other.orderFront(nil) }
+            hiddenWhileLocked = []
+            window?.makeKeyAndOrderFront(nil)
+            // The keyboard goes back where it was (an editor, the scratchpad), or to the terminal when that view is gone.
+            if let previous = responderBeforeLock, previous.window === window, !previous.isHiddenOrHasHiddenAncestor {
+                window?.makeFirstResponder(previous)
+            } else if let terminal = model.activeTerminal {
+                window?.makeFirstResponder(terminal.view)
+            }
+            responderBeforeLock = nil
+        }
+    }
+
     private func selectRelativeSpace(_ offset: Int) {
         let spaces = model.snapshot.spaces
         guard let id = model.snapshot.activeSpaceID, let index = spaces.firstIndex(where: { $0.id == id }), !spaces.isEmpty else { return }

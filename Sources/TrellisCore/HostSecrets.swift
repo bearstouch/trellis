@@ -65,6 +65,8 @@ public protocol UserPresenceGate: Sendable {
 /// ad-hoc builds carry no keychain-access-group entitlement for `SecAccessControl`.
 public struct LocalAuthenticationGate: UserPresenceGate {
     public init() {}
+    /// Whether this Mac can ask at all (it has Touch ID or an account password); checked before offering the lock (FR-LK01).
+    public static var isAvailable: Bool { LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) }
     public func authorize(reason: String) async -> Bool {
         (try? await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false
     }

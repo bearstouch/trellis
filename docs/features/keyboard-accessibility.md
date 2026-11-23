@@ -35,6 +35,7 @@ The defaults are defined in `ShortcutAction.defaultChord` (`Sources/TrellisCore/
 | Show / hide [agents](agents.md) in the right sidebar | ⌥⌘A |
 | Open / close the [command palette](command-palette.md) | ⇧⌘P |
 | [Jump to Directory…](directory-jump.md) | ⌘J |
+| [Lock Trellis](lock-screen.md) | ⌃⌘L |
 | Rename tab, rename space, delete space, show hosts | Unbound by default |
 
 These standard items can't be rebound: Settings (⌘,), Hide (⌘H), Quit (⌘Q), Undo and Redo, Cut, Copy, Paste, Select All, and Minimize (⌘M).

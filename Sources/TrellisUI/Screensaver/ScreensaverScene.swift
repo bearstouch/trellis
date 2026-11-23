@@ -4,13 +4,17 @@ import TrellisCore
 
 /// The colors a screensaver draws with, taken from the pane's theme so every animation matches it (FR-SS01).
 struct ScreensaverPalette: Equatable {
-    enum Ink: Int, CaseIterable { case foreground, muted, green, bright, cyan, blue, magenta, yellow, border }
+    enum Ink: Int, CaseIterable { case foreground, muted, green, bright, cyan, blue, magenta, yellow, border, accent, background }
     let background: UInt32
+    /// A dark background gets the phosphor glow; a light one draws plain ink (FR-LK05).
+    let isDark: Bool
     private let inks: [UInt32]
     init(theme: ResolvedTheme) {
         let t = theme.terminal, ansi = t.ansi.count >= 16 ? t.ansi : TerminalPalette.builtIn.ansi
         background = t.background
-        inks = [t.foreground, theme[.mutedForeground].rgb, ansi[2], ansi[10], ansi[6], ansi[4], ansi[5], ansi[3], theme[.border].rgb]
+        let bg = t.background, luminance = 0.2126 * Double((bg >> 16) & 0xFF) + 0.7152 * Double((bg >> 8) & 0xFF) + 0.0722 * Double(bg & 0xFF)
+        isDark = luminance < 128
+        inks = [t.foreground, theme[.mutedForeground].rgb, ansi[2], ansi[10], ansi[6], ansi[4], ansi[5], ansi[3], theme[.border].rgb, theme[.accent].rgb, t.background]
     }
     subscript(_ ink: Ink) -> UInt32 { inks[ink.rawValue] }
 }
@@ -40,19 +44,43 @@ final class ScreensaverFrame {
         var x: CGFloat, y: CGFloat
         var size: CGFloat, bold: Bool
         var ink: ScreensaverPalette.Ink, alpha: Float
+        var glow = false
     }
     struct Fill {
         var rect: CGRect
         var ink: ScreensaverPalette.Ink, alpha: Float
     }
+    /// A polyline (stroked) or polygon (filled), drawn before fills and glyphs, in the order recorded.
+    struct Path {
+        var points: Range<Int>
+        var ink: ScreensaverPalette.Ink, alpha: Float
+        /// Nil fills the closed polygon.
+        var lineWidth: CGFloat?
+        var glow: Bool
+    }
     private(set) var glyphs: [Glyph] = []
     private(set) var fills: [Fill] = []
+    private(set) var paths: [Path] = []
+    private(set) var pathPoints: [CGPoint] = []
+    private var pathStart = 0
     /// The advance of one character at size 1; the painter sets it from the font, tests leave the default.
     var advancePerPoint: CGFloat = 0.6
-    func reset() { glyphs.removeAll(keepingCapacity: true); fills.removeAll(keepingCapacity: true) }
-    func glyph(_ code: UniChar, x: CGFloat, y: CGFloat, size: CGFloat, ink: ScreensaverPalette.Ink, alpha: Double = 1, bold: Bool = false) {
+    func reset() {
+        glyphs.removeAll(keepingCapacity: true); fills.removeAll(keepingCapacity: true)
+        paths.removeAll(keepingCapacity: true); pathPoints.removeAll(keepingCapacity: true); pathStart = 0
+    }
+    func glyph(_ code: UniChar, x: CGFloat, y: CGFloat, size: CGFloat, ink: ScreensaverPalette.Ink, alpha: Double = 1, bold: Bool = false, glow: Bool = false) {
         guard alpha > 0.01 else { return }
-        glyphs.append(Glyph(code: code, x: x, y: y, size: size, bold: bold, ink: ink, alpha: Float(min(1, alpha))))
+        glyphs.append(Glyph(code: code, x: x, y: y, size: size, bold: bold, ink: ink, alpha: Float(min(1, alpha)), glow: glow))
+    }
+    /// Adds a point to the path being built; `strokePath` or `fillPath` finishes it.
+    func addPoint(_ x: CGFloat, _ y: CGFloat) { pathPoints.append(CGPoint(x: x, y: y)) }
+    func strokePath(ink: ScreensaverPalette.Ink, alpha: Double = 1, lineWidth: CGFloat = 1, glow: Bool = false) { endPath(ink: ink, alpha: alpha, lineWidth: lineWidth, glow: glow) }
+    func fillPath(ink: ScreensaverPalette.Ink, alpha: Double = 1) { endPath(ink: ink, alpha: alpha, lineWidth: nil, glow: false) }
+    private func endPath(ink: ScreensaverPalette.Ink, alpha: Double, lineWidth: CGFloat?, glow: Bool) {
+        defer { pathStart = pathPoints.count }
+        guard alpha > 0.01, pathPoints.count - pathStart >= 2 else { pathPoints.removeSubrange(pathStart...); return }
+        paths.append(Path(points: pathStart..<pathPoints.count, ink: ink, alpha: Float(min(1, alpha)), lineWidth: lineWidth, glow: glow))
     }
     /// A left-aligned run of text; returns where it ends.
     @discardableResult
