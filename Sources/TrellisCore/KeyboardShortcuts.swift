@@ -65,6 +65,8 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
     case focusLeft, focusRight, focusUp, focusDown
     case resizeLeft, resizeRight, resizeUp, resizeDown
     case nextSpace = "nextWindow", previousSpace = "previousWindow", nextTab, previousTab
+    /// FR-LK01: covers the workspace window until the user authenticates.
+    case lockWorkspace
     case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectTab9
 
     public var title: String {
@@ -111,6 +113,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .previousSpace: L("Previous Space")
         case .nextTab: L("Next Tab")
         case .previousTab: L("Previous Tab")
+        case .lockWorkspace: L("Lock Trellis")
         default: L("Select Tab %d", tabIndex! + 1)
         }
     }
@@ -173,6 +176,7 @@ public enum ShortcutAction: String, Codable, CaseIterable, Sendable {
         case .previousSpace: KeyChord("[", [.command, .control])
         case .nextTab: KeyChord("]", [.command, .shift])
         case .previousTab: KeyChord("[", [.command, .shift])
+        case .lockWorkspace: KeyChord("l", [.command, .control])
         case .renameTab, .renameSpace, .deleteSpace, .showHosts: nil
         default: KeyChord(String(tabIndex! + 1))
         }
@@ -284,7 +288,7 @@ public struct KeyboardSettings: Equatable, Sendable, Codable {
 
     /// Actions whose default chord shipped after saved maps already existed.
     static let laterDefaults: [ShortcutAction] = [
-        .previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .showProjects, .toggleScratchpad, .commandPalette, .jumpToDirectory, .toggleTasks, .toggleAgents, .toggleFiles, .toggleChanges
+        .previousPrompt, .nextPrompt, .toggleSidebar, .clearPane, .showProjects, .toggleScratchpad, .commandPalette, .jumpToDirectory, .toggleTasks, .toggleAgents, .toggleFiles, .toggleChanges, .lockWorkspace
     ]
 
     public init(from decoder: Decoder) throws {

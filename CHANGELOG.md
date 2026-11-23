@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-23
+
+The stable 1.4 release. Coming from 1.3.0, you also get everything listed under 1.4.0-beta.1: CSV and TSV table previews, dragging files in and out of Files, Files on remote workspaces, OpenCode as a built-in agent, subscription usage in the Agents view, Markdown previews from the terminal, redesigned Settings, Hosts and Projects windows, cursor blink speeds, and the fix for the editor freeze with always-visible scroll bars.
+
+### Added
+
+- **Idle screensaver:** choose an animation in Settings → Appearance → **Screensaver**, and it covers the focused pane once that pane has had no input or output for the time you set in **Start after** (30 seconds to 1 hour, 5 minutes by default). There are five: **Digital Rain**, **Game of Life**, **Brian's Brain**, **Hex Spirals** and **ASCII Plasma**, all drawn in your theme's colours. Any key, click or pointer move brings the pane back, and the key isn't typed into it. It's off by default, shows a still frame with Reduce Motion, and never touches the session. See [Idle screensaver](docs/features/screensaver.md).
+
+- **Lock screen:** click the lock at the right end of the status bar or choose **Window → Lock Trellis** (⌃⌘L) to cover the whole Trellis window while people are around. Sessions keep running, keys never reach a terminal, and Touch ID or your Mac password unlocks it. Pick the animation in Settings → Appearance → **Lock screen**: **Vault Dial** (the default), **Redacted Shell**, **Cipher Wall**, **Ridgelines** or **Signal Lost**, all in your theme's colours. It's a privacy cover, not a replacement for the macOS lock screen. See [Lock screen](docs/features/lock-screen.md).
+
+- **Prompt presets:** choose a ready-made shell prompt in Settings → Sessions → **Prompt**: Minimal, Classic, Full path, Folder name, Git branch, Two lines, Exit status, Clock, Lambda or Bracketed. A preview shows it in your theme's colors. It applies to new zsh, bash and fish shells, including remote workspaces, without editing your dotfiles. **Shell default**, the default, leaves your prompt alone. See [Shell integration](docs/features/shell-integration.md).
+
+### Changed
+
+- **Running agents name their machine:** each row in the Agents view's **Running** list now says where the agent runs, **this Mac** or the host's name for an agent in a remote workspace, with the same symbol as the pane header and a host that isn't connected said in words. See [Agents](docs/features/agents.md).
+- **Welcome tour updated for 1.4:** the last step picks the appearance from the same tiles as Settings and adds a **Shell prompt** choice with a live preview. The steps now cover the lock screen (⌃⌘L), the Hosts **Connect** button, Files on remote workspaces with drag and drop, agent subscription usage, Markdown and CSV previews, and the Changes view in the dock. Replay it from **Help → Welcome Tour**. See [Welcome tour](docs/features/welcome-tour.md).
+- **`$SHELL` matches the shell you picked:** a pane started with the shell chosen in Settings → Sessions now has `SHELL` set to that shell, so `echo $SHELL` and programs that open a subshell (vim, tmux) use it, not your account's login shell. bash no longer prints macOS's "The default interactive shell is now zsh" notice.
+- **Connect button in Hosts:** the Hosts window now has a **Connect** button beside the host's title, with **Connect in New Tab**, **Connect in New Space** and **Open Remote Workspace** in its menu, so you no longer scroll past the host's details to connect. The **Connect** section at the bottom is gone. See [SSH hosts](docs/features/ssh-hosts.md).
+
 ## [1.4.0-beta.1] - 2026-11-20
 
 The first 1.4 beta.
@@ -501,7 +520,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.4.0-beta.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/bearstouch/trellis/compare/v1.4.0-beta.1...v1.4.0
 [1.4.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.3.0...v1.4.0-beta.1
 [1.3.0]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...v1.3.0
 [1.3.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.2...v1.3.0-beta.3

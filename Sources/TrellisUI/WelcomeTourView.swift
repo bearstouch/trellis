@@ -201,25 +201,28 @@ private struct WelcomeTourCopy: View {
             switch step {
             case .welcome:
                 row("slider.horizontal.3", L("Set up the essentials"), L("Choose an appearance and how sessions behave at quit."))
-                row("sparkles", L("See what makes it different"), L("Sessions that outlive the app, coding agents and remote workspaces."))
+                row("sparkles", L("See what makes it different"), L("Sessions that outlive the app, coding agents, remote workspaces and a lock for when you step away."))
                 row("clock", L("About a minute"), L("Skip whenever you like. Replay it from the Help menu or the command palette."))
             case .workspace:
                 row(chord: .newSpace, "macwindow", L("Spaces in the sidebar"), L("Rename and reorder them. Sessions keep running when you switch away."))
                 row(chord: .newTab, "plus.square", L("Tabs in each space"), L("Double-click a tab to name it. Each tab keeps its own layout."))
                 row(chord: .splitLeftRight, "rectangle.split.2x1", L("Splits inside a tab"), splitDetail)
-                row("sidebar.right", L("A sidebar on the right"), L("The dock on the window’s edge opens files, the scratchpad, tasks and agents beside your panes."))
+                row("sidebar.right", L("A sidebar on the right"), L("The dock on the window’s edge opens files, git changes, the scratchpad, tasks and agents beside your panes."))
             case .sessions:
                 row("waveform.path.ecg", L("On by default"), L("Prefer sessions to end at quit? You can choose that at the end of this tour."))
                 row("checkmark.shield", L("Nothing replays by itself"), L("Sessions that ended come back stopped, and typed commands are never rerun."))
+                row(chord: .lockWorkspace, "lock", L("Lock it when you step away"), L("Covers the window while your sessions keep running. Touch ID or your Mac password unlocks it."))
             case .projects:
                 row(chord: .showProjects, "folder", L("Your project library"), L("Open it from the sidebar, above Hosts and Settings."))
                 row("desktopcomputer", L("Launch it anywhere"), L("Choose This Mac or a saved host each time. Trellis remembers the last folder."))
             case .remote:
-                row("server.rack", L("Saved hosts"), L("Connect in a new tab, a new space or a split. Uses your own ssh and config."))
+                row("server.rack", L("Saved hosts"), L("Connect opens a host in a new tab, a new space or a remote workspace. Uses your own ssh and config."))
                 row("arrow.clockwise", L("Remote workspaces"), L("Trellis reconnects by itself when it can and shows what you missed, without repeating output."))
+                row("folder", L("Files on the host"), L("Browse the project on the host in Files, and drag files between it and Finder."))
             case .agents:
                 row("bell", L("Know when you’re needed"), L("Tabs say Needs you, Done or Error, and the dock counts agents waiting on you, so you can leave them to work."))
                 row("play", L("Pick up where you left off"), L("Stopped agent panes offer to resume the last conversation."))
+                row("gauge.with.dots.needle.33percent", L("Keep an eye on your limits"), L("Turn on usage in Settings → Agents to see your Claude Code or Codex plan’s session and weekly limits."))
             case .keyboard:
                 row(chord: .commandPalette, "command", L("Command palette"), L("Search actions, spaces, hosts, projects and themes in one list."))
                 row(chord: .jumpToDirectory, "arrow.turn.down.right", L("Jump to a directory"), L("Return to folders you visit often, on this Mac or a host."))
@@ -260,13 +263,35 @@ private struct WelcomeTourCopy: View {
         }
     }
 
+    /// The chosen theme for a slot, or the built-in one while the library loads, as Settings shows it.
+    private func theme(_ id: String, _ slot: ThemeAppearance) -> ResolvedTheme {
+        model.availableThemes(for: slot).first { $0.id == id } ?? .builtIn(slot)
+    }
+
+    private var promptDetail: String {
+        guard model.shellIntegrationEnabled else { return L("Needs shell integration, which is turned off in Settings → Sessions.") }
+        return L("A ready-made prompt for new zsh, bash and fish shells. Your dotfiles aren’t edited.")
+    }
+
     @ViewBuilder private var setup: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(L("Appearance")).font(.system(size: 13, weight: .semibold)).foregroundStyle(model.themeColor(.foreground))
-            SegmentedPicker(L("Appearance"), selection: model.appearance.chromeMode, options: [(.system, L("System")), (.dark, L("Dark")), (.light, L("Light"))]) { [weak model] in
-                model?.setChromeModeFromWelcomeTour($0)
+            // The Settings tiles (FR-ON06), showing the light and dark themes each mode uses.
+            AppearanceModePicker(selection: model.appearance.chromeMode, light: theme(model.appearance.lightThemeID, .light), dark: theme(model.appearance.darkThemeID, .dark)) {
+                [weak model] in model?.setChromeModeFromWelcomeTour($0)
             }
-            .labelsHidden().frame(maxWidth: .infinity).accessibilityIdentifier("welcomeTour.appearance")
+            .foregroundStyle(model.themeColor(.foreground)).accessibilityIdentifier("welcomeTour.appearance")
+        }
+        Divider().overlay(model.separatorOverlay)
+        HStack(spacing: 16) {
+            text(L("Shell prompt"), promptDetail)
+            Spacer(minLength: 0)
+            Picker(L("Shell prompt"), selection: Binding(get: { model.appearance.shellPrompt }, set: { model.setShellPromptFromWelcomeTour($0) })) {
+                Text(ShellPromptPreset.none.displayName).tag(ShellPromptPreset.none)
+                Divider()
+                ForEach(ShellPromptPreset.allCases.filter { $0 != .none }, id: \.self) { Text($0.displayName).tag($0) }
+            }
+            .labelsHidden().fixedSize().disabled(!model.shellIntegrationEnabled).accessibilityIdentifier("welcomeTour.shellPrompt")
         }
         if model.welcomeTourCLIStatus != .unavailable {
             Divider().overlay(model.separatorOverlay)
@@ -518,22 +543,30 @@ private struct WelcomeTourStage: View {
         }
     }
 
-    private func hostRow(_ name: String, _ address: String, _ state: String, _ color: Color) -> some View {
-        HStack {
+    /// A host with its link state; the selected one has the Hosts window's Connect menu button.
+    private func hostRow(_ name: String, _ address: String, _ state: String, _ color: Color, connect: Bool = false) -> some View {
+        HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(name).fontWeight(.semibold).foregroundStyle(fg)
                 Text(address).font(mono(10.5)).foregroundStyle(muted)
             }
             Spacer()
             Text(state).font(.system(size: 11, weight: .semibold)).foregroundStyle(color)
+            if connect {
+                HStack(spacing: 4) {
+                    Text(L("Connect")); Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+                .font(.system(size: 11, weight: .semibold)).foregroundStyle(model.accentForeground).padding(.horizontal, 9).padding(.vertical, 5)
+                .background(model.themeColor(.accent), in: RoundedRectangle(cornerRadius: 6))
+            }
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
+        .padding(.horizontal, 14).padding(.vertical, 12).background(connect ? model.sidebarSelectionBackground : .clear)
     }
 
     private var remote: some View {
         VStack(spacing: 20) {
             list(L("Hosts")) {
-                hostRow("build-box", "dev@build.internal", L("✓ Connected"), green)
+                hostRow("build-box", "dev@build.internal", L("✓ Connected"), green, connect: true)
                 hostRow("staging", "deploy@staging.internal", L("↻ Reconnecting"), yellow)
                 hostRow("nas", "admin@nas.local", L("– Offline"), muted)
             }
@@ -569,6 +602,21 @@ private struct WelcomeTourStage: View {
 
     private func launchRow(_ name: String) -> some View {
         agentRow(name) { Text(L("Open")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(model.themeColor(.accent)) }
+    }
+
+    /// A plan limit as the Agents view's Usage section draws it (FR-AG22): a label, the percentage and an accent bar, as below 80%.
+    private func usageBar(_ label: String, _ fraction: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label).foregroundStyle(fg)
+                Spacer(minLength: 0)
+                Text(verbatim: "\(Int(fraction * 100))%").monospacedDigit().foregroundStyle(muted)
+            }
+            .font(.system(size: 9))
+            Capsule().fill(border.opacity(0.6)).frame(height: 3)
+                .overlay(alignment: .leading) { GeometryReader { Capsule().fill(model.themeColor(.accent)).frame(width: $0.size.width * fraction) } }
+        }
+        .padding(.vertical, 2)
     }
 
     /// A tab bar over the panes and the Agents view, with the dock on the right edge (FR-SB01–FR-SB03, FR-SB05).
@@ -609,6 +657,10 @@ private struct WelcomeTourStage: View {
                         Text(L("Running")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted)
                         agentRow("checkout", "api · Claude Code") { capsule(L("! Needs you"), yellow) }
                         agentRow("docs", "web · pi") { capsule(L("✓ Done"), green) }
+                        Rectangle().fill(border.opacity(0.6)).frame(height: 0.5).padding(.vertical, 6)
+                        Text(L("Usage")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(muted).padding(.bottom, 3)
+                        usageBar(L("Session"), 0.42)
+                        usageBar(L("Weekly"), 0.68)
                         Spacer(minLength: 0)
                     }
                     .padding(10).frame(width: 150).frame(maxHeight: .infinity, alignment: .top)
@@ -617,7 +669,7 @@ private struct WelcomeTourStage: View {
             }
             dock(shown: .agents, needsYou: 1)
         }
-        .frame(width: 374, height: 320)
+        .frame(width: 374, height: 360)
         .background(card, in: RoundedRectangle(cornerRadius: 10)).clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(border, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
@@ -654,18 +706,32 @@ private struct WelcomeTourStage: View {
         .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
     }
 
+    /// Shows the prompt preset chosen beside it, live, as Settings' preview draws it (FR-SI10).
     private var setup: some View {
         VStack(spacing: 28) {
             appIcon
-            terminal("zsh", width: 346, height: 200, size: 11.5) {
-                prompt("git status")
-                output("On branch main", green)
-                HStack(spacing: 0) {
-                    Text("modified: ").foregroundStyle(yellow); Text("src/app.ts").foregroundStyle(red)
+            if model.shellIntegrationEnabled, model.appearance.shellPrompt != .none {
+                VStack(spacing: 0) {
+                    Text("zsh").font(mono(11.5)).foregroundStyle(dim).frame(maxWidth: .infinity).frame(height: 26)
+                    Rectangle().fill(border.opacity(0.6)).frame(height: 0.5)
+                    ShellPromptPreview(preset: model.appearance.shellPrompt, theme: model.effectiveTheme, appearance: model.appearance)
+                        .padding(2).frame(maxHeight: .infinity, alignment: .top)
                 }
-                HStack(spacing: 0) {
-                    Text("❯ ").foregroundStyle(cyan)
-                    Rectangle().fill(termText).frame(width: 7, height: 14)
+                .frame(width: 346, height: 200)
+                .background(model.terminalBackground, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(border, lineWidth: 0.5))
+                .compositingGroup().shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+            } else {
+                terminal("zsh", width: 346, height: 200, size: 11.5) {
+                    prompt("git status")
+                    output("On branch main", green)
+                    HStack(spacing: 0) {
+                        Text("modified: ").foregroundStyle(yellow); Text("src/app.ts").foregroundStyle(red)
+                    }
+                    HStack(spacing: 0) {
+                        Text("❯ ").foregroundStyle(cyan)
+                        Rectangle().fill(termText).frame(width: 7, height: 14)
+                    }
                 }
             }
         }

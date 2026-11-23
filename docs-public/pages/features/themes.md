@@ -34,6 +34,44 @@ The font isn't part of a theme. Choose it with **Terminal font** on the same pag
 
 Switching or previewing a theme keeps your opacity.
 
+## Idle screensaver
+
+!!! note "New in 1.4"
+    The idle screensaver is new in 1.4.
+
+**Settings → Appearance → Screensaver** covers the focused pane with an animation when it has been idle: no typing, no output and no clicks for the time set in **Start after** (30 seconds to 1 hour, 5 minutes by default). It's **Off** by default. Choose from:
+
+- **Digital Rain**: falling columns of characters that spell out a message as they cross the middle.
+- **Game of Life**: Conway's cellular automaton, with gliders.
+- **Brian's Brain**: sparks that fire, fade and race across the pane.
+- **Hex Spirals**: hex digits that organize themselves into rotating spirals.
+- **ASCII Plasma**: flowing waves drawn with text characters.
+
+The settings page shows a preview of the one you pick. Each uses your theme's colors.
+
+Press any key, click, scroll or move the pointer to bring the pane back; the key you press isn't typed into the terminal. Your session keeps running underneath, and new output in the pane also brings it back. Output in other panes doesn't. With **Reduce Motion** on, the screensaver shows a still picture instead of moving.
+
+## Lock screen
+
+!!! note "New in 1.4"
+    The lock screen is new in 1.4.
+
+Click the lock at the right end of the status bar (the bar along the bottom of the window), or choose **Window → Lock Trellis** (<kbd>⌃</kbd><kbd>⌘</kbd><kbd>L</kbd>), to hide the whole Trellis window behind an animation when someone might look at your screen. Your sessions keep running underneath. The lock screen shows the time and how many sessions are running, and nothing else from your workspace. While it's locked, keys you press never reach a terminal, and the Settings, Hosts and Projects windows are hidden.
+
+To get back in, click or press any key, then use Touch ID or your Mac password.
+
+Choose the animation in **Settings → Appearance → Lock screen**. Each one uses your theme's colors, with a soft glow and scanlines in dark themes:
+
+- **Vault Dial** (the default): rings of hex digits that turn like a combination lock around the clock.
+- **Redacted Shell**: a shell that keeps typing, with every word blacked out.
+- **Cipher Wall**: a wall of changing hex digits whose brighter cells spell LOCKED.
+- **Ridgelines**: stacked signal lines rising slowly.
+- **Signal Lost**: dim static with a rolling bar, like a monitor with no input.
+
+With **Reduce Motion** on, the lock screen shows a still picture.
+
+The lock screen keeps people from reading your terminals at a glance. It doesn't replace the macOS lock screen (<kbd>⌃</kbd><kbd>⌘</kbd><kbd>Q</kbd>): someone at your Mac can still quit Trellis, and when it opens again it isn't locked.
+
 ## Manage themes
 
 **Settings → Themes** lists every theme under **Installed theme**. For the selected theme you can:

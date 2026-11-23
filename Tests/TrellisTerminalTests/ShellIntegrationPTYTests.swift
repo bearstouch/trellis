@@ -14,7 +14,9 @@ final class ShellIntegrationPTYTests: XCTestCase {
     }
 
     @MainActor
-    private func launch(_ executable: String, extraEnvironment: [String: String] = [:], files: [String: String] = [:]) async throws -> Shell {
+    private func launch(
+        _ executable: String, extraEnvironment: [String: String] = [:], files: [String: String] = [:], promptPreset: ShellPromptPreset = .none
+    ) async throws -> Shell {
         _ = NSApplication.shared
         guard FileManager.default.isExecutableFile(atPath: executable), let kind = ShellIntegrationKind(executable: executable) else {
             throw XCTSkip("\(executable) is not installed")
@@ -33,13 +35,17 @@ final class ShellIntegrationPTYTests: XCTestCase {
         try "export USER_BASH_PROFILE=1\nexport PS1='$ '\n".write(to: home.appendingPathComponent(".bash_profile"), atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".config/fish"), withIntermediateDirectories: true)
         try "set -gx USER_FISH_CONFIG 1\n".write(to: home.appendingPathComponent(".config/fish/config.fish"), atomically: true, encoding: .utf8)
-        for (name, text) in files { try text.write(to: home.appendingPathComponent(name), atomically: true, encoding: .utf8) }
+        for (name, text) in files {
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(name).deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: home.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
         let environment = ["HOME": home.path, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin", "LANG": "en_US.UTF-8"].merging(extraEnvironment) { $1 }
         let nonce = ShellIntegrationInjection.makeNonce()
         let injection = try XCTUnwrap(
             ShellIntegrationInjection.plan(
                 kind: kind, arguments: ["-l"], inheritedEnvironment: environment, resourceDirectory: try XCTUnwrap(BundledShellIntegration.directory()),
-                nonce: nonce))
+                nonce: nonce)?
+                .addingPromptPreset(promptPreset))
         let terminal = NativeTerminal()
         var events: [ShellIntegrationEvent] = []
         terminal.onShellIntegrationEvent = { events.append($0) }
@@ -170,12 +176,128 @@ final class ShellIntegrationPTYTests: XCTestCase {
     @MainActor
     func testZshSurvivesNounsetKshArraysAndStatusChangingHooks() async throws {
         let rc = "setopt nounset ksh_arrays\nPS1='%% '\nuser_hook() { false; }\nprecmd_functions+=(user_hook)\n"
-        try await assertSurvivesStrictUserSettings(try await launch("/bin/zsh", files: [".zshrc": rc]))
+        try await assertSurvivesStrictUserSettings(try await launch("/bin/zsh", files: [".zshrc": rc], promptPreset: .git))
     }
 
     @MainActor
     func testSystemBashSurvivesNounsetAndChainsAnExistingDebugTrap() async throws {
         let profile = "set -u\nPS1='$ '\nPROMPT_COMMAND='false'\ntrap 'user_trap=\"$_\"' DEBUG\n"
-        try await assertSurvivesStrictUserSettings(try await launch("/bin/bash", files: [".bash_profile": profile]))
+        try await assertSurvivesStrictUserSettings(try await launch("/bin/bash", files: [".bash_profile": profile], promptPreset: .git))
+    }
+
+    // MARK: Prompt presets (FR-SI10)
+
+    private static let repository = [".git/HEAD": "ref: refs/heads/main\n", "projects/trellis/.git/HEAD": "ref: refs/heads/main\n"]
+
+    private var sample: ShellPromptSample {
+        var name = [CChar](repeating: 0, count: 256)
+        gethostname(&name, name.count)
+        let host = String(decoding: name.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self).split(separator: ".", omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        return ShellPromptSample(user: NSUserName(), host: host, path: "~/projects/trellis", folder: "trellis", branch: "main", time: "")
+    }
+
+    /// Every preset but the clock draws exactly its Settings preview, after a success and after `false`, with the B mark last.
+    @MainActor
+    private func assertPromptsMatchTheirPreviews(_ executable: String) async throws {
+        let shell = try await launch(executable, files: Self.repository, promptPreset: .minimal)
+        defer {
+            shell.terminal.requestTermination(force: true); shell.terminal.adapter.detach()
+            try? FileManager.default.removeItem(at: shell.home)
+        }
+        try await run(shell, "cd projects/trellis")
+        let presets = ShellPromptPreset.allCases.filter { ![.none, .clock].contains($0) }
+        for preset in presets {
+            try await run(shell, "__trellis_si_prompt_preset=\(preset.rawValue)")
+            try await run(shell, "false")
+        }
+        try await run(shell, "true")
+        let output = try shell.terminal.adapter.read(.retainedText)
+        for (index, preset) in presets.enumerated() {
+            let next = index + 1 < presets.count ? "__trellis_si_prompt_preset=\(presets[index + 1].rawValue)" : "true"
+            let success = preset.previewText(sample).joined(separator: "\n") + "false"
+            let failure = preset.previewText(sample, failed: true).joined(separator: "\n") + next
+            XCTAssertTrue(output.contains(success), "\(preset) after a success, expected \(success):\n\(output)")
+            XCTAssertTrue(output.contains(failure), "\(preset) after a failure, expected \(failure):\n\(output)")
+        }
+        try await run(shell, "__trellis_si_prompt_preset=clock")
+        try await run(shell, "true")
+        let clock = try NSRegularExpression(pattern: #"\[\d\d:\d\d\] ~/projects/trellis ❯ true"#)
+        let text = try shell.terminal.adapter.read(.retainedText)
+        XCTAssertNotNil(clock.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)), text)
+        let events = shell.events()
+        XCTAssertTrue(events.contains(.commandFinished(exitCode: 1)), "\(events)")
+        XCTAssertTrue(events.contains(.promptStart(directory: shell.home.appendingPathComponent("projects/trellis").path)), "\(events)")
+    }
+
+    @MainActor
+    func testZshPromptPresetsMatchTheirPreviews() async throws { try await assertPromptsMatchTheirPreviews("/bin/zsh") }
+
+    @MainActor
+    func testSystemBashPromptPresetsMatchTheirPreviews() async throws { try await assertPromptsMatchTheirPreviews("/bin/bash") }
+
+    /// A directory or branch name is shown as text: never run, never read as prompt escapes, even under prompt_subst.
+    @MainActor
+    private func assertPromptNamesAreInert(_ executable: String, files: [String: String]) async throws {
+        let directory = "$(touch pwned)%F{1}`touch pwned2`\\w"
+        let branch = "$(touch pwned3)%B"
+        var files = files
+        files["\(directory)/.git/HEAD"] = "ref: refs/heads/\(branch)\n"
+        files["\(directory)/keep"] = ""
+        let shell = try await launch(executable, files: files, promptPreset: .git)
+        defer {
+            shell.terminal.requestTermination(force: true); shell.terminal.adapter.detach()
+            try? FileManager.default.removeItem(at: shell.home)
+        }
+        try await run(shell, "cd ./*F*")
+        try await run(shell, "true")
+        let output = try shell.terminal.adapter.read(.retainedText)
+        XCTAssertTrue(output.contains("~/\(directory) (\(branch)) ❯ true"), output)
+        let entries = try FileManager.default.contentsOfDirectory(atPath: shell.home.appendingPathComponent(directory).path)
+        XCTAssertFalse(entries.contains { $0.hasPrefix("pwned") }, "\(entries)")
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: shell.home.path).contains { $0.hasPrefix("pwned") })
+    }
+
+    @MainActor
+    func testZshPromptNamesAreInertEvenWithPromptSubst() async throws {
+        try await assertPromptNamesAreInert("/bin/zsh", files: [".zshrc": "setopt prompt_subst\nPS1='%% '\n"])
+    }
+
+    @MainActor
+    func testSystemBashPromptNamesAreInert() async throws { try await assertPromptNamesAreInert("/bin/bash", files: [:]) }
+
+    /// A crafted HEAD can't send escape sequences through the prompt, and a FIFO named HEAD doesn't block it.
+    @MainActor
+    private func assertPromptSurvivesHostileHeads(_ executable: String) async throws {
+        let shell = try await launch(executable, files: ["escape/.git/HEAD": "ref: refs/heads/a\u{1b}]0;PWNED\u{07}b\n", "fifo/.git/keep": ""], promptPreset: .git)
+        defer {
+            shell.terminal.requestTermination(force: true); shell.terminal.adapter.detach()
+            try? FileManager.default.removeItem(at: shell.home)
+        }
+        XCTAssertEqual(mkfifo(shell.home.appendingPathComponent("fifo/.git/HEAD").path, 0o600), 0)
+        try await run(shell, "cd escape")
+        try await run(shell, "cd ../fifo")
+        try await run(shell, "true")
+        let output = try shell.terminal.adapter.read(.retainedText)
+        XCTAssertTrue(output.contains("~/escape (a?]0;PWNED?b) ❯ cd ../fifo"), output)
+        XCTAssertTrue(output.contains("~/fifo ❯ true"), output)
+    }
+
+    @MainActor
+    func testZshPromptSurvivesHostileHeads() async throws { try await assertPromptSurvivesHostileHeads("/bin/zsh") }
+
+    @MainActor
+    func testSystemBashPromptSurvivesHostileHeads() async throws { try await assertPromptSurvivesHostileHeads("/bin/bash") }
+
+    @MainActor
+    func testShellDefaultLeavesTheUsersPromptAlone() async throws {
+        let shell = try await launch("/bin/zsh", files: [".zshrc": "PS1='mine> '\n"])
+        defer {
+            shell.terminal.requestTermination(force: true); shell.terminal.adapter.detach()
+            try? FileManager.default.removeItem(at: shell.home)
+        }
+        try await run(shell, "echo \"[$__trellis_si_prompt_preset]\"")
+        let output = try shell.terminal.adapter.read(.retainedText)
+        XCTAssertTrue(output.contains("mine> echo"), output)
+        XCTAssertTrue(output.contains("\n[]"), output)
     }
 }

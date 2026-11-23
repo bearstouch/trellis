@@ -184,6 +184,17 @@ struct PaneTreeView: View {
                         }
                     }
                 }
+                // FR-SS: over the terminal only; the header stays readable and clickable.
+                .overlay {
+                    if model.screensaverPaneID == id, model.appearance.idleScreensaver != .off {
+                        IdleScreensaverOverlay(
+                            style: model.appearance.idleScreensaver, palette: ScreensaverPalette(theme: model.effectiveTheme), animated: !model.reduceMotion,
+                            onPointerMoved: { model.noteUserActivity() }
+                        )
+                        .transition(.opacity)
+                    }
+                }
+                .animation(model.reduceMotion ? nil : .easeInOut(duration: 0.6), value: model.screensaverPaneID == id)
             }
         } else {
             model.terminalBackground.opacity(model.effectiveBackgroundOpacity)

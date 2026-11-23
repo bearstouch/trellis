@@ -74,6 +74,55 @@ final class ShellIntegrationTests: XCTestCase {
         }
     }
 
+    func testPromptPresetRidesOnlyOnTheTrustedInjection() throws {
+        let plan = try XCTUnwrap(ShellIntegrationInjection.plan(kind: .zsh, arguments: ["-l"], inheritedEnvironment: [:], resourceDirectory: "/R", nonce: nonce))
+        XCTAssertEqual(plan.addingPromptPreset(.none), plan, "Shell default leaves the prompt alone")
+        let git = plan.addingPromptPreset(.git)
+        XCTAssertEqual(git.environment["TRELLIS_PROMPT_PRESET"], "git")
+        XCTAssertEqual(git.arguments, plan.arguments); XCTAssertEqual(git.scriptPath, plan.scriptPath)
+        var configuration = LocalLaunchConfiguration(
+            executable: "/bin/zsh", arguments: ["-l"], directory: "/tmp", inheritedEnvironment: ["TRELLIS_PROMPT_PRESET": "classic"], shellIntegration: git)
+        XCTAssertEqual(try LocalLaunchValidator(files: ScriptFiles()).validate(configuration).environment["TRELLIS_PROMPT_PRESET"], "git")
+        configuration.shellIntegration = plan
+        XCTAssertNil(try LocalLaunchValidator(files: ScriptFiles()).validate(configuration).environment["TRELLIS_PROMPT_PRESET"], "an inherited value is dropped")
+        configuration.environmentOverrides = ["TRELLIS_PROMPT_PRESET": "minimal"]
+        XCTAssertThrowsError(try LocalLaunchValidator(files: ScriptFiles()).validate(configuration)) {
+            XCTAssertEqual($0 as? LocalLaunchError, .reservedEnvironmentKey)
+        }
+        let missing = try LocalLaunchValidator(files: ScriptFiles(scriptExists: false)).validate(
+            LocalLaunchConfiguration(executable: "/bin/zsh", arguments: ["-l"], directory: "/tmp", inheritedEnvironment: [:], shellIntegration: git))
+        XCTAssertNil(missing.environment["TRELLIS_PROMPT_PRESET"], "no script, no prompt")
+    }
+
+    func testLoginShellsKnowWhichShellTheyAreAndBashSkipsTheZshNotice() {
+        var bash = LocalLaunchConfiguration(executable: "/bin/bash", arguments: ["-l"], directory: "/tmp", inheritedEnvironment: ["SHELL": "/bin/zsh"])
+        bash.describeLoginShell()
+        XCTAssertEqual(bash.environmentOverrides, ["SHELL": "/bin/bash", "BASH_SILENCE_DEPRECATION_WARNING": "1"])
+        var zsh = LocalLaunchConfiguration(executable: "/opt/homebrew/bin/zsh", arguments: ["-l"], directory: "/tmp", environmentOverrides: ["SHELL": "/custom"])
+        zsh.describeLoginShell()
+        XCTAssertEqual(zsh.environmentOverrides, ["SHELL": "/custom"], "a pane's own SHELL wins, and only bash gets the notice switch")
+    }
+
+    func testPromptPreviewsCoverEveryPresetInThemeColors() {
+        XCTAssertEqual(ShellPromptPreset.none.previewText(), [])
+        XCTAssertEqual(ShellPromptPreset.allCases.count, 11, "Shell default plus ten presets")
+        XCTAssertEqual(ShellPromptPreset.classic.previewText(), ["you@mac:~/projects/trellis$ "])
+        XCTAssertEqual(ShellPromptPreset.git.previewText(), ["~/projects/trellis (main) ❯ "])
+        XCTAssertEqual(ShellPromptPreset.twoLine.previewText(), ["╭─ you@mac ~/projects/trellis (main)", "╰─❯ "])
+        XCTAssertEqual(ShellPromptPreset.status.previewText(failed: true), ["✘ 1 ~/projects/trellis ❯ "])
+        var outside = ShellPromptSample.example; outside.branch = nil
+        XCTAssertEqual(ShellPromptPreset.git.previewText(outside), ["~/projects/trellis ❯ "], "no branch outside a repository")
+        for preset in ShellPromptPreset.allCases where preset != .none {
+            let segments = preset.preview().flatMap { $0 } + preset.preview(failed: true).flatMap { $0 }
+            XCTAssertTrue(segments.contains { $0.color != nil }, "\(preset) is colored")
+            XCTAssertTrue(segments.allSatisfy { ($0.color ?? 0) < 16 }, "ANSI indexes only, so the theme colors it")
+            // Failure is shown by a different glyph or text too, never by color alone.
+            if preset == .status { XCTAssertNotEqual(preset.previewText(), preset.previewText(failed: true)) }
+            XCTAssertEqual(preset.showsFailure, preset.preview() != preset.preview(failed: true), "\(preset)")
+            XCTAssertFalse(preset.displayName.isEmpty)
+        }
+    }
+
     func testMissingScriptOrMismatchedShellLaunchesThePlainShell() throws {
         let injection = try XCTUnwrap(ShellIntegrationInjection.plan(kind: .zsh, arguments: ["-l"], inheritedEnvironment: [:], resourceDirectory: "/R", nonce: nonce))
         let missing = try LocalLaunchValidator(files: ScriptFiles(scriptExists: false)).validate(

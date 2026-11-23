@@ -41,7 +41,7 @@ public enum WelcomeTourKey: Sendable, Equatable {
     }
 }
 
-/// The welcome tour (FR-ON01–FR-ON10): modal like the command palette. It owns no settings of its own; the last step
+/// The welcome tour (FR-ON01–FR-ON11): modal like the command palette. It owns no settings of its own; the last step
 /// changes the same ones the Settings window does.
 extension AppWorkspaceModel {
     static let welcomeTourSeenKey = "welcomeTour.seen"
@@ -133,6 +133,14 @@ extension AppWorkspaceModel {
         _ = applyAppearance(settings)
     }
 
+    /// FR-ON06: the same prompt preset as Settings → Sessions → Prompt (FR-SI10), for new shells only.
+    public func setShellPromptFromWelcomeTour(_ preset: ShellPromptPreset) {
+        guard preset != appearance.shellPrompt else { return }
+        var settings = appearance
+        settings.shellPrompt = preset
+        _ = applyAppearance(settings)
+    }
+
     public func installCLIFromWelcomeTour() {
         guard let install = welcomeTourInstallCLI, !welcomeTourCLIInstalling else { return }
         welcomeTourCLIInstalling = true
@@ -151,7 +159,11 @@ extension AppWorkspaceModel {
     /// The keyboard step's Files row names the other dock views' chords, or the dock itself when any of them is unbound.
     var welcomeTourSidebarDetail: String {
         let chords = [SidebarView.scratchpad, .tasks, .agents].compactMap { welcomeTourChord($0.shortcut) }
-        guard chords.count == 3 else { return L("Browse the focused pane’s project in the right sidebar. The dock on the window’s edge also opens the scratchpad, tasks and agents.") }
-        return L("Browse the focused pane’s project in the right sidebar. %1$@, %2$@ and %3$@ open the scratchpad, tasks and agents.", chords[0], chords[1], chords[2])
+        guard chords.count == 3 else {
+            return L("Browse the focused pane’s project, on this Mac or a host, and preview Markdown and CSV files. The dock on the window’s edge also opens the scratchpad, tasks and agents.")
+        }
+        return L(
+            "Browse the focused pane’s project, on this Mac or a host, and preview Markdown and CSV files. %1$@, %2$@ and %3$@ open the scratchpad, tasks and agents.",
+            chords[0], chords[1], chords[2])
     }
 }

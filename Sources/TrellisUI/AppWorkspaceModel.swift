@@ -48,7 +48,23 @@ public final class AppWorkspaceModel: ObservableObject {
         didSet { if errorMessage != nil { diagnosticCodes = Array((diagnosticCodes + ["UI_ERROR"]).suffix(20)) } }
     }
     public private(set) var diagnosticCodes: [String] = []
-    @Published public private(set) var appearance = AppearanceSettings() { didSet { refreshLanguage() } }
+    @Published public private(set) var appearance = AppearanceSettings() {
+        didSet { refreshLanguage(); syncScreensaverTimer() }
+    }
+    /// The pane the idle screensaver currently covers (FR-SS02); nil while none shows.
+    @Published public internal(set) var screensaverPaneID: UUID?
+    var screensaverClock = IdleScreensaverClock(now: Date())
+    var screensaverTask: Task<Void, Never>?
+    /// FR-LK: the lock screen covers the workspace window; never saved, so a relaunch opens unlocked.
+    @Published public internal(set) var isLocked = false
+    /// True while the Touch ID / password prompt is open (FR-LK04): only one at a time.
+    @Published public internal(set) var unlockInProgress = false
+    /// Asks the Mac's owner to authenticate before unlocking; nil (as in tests that don't set one) makes Lock unavailable.
+    public var lockGate: UserPresenceGate?
+    /// Whether this Mac can ask for Touch ID or a password at all.
+    public var lockAvailable: () -> Bool = { true }
+    /// The app hides other windows and takes keyboard focus from the terminal when locking, and restores both after.
+    public var onLockChanged: ((Bool) -> Void)?
     /// The Mac's preferred languages, read for the System choice (FR-LN01). Empty until the app sets it, so tests read English.
     public var systemLanguages: () -> [String] = { [] } { didSet { refreshLanguage() } }
     /// The `--language` launch choice; overrides the saved language without saving it.
@@ -1111,13 +1127,17 @@ public final class AppWorkspaceModel: ObservableObject {
                 switch request.launch {
                 case .shell(let directory):
                     configuration = .loginShell(executable: defaultShell, directory: directory ?? defaultDirectory, environmentOverrides: environment)
+                    configuration.describeLoginShell()
                     configuration.shellIntegration = shellIntegration(for: configuration)
                 case .process(let executable, let arguments, let directory):
                     configuration = LocalLaunchConfiguration(
                         executable: executable, arguments: arguments, directory: directory ?? defaultDirectory, environmentOverrides: environment)
                     // `.shell` is frozen to `.process(shell, ["-l"])` before launch. Any frozen login shell qualifies, so
                     // panes started before the default shell changed keep integration on restart and restore.
-                    if arguments == ["-l"] { configuration.shellIntegration = shellIntegration(for: configuration) }
+                    if arguments == ["-l"] {
+                        configuration.describeLoginShell()
+                        configuration.shellIntegration = shellIntegration(for: configuration)
+                    }
                 case .remoteShell, .agent: return
                 case .host(let hostID):
                     // Each spawn freezes the host's current arguments; the domain keeps
@@ -1239,7 +1259,9 @@ public final class AppWorkspaceModel: ObservableObject {
         return .plan(
             kind: kind, arguments: configuration.arguments,
             inheritedEnvironment: configuration.inheritedEnvironment.merging(configuration.environmentOverrides) { $1 },
-            resourceDirectory: directory, nonce: ShellIntegrationInjection.makeNonce())
+            resourceDirectory: directory, nonce: ShellIntegrationInjection.makeNonce()
+        )?
+        .addingPromptPreset(appearance.shellPrompt)
     }
 
     public func setShellIntegrationEnabled(_ enabled: Bool) {
@@ -1689,11 +1711,12 @@ public final class AppWorkspaceModel: ObservableObject {
         terminal.onOutput = { [weak self, weak terminal] in
             guard let self else { return }
             self.recordActivity(paneID: pane.id)
-            if let terminal, self.terminals[pane.id] === terminal { self.recordOutput(paneID: pane.id) }
+            if let terminal, self.terminals[pane.id] === terminal { self.recordOutput(paneID: pane.id); self.notePaneActivity(pane.id) }
         }
         terminal.onInput = { [weak self] in
             guard let self else { return }
             self.outputActivity.recordInput(pane.id, at: self.activityNow())
+            self.notePaneActivity(pane.id)
         }
         terminal.onReturnKey = { [weak self, weak terminal] in
             guard let self, let terminal, self.terminals[pane.id] === terminal else { return }

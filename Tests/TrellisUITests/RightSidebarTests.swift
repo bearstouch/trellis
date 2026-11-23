@@ -139,6 +139,8 @@ final class RightSidebarTests: XCTestCase {
 
         XCTAssertEqual(model.agentSessionRows.map(\.id), [agentPane])
         XCTAssertEqual(model.agentSessionRows.first?.spaceName, "W")
+        XCTAssertEqual(model.agentSessionRows.first?.machine, "this Mac", "A local agent says where it runs")
+        XCTAssertEqual(model.agentSessionRows.first?.machineSymbol, "laptopcomputer")
         XCTAssertEqual(model.agentSessionRows.first?.status, "Ready")
         XCTAssertEqual(model.agentsNeedingYouCount, 0)
         model.receiveAgentEvent(sessionID: session, event: "needs-input")

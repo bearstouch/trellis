@@ -23,6 +23,8 @@ final class ShellIntegrationUITests: XCTestCase {
         try """
         #!/bin/sh
         printf 'ARGS=%s NONCE=%s ZDOTDIR=%s\\n' "$*" "${TRELLIS_SHELL_INTEGRATION_NONCE:+set}" "${ZDOTDIR-}"
+        printf 'PROMPT=%s|\\n' "${TRELLIS_PROMPT_PRESET-}"
+        printf 'SHELL=%s|QUIET=%s|\\n' "${SHELL-}" "${BASH_SILENCE_DEPRECATION_WARNING-}"
         printf '\\nPWD=%s|\\n' "$(/bin/pwd -P | /usr/bin/sed 's|.*/||')"
         exec /bin/sleep 30
         """.write(to: shell, atomically: true, encoding: .utf8)
@@ -90,6 +92,36 @@ final class ShellIntegrationUITests: XCTestCase {
     }
 
     @MainActor
+    func testTheChosenPromptReachesOnlyIntegratedShells() async throws {
+        let model = try await makeModel(enabled: true)
+        defer { cleanUp(model) }
+        await model.createSpace(name: "Default")
+        let plain = try await output(model, try XCTUnwrap(model.presentation.activePane?.id), containing: "PWD=")
+        XCTAssertTrue(plain.contains("PROMPT=|"), "Shell default sends nothing:\n\(plain)")
+        XCTAssertTrue(plain.contains("SHELL=\(root.appendingPathComponent("bin/zsh").path)|QUIET=|"), "SHELL names the shell started:\n\(plain)")
+
+        var settings = model.appearance; settings.shellPrompt = .twoLine
+        XCTAssertTrue(model.applyAppearance(settings))
+        await model.createSpace(name: "Two lines")
+        let chosen = try await output(model, try XCTUnwrap(model.presentation.activePane?.id), containing: "PWD=")
+        XCTAssertTrue(chosen.contains("PROMPT=twoLine|"), chosen)
+
+        await model.createSpace(name: "Custom", startSession: false)
+        let custom = try XCTUnwrap(model.presentation.activePane?.id)
+        let fake = root.appendingPathComponent("bin/zsh").path
+        _ = try await model.service.execute(.configureStoppedSession(paneID: custom, launch: .process(executable: fake, arguments: ["-i"], directory: "/tmp")))
+        await model.refresh()
+        await model.start(paneID: custom)
+        let customText = try await output(model, custom, containing: "PWD=")
+        XCTAssertTrue(customText.contains("PROMPT=|"), "custom processes keep their prompt:\n\(customText)")
+
+        model.setShellIntegrationEnabled(false)
+        await model.createSpace(name: "Off")
+        let off = try await output(model, try XCTUnwrap(model.presentation.activePane?.id), containing: "PWD=")
+        XCTAssertTrue(off.contains("PROMPT=|"), "no integration, no prompt:\n\(off)")
+    }
+
+    @MainActor
     func testCustomProcessesAndFixturesAreNeverInjected() async throws {
         let model = try await makeModel(enabled: true)
         defer { cleanUp(model) }
@@ -118,6 +150,7 @@ final class ShellIntegrationUITests: XCTestCase {
         let text = try await output(model, pane, containing: "PWD=")
         XCTAssertTrue(text.contains("ARGS=--rcfile "), text)
         XCTAssertTrue(text.contains("NONCE=set"), text)
+        XCTAssertTrue(text.contains("SHELL=\(bash.path)|QUIET=1|"), "SHELL names bash, and macOS's zsh notice is skipped:\n\(text)")
     }
 
     @MainActor
@@ -133,25 +166,25 @@ final class ShellIntegrationUITests: XCTestCase {
 
         let splitResult = await model.splitPane(pane, axis: .x)
         let split = try XCTUnwrap(splitResult)
-        let splitText = try await output(model, split, containing: "|")
+        let splitText = try await output(model, split, containing: "PWD=")
         XCTAssertTrue(splitText.contains("PWD=project dir|"), splitText)
 
         _ = await model.selectPane(pane)
         let tabResult = await model.createTab()
         let tab = try XCTUnwrap(tabResult)
         let tabPane = try XCTUnwrap(model.snapshot.tabs[tab]?.activePaneID)
-        let tabText = try await output(model, tabPane, containing: "|")
+        let tabText = try await output(model, tabPane, containing: "PWD=")
         XCTAssertTrue(tabText.contains("PWD=project dir|"), tabText)
 
         // A pane without reports, or a vanished directory, falls back to the default.
         let plainResult = await model.splitPane(tabPane, axis: .y)
         let plain = try XCTUnwrap(plainResult)
-        let plainText = try await output(model, plain, containing: "|")
+        let plainText = try await output(model, plain, containing: "PWD=")
         XCTAssertTrue(plainText.contains("PWD=\(root.lastPathComponent)|"), plainText)
         try emit(model, plain, .promptStart(directory: root.appendingPathComponent("gone").path))
         let fallbackResult = await model.splitPane(plain, axis: .x)
         let fallback = try XCTUnwrap(fallbackResult)
-        let fallbackText = try await output(model, fallback, containing: "|")
+        let fallbackText = try await output(model, fallback, containing: "PWD=")
         XCTAssertTrue(fallbackText.contains("PWD=\(root.lastPathComponent)|"), fallbackText)
     }
 
@@ -556,7 +589,7 @@ final class ShellIntegrationUITests: XCTestCase {
         XCTAssertEqual(launch(gone), launches[gone], "a started pane keeps the directory it was launched in")
         XCTAssertEqual(launch(custom), .process(executable: "", arguments: [], directory: "/tmp"))
         await restored.start(paneID: pane)
-        let text = try await output(restored, pane, containing: "|")
+        let text = try await output(restored, pane, containing: "PWD=")
         XCTAssertTrue(text.contains("PWD=project dir|"), text)
     }
 

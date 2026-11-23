@@ -19,6 +19,25 @@ It works with zsh, bash (3.2 and later, including the `/bin/bash` that comes wit
 
 Shell integration is on by default. To turn it off, clear **Settings → Sessions → Shell integration (zsh, bash, fish)**. The change applies to sessions you start afterwards; panes already running keep what they had.
 
+## Choose a prompt
+
+Trellis leaves your prompt alone unless you ask it to change it. To pick one of ten ready-made prompts, choose it in **Settings → Sessions → Prompt**. A preview under the picker shows it in your theme's colors, after a command that worked and after one that failed.
+
+| Prompt | Looks like |
+| --- | --- |
+| Minimal | `❯` |
+| Classic | `you@mac:~/projects/trellis$` |
+| Full path | `~/projects/trellis ❯` |
+| Folder name | `trellis ❯` |
+| Git branch | `~/projects/trellis (main) ❯` |
+| Two lines | `╭─ you@mac ~/projects/trellis (main)` and `╰─❯` below it |
+| Exit status | `✔ ~/projects/trellis ❯`, or `✘ 1 …` after a failure |
+| Clock | `[14:32] ~/projects/trellis ❯` |
+| Lambda | `λ trellis →` |
+| Bracketed | `[you@mac trellis]$` |
+
+The arrow turns red after a failed command. The prompt applies to shells you start afterwards, including [remote workspaces](remote-workspaces.md), and replaces the prompt your dotfiles set without editing them. Choose **Shell default** to get yours back. It needs shell integration and zsh, bash or fish; SSH panes keep the remote shell's prompt. The right-side prompt (`RPROMPT`) isn't changed.
+
 ## Choose a supported shell
 
 **Settings → Sessions → Shell** lists the shells installed on your Mac, from `/etc/shells` and the usual Homebrew locations. Shells that get integration are marked **Shell integration**, and a note under the picker says in words whether the chosen shell supports it. **Other…** lets you type any absolute path.

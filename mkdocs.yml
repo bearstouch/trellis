@@ -63,6 +63,8 @@ nav:
       - SSH hosts: features/ssh-hosts.md
       - Remote workspaces: features/remote-workspaces.md
       - Themes: features/themes.md
+      - Idle screensaver: features/screensaver.md
+      - Lock screen: features/lock-screen.md
       - Keyboard and accessibility: features/keyboard-accessibility.md
       - Languages: features/localization.md
       - Welcome tour: features/welcome-tour.md

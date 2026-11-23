@@ -66,10 +66,14 @@ public struct HostLibraryView: View {
             .background(workspace.themeColor(.sidebarBackground))
             Rectangle().fill(workspace.themeColor(.border)).frame(width: 1)
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(editing == nil ? L("New Host") : L("Edit Host")).font(.system(size: 22, weight: .semibold))
-                    Text(editing == nil ? L("Save an SSH destination for quick connections.") : L("Edit saved details for future connections."))
-                        .font(.callout).foregroundStyle(workspace.themeColor(.mutedForeground))
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(editing == nil ? L("New Host") : L("Edit Host")).font(.system(size: 22, weight: .semibold))
+                        Text(editing == nil ? L("Save an SSH destination for quick connections.") : L("Edit saved details for future connections."))
+                            .font(.callout).foregroundStyle(workspace.themeColor(.mutedForeground))
+                    }
+                    Spacer(minLength: 0)
+                    if let host = editing { connectMenu(host) }
                 }
                 .padding(28)
                 Divider().padding(.horizontal, 28)
@@ -125,24 +129,32 @@ public struct HostLibraryView: View {
             if let host = editing, let remote = model.remote {
                 RemoteHelperSection(host: host, remote: remote, workspace: workspace, disabled: hasUnsavedChanges(host))
             }
-            if let host = editing {
-                Section(L("Connect")) {
-                    HStack {
-                        Button(L("Connect in New Tab")) { model.onConnect?(host, .newTab) }
-                            .accessibilityHint(L("Starts a new ssh process for %@", host.name))
-                        Button(L("Connect in New Space")) { model.onConnect?(host, .newSpace) }
-                            .accessibilityHint(L("Opens a new space and starts a new ssh process for %@", host.name))
-                        if model.remote != nil, let open = model.onOpenRemoteWorkspace {
-                            Button(L("Open Remote Workspace")) { open(host) }
-                                .accessibilityHint(L("Opens a space whose sessions run on %@ and keep running when the connection drops", host.name))
-                        }
-                    }
-                    .disabled(model.onConnect == nil || hasUnsavedChanges(host))
-                    if hasUnsavedChanges(host) { SettingsNote(text: L("Save or revert your changes before connecting.")) }
-                }
-            }
         }
         .settingsFormStyle()
+    }
+
+    /// In the header, not the form: connecting is the window's main action and must not scroll away under the settings.
+    private func connectMenu(_ host: SavedHost) -> some View {
+        let unsaved = hasUnsavedChanges(host)
+        return VStack(alignment: .trailing, spacing: 6) {
+            Menu(L("Connect")) {
+                Button(L("Connect in New Tab")) { model.onConnect?(host, .newTab) }
+                    .accessibilityHint(L("Starts a new ssh process for %@", host.name))
+                Button(L("Connect in New Space")) { model.onConnect?(host, .newSpace) }
+                    .accessibilityHint(L("Opens a new space and starts a new ssh process for %@", host.name))
+                if model.remote != nil, let open = model.onOpenRemoteWorkspace {
+                    Button(L("Open Remote Workspace")) { open(host) }
+                        .accessibilityHint(L("Opens a space whose sessions run on %@ and keep running when the connection drops", host.name))
+                }
+            }
+            .menuStyle(.button).buttonStyle(.borderedProminent).fixedSize()
+            .disabled(model.onConnect == nil || unsaved)
+            .accessibilityLabel(L("Connect to %@", host.name))
+            if unsaved {
+                Text(L("Save or revert your changes before connecting.")).font(.caption).foregroundStyle(workspace.themeColor(.mutedForeground))
+                    .multilineTextAlignment(.trailing).frame(maxWidth: 200, alignment: .trailing)
+            }
+        }
     }
 
     private var footer: some View {

@@ -138,7 +138,9 @@ extension AppWorkspaceModel {
         if shellIntegrationEnabled, let info = connection.hostInfo, let kind = ShellIntegrationKind(executable: info.shell) {
             let resources = BrokerFiles.parent(info.executable) + "/integration"
             let token = ShellIntegrationInjection.makeNonce()
-            if let plan = ShellIntegrationInjection.plan(kind: kind, arguments: ["-l"], inheritedEnvironment: [:], resourceDirectory: resources, nonce: token) {
+            if let plan = ShellIntegrationInjection.plan(kind: kind, arguments: ["-l"], inheritedEnvironment: [:], resourceDirectory: resources, nonce: token)?
+                .addingPromptPreset(appearance.shellPrompt)
+            {
                 integration = BrokerIntegration(shell: info.shell, arguments: plan.arguments, environment: plan.environment, scriptPath: plan.scriptPath)
                 nonce = token
             }

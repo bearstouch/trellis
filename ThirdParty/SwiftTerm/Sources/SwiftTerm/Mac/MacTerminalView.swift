@@ -327,6 +327,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         (caretView.layer?.animation(forKey: "opacity")?.duration, metalRenderer?.cursorBlinkTimerInterval)
     }
 
+    /// How many frames the Metal renderer has submitted and the drawable size of the last, in pixels; nil when Metal is
+    /// off. For tests: presentation is reported by the window server, which can be seconds late for a window off screen.
+    public var metalSubmittedFramesForTesting: (count: UInt64, drawableSize: CGSize)? { metalRenderer?.submittedFramesForTesting }
+
     /// The premultiplied color the Metal renderer clears to, or nil when Metal is off. For tests.
     public var metalClearColorForTesting: MTLClearColor? { metalRenderer?.clearColor }
 

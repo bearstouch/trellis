@@ -297,6 +297,7 @@ extension ShortcutAction {
         case .toggleTasks: ["launch.json run build test", "right sidebar"]
         case .toggleAgents: ["claude codex pi opencode coding", "right sidebar"]
         case .zoomIn, .zoomOut, .actualSize: ["font size"]
+        case .lockWorkspace: ["privacy screen hide", "touch id password"]
         default: []
         }
     }

@@ -264,6 +264,9 @@ final class RemoteWorkspaceTests: XCTestCase {
             terminal.screenText.contains("REMOTE-AGENT-UP \(project) --continue")
         }
         XCTAssertNotNil(terminal.remoteTransport, "Through the host's helper")
+        let row = try XCTUnwrap(model.agentSessionRows.first { $0.id == pane })
+        XCTAssertEqual(row.machine, "build-box", "The Running list names the host (FR-AG16)")
+        XCTAssertEqual(row.machineSymbol, "server.rack")
     }
 
     /// FR-RW04: a shell with no marks yet gives the folder it started in; one that started nowhere in particular leaves home to the helper.
