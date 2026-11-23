@@ -69,6 +69,7 @@ The Files, Changes, Scratchpad, Tasks and Agents views open in the [right sideba
 | Previous Space / Next Space | <kbd>⌃</kbd><kbd>⌘</kbd><kbd>[</kbd> / <kbd>⌃</kbd><kbd>⌘</kbd><kbd>]</kbd> |
 | Previous Tab / Next Tab | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>[</kbd> / <kbd>⇧</kbd><kbd>⌘</kbd><kbd>]</kbd> |
 | Select Tab 1–9 | <kbd>⌘</kbd><kbd>1</kbd> – <kbd>⌘</kbd><kbd>9</kbd> |
+| [Lock Trellis](themes.md#lock-screen) | <kbd>⌃</kbd><kbd>⌘</kbd><kbd>L</kbd> |
 
 ### Standard macOS shortcuts
 

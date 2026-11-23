@@ -65,6 +65,8 @@ public struct WorkspaceRootView: View {
                         Text(name).lineLimit(1).truncationMode(.middle).help(name).accessibilityLabel(L("Space %@", name))
                     }
                 }
+                Text("·").accessibilityHidden(true)
+                lockButton
             }
             .font(.system(size: 11)).foregroundStyle(model.themeColor(.mutedForeground)).padding(.horizontal, 12).frame(height: 28)
             .background(model.chromeFill(.surface))
@@ -77,6 +79,19 @@ public struct WorkspaceRootView: View {
         .preferredColorScheme(model.effectiveChromeMode.colorScheme)
         .modifier(CommandPaletteHost(model: model))
         .modifier(WelcomeTourHost(model: model))
+        // FR-LK07: VoiceOver can't walk into the panes (or read their text) beneath the lock screen.
+        .accessibilityHidden(model.isLocked)
+        // FR-LK02: above everything in the window, title bar strip included, and opaque even with translucent panes.
+        .overlay {
+            if model.isLocked {
+                LockScreenView(
+                    style: model.appearance.lockScreen, palette: ScreensaverPalette(theme: model.effectiveTheme), animated: !model.reduceMotion,
+                    runningSessions: model.runningSessionCount, unlocking: model.unlockInProgress, onUnlock: { model.requestUnlock() }
+                )
+                .ignoresSafeArea().transition(.opacity)
+            }
+        }
+        .animation(model.reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.isLocked)
         .onChange(of: model.tabRenameRequest) { _, _ in
             if let tab = model.presentation.selectedTab { beginTabRename(tab) }
         }
@@ -127,7 +142,8 @@ public struct WorkspaceRootView: View {
             }.padding(24).frame(width: 540)
         }
         .modifier(TaskSheets(model: model))
-        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+        // FR-LK02: an error waits until unlocking instead of showing over the lock screen.
+        .alert("Trellis", isPresented: Binding(get: { model.errorMessage != nil && !model.isLocked }, set: { if !$0, !model.isLocked { model.errorMessage = nil } })) {
             Button(L("OK")) { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
@@ -166,6 +182,17 @@ public struct WorkspaceRootView: View {
             Image(systemName: "plus")
         }
         .buttonStyle(.plain).help(shortcutHelp(L("New Space"), .newSpace)).accessibilityLabel(L("New Space"))
+    }
+
+    /// FR-LK01: at the right end of the status bar; the tooltip says why when it can't lock.
+    private var lockButton: some View {
+        Button {
+            model.lockWorkspace()
+        } label: {
+            Image(systemName: "lock").contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(model.lockUnavailableReason != nil)
+        .help(model.lockUnavailableReason ?? shortcutHelp(L("Lock Trellis"), .lockWorkspace)).accessibilityLabel(L("Lock Trellis"))
     }
 
     private var expandedSidebar: some View {
@@ -1037,6 +1064,8 @@ private struct SpaceHoverPreview: ViewModifier {
             .onChange(of: model.sidebarCollapsed) { _, _ in close() }
             // Dragging a space (FR-W07) closes the card and drops a pending open, so it never pops up mid-drag.
             .onChange(of: dragStarts) { _, _ in close() }
+            // The card is its own window, so it would stay above the lock screen with the space's tab names (FR-LK02).
+            .onChange(of: model.isLocked) { _, locked in if locked { close() } }
             .onDisappear { close() }
     }
 

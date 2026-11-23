@@ -55,6 +55,16 @@ public final class AppWorkspaceModel: ObservableObject {
     @Published public internal(set) var screensaverPaneID: UUID?
     var screensaverClock = IdleScreensaverClock(now: Date())
     var screensaverTask: Task<Void, Never>?
+    /// FR-LK: the lock screen covers the workspace window; never saved, so a relaunch opens unlocked.
+    @Published public internal(set) var isLocked = false
+    /// True while the Touch ID / password prompt is open (FR-LK04): only one at a time.
+    @Published public internal(set) var unlockInProgress = false
+    /// Asks the Mac's owner to authenticate before unlocking; nil (as in tests that don't set one) makes Lock unavailable.
+    public var lockGate: UserPresenceGate?
+    /// Whether this Mac can ask for Touch ID or a password at all.
+    public var lockAvailable: () -> Bool = { true }
+    /// The app hides other windows and takes keyboard focus from the terminal when locking, and restores both after.
+    public var onLockChanged: ((Bool) -> Void)?
     /// The Mac's preferred languages, read for the System choice (FR-LN01). Empty until the app sets it, so tests read English.
     public var systemLanguages: () -> [String] = { [] } { didSet { refreshLanguage() } }
     /// The `--language` launch choice; overrides the saved language without saving it.

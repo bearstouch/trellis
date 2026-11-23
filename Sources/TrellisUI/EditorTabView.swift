@@ -88,6 +88,8 @@ struct EditorTabView: View {
                 EditorCursorButton(readout: cursor, color: NSColor(muted)) { beginGoToLine() }
                     .frame(width: EditorCursorButton.width, alignment: .trailing)
                     .popover(isPresented: $goToLineShown, arrowEdge: .bottom) { goToLinePopover }
+                    // A popover is its own window and would stay above the lock screen (FR-LK02).
+                    .onChange(of: model.isLocked) { _, locked in if locked { goToLineShown = false } }
             }
             if let host = tab.remoteHost {
                 // Nothing on this Mac opens, reveals or saves a host's file (FR-ED16).
