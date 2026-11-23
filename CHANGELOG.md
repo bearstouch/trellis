@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-23
+
+The stable 1.4 release. Coming from 1.3.0, you also get everything listed under 1.4.0-beta.1: CSV and TSV table previews, dragging files in and out of Files, Files on remote workspaces, OpenCode as a built-in agent, subscription usage in the Agents view, Markdown previews from the terminal, redesigned Settings, Hosts and Projects windows, cursor blink speeds, and the fix for the editor freeze with always-visible scroll bars.
+
 ### Added
 
 - **Idle screensaver:** choose an animation in Settings → Appearance → **Screensaver**, and it covers the focused pane once that pane has had no input or output for the time you set in **Start after** (30 seconds to 1 hour, 5 minutes by default). There are five: **Digital Rain**, **Game of Life**, **Brian's Brain**, **Hex Spirals** and **ASCII Plasma**, all drawn in your theme's colours. Any key, click or pointer move brings the pane back, and the key isn't typed into it. It's off by default, shows a still frame with Reduce Motion, and never touches the session. See [Idle screensaver](docs/features/screensaver.md).
@@ -516,7 +520,8 @@ Measured on the release build on an Apple M1 Pro running macOS 26.6. Reproduce w
 - The bundle identifier `dev.trellis` is provisional.
 - MVP limits: one native application window and manual upgrades.
 
-[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.4.0-beta.1...HEAD
+[Unreleased]: https://github.com/bearstouch/trellis/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/bearstouch/trellis/compare/v1.4.0-beta.1...v1.4.0
 [1.4.0-beta.1]: https://github.com/bearstouch/trellis/compare/v1.3.0...v1.4.0-beta.1
 [1.3.0]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.3...v1.3.0
 [1.3.0-beta.3]: https://github.com/bearstouch/trellis/compare/v1.3.0-beta.2...v1.3.0-beta.3
