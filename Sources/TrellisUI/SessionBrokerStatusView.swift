@@ -66,10 +66,6 @@ struct SessionBrokerStatusView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("Running · PID %1$@ · protocol %2$@", String(details.processID), String(details.protocolVersion))).monospacedDigit()
                     SettingsNote(text: L("Only this Trellis can connect: the broker checks every connection's user and executable (%@).", details.clientPath))
-                    if let socket = details.socketPath {
-                        Text(socket).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).foregroundStyle(.secondary)
-                            .accessibilityLabel(L("Socket %@", socket))
-                    }
                 }
             }
         }
